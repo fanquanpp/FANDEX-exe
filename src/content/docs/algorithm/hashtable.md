@@ -1,0 +1,673 @@
+﻿---
+title: "哈希表"
+module: "algorithm"
+category: "Algorithm/HashTable"
+description: "哈希函数设计、冲突处理策略、扩容机制与经典应用（LRU/LFU缓存），附复杂度分析与多语言实现。"
+author: "fanquanpp"
+---
+- [3. 冲突处理](#3-冲突处理)
+- [4. 扩容与再哈希](#4-扩容与再哈希)
+- [5. 一致性哈希](#5-一致性哈希)
+- [6. 经典应用](#6-经典应用)
+- [7. 哈希表速查表](#7-哈希表速查表)
+- [8. 延伸阅读](#8-延伸阅读)
+
+---
+
+## 1. 哈希表概述
+
+### 1.1 直接寻址与哈希
+
+**直接寻址表**：当键域U较小时，用数组array[k]直接存储键k对应的值。查找O(1)，但空间O(|U|)。
+
+**哈希表**：当键域U很大但实际键数n远小于|U|时，用哈希函数h(k)将键映射到m个槽位中，空间O(m)。
+
+代价：不同键可能映射到同一槽位（冲突），需要冲突处理策略。
+
+### 1.2 核心指标
+
+| 指标 | 定义 | 目标 |
+|------|------|------|
+| 负载因子 | alpha = n / m | 控制在合理范围(通常<0.75) |
+| 查找成功ASL | 找到元素的平均探测次数 | 尽量小 |
+| 查找失败ASL | 确定不存在的平均探测次数 | 尽量小 |
+| 空间利用率 | n / (m * slot_size) | 尽量高 |
+
+### 1.3 哈希表 vs 其他查找结构
+
+| 结构 | 平均查找 | 最坏查找 | 插入 | 删除 | 有序遍历 |
+|------|----------|----------|------|------|----------|
+| 哈希表 | O(1) | O(n) | O(1) | O(1) | 不支持 |
+| BST | O(logn) | O(n) | O(logn) | O(logn) | 支持 |
+| 红黑树 | O(logn) | O(logn) | O(logn) | O(logn) | 支持 |
+| 有序数组 | O(logn) | O(logn) | O(n) | O(n) | 支持 |
+
+> 跨模块引用：哈希查找的搜索框架参见 [搜索算法](algorithm/searching)。BST和红黑树参见 [树结构](algorithm/tree)。
+
+---
+
+## 2. 哈希函数
+
+### 2.1 好哈希函数的标准
+
+1. **确定性**：同一键始终映射到同一槽位
+2. **均匀性**：键均匀分布在所有槽位上
+3. **高效性**：计算速度快
+
+### 2.2 常见哈希函数
+
+**除法哈希**：h(k) = k mod m
+
+选择m的准则：m应为质数，且远离2的幂次。若m=2^p，则h(k)只依赖k的最低p位。
+
+**乘法哈希**：h(k) = floor(m * (k * A mod 1))，其中0 < A < 1
+
+Knuth建议A = (sqrt(5) - 1) / 2 (黄金分割比)。对m的选择不敏感。
+
+**全域哈希**：随机选择哈希函数，使得对任意两个不同的键，冲突概率不超过1/m。
+
+h_a_b(k) = ((a * k + b) mod p) mod m，其中p为大于|U|的质数，a从{1,...,p-1}随机选取，b从{0,...,p-1}随机选取。
+
+### 2.3 字符串哈希
+
+**多项式滚动哈希**：H(s) = s[0] * b^(n-1) + s[1] * b^(n-2) + ... + s[n-1]
+
+常用基数b = 31, 131, 13331等（经验值，减少冲突）。
+
+```python
+def polynomial_hash(s, base=31, mod=10**9 + 7):
+    h = 0
+    for ch in s:
+        h = (h * base + ord(ch)) % mod
+    return h
+
+def rolling_hash(s, window, base=31, mod=10**9 + 7):
+    n = len(s)
+    if n < window:
+        return []
+    power = pow(base, window - 1, mod)
+    hashes = []
+    h = 0
+    for i in range(window):
+        h = (h * base + ord(s[i])) % mod
+    hashes.append(h)
+    for i in range(window, n):
+        h = (h - ord(s[i - window]) * power % mod + mod) % mod
+        h = (h * base + ord(s[i])) % mod
+        hashes.append(h)
+    return hashes
+```
+
+```cpp
+long long polynomialHash(const string& s, long long base = 31, long long mod = 1e9 + 7) {
+    long long h = 0;
+    for (char c : s) {
+        h = (h * base + c) % mod;
+    }
+    return h;
+}
+```
+
+**Rabin-Karp字符串匹配**：利用滚动哈希在O(n+m)平均时间内匹配模式串。
+
+---
+
+## 3. 冲突处理
+
+### 3.1 链地址法（Separate Chaining）
+
+每个槽位维护一个链表，冲突的元素追加到链表末尾。
+
+```
+槽位数m=5, 哈希函数h(k)=k%5
+
+插入: 10, 22, 31, 4, 15, 28
+
+槽0: 10 -> 15
+槽1: 31
+槽2: 22
+槽3: 28
+槽4: 4
+```
+
+**查找分析**：
+
+在简单均匀哈希假设下，每个链表的期望长度为alpha = n/m。
+
+- 查找成功ASL = 1 + alpha/2
+- 查找失败ASL = 1 + alpha
+
+**删除**：链地址法支持直接删除（从链表中移除节点），这是其相对于开放寻址法的优势。
+
+```python
+class ChainingHashTable:
+    def __init__(self, capacity=16):
+        self.capacity = capacity
+        self.size = 0
+        self.buckets = [[] for _ in range(capacity)]
+
+    def _hash(self, key):
+        return hash(key) % self.capacity
+
+    def put(self, key, value):
+        idx = self._hash(key)
+        for i, (k, v) in enumerate(self.buckets[idx]):
+            if k == key:
+                self.buckets[idx][i] = (key, value)
+                return
+        self.buckets[idx].append((key, value))
+        self.size += 1
+        if self.size > self.capacity * 0.75:
+            self._resize()
+
+    def get(self, key):
+        idx = self._hash(key)
+        for k, v in self.buckets[idx]:
+            if k == key:
+                return v
+        return None
+
+    def remove(self, key):
+        idx = self._hash(key)
+        for i, (k, v) in enumerate(self.buckets[idx]):
+            if k == key:
+                del self.buckets[idx][i]
+                self.size -= 1
+                return
+
+    def _resize(self):
+        old = self.buckets
+        self.capacity *= 2
+        self.buckets = [[] for _ in range(self.capacity)]
+        self.size = 0
+        for bucket in old:
+            for k, v in bucket:
+                self.put(k, v)
+```
+
+```cpp
+template<typename K, typename V>
+class ChainingHashTable {
+    vector<list<pair<K,V>>> buckets;
+    int sz;
+    int cap;
+
+    int hashFunc(const K& key) const {
+        return hash<K>()(key) % cap;
+    }
+
+public:
+    ChainingHashTable(int c = 16) : cap(c), sz(0) {
+        buckets.assign(cap, list<pair<K,V>>());
+    }
+
+    void put(const K& key, const V& value) {
+        int idx = hashFunc(key);
+        for (auto& kv : buckets[idx]) {
+            if (kv.first == key) { kv.second = value; return; }
+        }
+        buckets[idx].push_back({key, value});
+        sz++;
+    }
+
+    V* get(const K& key) {
+        int idx = hashFunc(key);
+        for (auto& kv : buckets[idx]) {
+            if (kv.first == key) return &kv.second;
+        }
+        return nullptr;
+    }
+
+    void remove(const K& key) {
+        int idx = hashFunc(key);
+        auto& bucket = buckets[idx];
+        for (auto it = bucket.begin(); it != bucket.end(); ++it) {
+            if (it->first == key) { bucket.erase(it); sz--; return; }
+        }
+    }
+};
+```
+
+### 3.2 开放寻址法（Open Addressing）
+
+所有元素存储在数组本身中，冲突时按探测序列寻找下一个空槽。
+
+**线性探测**：h(k, i) = (h'(k) + i) mod m
+
+```
+槽位数m=7, h'(k)=k%7
+
+插入: 10, 22, 31, 4
+
+10: h'(10)=3, 槽3空 -> 放入槽3
+22: h'(22)=1, 槽1空 -> 放入槽1
+31: h'(31)=3, 槽3被占 -> 探测槽4空 -> 放入槽4
+4:  h'(4)=4,  槽4被占 -> 探测槽5空 -> 放入槽5
+
+数组: [_, 22, _, 10, 31, 4, _]
+```
+
+**一次聚集问题**：线性探测导致连续占用区域越来越长，查找时间急剧增加。
+
+**二次探测**：h(k, i) = (h'(k) + c1*i + c2*i^2) mod m
+
+缓解一次聚集，但可能导致二次聚集（不同初始位置的键共享探测序列）。
+
+**双重哈希**：h(k, i) = (h1(k) + i * h2(k)) mod m
+
+h2(k)必须与m互素。最好的开放寻址冲突处理方法，几乎消除聚集现象。
+
+```python
+class OpenAddressingHashTable:
+    DELETED = object()
+
+    def __init__(self, capacity=16):
+        self.capacity = capacity
+        self.size = 0
+        self.keys = [None] * capacity
+        self.values = [None] * capacity
+
+    def _hash(self, key):
+        return hash(key) % self.capacity
+
+    def _probe(self, key, i):
+        return (self._hash(key) + i) % self.capacity
+
+    def put(self, key, value):
+        if self.size >= self.capacity * 0.75:
+            self._resize()
+        idx = self._find_slot(key)
+        if self.keys[idx] is None or self.keys[idx] is self.DELETED:
+            self.keys[idx] = key
+            self.size += 1
+        self.values[idx] = value
+
+    def get(self, key):
+        idx = self._search(key)
+        if idx is not None:
+            return self.values[idx]
+        return None
+
+    def remove(self, key):
+        idx = self._search(key)
+        if idx is not None:
+            self.keys[idx] = self.DELETED
+            self.values[idx] = None
+            self.size -= 1
+
+    def _find_slot(self, key):
+        i = 0
+        while True:
+            idx = self._probe(key, i)
+            if self.keys[idx] is None or self.keys[idx] is self.DELETED or self.keys[idx] == key:
+                return idx
+            i += 1
+
+    def _search(self, key):
+        i = 0
+        while True:
+            idx = self._probe(key, i)
+            if self.keys[idx] is None:
+                return None
+            if self.keys[idx] == key:
+                return idx
+            i += 1
+            if i >= self.capacity:
+                return None
+```
+
+### 3.3 冲突处理方法对比
+
+| 方法 | 优点 | 缺点 | 负载因子上限 |
+|------|------|------|-------------|
+| 链地址法 | 删除简单，不受负载因子限制 | 额外指针开销 | 无硬限制 |
+| 线性探测 | 缓存友好，无指针开销 | 一次聚集 | alpha < 0.7 |
+| 二次探测 | 缓解聚集 | 二次聚集 | alpha < 0.5 |
+| 双重哈希 | 几乎无聚集 | 计算两次哈希 | alpha < 0.7 |
+
+### 3.4 查找性能理论分析
+
+**链地址法**（简单均匀哈希假设）：
+
+| 操作 | 期望时间 |
+|------|----------|
+| 查找成功 | Theta(1 + alpha/2) |
+| 查找失败 | Theta(1 + alpha) |
+
+**开放寻址法**（均匀哈希假设）：
+
+| 操作 | 期望探测次数 |
+|------|-------------|
+| 查找成功 | (1/alpha) * ln(1/(1-alpha)) |
+| 查找失败 | 1/(1-alpha) |
+
+当alpha=0.5时，查找成功约1.39次探测，查找失败约2次探测。
+当alpha=0.9时，查找成功约2.56次探测，查找失败约10次探测。
+当alpha趋近1时，性能急剧下降。
+
+---
+
+## 4. 扩容与再哈希
+
+### 4.1 扩容触发条件
+
+当负载因子超过阈值时触发扩容：
+- 链地址法：alpha > 0.75（Java HashMap默认）
+- 开放寻址法：alpha > 0.5 ~ 0.7
+
+### 4.2 扩容过程
+
+1. 分配新的更大数组（通常2倍）
+2. 遍历旧表中所有元素
+3. 对每个元素重新计算哈希值（因为m改变了）
+4. 插入新表
+
+**摊还分析**：每次插入的摊还代价为O(1)。
+
+### 4.3 渐进式扩容
+
+Redis等系统采用渐进式扩容，避免一次性扩容导致的停顿：
+1. 维护新旧两个哈希表
+2. 每次操作时迁移少量元素
+3. 查找时先查新表再查旧表
+4. 迁移完成后释放旧表
+
+---
+
+## 5. 一致性哈希
+
+### 5.1 问题背景
+
+分布式系统中，节点增减时需要重新分配数据。传统取模方案（h(k) mod n）在节点数变化时导致大量数据迁移。
+
+### 5.2 一致性哈希方案
+
+将哈希值空间组织为环（0 ~ 2^32-1），每个节点和键都映射到环上。键由顺时针方向最近的节点负责。
+
+**虚拟节点**：为每个物理节点分配多个虚拟节点，使数据分布更均匀。
+
+```
+哈希环:
+
+     Node A (v1)
+    /            \
+Key1              Node B (v1)
+  |                  |
+Node C (v1)       Key2
+    \            /
+     Node A (v2)
+
+Key1 -> Node A (顺时针最近)
+Key2 -> Node B (顺时针最近)
+```
+
+**节点增减的影响**：添加节点只影响相邻节点间的数据，删除节点只将数据迁移到下一个节点。数据迁移量为O(K/N)，K为总键数，N为节点数。
+
+---
+
+## 6. 经典应用
+
+### 6.1 LRU缓存
+
+LRU（Least Recently Used）缓存：当缓存满时，淘汰最久未使用的条目。
+
+**数据结构**：哈希表 + 双向链表
+
+- 哈希表：O(1)查找键对应的链表节点
+- 双向链表：O(1)移动节点到头部、删除尾部节点
+
+```python
+class LRUCache:
+    def __init__(self, capacity):
+        self.cap = capacity
+        self.cache = {}
+        self.head = DoublyListNode()
+        self.tail = DoublyListNode()
+        self.head.next = self.tail
+        self.tail.prev = self.head
+
+    def _remove(self, node):
+        node.prev.next = node.next
+        node.next.prev = node.prev
+
+    def _add_to_front(self, node):
+        node.next = self.head.next
+        node.prev = self.head
+        self.head.next.prev = node
+        self.head.next = node
+
+    def get(self, key):
+        if key not in self.cache:
+            return -1
+        node = self.cache[key]
+        self._remove(node)
+        self._add_to_front(node)
+        return node.val
+
+    def put(self, key, value):
+        if key in self.cache:
+            self._remove(self.cache[key])
+            del self.cache[key]
+        node = DoublyListNode(value)
+        node.key = key
+        self._add_to_front(node)
+        self.cache[key] = node
+        if len(self.cache) > self.cap:
+            lru = self.tail.prev
+            self._remove(lru)
+            del self.cache[lru.key]
+```
+
+```cpp
+struct DListNode {
+    int key, val;
+    DListNode *prev, *next;
+    DListNode(int k = 0, int v = 0) : key(k), val(v), prev(nullptr), next(nullptr) {}
+};
+
+class LRUCache {
+    int cap;
+    unordered_map<int, DListNode*> cache;
+    DListNode *head, *tail;
+
+    void remove(DListNode* node) {
+        node->prev->next = node->next;
+        node->next->prev = node->prev;
+    }
+
+    void addToFront(DListNode* node) {
+        node->next = head->next;
+        node->prev = head;
+        head->next->prev = node;
+        head->next = node;
+    }
+
+public:
+    LRUCache(int capacity) : cap(capacity) {
+        head = new DListNode();
+        tail = new DListNode();
+        head->next = tail;
+        tail->prev = head;
+    }
+
+    int get(int key) {
+        if (!cache.count(key)) return -1;
+        DListNode* node = cache[key];
+        remove(node);
+        addToFront(node);
+        return node->val;
+    }
+
+    void put(int key, int value) {
+        if (cache.count(key)) {
+            remove(cache[key]);
+            delete cache[key];
+            cache.erase(key);
+        }
+        DListNode* node = new DListNode(key, value);
+        addToFront(node);
+        cache[key] = node;
+        if (cache.size() > cap) {
+            DListNode* lru = tail->prev;
+            remove(lru);
+            cache.erase(lru->key);
+            delete lru;
+        }
+    }
+};
+```
+
+**复杂度**：get和put均为O(1)。
+
+> 跨模块引用：双链表的实现细节参见 [链表](algorithm/linked-list)。
+
+### 6.2 LFU缓存
+
+LFU（Least Frequently Used）缓存：淘汰使用频率最低的条目。同频率时按LRU淘汰。
+
+**数据结构**：两层哈希表
+- key_to_node：键到节点的映射
+- freq_to_list：频率到该频率所有节点的双向链表
+
+```python
+from collections import defaultdict, OrderedDict
+
+class LFUCache:
+    def __init__(self, capacity):
+        self.cap = capacity
+        self.size = 0
+        self.min_freq = 0
+        self.key_to_val_freq = {}
+        self.freq_to_keys = defaultdict(OrderedDict)
+
+    def get(self, key):
+        if key not in self.key_to_val_freq:
+            return -1
+        val, freq = self.key_to_val_freq[key]
+        del self.freq_to_keys[freq][key]
+        if not self.freq_to_keys[freq]:
+            del self.freq_to_keys[freq]
+            if self.min_freq == freq:
+                self.min_freq += 1
+        self.freq_to_keys[freq + 1][key] =          self.key_to_val_freq[key] = (val, freq + 1)
+        return val
+
+    def put(self, key, value):
+        if self.cap <= 0:
+            return
+        if key in self.key_to_val_freq:
+            self.key_to_val_freq[key] = (value, self.key_to_val_freq[key][1])
+            self.get(key)
+            return
+        if self.size >= self.cap:
+            evict_key, _ = self.freq_to_keys[self.min_freq].popitem(last=False)
+            del self.key_to_val_freq[evict_key]
+            self.size -= 1
+        self.key_to_val_freq[key] = (value, 1)
+        self.freq_to_keys[1][key] =          self.min_freq = 1
+        self.size += 1
+```
+
+### 6.3 两数之和（哈希表经典应用）
+
+```python
+def two_sum(nums, target):
+    seen = {}
+    for i, num in enumerate(nums):
+        complement = target - num
+        if complement in seen:
+            return [seen[complement], i]
+        seen[num] = i
+    return []
+```
+
+```cpp
+vector<int> twoSum(vector<int>& nums, int target) {
+    unordered_map<int, int> seen;
+    for (int i = 0; i < nums.size(); i++) {
+        int complement = target - nums[i];
+        if (seen.count(complement)) return {seen[complement], i};
+        seen[nums[i]] = i;
+    }
+    return {};
+}
+```
+
+### 6.4 字符异位词分组
+
+```python
+from collections import defaultdict
+
+def group_anagrams(strs):
+    groups = defaultdict(list)
+    for s in strs:
+        key = ''.join(sorted(s))
+        groups[key].append(s)
+    return list(groups.values())
+```
+
+### 6.5 布隆过滤器
+
+布隆过滤器是一种空间高效的概率数据结构，用于判断元素是否"可能"在集合中。
+
+- 插入：对元素计算k个哈希值，将对应位置1
+- 查询：若k个位都为1，则"可能"存在；若有任一位为0，则"一定"不存在
+- 假阳性率：p = (1 - e^(-kn/m))^k
+
+```python
+import mmh3
+
+class BloomFilter:
+    def __init__(self, size, hash_count):
+        self.size = size
+        self.hash_count = hash_count
+        self.bit_array = [False] * size
+
+    def add(self, item):
+        for i in range(self.hash_count):
+            idx = mmh3.hash(str(item), i) % self.size
+            self.bit_array[idx] =  
+    def contains(self, item):
+        for i in range(self.hash_count):
+            idx = mmh3.hash(str(item), i) % self.size
+            if not self.bit_array[idx]:
+                return False
+        return  ```
+
+**最优参数选择**：给定预期元素数n和假阳性率p：
+- m = -n * ln(p) / (ln2)^2
+- k = (m/n) * ln2
+
+---
+
+## 7. 哈希表速查表
+
+| 操作 | 链地址法 | 开放寻址法 |
+|------|----------|-----------|
+| 查找(平均) | O(1+alpha) | O(1/(1-alpha)) |
+| 插入(平均) | O(1) | O(1/(1-alpha)) |
+| 删除(平均) | O(1+alpha) | O(1/(1-alpha)) |
+| 空间 | O(n+m) | O(m) |
+| 负载因子上限 | 无硬限制 | < 0.7 |
+| 删除实现 | 直接删除 | 懒删除(标记) |
+| 缓存友好性 | 较差 | 较好 |
+
+| 应用 | 数据结构 | 时间复杂度 |
+|------|----------|-----------|
+| LRU缓存 | 哈希表+双向链表 | O(1) get/put |
+| LFU缓存 | 双层哈希表 | O(1) get/put |
+| 两数之和 | 哈希表 | O(n) |
+| 异位词分组 | 哈希表 | O(n*k*logk) |
+| 布隆过滤器 | 位数组+k个哈希 | O(k) 插入/查询 |
+
+---
+
+## 8. 延伸阅读
+
+- CLRS 第 11 章（哈希表）
+- Knuth, *The Art of Computer Programming*, Vol.3, Section 6.4
+- Karger et al., "Consistent Hashing and Random Trees", 1997
+- [Hash Table -- VisuAlgo](https://visualgo.net/en/hashtable)
+- Redis 渐进式扩容实现
+
+> 跨模块引用：双链表实现参见 [链表](algorithm/linked-list)。哈希查找参见 [搜索算法](algorithm/searching)。C++ unordered_map参见 [C++基础](cpp/overview)。Python dict参见 [Python基础](python/overview)。

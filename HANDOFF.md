@@ -17,35 +17,35 @@
 | 10 | GitHub Pages 部署工作流 | [完成] |
 ## 仓库结构
 ```
- TrueMyNotebook-main/
- True├── .github/workflows/deploy.yml # GitHub Pages 自动部署
- True├── .husky/pre-commit # Git pre-commit 钩子
- True├── .obsidian/ # Obsidian 知识库配置
- True│ └── templates/ # 学习模板
- True├── .lintstagedrc # lint-staged 配置
- True├── .prettierrc # Prettier 配置
- True├── algorithm/ # 算法与数据结构（新增）
- True├── c/ # C 语言
- True├── cpp/ # C++
- True├── css/ # CSS
- True├── cs-fundamentals/ # 计算机基础（新增）
- True├── data-analysis/ # 数据分析（新增）
- True├── docs/ # 架构文档 + 图表
- True├── git/ # Git
- True├── github/ # GitHub
- True├── html5/ # HTML5
- True├── java/ # Java
- True├── javascript/ # JavaScript
- True├── lua/ # Lua
- True├── markdown/ # Markdown
- True├── mysql/ # MySQL
- True├── python/ # Python
- True├── typescript/ # TypeScript
- True├── vue3/ # Vue3
- True├── CONTEXT.md # 项目上下文
- True├── MOC-Home.md # Obsidian 导航索引
- True├── README.md # 项目说明
- True└── package.json # Node.js 项目配置
+ MyNotebook-main/
+ ├── .github/workflows/deploy.yml # GitHub Pages 自动部署
+ ├── .husky/pre-commit # Git pre-commit 钩子
+ ├── .obsidian/ # Obsidian 知识库配置
+ │ └── templates/ # 学习模板
+ ├── .lintstagedrc # lint-staged 配置
+ ├── .prettierrc # Prettier 配置
+ ├── algorithm/ # 算法与数据结构（新增）
+ ├── c/ # C 语言
+ ├── cpp/ # C++
+ ├── css/ # CSS
+ ├── cs-fundamentals/ # 计算机基础（新增）
+ ├── data-analysis/ # 数据分析（新增）
+ ├── docs/ # 架构文档 + 图表
+ ├── git/ # Git
+ ├── github/ # GitHub
+ ├── html5/ # HTML5
+ ├── java/ # Java
+ ├── javascript/ # JavaScript
+ ├── lua/ # Lua
+ ├── markdown/ # Markdown
+ ├── mysql/ # MySQL
+ ├── python/ # Python
+ ├── typescript/ # TypeScript
+ ├── vue3/ # Vue3
+ ├── CONTEXT.md # 项目上下文
+ ├── MOC-Home.md # Obsidian 导航索引
+ ├── README.md # 项目说明
+ └── package.json # Node.js 项目配置
  ```
 
 ## Vue3 文档站点

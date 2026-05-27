@@ -58,7 +58,7 @@ D. 众数只适用于数值型数据
 给定一个包含缺失值、重复行和异常值的 DataFrame，编写清洗函数：去除重复行、填充缺失值（数值列用中位数，分类列用众数）、移除数值列中超过 3 倍标准差的异常值。
 **输入**:
 ```python
- Truedf = pd.DataFrame({
+ df = pd.DataFrame({
   'age': [25, 30, None, 25, 200, 28],
   'city': ['Beijing', 'Shanghai', 'Beijing', None, 'Beijing', 'Beijing']
  True})
@@ -90,7 +90,7 @@ D. 众数只适用于数值型数据
 给定销售数据，按月份和产品类别分组，计算每月各类别的销售额总和和平均订单金额，并生成透视表。
 **输入**:
 ```python
- Truedf = pd.DataFrame({
+ df = pd.DataFrame({
   'date': pd.to_datetime(['2024-01-05','2024-01-15','2024-02-03','2024-02-20','2024-01-25']),
   'category': ['A','B','A','B','A'],
   'amount': [100, 200, 150, 300, 120]

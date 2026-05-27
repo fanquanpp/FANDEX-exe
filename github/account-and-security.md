@@ -71,13 +71,13 @@
 #### 3.3.2 配置 Git 凭据管理
 ```bash
  # Windows 系统：使用 Git Credential Manager
- Truegit config --global credential.helper manager
+ git config --global credential.helper manager
  # macOS 系统：使用 osxkeychain
- Truegit config --global credential.helper osxkeychain
+ git config --global credential.helper osxkeychain
  # Linux 系统：使用 libsecret
- Truegit config --global credential.helper libsecret
+ git config --global credential.helper libsecret
  # 验证配置
- Truegit config --global --get credential.helper
+ git config --global --get credential.helper
  ```
 
 首次使用 HTTPS 克隆或推送时，系统会提示输入用户名和密码，此时：
@@ -87,25 +87,25 @@
 ### 示例 A：检查和配置全局 Git 身份
 ```bash
  # 检查当前全局配置
- Truegit config --global --list
+ git config --global --list
  # 设置全局用户名和邮箱
- Truegit config --global user.name "Your Name" # 建议与 GitHub 展示名一致
- Truegit config --global user.email "you@example.com" # 必须是 GitHub 已验证邮箱
+ git config --global user.name "Your Name" # 建议与 GitHub 展示名一致
+ git config --global user.email "you@example.com" # 必须是 GitHub 已验证邮箱
  # 验证设置是否生效
- Truegit config --global user.name
- Truegit config --global user.email
+ git config --global user.name
+ git config --global user.email
  ```
 
 ### 示例 B：为特定仓库设置不同身份
 ```bash
  # 进入仓库目录
- Truecd /path/to/repo
+ cd /path/to/repo
  # 设置仓库特定的用户名和邮箱
- Truegit config user.name "Work Name"
- Truegit config user.email "work@company.com"
+ git config user.name "Work Name"
+ git config user.email "work@company.com"
  # 验证仓库特定设置
- Truegit config user.name
- Truegit config user.email
+ git config user.name
+ git config user.email
  ```
 
 ### 示例 C：`.gitconfig` 完整配置示例
@@ -157,23 +157,23 @@
 ### 7.1 检查 Git 配置
 ```bash
  # 检查全局配置
- Truegit config --global --list
+ git config --global --list
  # 检查当前仓库配置
- Truegit config --local --list
+ git config --local --list
  # 检查系统配置
- Truegit config --system --list
+ git config --system --list
  # 筛选用户相关配置
- Truegit config --list | grep user
+ git config --list | grep user
  ```
 
 ### 7.2 验证邮箱状态
 ```bash
  # 检查本地提交使用的邮箱
- Truegit log --pretty=format:"%ae" | head -n 5
+ git log --pretty=format:"%ae" | head -n 5
  # 检查远程仓库信息
- Truegit remote -v
+ git remote -v
  # 测试 HTTPS 连接（会提示输入 PAT）
- Truegit ls-remote https://github.com/username/repository.git
+ git ls-remote https://github.com/username/repository.git
  ```
 
 ### 7.3 排查 2FA 问题
@@ -185,11 +185,11 @@
 ### 8.1 使用 SSH 配置多账户
 ```bash
  # ~/.ssh/config 文件
- TrueHost github.com-personal
+ Host github.com-personal
   HostName github.com
   User git
   IdentityFile ~/.ssh/id_rsa_personal
- TrueHost github.com-work
+ Host github.com-work
   HostName github.com
   User git
   IdentityFile ~/.ssh/id_rsa_work
@@ -198,9 +198,9 @@
 ### 8.2 对应仓库配置
 ```bash
  # 个人仓库
- Truegit remote set-url origin git@github.com-personal:username/personal-repo.git
+ git remote set-url origin git@github.com-personal:username/personal-repo.git
  # 工作仓库
- Truegit remote set-url origin git@github.com-work:company/work-repo.git
+ git remote set-url origin git@github.com-work:company/work-repo.git
  ```
 
 ## 延伸阅读

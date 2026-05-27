@@ -30,7 +30,7 @@ Vue3 项目需要 Node.js 环境，推荐安装最新的 LTS 版本：
 Vite 是 Vue 官方推荐的构建工具，速度更快：
 ```bash
  # 安装 create-vite@latest
- Truenpm create vite@latest
+ npm create vite@latest
  # 按照提示创建 Vue3 项目
  # 选择 Vue + TypeScript 模板获取最佳开发体验
  ```
@@ -38,7 +38,7 @@ Vite 是 Vue 官方推荐的构建工具，速度更快：
 #### 使用 Vue CLI
 ```bash
  # 安装 Vue CLI
- Truenpm install -g @vue/cli
+ npm install -g @vue/cli
  # 创建 Vue3 项目
  Vue create my-vue3-project
  # 选择 Vue 3 预设
@@ -47,29 +47,29 @@ Vite 是 Vue 官方推荐的构建工具，速度更快：
 ## 2. 项目结构
 一个典型的 Vue3 项目结构如下：
 ```
- Truemy-vue3-project/
- True├── public/
- True│ └── favicon.ico
- True├── src/
- True│ ├── assets/
- True│ │ └── logo.png
- True│ ├── components/
- True│ │ └── HelloWorld.vue
- True│ ├── router/
- True│ │ └── index.ts
- True│ ├── store/
- True│ │ └── index.ts
- True│ ├── views/
- True│ │ ├── Home.vue
- True│ │ └── About.vue
- True│ ├── App.vue
- True│ └── main.ts
- True├── .gitignore
- True├── index.html
- True├── package.json
- True├── tsconfig.json
- True├── vite.config.ts
- True└── README.md
+ my-vue3-project/
+ ├── public/
+ │ └── favicon.ico
+ ├── src/
+ │ ├── assets/
+ │ │ └── logo.png
+ │ ├── components/
+ │ │ └── HelloWorld.vue
+ │ ├── router/
+ │ │ └── index.ts
+ │ ├── store/
+ │ │ └── index.ts
+ │ ├── views/
+ │ │ ├── Home.vue
+ │ │ └── About.vue
+ │ ├── App.vue
+ │ └── main.ts
+ ├── .gitignore
+ ├── index.html
+ ├── package.json
+ ├── tsconfig.json
+ ├── vite.config.ts
+ └── README.md
  ```
 
 ## 3. 第一个 Vue3 应用
@@ -98,11 +98,11 @@ Vite 是 Vue 官方推荐的构建工具，速度更快：
 ### 3.2 运行项目
 ```bash
  # 进入项目目录
- Truecd my-vue3-project
+ cd my-vue3-project
  # 安装依赖
- Truenpm install
+ npm install
  # 启动开发服务器
- Truenpm run dev
+ npm run dev
  ```
 
 ## 4. 核心概念快速了解
@@ -202,7 +202,7 @@ Vite 是 Vue 官方推荐的构建工具，速度更快：
 ### 5.1 Vue Router
 安装：
 ```bash
- Truenpm install vue-router@4
+ npm install vue-router@4
  ```
 
 基本配置：
@@ -232,7 +232,7 @@ Vite 是 Vue 官方推荐的构建工具，速度更快：
 ### 5.2 Pinia 状态管理
 安装：
 ```bash
- Truenpm install pinia
+ npm install pinia
  ```
 
 基本配置：
@@ -272,7 +272,7 @@ Vite 是 Vue 官方推荐的构建工具，速度更快：
 ## 6. 构建与部署
 ### 6.1 构建生产版本
 ```bash
- Truenpm run build
+ npm run build
  ```
 
 构建产物会生成在 `dist` 目录中。

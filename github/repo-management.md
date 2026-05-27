@@ -53,73 +53,73 @@
 #### 4.1.1 克隆 HTTPS
 ```bash
  # 克隆默认分支
- Truegit clone https://github.com/OWNER/REPO.git
+ git clone https://github.com/OWNER/REPO.git
  # 克隆指定分支
- Truegit clone -b BRANCH_NAME https://github.com/OWNER/REPO.git
+ git clone -b BRANCH_NAME https://github.com/OWNER/REPO.git
  # 浅克隆（适合大仓库）
- Truegit clone --depth 1 https://github.com/OWNER/REPO.git
+ git clone --depth 1 https://github.com/OWNER/REPO.git
  # 进入仓库目录
- Truecd REPO
+ cd REPO
  # 查看远程配置
- Truegit remote -v
+ git remote -v
  ```
 
 #### 4.1.2 克隆 SSH
 ```bash
  # 克隆默认分支
- Truegit clone git@github.com:OWNER/REPO.git
+ git clone git@github.com:OWNER/REPO.git
  # 克隆指定分支
- Truegit clone -b BRANCH_NAME git@github.com:OWNER/REPO.git
+ git clone -b BRANCH_NAME git@github.com:OWNER/REPO.git
  # 进入仓库目录
- Truecd REPO
+ cd REPO
  # 查看工作区状态
- Truegit status
+ git status
  ```
 
 ### 4.2 推送本地目录到远程
 #### 4.2.1 推送已有本地仓库
 ```bash
  # 进入本地目录
- Truecd existing-project
+ cd existing-project
  # 初始化 Git 仓库（如果尚未初始化）
- Truegit init
+ git init
  # 添加所有文件
- Truegit add .
+ git add .
  # 提交初始版本
- Truegit commit -m "chore: initial commit"
+ git commit -m "chore: initial commit"
  # 重命名默认分支为 main（如果需要）
- Truegit branch -M main
+ git branch -M main
  # 添加远程仓库
- Truegit remote add origin https://github.com/OWNER/REPO.git
+ git remote add origin https://github.com/OWNER/REPO.git
  # 推送并设置上游分支
- Truegit push -u origin main
+ git push -u origin main
  ```
 
 #### 4.2.2 推送本地分支到远程
 ```bash
  # 创建并切换到新分支
- Truegit checkout -b feature-branch
+ git checkout -b feature-branch
  # 进行修改并提交
- Truegit add .
- Truegit commit -m "feat: add new feature"
+ git add .
+ git commit -m "feat: add new feature"
  # 推送新分支到远程
- Truegit push -u origin feature-branch
+ git push -u origin feature-branch
  ```
 
 ### 4.3 管理远程仓库
 ```bash
  # 查看远程仓库
- Truegit remote -v
+ git remote -v
  # 添加远程仓库
- Truegit remote add upstream https://github.com/UPSTREAM/REPO.git
+ git remote add upstream https://github.com/UPSTREAM/REPO.git
  # 修改远程 URL
- Truegit remote set-url origin https://github.com/NEW_OWNER/REPO.git
+ git remote set-url origin https://github.com/NEW_OWNER/REPO.git
  # 删除远程仓库
- Truegit remote remove upstream
+ git remote remove upstream
  # 拉取远程更新
- Truegit pull origin main
+ git pull origin main
  # 推送本地更新
- Truegit push origin main
+ git push origin main
  ```
 
 ## 5. 仓库管理操作
@@ -144,7 +144,7 @@
 在删除前，建议创建完整备份：
 ```bash
  # 创建镜像克隆（包含所有分支和引用）
- Truegit clone --mirror https://github.com/OWNER/REPO.git
+ git clone --mirror https://github.com/OWNER/REPO.git
  # 备份 Issues 和 Wiki（可使用 GitHub API 或第三方工具）
  ```
 
@@ -187,20 +187,20 @@
 ### 6.1 故障诊断脚本
 ```bash
  # 检查 Git 版本
- Truegit --version
+ git --version
  # 检查远程仓库状态
- Truegit remote -v
- Truegit ls-remote origin
+ git remote -v
+ git ls-remote origin
  # 检查本地分支
- Truegit branch -a
+ git branch -a
  # 检查仓库大小
- Truedu -sh .git
+ du -sh .git
  # 检查 LFS 状态
- Truegit lfs status
+ git lfs status
  # 测试网络连接
- Trueping github.com
- Truetraceroute github.com # Linux/macOS
- Truetracert github.com # Windows
+ ping github.com
+ traceroute github.com # Linux/macOS
+ tracert github.com # Windows
  ```
 
 ## 7. 最佳实践
@@ -236,20 +236,20 @@
 ### 8.2 仓库镜像
 ```bash
  # 创建镜像克隆
- Truegit clone --mirror https://github.com/ORIGIN/REPO.git
+ git clone --mirror https://github.com/ORIGIN/REPO.git
  # 推送镜像到新位置
- Truecd REPO.git
- Truegit push --mirror https://github.com/NEW/REPO.git
+ cd REPO.git
+ git push --mirror https://github.com/NEW/REPO.git
  ```
 
 ### 8.3 批量管理仓库
 ```bash
  # 使用 GitHub CLI 列出组织仓库
- Truegh repo list ORGANIZATION
+ gh repo list ORGANIZATION
  # 使用 GitHub CLI 创建仓库
- Truegh repo create ORGANIZATION/REPO --public --description "Description"
+ gh repo create ORGANIZATION/REPO --public --description "Description"
  # 使用 GitHub CLI 归档仓库
- Truegh repo archive OWNER/REPO
+ gh repo archive OWNER/REPO
  ```
 
 ## 9. 企业级仓库管理

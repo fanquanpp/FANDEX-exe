@@ -31,31 +31,31 @@
 ### 1.4 IO 流的层次结构
 ```
  True┌─────────────────────────────────────────────────────────┐
- True│ 字节流 │
- True├───────────────────────────────┬───────────────────────┤
- True│ InputStream │ OutputStream │
- True├──────────┬──────────┬────────┼──────────┬──────────┬─────┤
- True│FileInput │ByteArray│Buffered│FileOutput│ByteArray│Buffered│
- True│Stream │InputStream│InputStream│Stream │OutputStream│OutputStream│
- True└──────────┴──────────┴────────┴──────────┴──────────┴─────┘
+ │ 字节流 │
+ ├───────────────────────────────┬───────────────────────┤
+ │ InputStream │ OutputStream │
+ ├──────────┬──────────┬────────┼──────────┬──────────┬─────┤
+ │FileInput │ByteArray│Buffered│FileOutput│ByteArray│Buffered│
+ │Stream │InputStream│InputStream│Stream │OutputStream│OutputStream│
+ └──────────┴──────────┴────────┴──────────┴──────────┴─────┘
  True┌─────────────────────────────────────────────────────────┐
- True│ 字符流 │
- True├───────────────────────────────┬───────────────────────┤
- True│ Reader │ Writer │
- True├──────────┬──────────┬────────┼──────────┬──────────┬─────┤
- True│FileReader│CharArray│Buffered│FileWriter│CharArray│Buffered│
- True│ │Reader │Reader │ │Writer │Writer │
- True└──────────┴──────────┴────────┴──────────┴──────────┴─────┘
+ │ 字符流 │
+ ├───────────────────────────────┬───────────────────────┤
+ │ Reader │ Writer │
+ ├──────────┬──────────┬────────┼──────────┬──────────┬─────┤
+ │FileReader│CharArray│Buffered│FileWriter│CharArray│Buffered│
+ │ │Reader │Reader │ │Writer │Writer │
+ └──────────┴──────────┴────────┴──────────┴──────────┴─────┘
  True┌─────────────────────────────────────────────────────────┐
- True│ 转换流 │
- True├───────────────────────────────┬───────────────────────┤
- True│ InputStreamReader │ OutputStreamWriter│
- True└───────────────────────────────┴───────────────────────┘
+ │ 转换流 │
+ ├───────────────────────────────┬───────────────────────┤
+ │ InputStreamReader │ OutputStreamWriter│
+ └───────────────────────────────┴───────────────────────┘
  True┌─────────────────────────────────────────────────────────┐
- True│ 对象流 │
- True├───────────────────────────────┬───────────────────────┤
- True│ ObjectInputStream │ ObjectOutputStream│
- True└───────────────────────────────┴───────────────────────┘
+ │ 对象流 │
+ ├───────────────────────────────┬───────────────────────┤
+ │ ObjectInputStream │ ObjectOutputStream│
+ └───────────────────────────────┴───────────────────────┘
  ```
 
 ## 2. 字节流 (Byte Stream)
@@ -281,7 +281,7 @@
 ### 6.2 File 操作示例
 #### 6.2.1 创建文件
 ```java
- TrueFile file = new File("test.txt");
+ File file = new File("test.txt");
  try {
   if (file.createNewFile()) {
   System.out.println("文件创建成功");
@@ -296,14 +296,14 @@
 #### 6.2.2 创建目录
 ```java
  // 创建单个目录
- TrueFile dir = new File("mydir");
+ File dir = new File("mydir");
  if (dir.mkdir()) {
   System.out.println("目录创建成功");
  True} else {
   System.out.println("目录创建失败");
  True}
  // 创建多级目录
- TrueFile multiDir = new File("dir1/dir2/dir3");
+ File multiDir = new File("dir1/dir2/dir3");
  if (multiDir.mkdirs()) {
   System.out.println("多级目录创建成功");
  True} else {
@@ -313,15 +313,15 @@
 
 #### 6.2.3 列出目录内容
 ```java
- TrueFile dir = new File(".");
- TrueString[] files = dir.list();
- TrueSystem.out.println("目录内容:");
+ File dir = new File(".");
+ String[] files = dir.list();
+ System.out.println("目录内容:");
  for (String file : files) {
   System.out.println(file);
  True}
  // 使用 FileFilter
- TrueFile[] javaFiles = dir.listFiles((f) -> f.getName().endsWith(".java"));
- TrueSystem.out.println("Java 文件:");
+ File[] javaFiles = dir.listFiles((f) -> f.getName().endsWith(".java"));
+ System.out.println("Java 文件:");
  for (File file : javaFiles) {
   System.out.println(file.getName());
  True}
@@ -344,17 +344,17 @@
 #### 7.2.2 Buffer 的使用
 ```java
  // 创建缓冲区
- TrueByteBuffer buffer = ByteBuffer.allocate(1024);
+ ByteBuffer buffer = ByteBuffer.allocate(1024);
  // 写入数据
- Truebuffer.put("Hello, NIO!".getBytes());
+ buffer.put("Hello, NIO!".getBytes());
  // 切换到读模式
- Truebuffer.flip();
+ buffer.flip();
  // 读取数据
- Truebyte[] data = new byte[buffer.limit()];
- Truebuffer.get(data);
- TrueSystem.out.println(new String(data));
+ byte[] data = new byte[buffer.limit()];
+ buffer.get(data);
+ System.out.println(new String(data));
  // 清空缓冲区
- Truebuffer.clear();
+ buffer.clear();
  ```
 
 ### 7.3 Channel
@@ -391,27 +391,27 @@
 #### 7.4.1 Path 接口
 ```java
  // 创建 Path
- TruePath path = Paths.get("test.txt");
+ Path path = Paths.get("test.txt");
  // 获取路径信息
- TrueSystem.out.println("文件名: " + path.getFileName());
- TrueSystem.out.println("父路径: " + path.getParent());
- TrueSystem.out.println("绝对路径: " + path.toAbsolutePath());
+ System.out.println("文件名: " + path.getFileName());
+ System.out.println("父路径: " + path.getParent());
+ System.out.println("绝对路径: " + path.toAbsolutePath());
  ```
 
 #### 7.4.2 Files 类
 ```java
  // 读取文件
- TrueList<String> lines = Files.readAllLines(Paths.get("input.txt"), StandardCharsets.UTF_8);
+ List<String> lines = Files.readAllLines(Paths.get("input.txt"), StandardCharsets.UTF_8);
  for (String line : lines) {
   System.out.println(line);
  True}
  // 写入文件
- TrueList<String> content = Arrays.asList("Hello, Files!", "This is a test.");
- TrueFiles.write(Paths.get("output.txt"), content, StandardCharsets.UTF_8);
+ List<String> content = Arrays.asList("Hello, Files!", "This is a test.");
+ Files.write(Paths.get("output.txt"), content, StandardCharsets.UTF_8);
  // 复制文件
- TrueFiles.copy(Paths.get("input.txt"), Paths.get("copy.txt"), StandardCopyOption.REPLACE_EXISTING);
+ Files.copy(Paths.get("input.txt"), Paths.get("copy.txt"), StandardCopyOption.REPLACE_EXISTING);
  // 删除文件
- TrueFiles.deleteIfExists(Paths.get("temp.txt"));
+ Files.deleteIfExists(Paths.get("temp.txt"));
  ```
 
 ## 8. 实际应用案例

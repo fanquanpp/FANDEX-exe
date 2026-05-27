@@ -86,9 +86,9 @@
 ### 2.2 验证增量编译效果
 ```bash
  # 首次编译
- Truenpx tsc --diagnostics
+ npx tsc --diagnostics
  # 再次编译（应该更快）
- Truenpx tsc --diagnostics
+ npx tsc --diagnostics
  ```
 
 ### 2.3 增量编译最佳实践
@@ -174,9 +174,9 @@
 ### 5.1 快速类型检查
 ```bash
  # 仅进行类型检查，不生成输出
- Truenpx tsc --noEmit
+ npx tsc --noEmit
  # 检查特定文件或目录
- Truenpx tsc --noEmit src/**/*.ts
+ npx tsc --noEmit src/**/*.ts
  ```
 
 ### 5.2 缓存策略
@@ -187,15 +187,15 @@
 ### 6.1 编译诊断
 ```bash
  # 查看详细的编译时间
- Truenpx tsc --diagnostics
+ npx tsc --diagnostics
  # 查看特定文件的编译时间
- Truenpx tsc --extendedDiagnostics
+ npx tsc --extendedDiagnostics
  ```
 
 ### 6.2 性能分析
 ```bash
  # 生成编译性能分析文件
- Truenpx tsc --generateTrace traceDir
+ npx tsc --generateTrace traceDir
  ```
 
 然后使用 Chrome DevTools 的 Performance 面板打开生成的 trace 文件进行分析。

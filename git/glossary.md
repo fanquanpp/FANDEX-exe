@@ -327,7 +327,7 @@ SSH 配置文件用于配置 SSH 连接参数、多账户、密钥文件等，Gi
 **详解**：
 位置：~/.ssh/config。配置格式：Host 定义主机别名，HostName 实际主机，User 用户名，IdentityFile 密钥文件。配置示例：
 ```
- TrueHost github.com
+ Host github.com
   HostName github.com
   User git
   IdentityFile ~/.ssh/id_ed25519

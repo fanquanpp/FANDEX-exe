@@ -50,10 +50,10 @@
 - `Extra`：额外信息（例如 `Using index`、`Using filesort`、`Using temporary`）
 示例：
 ```sql
- TrueEXPLAIN
- TrueSELECT id, email
+ EXPLAIN
+ SELECT id, email
  from user_account
- TrueWHERE email = 'a@b.com';
+ WHERE email = 'a@b.com';
  ```
 
 解读目标：

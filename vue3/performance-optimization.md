@@ -295,11 +295,11 @@ Vue3 应用的性能优化是开发过程中的重要环节，它直接影响用
 合并请求，减少 HTTP 请求数量：
 ```javascript
  // 不推荐
- Truefetch('/api/user')
- Truefetch('/api/posts')
- Truefetch('/api/comments')
+ fetch('/api/user')
+ fetch('/api/posts')
+ fetch('/api/comments')
  // 推荐
- Truefetch('/api/batch', {
+ fetch('/api/batch', {
   method: 'POST',
   body: JSON.stringify({
   requests: [

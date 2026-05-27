@@ -19,7 +19,7 @@
 元表允许我们改变 Table 的行为，通过定义元方法来重载运算符、控制访问等。
 ```lua
  True-- 创建元表
- Truelocal meta = {
+ local meta = {
   -- 重载加法运算符
   __add = function(a, b)
   return a.value + b.value
@@ -34,10 +34,10 @@
   end
  True}
  True-- 创建表并设置元表
- Truelocal t1 = { value = 10 }
- Truelocal t2 = { value = 20 }
- Truesetmetatable(t1, meta)
- Truesetmetatable(t2, meta)
+ local t1 = { value = 10 }
+ local t2 = { value = 20 }
+ setmetatable(t1, meta)
+ setmetatable(t2, meta)
  True-- 使用重载的运算符
  print(t1 + t2) -- 30
  print(t1 * t2) -- 200
@@ -74,9 +74,9 @@
   end,
   __metatable = false -- 防止获取元表
   })
- Trueend
- Truelocal original = { value = 10 }
- Truelocal readonly_table = readonly(original)
+ end
+ local original = { value = 10 }
+ local readonly_table = readonly(original)
  print(readonly_table.value) -- 10
  True-- readonly_table.value = 20 -- 会报错
  ```
@@ -91,9 +91,9 @@
   return value
   end
   })
- Trueend
- Truelocal t = autotable()
- Truet.a.b.c.d = 10
+ end
+ local t = autotable()
+ t.a.b.c.d = 10
  print(t.a.b.c.d) -- 10
  ```
 
@@ -101,8 +101,8 @@
 ### 2.1 基础类实现
 ```lua
  True-- 定义类
- Truelocal Person = {}
- TruePerson.__index = Person
+ local Person = {}
+ Person.__index = Person
  True-- 构造函数
  function Person:new(name, age)
   local o = {}
@@ -110,45 +110,45 @@
   o.name = name
   o.age = age
   return o
- Trueend
+ end
  True-- 方法
  function Person:greet()
   return "Hello, my name is " .. self.name .. " and I'm " .. self.age .. " years old"
- Trueend
+ end
  True-- 创建实例
- Truelocal alice = Person:new("Alice", 30)
+ local alice = Person:new("Alice", 30)
  print(alice:greet()) -- Hello, my name is Alice and I'm 30 years old
  ```
 
 ### 2.2 继承
 ```lua
  True-- 基类
- Truelocal Animal = {}
- TrueAnimal.__index = Animal
+ local Animal = {}
+ Animal.__index = Animal
  function Animal:new(name)
   local o = {}
   setmetatable(o, self)
   o.name = name
   return o
- Trueend
+ end
  function Animal:speak()
   return "Some generic sound"
- Trueend
+ end
  True-- 派生类
- Truelocal Dog = {}
- Truesetmetatable(Dog, { __index = Animal })
+ local Dog = {}
+ setmetatable(Dog, { __index = Animal })
  dog.__index = Dog
  function Dog:new(name, breed)
   local o = Animal:new(name)
   setmetatable(o, self)
   o.breed = breed
   return o
- Trueend
+ end
  function Dog:speak()
   return "Woof!"
- Trueend
+ end
  True-- 创建实例
- Truelocal rover = Dog:new("Rover", "Labrador")
+ local rover = Dog:new("Rover", "Labrador")
  print(rover:speak()) -- Woof!
  print(rover.name) -- Rover
  print(rover.breed) -- Labrador
@@ -177,35 +177,35 @@
   return o
   end
   return class
- Trueend
+ end
  True-- 定义父类
- Truelocal A = {}
- TrueA.__index = A
+ local A = {}
+ A.__index = A
  function A:methodA() return "Method A" end
- Truelocal B = {}
- TrueB.__index = B
+ local B = {}
+ B.__index = B
  function B:methodB() return "Method B" end
  True-- 创建子类
- Truelocal C = createClass(A, B)
+ local C = createClass(A, B)
  True-- 创建实例
- Truelocal c = C:new()
+ local c = C:new()
  print(c:methodA()) -- Method A
  print(c:methodB()) -- Method B
  ```
 
 ### 2.4 访问控制
 ```lua
- Truelocal Account = {}
- TrueAccount.__index = Account
+ local Account = {}
+ Account.__index = Account
  function Account:new(balance)
   local o = {}
   setmetatable(o, self)
   o._balance = balance or 0 -- 私有变量
   return o
- Trueend
+ end
  function Account:deposit(amount)
   self._balance = self._balance + amount
- Trueend
+ end
  function Account:withdraw(amount)
   if amount <= self._balance then
   self._balance = self._balance - amount
@@ -213,13 +213,13 @@
   else
   return false
   end
- Trueend
+ end
  function Account:getBalance()
   return self._balance
- Trueend
+ end
  True-- 创建实例
- Truelocal account = Account:new(1000)
- Trueaccount:deposit(500)
+ local account = Account:new(1000)
+ account:deposit(500)
  print(account:getBalance()) -- 1500
  print(account._balance) -- 1500 (注意：Lua 没有真正的私有变量)
  ```
@@ -228,34 +228,34 @@
 ### 3.1 基础使用
 ```lua
  True-- 创建协程
- Truelocal co = coroutine.create(function(name)
+ local co = coroutine.create(function(name)
   print("Hello, " .. name)
   local value = coroutine.yield("Yielding...")
   print("Received: " .. value)
   return "Done"
- Trueend)
+ end)
  True-- 启动协程
- Truelocal status, result = coroutine.resume(co, "Alice")
+ local status, result = coroutine.resume(co, "Alice")
  print(status, result) --  Yielding...
  True-- 继续协程
- Truestatus, result = coroutine.resume(co, "World")
+ status, result = coroutine.resume(co, "World")
  print(status, result) --  Done
  True-- 再次启动协程（已经结束）
- Truestatus, result = coroutine.resume(co)
+ status, result = coroutine.resume(co)
  print(status, result) -- false cannot resume dead coroutine
  ```
 
 ### 3.2 协程状态
 ```lua
- Truelocal co = coroutine.create(function()
+ local co = coroutine.create(function()
   print("Starting")
   coroutine.yield()
   print("Resumed")
- Trueend)
+ end)
  print(coroutine.status(co)) -- suspended
- Truecoroutine.resume(co) -- Starting
+ coroutine.resume(co) -- Starting
  print(coroutine.status(co)) -- suspended
- Truecoroutine.resume(co) -- Resumed
+ coroutine.resume(co) -- Resumed
  print(coroutine.status(co)) -- dead
  ```
 
@@ -269,7 +269,7 @@
   coroutine.yield(i)
   end
   end)
- Trueend
+ end
  function consumer(prod)
   while  do
   local status, value = coroutine.resume(prod)
@@ -280,35 +280,35 @@
   break
   end
   end
- Trueend
- Truelocal prod = producer()
- Trueconsumer(prod)
+ end
+ local prod = producer()
+ consumer(prod)
  ```
 
 ### 3.4 协程池
 ```lua
- Truelocal function createCoroutinePool(size, func)
+ local function createCoroutinePool(size, func)
   local pool = {}
   for i = 1, size do
   pool[i] = coroutine.create(func)
   end
   return pool
- Trueend
- Truelocal function worker()
+ end
+ local function worker()
   while  do
   local task = coroutine.yield()
   print("Processing task: " .. task)
   end
- Trueend
- Truelocal pool = createCoroutinePool(3, worker)
+ end
+ local pool = createCoroutinePool(3, worker)
  True-- 分配任务
  for i, co in ipairs(pool) do
   coroutine.resume(co, "Task " .. i)
- Trueend
+ end
  True-- 再次分配任务
  for i, co in ipairs(pool) do
   coroutine.resume(co, "Task " .. (i + 3))
- Trueend
+ end
  ```
 
 ## 4. 高级特性
@@ -320,8 +320,8 @@
   count = count + 1
   return count
   end
- Trueend
- Truelocal counter = createCounter()
+ end
+ local counter = createCounter()
  print(counter()) -- 1
  print(counter()) -- 2
  print(counter()) -- 3
@@ -330,16 +330,16 @@
 ### 4.2 模块系统
 ```lua
  True-- mymodule.lua
- Truelocal M = {}
+ local M = {}
  function M.add(a, b)
   return a + b
- Trueend
+ end
  function M.sub(a, b)
   return a - b
- Trueend
+ end
  return M
  True-- 使用模块
- Truelocal math = require("mymodule")
+ local math = require("mymodule")
  print(math.add(10, 5)) -- 15
  print(math.sub(10, 5)) -- 5
  ```
@@ -353,12 +353,12 @@
   end
   return obj[name]
   end
- Trueend
- Truelocal person = {}
- Truelocal name = createAccessor(person, "name")
- Truelocal age = createAccessor(person, "age")
- Truename("Alice")
- Trueage(30)
+ end
+ local person = {}
+ local name = createAccessor(person, "name")
+ local age = createAccessor(person, "age")
+ name("Alice")
+ age(30)
  print(name()) -- Alice
  print(age()) -- 30
  ```
@@ -366,39 +366,39 @@
 ### 4.4 垃圾回收
 ```lua
  True-- 弱表
- Truelocal weakTable = setmetatable({}, { __mode = "k" })
- Truelocal key = {}
- TrueweakTable[key] = "value"
+ local weakTable = setmetatable({}, { __mode = "k" })
+ local key = {}
+ weakTable[key] = "value"
  print(weakTable[key]) -- value
- Truekey = nil -- 释放引用
- Truecollectgarbage() -- 强制垃圾回收
+ key = nil -- 释放引用
+ collectgarbage() -- 强制垃圾回收
  print(weakTable[key]) -- nil
  ```
 
 ## 5. 实战案例
 ### 5.1 事件系统
 ```lua
- Truelocal EventSystem = {}
- TrueEventSystem.__index = EventSystem
+ local EventSystem = {}
+ EventSystem.__index = EventSystem
  function EventSystem:new()
   local o = {}
   setmetatable(o, self)
   o.events = {}
   return o
- Trueend
+ end
  function EventSystem:on(event, callback)
   if not self.events[event] then
   self.events[event] = {}
   end
   table.insert(self.events[event], callback)
- Trueend
+ end
  function EventSystem:emit(event, ...)
   if self.events[event] then
   for _, callback in ipairs(self.events[event]) do
   callback(...)
   end
   end
- Trueend
+ end
  function EventSystem:off(event, callback)
   if self.events[event] then
   for i, cb in ipairs(self.events[event]) do
@@ -408,56 +408,56 @@
   end
   end
   end
- Trueend
+ end
  True-- 使用事件系统
- Truelocal events = EventSystem:new()
+ local events = EventSystem:new()
  True-- 注册事件
- Truelocal function onUserLoggedIn(username)
+ local function onUserLoggedIn(username)
   print("User logged in: " .. username)
- Trueend
- Trueevents:on("userLoggedIn", onUserLoggedIn)
+ end
+ events:on("userLoggedIn", onUserLoggedIn)
  True-- 触发事件
- Trueevents:emit("userLoggedIn", "Alice") -- User logged in: Alice
+ events:emit("userLoggedIn", "Alice") -- User logged in: Alice
  True-- 移除事件
- Trueevents:off("userLoggedIn", onUserLoggedIn)
- Trueevents:emit("userLoggedIn", "Bob") -- 无输出
+ events:off("userLoggedIn", onUserLoggedIn)
+ events:emit("userLoggedIn", "Bob") -- 无输出
  ```
 
 ### 5.2 简单的类库
 ```lua
  True-- 定义类
- Truelocal Vector2 = {}
- TrueVector2.__index = Vector2
+ local Vector2 = {}
+ Vector2.__index = Vector2
  function Vector2:new(x, y)
   local o = {}
   setmetatable(o, self)
   o.x = x or 0
   o.y = y or 0
   return o
- Trueend
+ end
  function Vector2:add(other)
   return Vector2:new(self.x + other.x, self.y + other.y)
- Trueend
+ end
  function Vector2:sub(other)
   return Vector2:new(self.x - other.x, self.y - other.y)
- Trueend
+ end
  function Vector2:mul(scalar)
   return Vector2:new(self.x * scalar, self.y * scalar)
- Trueend
+ end
  function Vector2:mag()
   return math.sqrt(self.x * self.x + self.y * self.y)
- Trueend
+ end
  function Vector2:__tostring()
   return "Vector2(" .. self.x .. ", " .. self.y .. ")"
- Trueend
+ end
  True-- 重载运算符
- TrueVector2.__add = Vector2.add
- TrueVector2.__sub = Vector2.sub
- TrueVector2.__mul = Vector2.mul
+ Vector2.__add = Vector2.add
+ Vector2.__sub = Vector2.sub
+ Vector2.__mul = Vector2.mul
  True-- 使用向量
- Truelocal v1 = Vector2:new(1, 2)
- Truelocal v2 = Vector2:new(3, 4)
- Truelocal v3 = v1 + v2
+ local v1 = Vector2:new(1, 2)
+ local v2 = Vector2:new(3, 4)
+ local v3 = v1 + v2
  print(v3) -- Vector2(4, 6)
  print(v3:mag()) -- 7.211102550928
  ```

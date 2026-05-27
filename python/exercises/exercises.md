@@ -5,9 +5,9 @@
 ## 选择题
 ### 1. 以下代码输出什么？
 ```python
- Truea = [1, 2, 3]
- Trueb = a
- Trueb.append(4)
+ a = [1, 2, 3]
+ b = a
+ b.append(4)
  print(len(a))
  ```
 
@@ -36,7 +36,7 @@ D. `**kwargs` 接收多余的关键字参数并组成字典
   x = 1
  class Child(Parent):
   pass
- TrueParent.x = 2
+ Parent.x = 2
  print(Child.x)
  ```
 
@@ -51,7 +51,7 @@ D. None
 </details>
 ### 4. 以下推导式的结果是？
 ```python
- Trueresult = [x**2 for x in range(6) if x % 2 == 0]
+ result = [x**2 for x in range(6) if x % 2 == 0]
  ```
 
 A. [0, 4, 16]
@@ -118,10 +118,10 @@ D. 自动处理编码问题
 编写函数 `process_csv(filepath: str) -> dict`，读取 CSV 文件（含表头），返回每列的平均值（仅处理数值列）。
 **输入**: CSV 文件内容：
 ```
- Truename,age,score
- TrueAlice,25,90
- TrueBob,30,85
- TrueCharlie,28,95
+ name,age,score
+ Alice,25,90
+ Bob,30,85
+ Charlie,28,95
  ```
 
 **输出**: `{'age': 27.67, 'score': 90.0}`

@@ -129,59 +129,59 @@ Python 的 versatility 使其在多个领域都有广泛应用：
 ##### Ubuntu/Debian
 ```bash
  # 更新包列表
- Truesudo apt update
+ sudo apt update
  # 安装 Python 3.10+
- Truesudo apt install python3 python3-pip python3-venv
+ sudo apt install python3 python3-pip python3-venv
  # 验证安装
- Truepython3 --version
- Truepip3 --version
+ python3 --version
+ pip3 --version
  ```
 
 ##### CentOS/RHEL
 ```bash
  # 安装 Python 3.10+
- Truesudo dnf install python3 python3-pip python3-venv
+ sudo dnf install python3 python3-pip python3-venv
  # 验证安装
- Truepython3 --version
- Truepip3 --version
+ python3 --version
+ pip3 --version
  ```
 
 ### 3.2 包管理
 #### 3.2.1 pip 基础使用
 ```bash
  # 安装包
- Truepip install requests
+ pip install requests
  # 安装特定版本
- Truepip install requests==2.31.0
+ pip install requests==2.31.0
  # 升级包
- Truepip install --upgrade requests
+ pip install --upgrade requests
  # 卸载包
- Truepip uninstall requests
+ pip uninstall requests
  # 查看已安装包
- Truepip list
+ pip list
  # 导出依赖
- Truepip freeze > requirements.txt
+ pip freeze > requirements.txt
  # 安装依赖
- Truepip install -r requirements.txt
+ pip install -r requirements.txt
  ```
 
 #### 3.2.2 虚拟环境
 虚拟环境可以隔离不同项目的依赖，避免版本冲突：
 ```bash
  # 创建虚拟环境
- Truepython -m venv venv
+ python -m venv venv
  # 激活虚拟环境
  # Linux/macOS
- Truesource venv/bin/activate
+ source venv/bin/activate
  # Windows
  .\venv\Scripts\activate
  # 退出虚拟环境
- Truedeactivate
+ deactivate
  # 删除虚拟环境
  # Linux/macOS
- Truerm -rf venv
+ rm -rf venv
  # Windows
- Truermdir /s venv
+ rmdir /s venv
  ```
 
 #### 3.2.3 包管理工具
@@ -201,12 +201,12 @@ Python 的 versatility 使其在多个领域都有广泛应用：
 #### 3.3.2 Linux/macOS
 ```bash
  # 编辑 bash 配置文件
- Truenano ~/.bashrc # 或 ~/.zshrc
+ nano ~/.bashrc # 或 ~/.zshrc
  # 添加 Python 路径
  export PATH="$PATH:/usr/local/bin/python3"
  export PATH="$PATH:/usr/local/bin/pip3"
  # 使配置生效
- Truesource ~/.bashrc # 或 ~/.zshrc
+ source ~/.bashrc # 或 ~/.zshrc
  ```
 
 ## 4. 解释器与 IDE (Interpreters & IDEs)
@@ -244,12 +244,12 @@ Python 的 versatility 使其在多个领域都有广泛应用：
  # hello.py
  print("Hello, Python!")
  # 变量和数据类型
- Truename = "Python"
- Trueversion = 3.12
- Trueis_great =  
+ name = "Python"
+ version = 3.12
+ is_great =  
  print(f"{name} version {version} is great: {is_great}")
  # 列表和循环
- Truelanguages = ["Python", "Java", "C++", "JavaScript"]
+ languages = ["Python", "Java", "C++", "JavaScript"]
  for lang in languages:
   print(f"I love {lang}!")
  # 函数定义
@@ -261,16 +261,16 @@ Python 的 versatility 使其在多个领域都有广泛应用：
 ### 5.2 运行程序
 ```bash
  # 直接运行
- Truepython hello.py
+ python hello.py
  # 交互式运行
- Truepython
+ python
  True>>> print("Hello, Python!")
- TrueHello, Python!
+ Hello, Python!
  True>>> exit()
  # 使用 IPython
- Trueipython
+ ipython
  in [1]: print("Hello, Python!")
- TrueHello, Python!
+ Hello, Python!
  in [2]: exit()
  ```
 
@@ -292,18 +292,18 @@ Python 的 versatility 使其在多个领域都有广泛应用：
 
 ### 6.2 项目结构
 ```
- Trueproject/
- True├── README.md
- True├── requirements.txt
- True├── setup.py
- True├── project/
- True│ ├── __init__.py
- True│ ├── module1.py
- True│ └── module2.py
- True├── tests/
- True│ ├── __init__.py
- True│ └── test_module.py
- True└── examples/
+ project/
+ ├── README.md
+ ├── requirements.txt
+ ├── setup.py
+ ├── project/
+ │ ├── __init__.py
+ │ ├── module1.py
+ │ └── module2.py
+ ├── tests/
+ │ ├── __init__.py
+ │ └── test_module.py
+ └── examples/
   └── example.py
  ```
 

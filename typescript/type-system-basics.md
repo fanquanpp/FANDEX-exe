@@ -120,7 +120,7 @@ TypeScript 提供了丰富的类型系统，包括 JavaScript 原有的类型和
   a: 1,
   b: 2
  True};
- Truemap.c = 3; // 允许添加新属性
+ map.c = 3; // 允许添加新属性
  ```
 
 ## 2. 特殊类型
@@ -129,13 +129,13 @@ TypeScript 提供了丰富的类型系统，包括 JavaScript 原有的类型和
 ```typescript
  // 任何值都可以赋值给 any 类型
  let anyValue: any = 42;
- TrueanyValue = "Hello";
- TrueanyValue = true;
+ anyValue = "Hello";
+ anyValue = true;
  // any 类型的变量可以访问任何属性或方法
  let anyObj: any = { name: "John" };
  console.log(anyObj.name); // 没问题
  console.log(anyObj.age); // 没问题，运行时会是 undefined
- TrueanyObj.method(); // 没问题，运行时会报错
+ anyObj.method(); // 没问题，运行时会报错
  // 避免使用 any
  // 推荐使用具体类型或 unknown
  ```
@@ -145,8 +145,8 @@ TypeScript 提供了丰富的类型系统，包括 JavaScript 原有的类型和
 ```typescript
  // 任何值都可以赋值给 unknown 类型
  let unknownValue: unknown = 42;
- TrueunknownValue = "Hello";
- TrueunknownValue = true;
+ unknownValue = "Hello";
+ unknownValue = true;
  // unknown 类型的变量不能直接访问属性或方法
  let unknownObj: unknown = { name: "John" };
  // console.log(unknownObj.name); // 错误: 类型 'unknown' 不能访问属性
@@ -237,8 +237,8 @@ TypeScript 提供了丰富的类型系统，包括 JavaScript 原有的类型和
 ```typescript
  // 基本联合类型
  let id: string | number;
- Trueid = "123";
- Trueid = 456;
+ id = "123";
+ id = 456;
  // 联合类型的类型缩小
  function processId(id: string | number) {
   if (typeof id === "string") {
@@ -401,7 +401,7 @@ TypeScript 提供了丰富的类型系统，包括 JavaScript 原有的类型和
  function fetchData(url: string, method: HttpMethod) {
   // 实现
  True}
- TruefetchData("/api/users", "GET"); // 正确
+ fetchData("/api/users", "GET"); // 正确
  // fetchData("/api/users", "PATCH"); // 错误: 不在字面量类型中
  ```
 
@@ -430,11 +430,11 @@ TypeScript 提供了丰富的类型系统，包括 JavaScript 原有的类型和
 ### 5.3 布尔字面量类型
 ```typescript
  // 布尔字面量类型
- type TrueOnly = true;
- type FalseOnly = false;
- let isActive: TrueOnly = true;
+ type Only = true;
+ type Only = false;
+ let isActive: Only = true;
  // isActive = false; // 错误: 只能是  
- let isInactive: FalseOnly = false;
+ let isInactive: Only = false;
  // isInactive = true; // 错误: 只能是 false
  // 布尔字面量类型的应用
  function assert(condition: boolean, message: string): asserts condition {
@@ -454,7 +454,7 @@ TypeScript 提供了丰富的类型系统，包括 JavaScript 原有的类型和
  // 字符串和数字字面量组合
  type Action = "add" | "remove" | 0 | 1;
  let action: Action = "add";
- Trueaction = 0;
+ action = 0;
  // 对象字面量类型
  type Point = { x: 0; y: 0 } | { x: 1; y: 1 };
  let point: Point = { x: 0, y: 0 };
@@ -671,12 +671,12 @@ TypeScript 会根据上下文自动推断类型，减少显式类型注解的需
  // 上下文类型推断
  const names = ["John", "Jane", "Bob"];
  // 回调函数参数类型推断为 string
- Truenames.forEach(name => {
+ names.forEach(name => {
   console.log(name.toUpperCase());
  True});
  // 事件处理函数类型推断
  const button = document.getElementById("myButton");
- Truebutton?.addEventListener("click", (event) => {
+ button?.addEventListener("click", (event) => {
   // event 类型推断为 MouseEvent
   console.log(event.clientX, event.clientY);
  True});
@@ -787,8 +787,8 @@ TypeScript 会根据上下文自动推断类型，减少显式类型注解的需
   success: false,
   error: "User not found"
  True};
- TruehandleResponse(successResponse);
- TruehandleResponse(errorResponse);
+ handleResponse(successResponse);
+ handleResponse(errorResponse);
  ```
 
 ### 10.3 状态管理

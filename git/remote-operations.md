@@ -48,45 +48,45 @@
 ### 3.1 添加远程仓库
 ```bash
  # 添加远程仓库
- Truegit remote add <远程仓库名> <仓库地址>
+ git remote add <远程仓库名> <仓库地址>
  # 示例：添加名为 origin 的远程仓库
- Truegit remote add origin https://github.com/username/repository.git
+ git remote add origin https://github.com/username/repository.git
  ```
 
 <a id="3.2"></a>
 ### 3.2 查看远程仓库信息
 ```bash
  # 查看远程仓库信息
- Truegit remote -v
+ git remote -v
  # 查看远程仓库详细信息
- Truegit remote show <远程仓库名>
+ git remote show <远程仓库名>
  ```
 
 <a id="3.3"></a>
 ### 3.3 重命名远程仓库
 ```bash
  # 重命名远程仓库
- Truegit remote rename <旧远程仓库名> <新远程仓库名>
+ git remote rename <旧远程仓库名> <新远程仓库名>
  # 示例：将 origin 重命名为 upstream
- Truegit remote rename origin upstream
+ git remote rename origin upstream
  ```
 
 <a id="3.4"></a>
 ### 3.4 删除远程仓库
 ```bash
  # 删除远程仓库
- Truegit remote remove <远程仓库名>
+ git remote remove <远程仓库名>
  # 示例：删除名为 origin 的远程仓库
- Truegit remote remove origin
+ git remote remove origin
  ```
 
 <a id="3.5"></a>
 ### 3.5 更新远程仓库 URL
 ```bash
  # 更新远程仓库的 URL
- Truegit remote set-url <远程仓库名> <新仓库地址>
+ git remote set-url <远程仓库名> <新仓库地址>
  # 示例：更新 origin 的 URL
- Truegit remote set-url origin https://github.com/username/new-repository.git
+ git remote set-url origin https://github.com/username/new-repository.git
  ```
 
 <a id="4"></a>
@@ -96,9 +96,9 @@
 首次推送时，需要设置上游分支：
 ```bash
  # 首次推送到远程仓库并设置上游分支
- Truegit push -u <远程仓库名> <本地分支名>:<远程分支名>
+ git push -u <远程仓库名> <本地分支名>:<远程分支名>
  # 示例：首次推送到 origin 的 main 分支
- Truegit push -u origin main
+ git push -u origin main
  ```
 
 <a id="4.2"></a>
@@ -106,48 +106,48 @@
 首次推送成功后，后续推送可以简化：
 ```bash
  # 推送到远程仓库（已设置上游分支）
- Truegit push
+ git push
  # 推送指定分支
- Truegit push <远程仓库名> <本地分支名>:<远程分支名>
+ git push <远程仓库名> <本地分支名>:<远程分支名>
  # 推送所有分支
- Truegit push --all <远程仓库名>
+ git push --all <远程仓库名>
  # 强制推送（谨慎使用）
- Truegit push -f <远程仓库名> <分支名>
+ git push -f <远程仓库名> <分支名>
  ```
 
 <a id="4.3"></a>
 ### 4.3 拉取远程更改
 ```bash
  # 拉取远程仓库（已设置上游分支）
- Truegit pull
+ git pull
  # 拉取指定分支
- Truegit pull <远程仓库名> <远程分支名>:<本地分支名>
+ git pull <远程仓库名> <远程分支名>:<本地分支名>
  # 拉取并允许合并不相关历史
- Truegit pull --allow-unrelated-histories
+ git pull --allow-unrelated-histories
  ```
 
 <a id="4.4"></a>
 ### 4.4 获取远程更改
 ```bash
  # 从远程仓库获取所有更新
- Truegit fetch <远程仓库名>
+ git fetch <远程仓库名>
  # 获取所有远程仓库的更新
- Truegit fetch --all
+ git fetch --all
  # 查看获取的远程分支
- Truegit branch -r
+ git branch -r
  ```
 
 <a id="5"></a>
 ## 5 . 远程分支管理
 ```bash
  # 查看远程分支
- Truegit branch -r
+ git branch -r
  # 从远程分支创建本地分支
- Truegit checkout -b <本地分支名> <远程仓库名>/<远程分支名>
+ git checkout -b <本地分支名> <远程仓库名>/<远程分支名>
  # 跟踪远程分支
- Truegit branch --set-upstream-to=<远程仓库名>/<远程分支名> <本地分支名>
+ git branch --set-upstream-to=<远程仓库名>/<远程分支名> <本地分支名>
  # 删除远程分支
- Truegit push <远程仓库名> --delete <分支名>
+ git push <远程仓库名> --delete <分支名>
  ```
 
 <a id="6"></a>
@@ -189,17 +189,17 @@
 #### 7.2.1 生成 SSH 密钥
 ```bash
  # 生成 SSH 密钥对
- Truessh-keygen -t ed25519 -C "your_email@example.com"
+ ssh-keygen -t ed25519 -C "your_email@example.com"
  # 或使用 RSA 算法（兼容性更好）
- Truessh-keygen -t rsa -b 4096 -C "your_email@example.com"
+ ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
  ```
 
 #### 7.2.2 查看 SSH 公钥
 ```bash
  # 查看 SSH 公钥
- Truecat ~/.ssh/id_ed25519.pub
+ cat ~/.ssh/id_ed25519.pub
  # 或
- Truecat ~/.ssh/id_rsa.pub
+ cat ~/.ssh/id_rsa.pub
  ```
 
 #### 7.2.3 添加 SSH 公钥到远程平台
@@ -210,34 +210,34 @@
 #### 7.2.4 测试 SSH 连接
 ```bash
  # 测试 GitHub 连接
- Truessh -T git@github.com
+ ssh -T git@github.com
  # 测试 GitLab 连接
- Truessh -T git@gitlab.com
+ ssh -T git@gitlab.com
  # 测试 Gitee 连接
- Truessh -T git@gitee.com
+ ssh -T git@gitee.com
  ```
 
 ### 7.3 高级远程操作技巧
 #### 7.3.1 推送特定提交
 ```bash
  # 推送特定提交到远程分支
- Truegit push <远程仓库名> <提交哈希>:<远程分支名>
+ git push <远程仓库名> <提交哈希>:<远程分支名>
  ```
 
 #### 7.3.2 推送标签
 ```bash
  # 推送所有标签
- Truegit push --tags <远程仓库名>
+ git push --tags <远程仓库名>
  # 推送特定标签
- Truegit push <远程仓库名> <标签名>
+ git push <远程仓库名> <标签名>
  ```
 
 #### 7.3.3 同步远程分支
 ```bash
  # 同步远程分支（删除本地不存在的远程分支）
- Truegit fetch --prune <远程仓库名>
+ git fetch --prune <远程仓库名>
  # 同步所有远程仓库
- Truegit fetch --all --prune
+ git fetch --all --prune
  ```
 
 ### 7.4 实际项目案例
@@ -245,30 +245,30 @@
 ```bash
  # Fork 远程仓库到自己的账户
  # 克隆自己的 Fork
- Truegit clone https://github.com/your-username/repository.git
+ git clone https://github.com/your-username/repository.git
  # 添加上游仓库
- Truegit remote add upstream https://github.com/original-owner/repository.git
+ git remote add upstream https://github.com/original-owner/repository.git
  # 同步上游仓库
- Truegit fetch upstream
- Truegit checkout main
- Truegit merge upstream/main
+ git fetch upstream
+ git checkout main
+ git merge upstream/main
  # 创建功能分支
- Truegit checkout -b feature/new-feature
+ git checkout -b feature/new-feature
  # 开发完成后推送到自己的仓库
- Truegit push origin feature/new-feature
+ git push origin feature/new-feature
  # 创建 Pull Request 到上游仓库
  ```
 
 #### 7.4.2 多远程仓库管理
 ```bash
  # 添加多个远程仓库
- Truegit remote add origin https://github.com/username/repository.git
- Truegit remote add backup https://gitee.com/username/repository.git
+ git remote add origin https://github.com/username/repository.git
+ git remote add backup https://gitee.com/username/repository.git
  # 推送到多个远程仓库
- Truegit push origin main
- Truegit push backup main
+ git push origin main
+ git push backup main
  # 从特定远程仓库拉取
- Truegit pull backup main
+ git pull backup main
  ```
 
 <a id="8"></a>

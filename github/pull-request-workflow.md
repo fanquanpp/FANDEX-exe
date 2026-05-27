@@ -26,38 +26,38 @@
 #### 2.1.2 克隆仓库
 ```bash
  # 使用 SSH 克隆（推荐）
- Truegit clone git@github.com:your-user/upstream-repo.git
+ git clone git@github.com:your-user/upstream-repo.git
  # 或使用 HTTPS 克隆
- Truegit clone https://github.com/your-user/upstream-repo.git
+ git clone https://github.com/your-user/upstream-repo.git
  # 进入仓库目录
- Truecd upstream-repo
+ cd upstream-repo
  ```
 
 #### 2.1.3 添加上游远程
 ```bash
- Truegit remote add upstream https://github.com/ORIGINAL_OWNER/REPO.git
+ git remote add upstream https://github.com/ORIGINAL_OWNER/REPO.git
  # 验证远程仓库配置
- Truegit remote -v
+ git remote -v
  ```
 
 #### 2.1.4 创建功能分支
 ```bash
  # 确保本地 main 分支是最新的
- Truegit checkout main
- Truegit pull upstream main
+ git checkout main
+ git pull upstream main
  # 创建并切换到功能分支
- Truegit checkout -b feature/功能描述
+ git checkout -b feature/功能描述
  ```
 
 ### 2.2 开发阶段
 #### 2.2.1 提交代码
 ```bash
  # 添加修改的文件
- Truegit add .
+ git add .
  # 提交代码（遵循提交信息规范）
- Truegit commit -m "feat: 添加登录功能"
+ git commit -m "feat: 添加登录功能"
  # 推送到远程 fork
- Truegit push -u origin feature/功能描述
+ git push -u origin feature/功能描述
  ```
 
 ### 2.3 PR 创建阶段
@@ -71,7 +71,7 @@
 #### 2.3.2 PR 描述模板
 ```markdown
  ## 功能描述
- True简要描述本次 PR 的功能或修复内容。
+ 简要描述本次 PR 的功能或修复内容。
  ## 实现细节
  True- 实现了什么功能
  True- 解决了什么问题
@@ -83,7 +83,7 @@
  True- 如何测试
  True- 测试结果
  ## 其他信息
- True任何其他需要说明的信息。
+ 任何其他需要说明的信息。
  ```
 
 ### 2.4 代码审查阶段
@@ -124,20 +124,20 @@ GitHub 提供三种合并策略：
 #### 2.6.1 清理分支
 ```bash
  # 删除本地已合并分支
- Truegit checkout main
- Truegit branch -d feature/功能描述
+ git checkout main
+ git branch -d feature/功能描述
  # 删除远程 fork 上的功能分支
- Truegit push origin --delete feature/功能描述
+ git push origin --delete feature/功能描述
  ```
 
 #### 2.6.2 同步上游
 ```bash
  # 拉取上游最新代码
- Truegit fetch upstream
- Truegit checkout main
- Truegit merge upstream/main
+ git fetch upstream
+ git checkout main
+ git merge upstream/main
  # 更新你的 fork
- Truegit push origin main
+ git push origin main
  ```
 
 ## 3. PR 描述最佳实践

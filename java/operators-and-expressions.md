@@ -33,21 +33,21 @@
  // 基本算术运算
  int a = 10;
  int b = 3;
- TrueSystem.out.println("a + b = " + (a + b)); // 13
- TrueSystem.out.println("a - b = " + (a - b)); // 7
- TrueSystem.out.println("a * b = " + (a * b)); // 30
- TrueSystem.out.println("a / b = " + (a / b)); // 3 (整数除法)
- TrueSystem.out.println("a % b = " + (a % b)); // 1
+ System.out.println("a + b = " + (a + b)); // 13
+ System.out.println("a - b = " + (a - b)); // 7
+ System.out.println("a * b = " + (a * b)); // 30
+ System.out.println("a / b = " + (a / b)); // 3 (整数除法)
+ System.out.println("a % b = " + (a % b)); // 1
  // 自增和自减
  int c = 5;
- TrueSystem.out.println("c++ = " + c++); // 5 (先用后加)
- TrueSystem.out.println("c = " + c); // 6
- TrueSystem.out.println("++c = " + ++c); // 7 (先加后用)
+ System.out.println("c++ = " + c++); // 5 (先用后加)
+ System.out.println("c = " + c); // 6
+ System.out.println("++c = " + ++c); // 7 (先加后用)
  // 字符串拼接
- TrueString str1 = "Hello";
- TrueString str2 = "World";
- TrueSystem.out.println(str1 + " " + str2); // "Hello World"
- TrueSystem.out.println("The answer is: " + 42); // "The answer is: 42"
+ String str1 = "Hello";
+ String str2 = "World";
+ System.out.println(str1 + " " + str2); // "Hello World"
+ System.out.println("The answer is: " + 42); // "The answer is: 42"
  ```
 
 ### 1.2 关系运算符
@@ -67,19 +67,19 @@
  // 基本类型比较
  int a = 10;
  int b = 3;
- TrueSystem.out.println("a == b: " + (a == b)); // false
- TrueSystem.out.println("a != b: " + (a != b)); //  
- TrueSystem.out.println("a > b: " + (a > b)); //  
- TrueSystem.out.println("a < b: " + (a < b)); // false
- TrueSystem.out.println("a >= b: " + (a >= b)); //  
- TrueSystem.out.println("a <= b: " + (a <= b)); // false
+ System.out.println("a == b: " + (a == b)); // false
+ System.out.println("a != b: " + (a != b)); //  
+ System.out.println("a > b: " + (a > b)); //  
+ System.out.println("a < b: " + (a < b)); // false
+ System.out.println("a >= b: " + (a >= b)); //  
+ System.out.println("a <= b: " + (a <= b)); // false
  // 引用类型比较
- TrueString s1 = "Hello";
- TrueString s2 = "Hello";
- TrueString s3 = new String("Hello");
- TrueSystem.out.println("s1 == s2: " + (s1 == s2)); //  (字符串常量池)
- TrueSystem.out.println("s1 == s3: " + (s1 == s3)); // false (不同对象)
- TrueSystem.out.println("s1.equals(s3): " + s1.equals(s3)); //  (内容相同)
+ String s1 = "Hello";
+ String s2 = "Hello";
+ String s3 = new String("Hello");
+ System.out.println("s1 == s2: " + (s1 == s2)); //  (字符串常量池)
+ System.out.println("s1 == s3: " + (s1 == s3)); // false (不同对象)
+ System.out.println("s1.equals(s3): " + s1.equals(s3)); //  (内容相同)
  ```
 
 ### 1.3 逻辑运算符
@@ -99,21 +99,21 @@
 ```java
  // 短路与
  int x = 5;
- Trueb boolean result1 = (x > 10) && (x++ > 0);
- TrueSystem.out.println("result1: " + result1); // false
- TrueSystem.out.println("x: " + x); // 5 (x++ 未执行)
+ b boolean result1 = (x > 10) && (x++ > 0);
+ System.out.println("result1: " + result1); // false
+ System.out.println("x: " + x); // 5 (x++ 未执行)
  // 短路或
  int y = 5;
- Trueb boolean result2 = (y < 10) || (y++ > 0);
- TrueSystem.out.println("result2: " + result2); //  
- TrueSystem.out.println("y: " + y); // 5 (y++ 未执行)
+ b boolean result2 = (y < 10) || (y++ > 0);
+ System.out.println("result2: " + result2); //  
+ System.out.println("y: " + y); // 5 (y++ 未执行)
  // 逻辑非
- Trueboolean flag = true;
- TrueSystem.out.println("!flag: " + !flag); // false
+ boolean flag = true;
+ System.out.println("!flag: " + !flag); // false
  // 逻辑异或
- Trueboolean a = true;
- Trueb boolean b = false;
- TrueSystem.out.println("a ^ b: " + (a ^ b)); //  
+ boolean a = true;
+ b boolean b = false;
+ System.out.println("a ^ b: " + (a ^ b)); //  
  ```
 
 ### 1.4 位运算符
@@ -135,17 +135,17 @@
 ```java
  int a = 6; // 二进制: 110
  int b = 3; // 二进制: 011
- TrueSystem.out.println("a & b = " + (a & b)); // 2 (010)
- TrueSystem.out.println("a | b = " + (a | b)); // 7 (111)
- TrueSystem.out.println("a ^ b = " + (a ^ b)); // 5 (101)
- TrueSystem.out.println("~a = " + (~a)); // -7
- TrueSystem.out.println("a << 1 = " + (a << 1)); // 12 (1100)
- TrueSystem.out.println("a >> 1 = " + (a >> 1)); // 3 (011)
- TrueSystem.out.println("a >>> 1 = " + (a >>> 1)); // 3 (011)
+ System.out.println("a & b = " + (a & b)); // 2 (010)
+ System.out.println("a | b = " + (a | b)); // 7 (111)
+ System.out.println("a ^ b = " + (a ^ b)); // 5 (101)
+ System.out.println("~a = " + (~a)); // -7
+ System.out.println("a << 1 = " + (a << 1)); // 12 (1100)
+ System.out.println("a >> 1 = " + (a >> 1)); // 3 (011)
+ System.out.println("a >>> 1 = " + (a >>> 1)); // 3 (011)
  // 负数的位运算
  int c = -6; // 二进制补码: 11111111111111111111111111111010
- TrueSystem.out.println("c >> 1 = " + (c >> 1)); // -3 (带符号右移)
- TrueSystem.out.println("c >>> 1 = " + (c >>> 1)); // 2147483645 (无符号右移)
+ System.out.println("c >> 1 = " + (c >> 1)); // -3 (带符号右移)
+ System.out.println("c >>> 1 = " + (c >>> 1)); // 2147483645 (无符号右移)
  ```
 
 ### 1.5 赋值运算符
@@ -168,19 +168,19 @@
 ```java
  int a = 10;
  // 简单赋值
- Truea = 20;
- TrueSystem.out.println("a = " + a); // 20
+ a = 20;
+ System.out.println("a = " + a); // 20
  // 复合赋值
- Truea += 5; // 等价于 a = a + 5
- TrueSystem.out.println("a += 5: " + a); // 25
- Truea -= 3; // 等价于 a = a - 3
- TrueSystem.out.println("a -= 3: " + a); // 22
- Truea *= 2; // 等价于 a = a * 2
- TrueSystem.out.println("a *= 2: " + a); // 44
- Truea /= 4; // 等价于 a = a / 4
- TrueSystem.out.println("a /= 4: " + a); // 11
- Truea %= 3; // 等价于 a = a % 3
- TrueSystem.out.println("a %= 3: " + a); // 2
+ a += 5; // 等价于 a = a + 5
+ System.out.println("a += 5: " + a); // 25
+ a -= 3; // 等价于 a = a - 3
+ System.out.println("a -= 3: " + a); // 22
+ a *= 2; // 等价于 a = a * 2
+ System.out.println("a *= 2: " + a); // 44
+ a /= 4; // 等价于 a = a / 4
+ System.out.println("a /= 4: " + a); // 11
+ a %= 3; // 等价于 a = a % 3
+ System.out.println("a %= 3: " + a); // 2
  ```
 
 ### 1.6 三元运算符
@@ -195,16 +195,16 @@
  int a = 10;
  int b = 20;
  int max = (a > b) ? a : b;
- TrueSystem.out.println("Max: " + max); // 20
+ System.out.println("Max: " + max); // 20
  // 嵌套使用
  int x = 5;
  int y = 10;
  int z = 15;
  int largest = (x > y) ? ((x > z) ? x : z) : ((y > z) ? y : z);
- TrueSystem.out.println("Largest: " + largest); // 15
+ System.out.println("Largest: " + largest); // 15
  // 用于赋值
- TrueString result = (a > b) ? "a is larger" : "b is larger";
- TrueSystem.out.println(result); // "b is larger"
+ String result = (a > b) ? "a is larger" : "b is larger";
+ System.out.println(result); // "b is larger"
  ```
 
 ## 2. 表达式
@@ -236,18 +236,18 @@
  int c = 3;
  // 算术运算符：从左到右
  int result1 = a + b * c; // 等价于 a + (b * c) = 10 + 15 = 25
- TrueSystem.out.println("result1: " + result1);
+ System.out.println("result1: " + result1);
  // 赋值运算符：从右到左
  int x, y;
- Truex = y = 5; // 等价于 x = (y = 5)
- TrueSystem.out.println("x: " + x + ", y: " + y); // x: 5, y: 5
+ x = y = 5; // 等价于 x = (y = 5)
+ System.out.println("x: " + x + ", y: " + y); // x: 5, y: 5
  // 三元运算符：从右到左
  int a = 10;
  int b = 20;
  int c = 30;
  int result2 = a > b ? a : b > c ? b : c;
  // 等价于 a > b ? a : (b > c ? b : c)
- TrueSystem.out.println("result2: " + result2); // 30
+ System.out.println("result2: " + result2); // 30
  ```
 
 ## 3. 运算符优先级
@@ -278,15 +278,15 @@
  // 运算顺序：先乘除后加减
  int result1 = a + b * c - d;
  // 等价于 a + (b * c) - d = 10 + 15 - 2 = 23
- TrueSystem.out.println("result1: " + result1);
+ System.out.println("result1: " + result1);
  // 运算顺序：先括号内，后括号外
  int result2 = (a + b) * (c - d);
  // 等价于 (10 + 5) * (3 - 2) = 15 * 1 = 15
- TrueSystem.out.println("result2: " + result2);
+ System.out.println("result2: " + result2);
  // 运算顺序：先关系运算，后逻辑运算
- Trueboolean result3 = a > b && c < d;
+ boolean result3 = a > b && c < d;
  // 等价于 (a > b) && (c < d) =  && false = false
- TrueSystem.out.println("result3: " + result3);
+ System.out.println("result3: " + result3);
  ```
 
 ## 4. 常见陷阱与最佳实践
@@ -297,7 +297,7 @@
  double a = 0.1;
  double b = 0.2;
  double c = a + b;
- TrueSystem.out.println(c); // 输出 0.30000000000000004，而不是 0.3
+ System.out.println(c); // 输出 0.30000000000000004，而不是 0.3
  ```
 
 **解决方案**：
@@ -306,10 +306,10 @@
 **示例**：
 ```java
  import java.math.BigDecimal;
- TrueBigDecimal a = new BigDecimal("0.1");
- TrueBigDecimal b = new BigDecimal("0.2");
- TrueBigDecimal c = a.add(b);
- TrueSystem.out.println(c); // 输出 0.3
+ BigDecimal a = new BigDecimal("0.1");
+ BigDecimal b = new BigDecimal("0.2");
+ BigDecimal c = a.add(b);
+ System.out.println(c); // 输出 0.3
  ```
 
 ### 4.2 整数溢出问题
@@ -318,7 +318,7 @@
 ```java
  int max = Integer.MAX_VALUE; // 2147483647
  int result = max + 1;
- TrueSystem.out.println(result); // 输出 -2147483648，发生溢出
+ System.out.println(result); // 输出 -2147483648，发生溢出
  ```
 
 **解决方案**：
@@ -327,9 +327,9 @@
 - 使用 `Math.addExact()` 等方法，在溢出时抛出异常
 **示例**：
 ```java
- Truelong max = Integer.MAX_VALUE;
- Truelong result = max + 1;
- TrueSystem.out.println(result); // 输出 2147483648，正确
+ long max = Integer.MAX_VALUE;
+ long result = max + 1;
+ System.out.println(result); // 输出 2147483648，正确
  // 使用 Math.addExact()
  try {
   int result2 = Math.addExact(Integer.MAX_VALUE, 1);
@@ -346,16 +346,16 @@
 **示例**：
 ```java
  // 性能较差的方式
- TrueString result = "";
+ String result = "";
  for (int i = 0; i < 1000; i++) {
   result += " " + i;
  True}
  // 性能较好的方式
- TrueStringBuilder sb = new StringBuilder();
+ StringBuilder sb = new StringBuilder();
  for (int i = 0; i < 1000; i++) {
   sb.append(" ").append(i);
  True}
- TrueString result = sb.toString();
+ String result = sb.toString();
  ```
 
 ### 4.4 短路运算符的使用
@@ -365,14 +365,14 @@
 **示例**：
 ```java
  // 安全的空检查
- TrueString str = null;
+ String str = null;
  if (str != null && str.length() > 0) {
   // 只有当 str 不为 null 时，才会计算 str.length()
   System.out.println("String length: " + str.length());
  True}
  // 确保两个条件都被检查
- Trueboolean condition1 = checkCondition1();
- Trueboolean condition2 = checkCondition2();
+ boolean condition1 = checkCondition1();
+ boolean condition2 = checkCondition2();
  if (condition1 & condition2) {
   // 无论 condition1 是什么，都会执行 checkCondition2()
   System.out.println("Both conditions are ");
@@ -399,8 +399,8 @@
  int a = 10;
  int multiplyBy2 = a << 1; // 等价于 a * 2
  int divideBy2 = a >> 1; // 等价于 a / 2
- TrueSystem.out.println("Multiply by 2: " + multiplyBy2); // 20
- TrueSystem.out.println("Divide by 2: " + divideBy2); // 5
+ System.out.println("Multiply by 2: " + multiplyBy2); // 20
+ System.out.println("Divide by 2: " + divideBy2); // 5
  ```
 
 ## 5. 实际应用示例

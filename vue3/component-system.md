@@ -56,10 +56,10 @@
   border: 1px solid #ddd;
   border-radius: 8px;
  True}
- Trueh2 {
+ h2 {
   color: #42b983;
  True}
- Truebutton {
+ button {
   padding: 5px 10px;
   background-color: #42b983;
   color: white;
@@ -306,7 +306,7 @@ Props 是组件的输入数据，允许父组件向子组件传递数据。
   console.log('Component mounted')
   // 执行初始化逻辑
  True})
- TrueonUpdated(() => {
+ onUpdated(() => {
   console.log('Component updated')
   // 执行更新后逻辑
  True})

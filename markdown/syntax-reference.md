@@ -268,14 +268,14 @@ $$
 [TOC]
 ```
  ## 18 . HTML
- TrueMarkdown HTML
+ Markdown HTML
  ```markdown
 <div style="color: red;"></div>
 <p> HTML </p>
 ```
  ## 19
  ### 19.1 GitHub Flavored Markdown (GFM)
- TrueGitHub
+ GitHub
  True- ****
   ```markdown
  - [x] 
@@ -351,7 +351,7 @@ $$
  True****
  True**** Markdown KaTeX
  ## 22
- TrueMarkdown Markdown
+ Markdown Markdown
  ### 22.1
  True- ****`#`
  True- ****
@@ -584,7 +584,7 @@ $$
   callback('');
   }, 1000);
  True}
- TruefetchData(data => {
+ fetchData(data => {
   console.log(data);
  True});
  ```
@@ -598,7 +598,7 @@ $$
   }, 1000);
   });
  True}
- TruefetchData().then(data => {
+ fetchData().then(data => {
   console.log(data);
  True});
  ```
@@ -616,7 +616,7 @@ $$
   const data = await fetchData();
   console.log(data);
  True}
- Truemain();
+ main();
  ```
 
 ```
@@ -634,12 +634,12 @@ $$
 - npm 6+
 ### 
 ```bash
- Truenpm install
+ npm install
  ```
 
 ###
 ```bash
- Truenpm start
+ npm start
  ```
 
 ##
@@ -702,7 +702,7 @@ MIT
  True- **** Markdown
  True- **** Markdown
  ## 31
- TrueMarkdown Markdown Markdown
+ Markdown Markdown Markdown
  ### 31.1
  True- ****
  True- ****GFM Mermaid
@@ -710,9 +710,9 @@ MIT
  True- ****
  True- ****
  ### 31.2
- True1. **** Markdown
- True2. **** GFM
- True3. ****
- True4. **** Markdown
- True5. **** Markdown
+ 1. **** Markdown
+ 2. **** GFM
+ 3. ****
+ 4. **** Markdown
+ 5. **** Markdown
   Markdown

@@ -171,7 +171,7 @@
 ### 5.2 递归示例
 #### 5.2.1 阶乘计算
 ```c
- Truelong factorial(int n) {
+ long factorial(int n) {
   if (n <= 1) return 1; // 基准情况
   return n * factorial(n - 1); // 递归调用
  True}
@@ -250,7 +250,7 @@
 - **作用**：实现跨文件访问全局变量。
 ```c
  // file1.c
- Trueextern int global_var; // 声明外部变量
+ extern int global_var; // 声明外部变量
  void function() {
   printf("Global var: %d\n", global_var);
  True}
@@ -268,7 +268,7 @@
  // 定义函数指针
  int (*add_ptr)(int, int);
  // 赋值
- Trueadd_ptr = add;
+ add_ptr = add;
  // 或直接初始化
  int (*add_ptr)(int, int) = add;
  ```

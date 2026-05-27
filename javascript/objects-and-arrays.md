@@ -81,8 +81,8 @@
   }
  True};
  const person = Object.create(personPrototype);
- Trueperson.name = '张三';
- Trueperson.age = 30;
+ person.name = '张三';
+ person.age = 30;
  console.log(person.greet()); // 输出: Hello, my name is 张三
  ```
 
@@ -131,8 +131,8 @@
 
 #### 1.2.2 修改属性
 ```javascript
- Trueperson.name = '王五'; // 修改现有属性
- Trueperson.city = '上海'; // 添加新属性
+ person.name = '王五'; // 修改现有属性
+ person.city = '上海'; // 添加新属性
  ```
 
 #### 1.2.3 删除属性
@@ -157,7 +157,7 @@
   this.name = name;
  True}
  // 在原型上添加方法
- TruePerson.prototype.greet = function() {
+ Person.prototype.greet = function() {
   return `Hello, my name is ${this.name}`;
  True};
  const person1 = new Person('张三');
@@ -175,7 +175,7 @@
  function Person(name) {
   this.name = name;
  True}
- TruePerson.prototype.greet = function() {
+ Person.prototype.greet = function() {
   return `Hello, my name is ${this.name}`;
  True};
  function Student(name, grade) {
@@ -183,9 +183,9 @@
   this.grade = grade;
  True}
  // 继承 Person 的原型
- TrueStudent.prototype = Object.create(Person.prototype);
- TrueStudent.prototype.constructor = Student;
- TrueStudent.prototype.study = function() {
+ Student.prototype = Object.create(Person.prototype);
+ Student.prototype.constructor = Student;
+ Student.prototype.study = function() {
   return `${this.name} is studying`;
  True};
  const student = new Student('王五', 9);
@@ -224,7 +224,7 @@
  const target = { a: 1 };
  const source1 = { b: 2 };
  const source2 = { c: 3 };
- TrueObject.assign(target, source1, source2);
+ Object.assign(target, source1, source2);
  console.log(target); // 输出: { a: 1, b: 2, c: 3 }
  ```
 
@@ -272,21 +272,21 @@
 ```javascript
  const fruits = ['apple', 'banana', 'orange'];
  // push
- Truefruits.push('grape');
+ fruits.push('grape');
  console.log(fruits); // 输出: ['apple', 'banana', 'orange', 'grape']
  // pop
  const lastFruit = fruits.pop();
  console.log(lastFruit); // 输出: grape
  console.log(fruits); // 输出: ['apple', 'banana', 'orange']
  // unshift
- Truefruits.unshift('strawberry');
+ fruits.unshift('strawberry');
  console.log(fruits); // 输出: ['strawberry', 'apple', 'banana', 'orange']
  // shift
  const firstFruit = fruits.shift();
  console.log(firstFruit); // 输出: strawberry
  console.log(fruits); // 输出: ['apple', 'banana', 'orange']
  // splice
- Truefruits.splice(1, 1, 'pear');
+ fruits.splice(1, 1, 'pear');
  console.log(fruits); // 输出: ['apple', 'pear', 'orange']
  ```
 
@@ -296,7 +296,7 @@
  // 访问元素
  console.log(fruits[0]); // 输出: apple
  // 修改元素
- Truefruits[1] = 'pear';
+ fruits[1] = 'pear';
  console.log(fruits); // 输出: ['apple', 'pear', 'orange']
  ```
 
@@ -305,7 +305,7 @@
  const fruits = ['apple', 'banana', 'orange'];
  console.log(fruits.length); // 输出: 3
  // 修改长度
- Truefruits.length = 2;
+ fruits.length = 2;
  console.log(fruits); // 输出: ['apple', 'banana']
  ```
 
@@ -314,7 +314,7 @@
 **作用**：遍历数组的每个元素，并对每个元素执行回调函数。
 ```javascript
  const numbers = [1, 2, 3, 4, 5];
- Truenumbers.forEach((num, index) => {
+ numbers.forEach((num, index) => {
   console.log(`Index ${index}: ${num}`);
  True});
  // 输出:
@@ -446,7 +446,7 @@
 **作用**：反转数组的顺序，会修改原数组。
 ```javascript
  const numbers = [1, 2, 3, 4, 5];
- Truenumbers.reverse();
+ numbers.reverse();
  console.log(numbers); // 输出: [5, 4, 3, 2, 1]
  ```
 
@@ -454,10 +454,10 @@
 **作用**：对数组元素进行排序，会修改原数组。
 ```javascript
  const numbers = [3, 1, 4, 1, 5, 9, 2, 6];
- Truenumbers.sort((a, b) => a - b); // 升序排序
+ numbers.sort((a, b) => a - b); // 升序排序
  console.log(numbers); // 输出: [1, 1, 2, 3, 4, 5, 6, 9]
  const fruits = ['banana', 'apple', 'orange'];
- Truefruits.sort(); // 按字母顺序排序
+ fruits.sort(); // 按字母顺序排序
  console.log(fruits); // 输出: ['apple', 'banana', 'orange']
  ```
 

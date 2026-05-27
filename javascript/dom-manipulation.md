@@ -20,7 +20,7 @@
 DOM（Document Object Model）把 HTML 文档表示为一棵节点树。浏览器解析 HTML 后，会构建如下结构：
 ```
  document
- True└── html
+ └── html
   ├── head
   │ ├── meta
   │ ├── title
@@ -47,38 +47,38 @@ DOM 中有 12 种节点类型，最常用的有：
 | `DocumentFragment` | 11 | 文档片段 | 轻量级容器 |
 ```js
  const el = document.querySelector('div')
- Trueel.nodeType
- Trueel.nodeName
+ el.nodeType
+ el.nodeName
  const text = el.firstChild
- Truetext.nodeType
- Truetext.nodeName
+ text.nodeType
+ text.nodeName
  ```
 
 ### 1.3 节点关系
 ```
- TrueparentElement
- True├── firstChild / firstElementChild
- True├── child1
- True├── child2 (previousSibling ← → nextSibling)
- True├── child3
- True└── lastChild / lastElementChild
+ parentElement
+ ├── firstChild / firstElementChild
+ ├── child1
+ ├── child2 (previousSibling ← → nextSibling)
+ ├── child3
+ └── lastChild / lastElementChild
  ```
 
 **节点导航属性**：
 ```js
  const el = document.querySelector('li')
- Trueel.parentNode
- Trueel.parentElement
- Trueel.childNodes
- Trueel.children
- Trueel.firstChild
- Trueel.firstElementChild
- Trueel.lastChild
- Trueel.lastElementChild
- Trueel.previousSibling
- Trueel.previousElementSibling
- Trueel.nextSibling
- Trueel.nextElementSibling
+ el.parentNode
+ el.parentElement
+ el.childNodes
+ el.children
+ el.firstChild
+ el.firstElementChild
+ el.lastChild
+ el.lastElementChild
+ el.previousSibling
+ el.previousElementSibling
+ el.nextSibling
+ el.nextElementSibling
  ```
 
 **`Node` vs `Element` 属性区别**：
@@ -93,8 +93,8 @@ DOM 中有 12 种节点类型，最常用的有：
 
 ```js
  const list = document.getElementById('list')
- Truelist.childNodes.length
- Truelist.children.length
+ list.childNodes.length
+ list.children.length
  ```
 
 ---
@@ -120,7 +120,7 @@ DOM 中有 12 种节点类型，最常用的有：
  const liveList = document.getElementsByClassName('item')
  const staticList = document.querySelectorAll('.item')
  document.body.append(document.createElement('div'))
- TrueliveList.length
+ liveList.length
  staticList.length
  ```
 
@@ -133,10 +133,10 @@ DOM 中有 12 种节点类型，最常用的有：
 ### 2.3 `closest()` 与 `matches()`
 ```js
  const btn = document.querySelector('button')
- Truebtn.closest('.card')
- Truebtn.closest('.card').querySelector('.title')
- Truebtn.matches('.primary')
- Truebtn.matches('button')
+ btn.closest('.card')
+ btn.closest('.card').querySelector('.title')
+ btn.matches('.primary')
+ btn.matches('button')
  ```
 
 - `closest(selector)`：从自身开始向上查找，返回最近的匹配祖先（或自身）
@@ -151,7 +151,7 @@ DOM 中有 12 种节点类型，最常用的有：
   node = node.nextSibling
   }
  True}
- TruewalkDOM(document.body, (node) => {
+ walkDOM(document.body, (node) => {
   if (node.nodeType === 1) {
   console.log(node.tagName)
   }
@@ -163,8 +163,8 @@ DOM 中有 12 种节点类型，最常用的有：
 ### 3.1 创建元素与文本
 ```js
  const li = document.createElement('li')
- Trueli.className = 'item'
- Trueli.textContent = 'hello'
+ li.className = 'item'
+ li.textContent = 'hello'
  const text = document.createTextNode('world')
  ```
 
@@ -180,7 +180,7 @@ DOM 中有 12 种节点类型，最常用的有：
  const a = document.querySelector('#a')
  const b = document.querySelector('#b')
  const x = document.querySelector('#x')
- Trueb.append(x)
+ b.append(x)
  ```
 
 ### 3.3 复制节点
@@ -196,10 +196,10 @@ DOM 中有 12 种节点类型，最常用的有：
 ### 3.4 删除节点
 ```js
  const el = document.querySelector('.item')
- Trueel.remove()
+ el.remove()
  const parent = document.querySelector('.list')
  const child = parent.querySelector('.item')
- Trueparent.removeChild(child)
+ parent.removeChild(child)
  ```
 
 - `el.remove()`：现代 API，直接删除自身
@@ -220,7 +220,7 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
 **现代替代方案**：直接构建 HTML 字符串
 ```js
  const html = Array.from({ length: 1000 }, (_, i) => `<div>${i}</div>`).join('')
- Truecontainer.innerHTML = html
+ container.innerHTML = html
  ```
 
 在大量简单元素场景下，`innerHTML` 可能比逐个 `createElement` 更快，但需注意 XSS 风险。
@@ -259,11 +259,11 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
 ### 4.2 `setAttribute` / `getAttribute` / `removeAttribute`
 ```js
  const img = document.querySelector('img')
- Trueimg.setAttribute('src', 'photo.jpg')
- Trueimg.setAttribute('alt', 'A photo')
- Trueimg.getAttribute('src')
- Trueimg.removeAttribute('alt')
- Trueimg.hasAttribute('alt')
+ img.setAttribute('src', 'photo.jpg')
+ img.setAttribute('alt', 'A photo')
+ img.getAttribute('src')
+ img.removeAttribute('alt')
+ img.hasAttribute('alt')
  ```
 
 ### 4.3 `dataset`（自定义数据属性）
@@ -275,11 +275,11 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
 
 ```js
  const el = document.getElementById('user')
- Trueel.dataset.userId
- Trueel.dataset.role
- Trueel.dataset.lastLogin
- Trueel.dataset.status = 'active'
- Trueel.dataset.newField = 'value'
+ el.dataset.userId
+ el.dataset.role
+ el.dataset.lastLogin
+ el.dataset.status = 'active'
+ el.dataset.newField = 'value'
  ```
 
 **命名规则**：
@@ -294,11 +294,11 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
 
 ```js
  const checkbox = document.querySelector('input[type="checkbox"]')
- Truecheckbox.hasAttribute('checked')
- Truecheckbox.checked
- Truecheckbox.getAttribute('checked')
- Truecheckbox.checked =  
- Truecheckbox.setAttribute('checked', '')
+ checkbox.hasAttribute('checked')
+ checkbox.checked
+ checkbox.getAttribute('checked')
+ checkbox.checked =  
+ checkbox.setAttribute('checked', '')
  ```
 
 布尔属性（`checked`、`disabled`、`selected`、`readonly`）推荐使用 DOM 属性而非 `setAttribute`。
@@ -307,11 +307,11 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
 ### 5.1 `style` 属性（行内样式）
 ```js
  const el = document.querySelector('.box')
- Trueel.style.width = '200px'
- Trueel.style.backgroundColor = 'red'
- Trueel.style.fontSize = '16px'
- Trueel.style.display = 'none'
- Trueel.style.display = ''
+ el.style.width = '200px'
+ el.style.backgroundColor = 'red'
+ el.style.fontSize = '16px'
+ el.style.display = 'none'
+ el.style.display = ''
  ```
 
 **注意**：
@@ -321,13 +321,13 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
 ### 5.2 `classList`（类名操作）
 ```js
  const el = document.querySelector('.box')
- Trueel.classList.add('active')
- Trueel.classList.remove('hidden')
- Trueel.classList.toggle('dark-mode')
- Trueel.classList.toggle('visible', window.innerWidth > 768)
- Trueel.classList.contains('active')
- Trueel.classList.replace('old-class', 'new-class')
- Trueel.className = 'box active dark-mode'
+ el.classList.add('active')
+ el.classList.remove('hidden')
+ el.classList.toggle('dark-mode')
+ el.classList.toggle('visible', window.innerWidth > 768)
+ el.classList.contains('active')
+ el.classList.replace('old-class', 'new-class')
+ el.className = 'box active dark-mode'
  ```
 
 | 方法 | 说明 |
@@ -339,9 +339,9 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
 | `replace(old, new)` | 替换类名 |
 **`className` vs `classList`**：
 ```js
- Trueel.className = 'box active'
- Trueel.className += ' dark-mode'
- Trueel.classList.add('active', 'dark-mode')
+ el.className = 'box active'
+ el.className += ' dark-mode'
+ el.classList.add('active', 'dark-mode')
  ```
 
 推荐使用 `classList`，语义更清晰且不会意外覆盖已有类名。
@@ -365,17 +365,17 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
 ### 5.4 获取元素尺寸与位置
 ```js
  const el = document.querySelector('.box')
- Trueel.offsetWidth
- Trueel.offsetHeight
- Trueel.clientWidth
- Trueel.clientHeight
- Trueel.scrollWidth
- Trueel.scrollHeight
- Trueel.offsetTop
- Trueel.offsetLeft
- Trueel.offsetParent
- Trueel.scrollTop
- Trueel.scrollLeft
+ el.offsetWidth
+ el.offsetHeight
+ el.clientWidth
+ el.clientHeight
+ el.scrollWidth
+ el.scrollHeight
+ el.offsetTop
+ el.offsetLeft
+ el.offsetParent
+ el.scrollTop
+ el.scrollLeft
  ```
 
 **尺寸属性对比**：
@@ -387,14 +387,14 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
 **获取精确位置**：
 ```js
  const rect = el.getBoundingClientRect()
- Truerect.top
- Truerect.right
- Truerect.bottom
- Truerect.left
- Truerect.width
- Truerect.height
- Truerect.x
- Truerect.y
+ rect.top
+ rect.right
+ rect.bottom
+ rect.left
+ rect.width
+ rect.height
+ rect.x
+ rect.y
  ```
 
 `getBoundingClientRect()` 返回相对于**视口**的位置，随滚动变化。
@@ -406,14 +406,14 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
   console.log('clicked', e.target)
  True}
  const btn = document.querySelector('#btn')
- Truebtn.addEventListener('click', onClick)
- Truebtn.removeEventListener('click', onClick)
+ btn.addEventListener('click', onClick)
+ btn.removeEventListener('click', onClick)
  ```
 
 移除监听必须使用同一个函数引用，因此匿名函数不便于移除。
 **`addEventListener` 第三个参数**：
 ```js
- Truebtn.addEventListener('click', handler, {
+ btn.addEventListener('click', handler, {
   capture: false,
   once: true,
   passive:  
@@ -428,9 +428,9 @@ Fragment 插入时，其子节点会被插入，Fragment 本身不会成为 DOM 
 ### 6.2 捕获与冒泡
 DOM 事件传播的三个阶段：
 ```
- True1. 捕获阶段（Capture）：window → document → ... → 目标父元素
- True2. 目标阶段（Target）：目标元素本身
- True3. 冒泡阶段（Bubble）：目标父元素 → ... → document → window
+ 1. 捕获阶段（Capture）：window → document → ... → 目标父元素
+ 2. 目标阶段（Target）：目标元素本身
+ 3. 冒泡阶段（Bubble）：目标父元素 → ... → document → window
  ```
 
 ```html
@@ -461,17 +461,17 @@ DOM 事件传播的三个阶段：
 
 点击按钮后输出顺序：
 ```
- Trueouter capture 1
+ outer capture 1
  inner capture 1
- Truebtn target 2
+ btn target 2
  inner bubble 3
- Trueouter bubble 3
+ outer bubble 3
  ```
 
 **`eventPhase` 值**：1 = 捕获，2 = 目标，3 = 冒泡
 ### 6.3 事件对象常用属性与方法
 ```js
- Truebtn.addEventListener('click', (e) => {
+ btn.addEventListener('click', (e) => {
   e.target
   e.currentTarget
   e.type
@@ -496,7 +496,7 @@ DOM 事件传播的三个阶段：
 当列表项动态增删时，把监听挂在父元素上更稳：
 ```js
  const list = document.querySelector('#list')
- Truelist.addEventListener('click', (e) => {
+ list.addEventListener('click', (e) => {
   const item = e.target.closest('.item')
   if (!item) return
   console.log('item clicked', item.dataset.id)
@@ -571,7 +571,7 @@ DOM 事件传播的三个阶段：
 读布局信息（如 `offsetHeight`）会触发布局计算；写样式会使布局失效。交替读写会导致反复布局。
 ```js
  const items = document.querySelectorAll('.item')
- Trueitems.forEach((item) => {
+ items.forEach((item) => {
   const height = item.offsetHeight
   item.style.height = (height * 2) + 'px'
  True})
@@ -581,7 +581,7 @@ DOM 事件传播的三个阶段：
 ```js
  const items = document.querySelectorAll('.item')
  const heights = Array.from(items, (item) => item.offsetHeight)
- Trueitems.forEach((item, i) => {
+ items.forEach((item, i) => {
   item.style.height = (heights[i] * 2) + 'px'
  True})
  ```
@@ -608,7 +608,7 @@ DOM 事件传播的三个阶段：
   li.textContent = `Item ${i}`
   frag.append(li)
  True}
- Truelist.append(frag)
+ list.append(frag)
  ```
 
 Fragment 的优势：
@@ -635,10 +635,10 @@ Fragment 的优势：
   }
   }
  True}
- Truewindow.addEventListener('resize', debounce(() => {
+ window.addEventListener('resize', debounce(() => {
   console.log('Resized:', window.innerWidth)
  True}, 200))
- Truewindow.addEventListener('scroll', throttle(() => {
+ window.addEventListener('scroll', throttle(() => {
   console.log('Scrolled:', window.scrollY)
  True}, 100))
  ```
@@ -689,8 +689,8 @@ Chrome 对 `touchstart`/`touchmove` 默认使用 passive 监听器。
 - 不可信文本：用 `textContent`
 ```js
  const userInput = '<img src=x onerror=alert(1)>'
- Trueel.textContent = userInput
- Trueel.innerHTML = userInput
+ el.textContent = userInput
+ el.innerHTML = userInput
  ```
 
 - 不可信 URL：校验协议（避免 `javascript:`）、限制域名
@@ -708,20 +708,20 @@ Chrome 对 `touchstart`/`touchmove` 默认使用 passive 监听器。
 ### 8.2 `innerHTML` 安全
 ```js
  const name = getUserInput()
- Trueel.innerHTML = `<p>Hello, ${name}</p>`
+ el.innerHTML = `<p>Hello, ${name}</p>`
  ```
 
 **安全替代方案**：
 ```js
  const p = document.createElement('p')
- Truep.textContent = `Hello, ${name}`
- Trueel.append(p)
+ p.textContent = `Hello, ${name}`
+ el.append(p)
  ```
 
 或使用 `DOMPurify` 库：
 ```js
  import DOMPurify from 'dompurify'
- Trueel.innerHTML = DOMPurify.sanitize(untrustedHtml)
+ el.innerHTML = DOMPurify.sanitize(untrustedHtml)
  ```
 
 ### 8.3 事件监听器泄漏
@@ -753,7 +753,7 @@ Chrome 对 `touchstart`/`touchmove` 默认使用 passive 监听器。
   const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
   return str.replace(/[&<>"']/g, (c) => map[c])
  True}
- Trueel.innerHTML = `<p>${escapeHtml(userInput)}</p>`
+ el.innerHTML = `<p>${escapeHtml(userInput)}</p>`
  ```
 
 ---

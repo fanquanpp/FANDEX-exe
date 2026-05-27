@@ -27,8 +27,8 @@
 #### 1.1.1 算术运算符示例
 ```python
  # 基本算术运算
- Truea = 10
- Trueb = 3
+ a = 10
+ b = 3
  print(f"a + b = {a + b}") # 13
  print(f"a - b = {a - b}") # 7
  print(f"a * b = {a * b}") # 30
@@ -37,32 +37,32 @@
  print(f"a % b = {a % b}") # 1
  print(f"a ** b = {a ** b}") # 1000
  # 负数运算
- Truec = -5
+ c = -5
  print(f"-c = {-c}") # 5
  # 浮点数运算
- Trued = 3.14
- Truee = 2.71
+ d = 3.14
+ e = 2.71
  print(f"d + e = {d + e}") # 5.85
  print(f"d * e = {d * e}") # 8.5094
  # 混合类型运算
- Truef = 5
- Trueg = 2.5
+ f = 5
+ g = 2.5
  print(f"f + g = {f + g}") # 7.5（结果为浮点数）
  ```
 
 #### 1.1.2 算术运算符的特殊用法
 ```python
  # 字符串拼接
- Truefirst_name = "Alice"
- Truelast_name = "Smith"
- Truefull_name = first_name + " " + last_name
+ first_name = "Alice"
+ last_name = "Smith"
+ full_name = first_name + " " + last_name
  print(full_name) # "Alice Smith"
  # 字符串重复
  print("Hello" * 3) # "HelloHelloHello"
  # 列表拼接
- Truelist1 = [1, 2, 3]
- Truelist2 = [4, 5, 6]
- Truecombined = list1 + list2
+ list1 = [1, 2, 3]
+ list2 = [4, 5, 6]
+ combined = list1 + list2
  print(combined) # [1, 2, 3, 4, 5, 6]
  # 列表重复
  print([0] * 5) # [0, 0, 0, 0, 0]
@@ -81,8 +81,8 @@
 #### 1.2.1 比较运算符示例
 ```python
  # 基本比较
- Truex = 10
- Truey = 5
+ x = 10
+ y = 5
  print(f"x == y: {x == y}") # False
  print(f"x != y: {x != y}") #  
  print(f"x > y: {x > y}") #  
@@ -90,15 +90,15 @@
  print(f"x >= y: {x >= y}") #  
  print(f"x <= y: {x <= y}") # False
  # 字符串比较（按字典序）
- Trues1 = "apple"
- Trues2 = "banana"
+ s1 = "apple"
+ s2 = "banana"
  print(f"s1 < s2: {s1 < s2}") # True（"apple" 在字典序中小于 "banana"）
  # 列表比较（按元素顺序）
- Truelst1 = [1, 2, 3]
- Truelst2 = [1, 2, 4]
+ lst1 = [1, 2, 3]
+ lst2 = [1, 2, 4]
  print(f"lst1 < lst2: {lst1 < lst2}") # True（第三个元素 3 < 4）
  # 链式比较
- Trueage = 25
+ age = 25
  print(f"18 <= age <= 65: {18 <= age <= 65}") #  
  ```
 
@@ -112,8 +112,8 @@
 #### 1.3.1 逻辑运算符示例
 ```python
  # 基本逻辑运算
- Truea =  
- Trueb = False
+ a =  
+ b = False
  print(f"a and b: {a and b}") # False
  print(f"a or b: {a or b}") #  
  print(f"not a: {not a}") # False
@@ -131,8 +131,8 @@
  print(f"False or func(): {False or func()}") # 输出: Function executed
   #  
  # 实际应用
- Trueage = 20
- Trueis_student =  
+ age = 20
+ is_student =  
  if age >= 18 and is_student:
   print("Eligible for student discount")
  # 非布尔值的逻辑运算
@@ -158,8 +158,8 @@
 #### 1.4.1 位运算符示例
 ```python
  # 位运算符示例
- Truea = 6 # 二进制: 0110
- Trueb = 3 # 二进制: 0011
+ a = 6 # 二进制: 0110
+ b = 3 # 二进制: 0011
  print(f"a = {a} (0b{bin(a)[2:]})")
  print(f"b = {b} (0b{bin(b)[2:]})")
  print(f"a & b = {a & b} (0b{bin(a & b)[2:]})") # 2 (0010)
@@ -169,18 +169,18 @@
  print(f"a << 1 = {a << 1} (0b{bin(a << 1)[2:]})") # 12 (1100)
  print(f"a >> 1 = {a >> 1} (0b{bin(a >> 1)[2:]})") # 3 (0011)
  # 应用：检查奇偶数
- Truenum = 7
+ num = 7
  if num & 1:
   print(f"{num} 是奇数")
  else:
   print(f"{num} 是偶数")
  # 应用：交换两个数（不使用临时变量）
- Truex = 10
- Truey = 20
+ x = 10
+ y = 20
  print(f"交换前: x={x}, y={y}")
- Truex ^= y
- Truey ^= x
- Truex ^= y
+ x ^= y
+ y ^= x
+ x ^= y
  print(f"交换后: x={x}, y={y}")
  ```
 
@@ -193,22 +193,22 @@
 #### 1.5.1 成员运算符示例
 ```python
  # 字符串
- Truetext = "Hello, World!"
+ text = "Hello, World!"
  print(f"'H' in text: {'H' in text}") #  
  print(f"'z' in text: {'z' in text}") # False
  print(f"'World' in text: {'World' in text}") #  
  # 列表
- Truenumbers = [1, 2, 3, 4, 5]
+ numbers = [1, 2, 3, 4, 5]
  print(f"3 in numbers: {3 in numbers}") #  
  print(f"6 in numbers: {6 in numbers}") # False
  # 元组
- Truecoordinates = (10, 20, 30)
+ coordinates = (10, 20, 30)
  print(f"10 in coordinates: {10 in coordinates}") #  
  # 集合
- Truefruits = {"apple", "banana", "orange"}
+ fruits = {"apple", "banana", "orange"}
  print(f"'apple' in fruits: {'apple' in fruits}") #  
  # 字典（检查键）
- Trueperson = {"name": "Alice", "age": 30}
+ person = {"name": "Alice", "age": 30}
  print(f"'name' in person: {'name' in person}") #  
  print(f"'Alice' in person: {'Alice' in person}") # False（检查的是键）
  print(f"'Alice' in person.values(): {'Alice' in person.values()}") #  
@@ -226,27 +226,27 @@
 #### 1.6.1 身份运算符示例
 ```python
  # 身份运算符示例
- Truea = [1, 2, 3]
- Trueb = a # b 指向同一个对象
- Truec = [1, 2, 3] # c 是一个新对象
+ a = [1, 2, 3]
+ b = a # b 指向同一个对象
+ c = [1, 2, 3] # c 是一个新对象
  print(f"a is b: {a is b}") # True（指向同一个对象）
  print(f"a == b: {a == b}") # True（值相同）
  print(f"a is c: {a is c}") # False（不同对象）
  print(f"a == c: {a == c}") # True（值相同）
  # 小整数池
- Truex = 100
- Truey = 100
+ x = 100
+ y = 100
  print(f"x is y: {x is y}") # True（小整数被缓存）
- Truex = 1000
- Truey = 1000
+ x = 1000
+ y = 1000
  print(f"x is y: {x is y}") # False（大整数不被缓存）
  # None 的比较
- Truevalue = None
+ value = None
  print(f"value is None: {value is None}") # True（推荐方式）
  print(f"value == None: {value == None}") # True（不推荐）
  # 布尔值
- Truep =  
- Trueq =  
+ p =  
+ q =  
  print(f"p is q: {p is q}") # True（布尔值被缓存）
  ```
 
@@ -255,9 +255,9 @@ Python 3.8 引入的海象运算符允许在表达式内部进行赋值，简化
 ### 2.1 基本用法
 ```python
  # 基本用法
- Trueitems = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+ items = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
  # 传统方式
- Truen = len(items)
+ n = len(items)
  if n > 10:
   print(f"Total items: {n}")
  # 使用海象运算符
@@ -267,8 +267,8 @@ Python 3.8 引入的海象运算符允许在表达式内部进行赋值，简化
  while (line := input("Enter a line (or 'quit' to exit): ")) != "quit":
   print(f"You entered: {line}")
  # 在列表推导式中使用
- Truevalues = [1, 2, 3, 4, 5]
- Truesquared = [x*x for x in values if (x := x*2) > 5]
+ values = [1, 2, 3, 4, 5]
+ squared = [x*x for x in values if (x := x*2) > 5]
  print(squared) # [16, 25]（x 先被乘以 2，然后检查是否大于 5）
  ```
 
@@ -280,7 +280,7 @@ Python 3.8 引入的海象运算符允许在表达式内部进行赋值，简化
   print(line.strip())
  # 正则表达式匹配
  import re
- Truetext = "Contact: john@example.com"
+ text = "Contact: john@example.com"
  if match := re.search(r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", text):
   print(f"Found email: {match.group(1)}")
  # 复杂条件判断
@@ -309,30 +309,30 @@ Python 3.8 引入的海象运算符允许在表达式内部进行赋值，简化
 ### 3.1 赋值运算符示例
 ```python
  # 赋值运算符示例
- Truex = 10
+ x = 10
  print(f"初始 x = {x}")
- Truex += 5 # x = x + 5
+ x += 5 # x = x + 5
  print(f"x += 5 → x = {x}") # 15
- Truex -= 3 # x = x - 3
+ x -= 3 # x = x - 3
  print(f"x -= 3 → x = {x}") # 12
- Truex *= 2 # x = x * 2
+ x *= 2 # x = x * 2
  print(f"x *= 2 → x = {x}") # 24
- Truex /= 4 # x = x / 4
+ x /= 4 # x = x / 4
  print(f"x /= 4 → x = {x}") # 6.0
- Truex //= 2 # x = x // 2
+ x //= 2 # x = x // 2
  print(f"x //= 2 → x = {x}") # 3.0
- Truex %= 2 # x = x % 2
+ x %= 2 # x = x % 2
  print(f"x %= 2 → x = {x}") # 1.0
- Truex **= 3 # x = x ** 3
+ x **= 3 # x = x ** 3
  print(f"x **= 3 → x = {x}") # 1.0
  # 位运算赋值
- Truey = 6 # 0110
+ y = 6 # 0110
  print(f"初始 y = {y} (0b{bin(y)[2:]})")
- Truey <<= 1 # y = y << 1
+ y <<= 1 # y = y << 1
  print(f"y <<= 1 → y = {y} (0b{bin(y)[2:]})") # 12 (1100)
- Truey >>= 1 # y = y >> 1
+ y >>= 1 # y = y >> 1
  print(f"y >>= 1 → y = {y} (0b{bin(y)[2:]})") # 6 (0110)
- Truey &= 3 # y = y & 3
+ y &= 3 # y = y & 3
  print(f"y &= 3 → y = {y} (0b{bin(y)[2:]})") # 2 (0010)
  ```
 
@@ -378,31 +378,31 @@ Python 3.8 引入的海象运算符允许在表达式内部进行赋值，简化
 ### 5.1 基本表达式
 ```python
  # 算术表达式
- Trueresult = 10 + 5 * 2 # 20
+ result = 10 + 5 * 2 # 20
  # 比较表达式
- Trueis_greater = 10 > 5 #  
+ is_greater = 10 > 5 #  
  # 逻辑表达式
- Trueis_valid =  and not False #  
+ is_valid =  and not False #  
  # 成员表达式
- Trueis_present = 3 in [1, 2, 3] #  
+ is_present = 3 in [1, 2, 3] #  
  # 身份表达式
- Trueis_same = (a is b) # 取决于 a 和 b 是否指向同一对象
+ is_same = (a is b) # 取决于 a 和 b 是否指向同一对象
  ```
 
 ### 5.2 复杂表达式
 ```python
  # 复杂表达式
- Truea = 10
- Trueb = 5
- Truec = 3
+ a = 10
+ b = 5
+ c = 3
  # 混合运算符
- Trueresult = (a + b) * c / 2 # 22.5
+ result = (a + b) * c / 2 # 22.5
  # 条件表达式（三元运算符）
- Truestatus = "Adult" if a >= 18 else "Minor"
+ status = "Adult" if a >= 18 else "Minor"
  # 嵌套表达式
- Trueresult = ((a + b) * c) ** 2 # 225
+ result = ((a + b) * c) ** 2 # 225
  # 函数调用表达式
- Trueresult = len("Hello") + sum([1, 2, 3]) # 5 + 6 = 11
+ result = len("Hello") + sum([1, 2, 3]) # 5 + 6 = 11
  ```
 
 ### 5.3 表达式求值

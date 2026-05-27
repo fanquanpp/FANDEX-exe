@@ -18,7 +18,7 @@
 **语法**：使用反引号 `` ` `` 包围代码
 **示例**：
 ```markdown
- True在 Markdown 中，行内代码使用 `` ` `` 包围，例如 `console.log('Hello, World!');`
+ 在 Markdown 中，行内代码使用 `` ` `` 包围，例如 `console.log('Hello, World!');`
  ```
 
 **渲染效果**：
@@ -41,7 +41,7 @@ hello();
  function hello() {
   console.log('Hello, World!');
  True}
- Truehello();
+ hello();
  ```
 
 ### 2.2 语法高亮
@@ -118,13 +118,13 @@ spring:
  function hello() {
   console.log('Hello, World!');
  True}
- Truehello();
+ hello();
  ```
 
 ```python
  def hello():
   print('Hello, World!')
- Truehello()
+ hello()
  ```
 
 ```java
@@ -144,11 +144,11 @@ spring:
  ```
 
 ```css
- Truebody {
+ body {
   font-family: Arial, sans-serif;
   background-color: #f0f0f0;
  True}
- Trueh1 {
+ h1 {
   color: #333;
  True}
  ```
@@ -167,7 +167,7 @@ spring:
  ```
 
 ```sql
- TrueSELECT * FROM users WHERE age > 18;
+ SELECT * FROM users WHERE age > 18;
  ```
 
 ```json
@@ -179,9 +179,9 @@ spring:
  ```
 
 ```yaml
- Trueserver:
+ server:
   port: 8080
- Truespring:
+ spring:
   datasource:
   url: jdbc:mysql://localhost:3306/db
  ```
@@ -229,7 +229,7 @@ hello();
  function hello() {
   console.log('Hello, World!');
  True}
- Truehello();
+ hello();
  ```
 
 ### 3.2 代码高亮特定行
@@ -249,7 +249,7 @@ hello();
  function hello() {
   console.log('Hello, World!');
  True}
- Truehello();
+ hello();
  ```
 
 ### 3.3 代码块标题
@@ -271,7 +271,7 @@ hello();
  function hello() {
   console.log('Hello, World!');
  True}
- Truehello();
+ hello();
  ```
 
 ## 4. 支持的编程语言
@@ -359,7 +359,7 @@ E = mc^2
 
 **渲染效果**：
 ```math
- TrueE = mc^2
+ E = mc^2
  ```
 
 ## 8. 总结

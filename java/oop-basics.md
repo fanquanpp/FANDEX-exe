@@ -35,23 +35,23 @@
 使用 `new` 关键字创建对象。
 ```java
  // 创建对象
- TrueStudent student = new Student();
+ Student student = new Student();
  // 访问对象的属性和方法
- Truestudent.setName("Alice");
- Truestudent.setAge(20);
- Truestudent.setMajor("Computer Science");
- Truestudent.study();
- Truestudent.introduce();
+ student.setName("Alice");
+ student.setAge(20);
+ student.setMajor("Computer Science");
+ student.study();
+ student.introduce();
  ```
 
 #### 1.3.2 对象的内存布局
 - **栈 (Stack)**: 存放对象引用变量
 - **堆 (Heap)**: 存放对象的实际数据
 ```
- True栈 堆
+ 栈 堆
  True┌──────────┐ ┌────────────┐
- True│ student │─────→│ name: null │
- True└──────────┘ │ age: 0 │
+ │ student │─────→│ name: null │
+ └──────────┘ │ age: 0 │
   │ major: null│
   └────────────┘
  ```
@@ -95,11 +95,11 @@
 #### 1.4.3 构造器的调用
 ```java
  // 使用无参构造器
- TrueStudent student1 = new Student();
+ Student student1 = new Student();
  // 使用带参数的构造器
- TrueStudent student2 = new Student("Bob", 21);
+ Student student2 = new Student("Bob", 21);
  // 使用全参构造器
- TrueStudent student3 = new Student("Charlie", 22, "Software Engineering");
+ Student student3 = new Student("Charlie", 22, "Software Engineering");
  ```
 
 ## 2. 封装 (Encapsulation)
@@ -259,10 +259,10 @@
 ### 4.3 多态的示例
 ```java
  // 父类引用指向子类对象
- TrueAnimal animal1 = new Cat();
- Trueanimal1.makeSound(); // 输出: Cat meows.
- TrueAnimal animal2 = new Dog();
- Trueanimal2.makeSound(); // 输出: Dog barks.
+ Animal animal1 = new Cat();
+ animal1.makeSound(); // 输出: Cat meows.
+ Animal animal2 = new Dog();
+ animal2.makeSound(); // 输出: Dog barks.
  ```
 
 ### 4.4 多态的原理
@@ -323,7 +323,7 @@
   }
  True}
  // 链式调用
- TrueStudent student = new Student().setName("Alice").setAge(20);
+ Student student = new Student().setName("Alice").setAge(20);
  ```
 
 ## 6. 面向对象的设计原则

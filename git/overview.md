@@ -57,9 +57,9 @@ Git 与其他版本控制系统（如 SVN、CVS）的主要区别在于它是分
 **仓库创建方式**：
 ```bash
  # 初始化新仓库
- Truegit init
+ git init
  # 克隆远程仓库
- Truegit clone https://github.com/username/repository.git
+ git clone https://github.com/username/repository.git
  ```
 
 <a id="4.2"></a>
@@ -94,11 +94,11 @@ Git 与其他版本控制系统（如 SVN、CVS）的主要区别在于它是分
 **提交示例**：
 ```bash
  # 提交暂存区的内容
- Truegit commit -m "Add new feature"
+ git commit -m "Add new feature"
  # 提交所有已修改的文件（跳过暂存区）
- Truegit commit -a -m "Fix bug"
+ git commit -a -m "Fix bug"
  # 修改上次提交的信息
- Truegit commit --amend -m "Updated commit message"
+ git commit --amend -m "Updated commit message"
  ```
 
 <a id="4.6"></a>
@@ -107,15 +107,15 @@ Git 与其他版本控制系统（如 SVN、CVS）的主要区别在于它是分
 **分支操作**：
 ```bash
  # 列出所有分支
- Truegit branch
+ git branch
  # 创建新分支
- Truegit branch feature-branch
+ git branch feature-branch
  # 切换分支
- Truegit checkout feature-branch
+ git checkout feature-branch
  # 创建并切换到新分支
- Truegit checkout -b feature-branch
+ git checkout -b feature-branch
  # 删除分支
- Truegit branch -d feature-branch
+ git branch -d feature-branch
  ```
 
 <a id="4.7"></a>
@@ -128,9 +128,9 @@ Git 与其他版本控制系统（如 SVN、CVS）的主要区别在于它是分
 **合并操作**：
 ```bash
  # 合并分支到当前分支
- Truegit merge feature-branch
+ git merge feature-branch
  # 变基合并
- Truegit rebase main
+ git rebase main
  ```
 
 <a id="4.8"></a>
@@ -139,15 +139,15 @@ Git 与其他版本控制系统（如 SVN、CVS）的主要区别在于它是分
 **远程操作**：
 ```bash
  # 查看远程仓库
- Truegit remote -v
+ git remote -v
  # 添加远程仓库
- Truegit remote add origin https://github.com/username/repository.git
+ git remote add origin https://github.com/username/repository.git
  # 推送代码到远程仓库
- Truegit push origin main
+ git push origin main
  # 从远程仓库拉取代码
- Truegit pull origin main
+ git pull origin main
  # 克隆远程仓库
- Truegit clone https://github.com/username/repository.git
+ git clone https://github.com/username/repository.git
  ```
 
 <a id="5"></a>
@@ -168,26 +168,26 @@ Git 与其他版本控制系统（如 SVN、CVS）的主要区别在于它是分
 **基本配置**：
 ```bash
  # 设置用户名
- Truegit config --global user.name "Your Name"
+ git config --global user.name "Your Name"
  # 设置邮箱
- Truegit config --global user.email "your.email@example.com"
+ git config --global user.email "your.email@example.com"
  # 设置默认编辑器
- Truegit config --global core.editor "code --wait" # 使用 VS Code
+ git config --global core.editor "code --wait" # 使用 VS Code
  # 设置差异比较工具
- Truegit config --global diff.tool vscode
- Truegit config --global difftool.vscode.cmd "code --wait --diff $LOCAL $REMOTE"
+ git config --global diff.tool vscode
+ git config --global difftool.vscode.cmd "code --wait --diff $LOCAL $REMOTE"
  # 启用彩色输出
- Truegit config --global color.ui auto
+ git config --global color.ui auto
  # 设置默认分支名称
- Truegit config --global init.defaultBranch main
+ git config --global init.defaultBranch main
  ```
 
 **查看配置**：
 ```bash
  # 查看所有配置
- Truegit config --list
+ git config --list
  # 查看特定配置
- Truegit config user.name
+ git config user.name
  ```
 
 <a id="6"></a>

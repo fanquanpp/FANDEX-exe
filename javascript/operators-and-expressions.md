@@ -206,13 +206,13 @@ JavaScript 是一种动态类型语言，变量的类型会在运行时自动推
  True};
  // 构造函数创建
  let obj2 = new Object();
- Trueobj2.name = 'Bob';
+ obj2.name = 'Bob';
  // Object.create() 创建
  let obj3 = Object.create(obj1);
  console.log(obj3.name); // 输出: Alice (继承自 obj1)
  // 引用传递
  let obj4 = obj1;
- Trueobj4.name = 'Charlie';
+ obj4.name = 'Charlie';
  console.log(obj1.name); // 输出: Charlie (因为 obj4 和 obj1 指向同一个对象)
  ```
 
@@ -510,21 +510,21 @@ JavaScript 提供了丰富的运算符，用于执行各种操作。
 ```javascript
  let a = 10;
  // 加法赋值
- Truea += 5; // a = 15
+ a += 5; // a = 15
  console.log(a); // 输出: 15
  // 乘法赋值
- Truea *= 2; // a = 30
+ a *= 2; // a = 30
  console.log(a); // 输出: 30
  // 逻辑或赋值
  let b = null;
- Trueb ||= "default"; // b = "default"
+ b ||= "default"; // b = "default"
  console.log(b); // 输出: "default"
  // 空值合并赋值
  let c = null;
- Truec ??= "default"; // c = "default"
+ c ??= "default"; // c = "default"
  console.log(c); // 输出: "default"
  let d = 0;
- Trued ??= "default"; // d = 0 (不是 null 或 undefined)
+ d ??= "default"; // d = 0 (不是 null 或 undefined)
  console.log(d); // 输出: 0
  ```
 

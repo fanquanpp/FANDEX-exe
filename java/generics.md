@@ -52,10 +52,10 @@
 ### 2.2 泛型类的使用
 ```java
  // 使用泛型类
- TrueBox<String> stringBox = new Box<>();
- TruestringBox.setData("Hello, Generics!");
- TrueString value = stringBox.getData(); // 无需类型转换
- TrueBox<Integer> integerBox = new Box<>();
+ Box<String> stringBox = new Box<>();
+ stringBox.setData("Hello, Generics!");
+ String value = stringBox.getData(); // 无需类型转换
+ Box<Integer> integerBox = new Box<>();
  integerBox.setData(42);
  int number = integerBox.getData(); // 无需类型转换
  ```
@@ -102,7 +102,7 @@
 ```java
  // 使用泛型方法
  integer[] intArray = {1, 2, 3, 4, 5};
- TrueString[] stringArray = {"Hello", "World", "Generics"};
+ String[] stringArray = {"Hello", "World", "Generics"};
  printArray(intArray); // 自动推断类型为 Integer
  printArray(stringArray); // 自动推断类型为 String
  ```
@@ -127,8 +127,8 @@ Java 编译器可以根据方法参数自动推断泛型类型。
   return list.isEmpty() ? null : list.get(0);
  True}
  // 使用
- TrueList<String> strings = Arrays.asList("a", "b", "c");
- TrueString first = getFirstElement(strings); // 自动推断 T 为 String
+ List<String> strings = Arrays.asList("a", "b", "c");
+ String first = getFirstElement(strings); // 自动推断 T 为 String
  ```
 
 ## 4. 类型擦除 (Type Erasure)
@@ -173,10 +173,10 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   // ...
  True}
  // 以下代码可以编译，但运行时会有警告
- TrueList<String> list = new ArrayList<>();
- TrueList rawList = list;
- TruerawList.add(123); // 运行时不会报错
- TrueString s = list.get(0); // 运行时会抛出 ClassCastException
+ List<String> list = new ArrayList<>();
+ List rawList = list;
+ rawList.add(123); // 运行时不会报错
+ String s = list.get(0); // 运行时会抛出 ClassCastException
  ```
 
 ## 5. 通配符与边界 (Wildcards and Bounds)
@@ -236,8 +236,8 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   // ...
  True}
  // 类型参数的继承
- TrueList<String> strings = new ArrayList<>();
- TrueList<Object> objects = strings; // 错误: 类型不兼容
+ List<String> strings = new ArrayList<>();
+ List<Object> objects = strings; // 错误: 类型不兼容
  ```
 
 ### 6.2 泛型与接口
@@ -278,9 +278,9 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
  // 使用
  public class StringType extends GenericType<String> {
  True}
- TrueStringType stringType = new StringType();
+ StringType stringType = new StringType();
  class<String> type = stringType.getType();
- TrueSystem.out.println(type.getName()); // 输出: java.lang.String
+ System.out.println(type.getName()); // 输出: java.lang.String
  ```
 
 ### 6.4 类型参数的限制
@@ -292,13 +292,13 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
 ### 7.1 集合类的泛型
 ```java
  // 泛型集合
- TrueList<String> stringList = new ArrayList<>();
- TruestringList.add("Hello");
- TruestringList.add("World");
- TrueString s = stringList.get(0); // 无需类型转换
- TrueMap<String, Integer> map = new HashMap<>();
- Truemap.put("one", 1);
- Truemap.put("two", 2);
+ List<String> stringList = new ArrayList<>();
+ stringList.add("Hello");
+ stringList.add("World");
+ String s = stringList.get(0); // 无需类型转换
+ Map<String, Integer> map = new HashMap<>();
+ map.put("one", 1);
+ map.put("two", 2);
  integer value = map.get("one"); // 无需类型转换
  ```
 
@@ -321,13 +321,13 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
 ### 7.3 集合的类型安全
 ```java
  // 类型安全的集合操作
- TrueList<String> strings = new ArrayList<>();
- Truestrings.add("Hello");
+ List<String> strings = new ArrayList<>();
+ strings.add("Hello");
  // strings.add(123); // 编译错误: 类型不兼容
  // 原始类型的集合（不安全）
- TrueList rawList = new ArrayList();
- TruerawList.add("Hello");
- TruerawList.add(123); // 编译通过，但运行时可能出错
+ List rawList = new ArrayList();
+ rawList.add("Hello");
+ rawList.add(123); // 编译通过，但运行时可能出错
  ```
 
 ## 8. 实际应用案例
@@ -431,10 +431,10 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   }
  True}
  // 使用
- TrueProduct productA = ProductFactory.createProduct(ConcreteProductA.class);
- TrueproductA.use(); // 输出: Using Product A
- TrueProduct productB = ProductFactory.createProduct(ConcreteProductB.class);
- TrueproductB.use(); // 输出: Using Product B
+ Product productA = ProductFactory.createProduct(ConcreteProductA.class);
+ productA.use(); // 输出: Using Product A
+ Product productB = ProductFactory.createProduct(ConcreteProductB.class);
+ productB.use(); // 输出: Using Product B
  ```
 
 ## 9. 最佳实践
@@ -470,26 +470,26 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
 - **菱形操作符**: 简化泛型类的实例化
 ```java
  // Java 7 之前
- TrueList<String> list = new ArrayList<String>();
+ List<String> list = new ArrayList<String>();
  // Java 7 及以后
- TrueList<String> list = new ArrayList<>(); // 菱形操作符
+ List<String> list = new ArrayList<>(); // 菱形操作符
  ```
 
 ### 11.2 Java 8 的改进
 - **类型推断增强**: 增强了泛型方法的类型推断
 ```java
  // Java 8 之前
- TrueList<String> list = Arrays.<String>asList("a", "b", "c");
+ List<String> list = Arrays.<String>asList("a", "b", "c");
  // Java 8 及以后
- TrueList<String> list = Arrays.asList("a", "b", "c"); // 自动推断类型
+ List<String> list = Arrays.asList("a", "b", "c"); // 自动推断类型
  ```
 
 ### 11.3 Java 9+ 的改进
 - **不可变集合工厂方法**: 提供了创建不可变集合的泛型方法
 ```java
  // Java 9+
- TrueList<String> immutableList = List.of("a", "b", "c");
- TrueMap<String, Integer> immutableMap = Map.of("one", 1, "two", 2);
+ List<String> immutableList = List.of("a", "b", "c");
+ Map<String, Integer> immutableMap = Map.of("one", 1, "two", 2);
  ```
 
 ---

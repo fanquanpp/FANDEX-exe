@@ -70,7 +70,7 @@
  True};
  // 错误：不能修改只读属性
  // product.id = 1002; // 编译错误
- Trueproduct.price = 899.99; // 可以修改非只读属性
+ product.price = 899.99; // 可以修改非只读属性
  ```
 
 ### 1.4 函数接口
@@ -194,8 +194,8 @@
  True}
  const file = new File();
  console.log(file.read()); // File content
- Truefile.write("Hello"); // Writing: Hello
- Truefile.readWrite(); // Reading and writing...
+ file.write("Hello"); // Writing: Hello
+ file.readWrite(); // Reading and writing...
  ```
 
 ### 2.3 继承与扩展
@@ -288,8 +288,8 @@
   callback();
  True};
  console.log(add(5, 3)); // 8
- Truegreet(); // Hello!
- Trueprocess({ id: 1 }, greet); // Processing data... { id: 1 }
+ greet(); // Hello!
+ process({ id: 1 }, greet); // Processing data... { id: 1 }
   // Hello!
  ```
 
@@ -647,8 +647,8 @@
   console.log(`Product: ${entity.name}, Price: $${entity.price}`);
   }
  True};
- TrueprocessEntity(user);
- TrueprocessEntity(product);
+ processEntity(user);
+ processEntity(product);
  ```
 
 ---

@@ -32,9 +32,9 @@
 #### 3.1.1 使用 Ed25519 算法（推荐）
 ```bash
  # Windows 系统
- Truessh-keygen -t ed25519 -C "you@example.com" -f "%USERPROFILE%\.ssh\id_ed25519_github" -N ""
+ ssh-keygen -t ed25519 -C "you@example.com" -f "%USERPROFILE%\.ssh\id_ed25519_github" -N ""
  # macOS/Linux 系统
- Truessh-keygen -t ed25519 -C "you@example.com" -f "~/.ssh/id_ed25519_github" -N ""
+ ssh-keygen -t ed25519 -C "you@example.com" -f "~/.ssh/id_ed25519_github" -N ""
  # 参数说明：
  # -t ed25519：使用 Ed25519 算法，更安全且密钥文件更小
  # -C "you@example.com"：添加注释，通常使用邮箱
@@ -45,9 +45,9 @@
 #### 3.1.2 使用 RSA 算法（兼容性更好）
 ```bash
  # Windows 系统
- Truessh-keygen -t rsa -b 4096 -C "you@example.com" -f "%USERPROFILE%\.ssh\id_rsa_github" -N ""
+ ssh-keygen -t rsa -b 4096 -C "you@example.com" -f "%USERPROFILE%\.ssh\id_rsa_github" -N ""
  # macOS/Linux 系统
- Truessh-keygen -t rsa -b 4096 -C "you@example.com" -f "~/.ssh/id_rsa_github" -N ""
+ ssh-keygen -t rsa -b 4096 -C "you@example.com" -f "~/.ssh/id_rsa_github" -N ""
  # 参数说明：
  # -t rsa：使用 RSA 算法
  # -b 4096：密钥长度为 4096 位
@@ -58,7 +58,7 @@
  # Windows 系统
  type %USERPROFILE%\.ssh\id_ed25519_github.pub
  # macOS/Linux 系统
- Truecat ~/.ssh/id_ed25519_github.pub
+ cat ~/.ssh/id_ed25519_github.pub
  # 复制输出的公钥内容，包括 ssh-ed25519 前缀和邮箱后缀
  ```
 
@@ -72,10 +72,10 @@
 ### 3.4 测试 SSH 连接
 ```bash
  # 测试默认 GitHub 连接
- Truessh -T git@github.com
+ ssh -T git@github.com
  # 测试指定密钥文件的连接
- Truessh -i "%USERPROFILE%\.ssh\id_ed25519_github" -T git@github.com # Windows
- Truessh -i "~/.ssh/id_ed25519_github" -T git@github.com # macOS/Linux
+ ssh -i "%USERPROFILE%\.ssh\id_ed25519_github" -T git@github.com # Windows
+ ssh -i "~/.ssh/id_ed25519_github" -T git@github.com # macOS/Linux
  # 首次连接会提示验证主机指纹，确认后输入 yes
  # 成功时显示：Hi username! You've successfully authenticated...
  ```
@@ -84,31 +84,31 @@
 ```bash
  # 启动 ssh-agent
  # Windows 系统
- TrueStart-Service ssh-agent # PowerShell
+ Start-Service ssh-agent # PowerShell
  # 或
- Truessh-agent cmd.exe # CMD
+ ssh-agent cmd.exe # CMD
  # macOS/Linux 系统
- Trueeval "$(ssh-agent -s)"
+ eval "$(ssh-agent -s)"
  # 添加私钥到 ssh-agent
  # Windows 系统
- Truessh-add "%USERPROFILE%\.ssh\id_ed25519_github"
+ ssh-add "%USERPROFILE%\.ssh\id_ed25519_github"
  # macOS/Linux 系统
- Truessh-add ~/.ssh/id_ed25519_github
+ ssh-add ~/.ssh/id_ed25519_github
  # 查看已添加的密钥
- Truessh-add -l
+ ssh-add -l
  ```
 
 ### 3.6 多账户配置：SSH config
 ```sshconfig
  # 文件路径：~/.ssh/config（Windows 同路径）
  # 个人 GitHub 账户
- TrueHost github.com-personal
+ Host github.com-personal
   HostName github.com
   User git
   IdentityFile ~/.ssh/id_ed25519_personal
   IdentitiesOnly yes # 只使用指定的密钥
  # 工作 GitHub 账户
- TrueHost github.com-work
+ Host github.com-work
   HostName github.com
   User git
   IdentityFile ~/.ssh/id_ed25519_work
@@ -124,15 +124,15 @@
 ### 3.7 使用 SSH 克隆和推送
 ```bash
  # 使用默认 SSH 配置克隆
- Truegit clone git@github.com:username/repository.git
+ git clone git@github.com:username/repository.git
  # 使用指定账户克隆
- Truegit clone git@github.com-personal:username/personal-repo.git
- Truegit clone git@github.com-work:company/work-repo.git
+ git clone git@github.com-personal:username/personal-repo.git
+ git clone git@github.com-work:company/work-repo.git
  # 推送代码
- Truecd repository
- Truegit add .
- Truegit commit -m "Update files"
- Truegit push origin main
+ cd repository
+ git add .
+ git commit -m "Update files"
+ git push origin main
  ```
 
 ## 4. HTTPS：PAT 与凭据管理
@@ -160,28 +160,28 @@
 ### 4.2 配置 Git 凭据管理
 ```bash
  # Windows 系统：使用 Git Credential Manager
- Truegit config --global credential.helper manager
+ git config --global credential.helper manager
  # macOS 系统：使用 osxkeychain
- Truegit config --global credential.helper osxkeychain
+ git config --global credential.helper osxkeychain
  # Linux 系统：使用 libsecret
- Truegit config --global credential.helper libsecret
+ git config --global credential.helper libsecret
  # 验证配置
- Truegit config --global --get credential.helper
+ git config --global --get credential.helper
  ```
 
 ### 4.3 使用 HTTPS 克隆和推送
 ```bash
  # 克隆仓库
- Truegit clone https://github.com/username/repository.git
+ git clone https://github.com/username/repository.git
  # 首次推送时，系统会提示输入用户名和密码：
  # 用户名：GitHub 用户名
  # 密码：粘贴生成的 PAT
  # 查看远程配置
- Truegit remote -v
+ git remote -v
  # 更改远程 URL 从 SSH 到 HTTPS
- Truegit remote set-url origin https://github.com/username/repository.git
+ git remote set-url origin https://github.com/username/repository.git
  # 更改远程 URL 从 HTTPS 到 SSH
- Truegit remote set-url origin git@github.com:username/repository.git
+ git remote set-url origin git@github.com:username/repository.git
  ```
 
 ### 4.4 管理 PAT
@@ -200,15 +200,15 @@
 ### 5.1 故障诊断脚本
 ```bash
  # 检查 SSH 配置
- Truessh -v git@github.com # 详细输出 SSH 连接过程
+ ssh -v git@github.com # 详细输出 SSH 连接过程
  # 检查 Git 远程配置
- Truegit remote -v
+ git remote -v
  # 检查 Git 凭据配置
- Truegit config --list | grep credential
+ git config --list | grep credential
  # 测试 HTTPS 连接
- Truegit ls-remote https://github.com/username/repository.git
+ git ls-remote https://github.com/username/repository.git
  # 测试 SSH 连接
- Truegit ls-remote git@github.com:username/repository.git
+ git ls-remote git@github.com:username/repository.git
  ```
 
 ## 6. 最佳实践
@@ -238,7 +238,7 @@
 ```bash
  # 配置 SSH 通过代理连接
  # ~/.ssh/config
- TrueHost github.com
+ Host github.com
   HostName github.com
   User git
   ProxyCommand nc -X 5 -x proxy.example.com:1080 %h %p
@@ -249,23 +249,23 @@
 ```bash
  # Windows：在 PowerShell 配置文件中添加
  # ~/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1
- TrueStart-Service ssh-agent
- Truessh-add ~/.ssh/id_ed25519_github
+ Start-Service ssh-agent
+ ssh-add ~/.ssh/id_ed25519_github
  # macOS/Linux：在 ~/.bashrc 或 ~/.zshrc 中添加
  if [ -z "$SSH_AUTH_SOCK" ]; then
   eval "$(ssh-agent -s)"
   ssh-add ~/.ssh/id_ed25519_github
- Truefi
+ fi
  ```
 
 ### 7.3 多仓库配置示例
 ```bash
  # 个人仓库使用 SSH
- Truegit remote set-url origin git@github.com-personal:username/personal-repo.git
+ git remote set-url origin git@github.com-personal:username/personal-repo.git
  # 工作仓库使用 HTTPS
- Truegit remote set-url origin https://github.com/company/work-repo.git
+ git remote set-url origin https://github.com/company/work-repo.git
  # 检查配置
- Truegit remote -v
+ git remote -v
  ```
 
 ## 延伸阅读

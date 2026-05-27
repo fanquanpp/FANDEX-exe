@@ -25,11 +25,11 @@
 **诊断**：
 ```bash
  # 检查 SSH 连接详细信息
- Truessh -vT git@github.com
+ ssh -vT git@github.com
  # 检查 SSH 密钥列表
- Truessh-add -l
+ ssh-add -l
  # 检查 SSH 配置
- Truecat ~/.ssh/config
+ cat ~/.ssh/config
  ```
 
 **修复**：
@@ -62,9 +62,9 @@
 **诊断**：
 ```bash
  # 检查远程仓库 URL
- Truegit remote -v
+ git remote -v
  # 检查 Git 凭据缓存
- Truegit credential-cache status
+ git credential-cache status
  ```
 
 **修复**：
@@ -90,9 +90,9 @@
 **诊断**：
 ```bash
  # 查找仓库中的大文件
- Truegit lfs ls-files
+ git lfs ls-files
  # 查找历史中的大文件
- Truegit rev-list --objects --all | grep -E "^[0-9a-f]{40} .{10,}$" | sort -k 2 -n -r | head -20
+ git rev-list --objects --all | grep -E "^[0-9a-f]{40} .{10,}$" | sort -k 2 -n -r | head -20
  ```
 
 **修复**：
@@ -131,9 +131,9 @@
 **诊断**：
 ```bash
  # 检查 Git LFS 状态
- Truegit lfs status
+ git lfs status
  # 检查 Git LFS 配置
- Truegit lfs config --list
+ git lfs config --list
  ```
 
 **修复**：
@@ -158,9 +158,9 @@
 **诊断**：
 ```bash
  # 检查 Git 换行符配置
- Truegit config --get core.autocrlf
+ git config --get core.autocrlf
  # 检查文件换行符类型
- Truefile -k file.txt
+ file -k file.txt
  ```
 
 **修复**：
@@ -196,7 +196,7 @@
 **诊断**：
 ```bash
  # 检查子模块状态
- Truegit submodule status
+ git submodule status
  ```
 
 **修复**：
@@ -314,7 +314,7 @@
 **诊断**：
 ```yaml
  # 检查 workflow 文件中的权限配置
- Truepermissions:
+ permissions:
   contents: read
   packages: write
   # 其他需要的权限
@@ -420,43 +420,43 @@
 ### 9.1 综合诊断脚本
 ```bash
  #!/usr/bin/env bash
- Trueset -euo pipefail
+ set -euo pipefail
  # 基本信息
- Trueecho "== 系统信息 =="
- Trueuname -a
- Trueecho "== Git 版本 =="
- Truegit --version
+ echo "== 系统信息 =="
+ uname -a
+ echo "== Git 版本 =="
+ git --version
  # 仓库信息
- Trueecho "== 远程仓库 =="
- Truegit remote -v
- Trueecho "== 当前分支 =="
- Truegit branch -vv
- Trueecho "== 最近提交 =="
- Truegit log -1 --oneline
+ echo "== 远程仓库 =="
+ git remote -v
+ echo "== 当前分支 =="
+ git branch -vv
+ echo "== 最近提交 =="
+ git log -1 --oneline
  # 配置信息
- Trueecho "== Git 配置 =="
- Truegit config --list
- Trueecho "== SSH 配置 =="
- Truecat ~/.ssh/config 2>/dev/null || echo "No SSH config"
+ echo "== Git 配置 =="
+ git config --list
+ echo "== SSH 配置 =="
+ cat ~/.ssh/config 2>/dev/null || echo "No SSH config"
  # 子模块信息
- Trueecho "== 子模块状态 =="
- Truegit submodule status 2>/dev/null || echo "No submodules"
+ echo "== 子模块状态 =="
+ git submodule status 2>/dev/null || echo "No submodules"
  # LFS 信息
- Trueecho "== LFS 状态 =="
- Truecommand -v git-lfs && git lfs version || echo "LFS not installed"
- Truecommand -v git-lfs && git lfs status 2>/dev/null || echo "No LFS status"
+ echo "== LFS 状态 =="
+ command -v git-lfs && git lfs version || echo "LFS not installed"
+ command -v git-lfs && git lfs status 2>/dev/null || echo "No LFS status"
  # 换行符配置
- Trueecho "== 换行符配置 =="
- Truegit config --get core.autocrlf
- Truels -la .gitattributes 2>/dev/null || echo "No .gitattributes"
+ echo "== 换行符配置 =="
+ git config --get core.autocrlf
+ ls -la .gitattributes 2>/dev/null || echo "No .gitattributes"
  # GPG 信息
- Trueecho "== GPG 状态 =="
- Truegpg --list-secret-keys --keyid-format LONG 2>/dev/null || echo "No GPG keys"
- Truegit config --get user.signingkey 2>/dev/null || echo "No signing key configured"
+ echo "== GPG 状态 =="
+ gpg --list-secret-keys --keyid-format LONG 2>/dev/null || echo "No GPG keys"
+ git config --get user.signingkey 2>/dev/null || echo "No signing key configured"
  # 网络测试
- Trueecho "== 网络测试 =="
- Trueping -c 3 github.com 2>/dev/null || echo "Ping failed"
- Truessh -T git@github.com 2>&1 || echo "SSH test failed"
+ echo "== 网络测试 =="
+ ping -c 3 github.com 2>/dev/null || echo "Ping failed"
+ ssh -T git@github.com 2>&1 || echo "SSH test failed"
  ```
 
 ### 9.2 预防措施

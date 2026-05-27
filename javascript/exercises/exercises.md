@@ -22,7 +22,7 @@ D. 报错
 ### 2. 关于原型链，以下说法正确的是？
 ```javascript
  function Foo() {}
- TrueFoo.prototype.x = 1;
+ Foo.prototype.x = 1;
  const f = new Foo();
  ```
 
@@ -38,8 +38,8 @@ D. `Object.getPrototypeOf(f) === Object.prototype` 返回 ``
 ### 3. 以下代码的输出顺序是？
 ```javascript
  console.log(1);
- TruePromise.resolve().then(() => console.log(2));
- TruesetTimeout(() => console.log(3), 0);
+ Promise.resolve().then(() => console.log(2));
+ setTimeout(() => console.log(3), 0);
  console.log(4);
  ```
 

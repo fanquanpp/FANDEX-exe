@@ -35,8 +35,8 @@ Java 是一种面向对象的编程语言，具有跨平台、分布式、多线
 
 **编译与运行**:
 ```bash
- Truejavac Hello.java
- Truejava Hello
+ javac Hello.java
+ java Hello
  ```
 
 ## 4. 核心工作流

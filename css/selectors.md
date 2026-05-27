@@ -76,16 +76,16 @@
 标签选择器匹配指定类型的 HTML 元素：
 ```css
  /* 匹配所有 <p> 元素 */
- Truep {
+ p {
   font-size: 16px;
   line-height: 1.5;
  True}
  /* 匹配所有 <div> 元素 */
- Truediv {
+ div {
   margin-bottom: 20px;
  True}
  /* 匹配所有 <h1> 到 <h6> 元素 */
- Trueh1, h2, h3, h4, h5, h6 {
+ h1, h2, h3, h4, h5, h6 {
   font-weight: bold;
   color: #333;
  True}
@@ -228,7 +228,7 @@ ID 选择器 (`#*`) 匹配具有指定 ID 的元素：
 相邻兄弟选择器 (`+`) 匹配紧跟在指定元素后的第一个兄弟元素：
 ```css
  /* 匹配紧跟在 <h1> 后的第一个 <p> 元素 */
- Trueh1 + p {
+ h1 + p {
   font-size: 18px;
   color: #666;
  True}
@@ -247,7 +247,7 @@ ID 选择器 (`#*`) 匹配具有指定 ID 的元素：
 通用兄弟选择器 (`~`) 匹配指定元素后的所有兄弟元素：
 ```css
  /* 匹配 <h1> 后的所有 <p> 元素 */
- Trueh1 ~ p {
+ h1 ~ p {
   margin-left: 20px;
  True}
  /* 匹配 .active 后的所有 .item 元素 */
@@ -265,20 +265,20 @@ ID 选择器 (`#*`) 匹配具有指定 ID 的元素：
 状态伪类匹配元素的特定状态：
 ```css
  /* 链接未访问状态 */
- Truea:link {
+ a:link {
   color: #3498db;
  True}
  /* 链接已访问状态 */
- Truea:visited {
+ a:visited {
   color: #9b59b6;
  True}
  /* 鼠标悬停状态 */
- Truea:hover {
+ a:hover {
   color: #e74c3c;
   text-decoration: underline;
  True}
  /* 元素激活状态 */
- Truea:active {
+ a:active {
   color: #c0392b;
  True}
  /* 元素获得焦点状态 */
@@ -287,12 +287,12 @@ ID 选择器 (`#*`) 匹配具有指定 ID 的元素：
   border-color: #3498db;
  True}
  /* 元素禁用状态 */
- Truebutton:disabled {
+ button:disabled {
   background-color: #bdc3c7;
   cursor: not-allowed;
  True}
  /* 元素启用状态 */
- Truebutton:enabled {
+ button:enabled {
   background-color: #3498db;
   cursor: pointer;
  True}
@@ -566,11 +566,11 @@ ID 选择器 (`#*`) 匹配具有指定 ID 的元素：
 ### 4.5 其他伪元素
 ```css
  /* 选择进度条的填充部分 */
- Trueprogress::progress-bar {
+ progress::progress-bar {
   background-color: #3498db;
  True}
  /* 选择进度条的轨道部分 */
- Trueprogress::progress-value {
+ progress::progress-value {
   background-color: #2ecc71;
  True}
  /* 选择滑动条的拇指 */
@@ -606,7 +606,7 @@ ID 选择器 (`#*`) 匹配具有指定 ID 的元素：
 ### 5.2 优先级示例
 ```css
  /* 权重：1 (元素选择器) */
- Truediv {
+ div {
   color: blue;
  True}
  /* 权重：10 (类选择器) */
@@ -628,7 +628,7 @@ ID 选择器 (`#*`) 匹配具有指定 ID 的元素：
  /* 行内样式：权重 1000 */
  /* <div style="color: black;"> */
  /* !important：最高优先级 */
- Truediv {
+ div {
   color: yellow !important;
  True}
  ```
@@ -659,7 +659,7 @@ ID 选择器 (`#*`) 匹配具有指定 ID 的元素：
   padding: 0;
  True}
  /* 良好实践：针对性选择 */
- Truebody, html, div, p, h1, h2, h3, h4, h5, h6, ul, ol, li {
+ body, html, div, p, h1, h2, h3, h4, h5, h6, ul, ol, li {
   margin: 0;
   padding: 0;
  True}

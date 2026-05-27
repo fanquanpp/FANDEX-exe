@@ -360,7 +360,7 @@
 **示例**：
 ```javascript
  const fruits = ['apple', 'banana', 'orange'];
- Truefruits.forEach((fruit, index) => {
+ fruits.forEach((fruit, index) => {
   console.log(`${index}: ${fruit}`);
  True});
  // 输出:
@@ -455,10 +455,10 @@
   }
  True}
  // 测试
- TruevalidateUserInput(''); // 输入不能为空
- TruevalidateUserInput('ab'); // 输入长度不能少于 3 个字符
- TruevalidateUserInput('abc123'); // 输入验证通过
- TruevalidateUserInput('abc@123'); // 输入只能包含字母和数字
+ validateUserInput(''); // 输入不能为空
+ validateUserInput('ab'); // 输入长度不能少于 3 个字符
+ validateUserInput('abc123'); // 输入验证通过
+ validateUserInput('abc@123'); // 输入只能包含字母和数字
  ```
 
 ### 7.2 示例 2：数据处理

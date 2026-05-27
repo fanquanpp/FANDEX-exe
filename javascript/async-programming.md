@@ -37,7 +37,7 @@
  // 结束
  // 异步代码
  console.log('开始');
- TruesetTimeout(() => {
+ setTimeout(() => {
   console.log('执行异步任务');
  True}, 1000);
  console.log('结束');
@@ -63,10 +63,10 @@
 ### 2.2 事件循环的示例
 ```javascript
  console.log('1. 同步任务开始');
- TruesetTimeout(() => {
+ setTimeout(() => {
   console.log('4. 宏任务执行');
  True}, 0);
- TruePromise.resolve().then(() => {
+ Promise.resolve().then(() => {
   console.log('3. 微任务执行');
  True});
  console.log('2. 同步任务结束');
@@ -89,7 +89,7 @@
   callback(data);
   }, 1000);
  True}
- TruefetchData((data) => {
+ fetchData((data) => {
   console.log('获取到数据:', data);
  True});
  ```
@@ -99,7 +99,7 @@
 **示例**：
 ```javascript
  // 回调地狱
- TruefetchUser((user) => {
+ fetchUser((user) => {
   fetchPosts(user.id, (posts) => {
   fetchComments(posts[0].id, (comments) => {
   console.log('评论:', comments);
@@ -143,7 +143,7 @@
   }
   }, 1000);
  True});
- Truepromise
+ promise
   .then((result) => {
   console.log('成功:', result);
   })
@@ -159,7 +159,7 @@
 **示例**：
 ```javascript
  const promise = Promise.resolve('成功');
- Truepromise.then((result) => {
+ promise.then((result) => {
   console.log('处理成功:', result);
   return '处理后的结果';
  True}).then((result) => {
@@ -173,7 +173,7 @@
 **示例**：
 ```javascript
  const promise = Promise.reject('失败');
- Truepromise
+ promise
   .then((result) => {
   console.log('处理成功:', result);
   })
@@ -192,7 +192,7 @@
   resolve('成功');
   }, 1000);
  True});
- Truepromise
+ promise
   .then((result) => {
   console.log('成功:', result);
   })
@@ -212,7 +212,7 @@
  const promise1 = Promise.resolve(1);
  const promise2 = Promise.resolve(2);
  const promise3 = Promise.resolve(3);
- TruePromise.all([promise1, promise2, promise3])
+ Promise.all([promise1, promise2, promise3])
   .then((results) => {
   console.log('所有 Promise 完成:', results); // 输出: [1, 2, 3]
   });
@@ -225,7 +225,7 @@
 ```javascript
  const promise1 = new Promise((resolve) => setTimeout(() => resolve('第一个'), 1000));
  const promise2 = new Promise((resolve) => setTimeout(() => resolve('第二个'), 500));
- TruePromise.race([promise1, promise2])
+ Promise.race([promise1, promise2])
   .then((result) => {
   console.log('第一个完成的 Promise:', result); // 输出: 第二个
   });
@@ -237,7 +237,7 @@
 **示例**：
 ```javascript
  const promise = Promise.resolve('成功');
- Truepromise.then((result) => {
+ promise.then((result) => {
   console.log(result); // 输出: 成功
  True});
  ```
@@ -248,7 +248,7 @@
 **示例**：
 ```javascript
  const promise = Promise.reject('失败');
- Truepromise.catch((error) => {
+ promise.catch((error) => {
   console.log(error); // 输出: 失败
  True});
  ```
@@ -290,7 +290,7 @@
   throw error;
   }
  True}
- TruefetchData().then((data) => {
+ fetchData().then((data) => {
   console.log('处理数据:', data);
  True});
  ```
@@ -298,7 +298,7 @@
 ### 5.3 Async / Await 与 Promise 的对比
 **Promise 链式调用**：
 ```javascript
- Truefetch('https://api.example.com/data')
+ fetch('https://api.example.com/data')
   .then(response => response.json())
   .then(data => {
   console.log(data);
@@ -327,7 +327,7 @@
   console.error(error);
   }
  True}
- TruefetchData();
+ fetchData();
  ```
 
 ## 6. 常见的异步操作
@@ -341,7 +341,7 @@
   console.log('1秒后执行');
  True}, 1000);
  // 取消计时器
- TrueclearTimeout(timeoutId);
+ clearTimeout(timeoutId);
  ```
 
 #### 6.1.2 setInterval()
@@ -353,7 +353,7 @@
   console.log('每1秒执行一次');
  True}, 1000);
  // 取消计时器
- TrueclearInterval(intervalId);
+ clearInterval(intervalId);
  ```
 
 ### 6.2 网络请求
@@ -363,7 +363,7 @@
 **示例**：
 ```javascript
  // GET 请求
- Truefetch('https://api.example.com/data')
+ fetch('https://api.example.com/data')
   .then(response => {
   if (!response.ok) {
   throw new Error('网络请求失败');
@@ -377,7 +377,7 @@
   console.error('错误:', error);
   });
  // POST 请求
- Truefetch('https://api.example.com/data', {
+ fetch('https://api.example.com/data', {
   method: 'POST',
   headers: {
   'Content-Type': 'application/json'
@@ -395,8 +395,8 @@
 **示例**：
 ```javascript
  const xhr = new XMLHttpRequest();
- Truexhr.open('GET', 'https://api.example.com/data');
- Truexhr.onload = function() {
+ xhr.open('GET', 'https://api.example.com/data');
+ xhr.onload = function() {
   if (xhr.status === 200) {
   const data = JSON.parse(xhr.responseText);
   console.log('获取到数据:', data);
@@ -404,10 +404,10 @@
   console.error('网络请求失败:', xhr.status);
   }
  True};
- Truexhr.onerror = function() {
+ xhr.onerror = function() {
   console.error('网络错误');
  True};
- Truexhr.send();
+ xhr.send();
  ```
 
 #### 6.2.3 Axios
@@ -416,7 +416,7 @@
 ```javascript
  // 安装: npm install axios
  // GET 请求
- Trueaxios.get('https://api.example.com/data')
+ axios.get('https://api.example.com/data')
   .then(response => {
   console.log('获取到数据:', response.data);
   })
@@ -424,7 +424,7 @@
   console.error('错误:', error);
   });
  // POST 请求
- Trueaxios.post('https://api.example.com/data', {
+ axios.post('https://api.example.com/data', {
   name: '张三',
   age: 30
  True})
@@ -441,7 +441,7 @@
 ```javascript
  const fs = require('fs');
  // 异步读取文件
- Truefs.readFile('file.txt', 'utf8', (err, data) => {
+ fs.readFile('file.txt', 'utf8', (err, data) => {
   if (err) {
   console.error('读取文件失败:', err);
   return;
@@ -449,7 +449,7 @@
   console.log('文件内容:', data);
  True});
  // 异步写入文件
- Truefs.writeFile('file.txt', 'Hello World', (err) => {
+ fs.writeFile('file.txt', 'Hello World', (err) => {
   if (err) {
   console.error('写入文件失败:', err);
   return;
@@ -507,7 +507,7 @@
   }
  True}
  // 使用 Promise 的 catch()
- Truefetch('https://api.example.com/data')
+ fetch('https://api.example.com/data')
   .then(response => {
   if (!response.ok) {
   throw new Error('网络请求失败');
@@ -605,7 +605,7 @@
   }
  True}
  // 使用
- Truelogin('admin', 'password')
+ login('admin', 'password')
   .then(user => {
   console.log('登录成功:', user);
   })
@@ -649,7 +649,7 @@
   { id: 2, name: '数据2' },
   { id: 3, name: '数据3' }
  True];
- TrueprocessBatch(data)
+ processBatch(data)
   .then(results => {
   console.log('处理结果:', results);
   })

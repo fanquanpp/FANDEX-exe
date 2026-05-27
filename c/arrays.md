@@ -89,7 +89,7 @@
  - 安全漏洞（如缓冲区溢出）
 ```c
  int arr[5] = {1, 2, 3, 4, 5};
- Truearr[10] = 100; // 越界访问，危险！
+ arr[10] = 100; // 越界访问，危险！
  ```
 
 ## 3. 多维数组
@@ -182,11 +182,11 @@
 | `strncmp()` | 比较指定长度的字符串 | `int result = strncmp(str1, str2, n);` |
 ### 4.4 字符串输入输出
 ```c
- Truechar str[100];
+ char str[100];
  // 输入字符串（遇到空格停止）
- Truescanf("%s", str);
+ scanf("%s", str);
  // 输入一行字符串（包括空格）
- Truefgets(str, sizeof(str), stdin);
+ fgets(str, sizeof(str), stdin);
  // 输出字符串
  printf("%s\n", str);
  ```
@@ -333,7 +333,7 @@
   free(arr);
   return 1;
  True}
- Truearr = new_arr;
+ arr = new_arr;
  ```
 
 ## 8. 数组的高级应用

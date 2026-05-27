@@ -57,8 +57,8 @@
 ```python
  from sqlalchemy import create_engine, text
  from sqlalchemy.orm import sessionmaker
- Trueengine = create_engine('mysql+pymysql://root:password@localhost/test')
- TrueSession = sessionmaker(bind=engine)
+ engine = create_engine('mysql+pymysql://root:password@localhost/test')
+ Session = sessionmaker(bind=engine)
  # 方式一：使用 text() 和参数
  def safe_login_orm(username, password):
   with engine.connect() as conn:
@@ -188,7 +188,7 @@
   List<User> getUsersByIds(@Param("ids") List<Integer> ids);
  True}
  // 使用示例
- TrueSqlSession session = sqlSessionFactory.openSession();
+ SqlSession session = sqlSessionFactory.openSession();
  try {
   UserMapper mapper = session.getMapper(UserMapper.class);
   User user = mapper.getUser("admin", "password");
@@ -232,7 +232,7 @@
 ```python
  from sqlalchemy import Column, Integer, String
  from sqlalchemy.ext.declarative import declarative_base
- TrueBase = declarative_base()
+ Base = declarative_base()
  class User(Base):
   __tablename__ = 'users'
   id = Column(Integer, primary_key=True)
@@ -240,7 +240,7 @@
   password = Column(String(50))
   email = Column(String(100))
  # 查询
- Truesession = Session()
+ session = Session()
  user = session.query(User).filter(
   User.username == username,
   User.password == password
@@ -251,7 +251,7 @@
  user = session.query(User).get(user_id)
  # 复杂查询
  from sqlalchemy import and_, or_
- Trueresults = session.query(User).filter(
+ results = session.query(User).filter(
   and_(
   User.username.like('%admin%'),
   or_(User.email.is_(None), User.email != '')
@@ -376,29 +376,29 @@
 ### 1.4 存储过程（谨慎使用）
 #### 1.4.1 安全的存储过程
 ```sql
- TrueDELIMITER //
- TrueCREATE PROCEDURE GetUser(IN p_username VARCHAR(50), IN p_password VARCHAR(50))
- TrueBEGIN
+ DELIMITER //
+ CREATE PROCEDURE GetUser(IN p_username VARCHAR(50), IN p_password VARCHAR(50))
+ BEGIN
   -- 使用参数，不拼接字符串
   SELECT * FROM users WHERE username = p_username AND password = p_password;
- TrueEND //
- TrueDELIMITER ;
+ END //
+ DELIMITER ;
  True-- 调用存储过程
- TrueCALL GetUser('admin', '123456');
+ CALL GetUser('admin', '123456');
  ```
 
 #### 1.4.2 危险的存储过程
 ```sql
  True-- 危险：使用动态 SQL 拼接
- TrueDELIMITER //
- TrueCREATE PROCEDURE DangerousGetUser(IN p_username VARCHAR(50))
- TrueBEGIN
+ DELIMITER //
+ CREATE PROCEDURE DangerousGetUser(IN p_username VARCHAR(50))
+ BEGIN
   SET @sql = CONCAT('SELECT * FROM users WHERE username = ''', p_username, '''');
   PREPARE stmt FROM @sql;
   EXECUTE stmt;
   DEALLOCATE PREPARE stmt;
- TrueEND //
- TrueDELIMITER ;
+ END //
+ DELIMITER ;
  True-- 即使使用参数化，也不要在存储过程中动态拼接 SQL
  ```
 
@@ -406,13 +406,13 @@
 #### 1.5.1 最小权限原则
 ```sql
  True-- 创建应用程序专用用户
- TrueCREATE USER 'app_user'@'localhost' IDENTIFIED BY 'strong_password';
+ CREATE USER 'app_user'@'localhost' IDENTIFIED BY 'strong_password';
  True-- 只授予必要的权限
- TrueGRANT SELECT, INSERT, UPDATE, DELETE ON test_db.* TO 'app_user'@'localhost';
+ GRANT SELECT, INSERT, UPDATE, DELETE ON test_db.* TO 'app_user'@'localhost';
  True-- 撤销危险权限
- TrueREVOKE FILE, SUPER, PROCESS ON *.* FROM 'app_user'@'localhost';
+ REVOKE FILE, SUPER, PROCESS ON *.* FROM 'app_user'@'localhost';
  True-- 刷新权限
- TrueFLUSH PRIVILEGES;
+ FLUSH PRIVILEGES;
  ```
 
 #### 1.5.2 权限矩阵
@@ -439,7 +439,7 @@
 ```php
  <?php
  // 危险：暴露详细错误信息
- Truemysqli_query($conn, $sql) or die(mysqli_error($conn));
+ mysqli_query($conn, $sql) or die(mysqli_error($conn));
  // 安全：记录错误，返回通用信息
  try {
   mysqli_query($conn, $sql);
@@ -453,9 +453,9 @@
  True}
  // 生产环境应该这样设置
  ini_set('display_errors', 0);
- Trueerror_reporting(E_ALL);
- Truelog_errors = On
- Trueerror_log = /var/log/php_errors.log
+ error_reporting(E_ALL);
+ log_errors = On
+ error_log = /var/log/php_errors.log
  True?>
  ```
 
@@ -463,7 +463,7 @@
 ```python
  import logging
  # 配置日志
- Truelogging.basicConfig(
+ logging.basicConfig(
   filename='app.log',
   level=logging.ERROR,
   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -532,16 +532,16 @@
 #### 1.7.3 ModSecurity 规则示例
 ```apache
  # 阻止常见 SQL 注入 Payload
- TrueSecRule ARGS "@rx (union.*select|select.*from|insert.*into|update.*set|delete.*from)" \
+ SecRule ARGS "@rx (union.*select|select.*from|insert.*into|update.*set|delete.*from)" \
   "phase:2,deny,status:403,msg:'SQL Injection Attack'"
  # 阻止单引号
- TrueSecRule ARGS "@rx '" \
+ SecRule ARGS "@rx '" \
   "phase:2,deny,status:403,msg:'Single Quote Detected'"
  # 阻止注释符
- TrueSecRule ARGS "@rx (--|#|/\*)" \
+ SecRule ARGS "@rx (--|#|/\*)" \
   "phase:2,deny,status:403,msg:'SQL Comment Detected'"
  # 阻止关键字组合
- TrueSecRule ARGS "@rx (?i:(and|or).*[\d\s]*[=<>]|having|union.*select)" \
+ SecRule ARGS "@rx (?i:(and|or).*[\d\s]*[=<>]|having|union.*select)" \
   "phase:2,deny,status:403,msg:'SQL Injection Pattern'"
  ```
 
@@ -557,18 +557,18 @@
 #### 1.8.1 启用 SQL 日志
 ```sql
  True-- MySQL 启用查询日志
- TrueSET GLOBAL general_log = 'ON';
- TrueSET GLOBAL general_log_file = '/var/log/mysql/query.log';
+ SET GLOBAL general_log = 'ON';
+ SET GLOBAL general_log_file = '/var/log/mysql/query.log';
  True-- 设置日志格式
- TrueSET GLOBAL log_output = 'TABLE';
- TrueSET GLOBAL general_log = 'ON';
+ SET GLOBAL log_output = 'TABLE';
+ SET GLOBAL general_log = 'ON';
  True-- 启用慢查询日志
- TrueSET GLOBAL slow_query_log = 'ON';
- TrueSET GLOBAL long_query_time = 1;
- TrueSET GLOBAL slow_query_log_file = '/var/log/mysql/slow.log';
+ SET GLOBAL slow_query_log = 'ON';
+ SET GLOBAL long_query_time = 1;
+ SET GLOBAL slow_query_log_file = '/var/log/mysql/slow.log';
  True-- 查看日志
- TrueSELECT * FROM mysql.general_log;
- TrueSELECT * FROM mysql.slow_log;
+ SELECT * FROM mysql.general_log;
+ SELECT * FROM mysql.slow_log;
  ```
 
 #### 1.8.2 定期审计
@@ -694,15 +694,15 @@
 ```bash
  # MySQL 安全配置
  # 1. 禁用远程 root 登录
- Truemysql> DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1');
+ mysql> DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1');
  # 2. 删除匿名用户
- Truemysql> DELETE FROM mysql.user WHERE User='';
+ mysql> DELETE FROM mysql.user WHERE User='';
  # 3. 设置密码策略
- Truemysql> SET GLOBAL validate_password_policy=STRONG;
+ mysql> SET GLOBAL validate_password_policy=STRONG;
  # 4. 限制用户连接
- Truemysql> CREATE USER 'app'@'localhost' WITH MAX_CONNECTIONS_PER_HOUR 100;
+ mysql> CREATE USER 'app'@'localhost' WITH MAX_CONNECTIONS_PER_HOUR 100;
  # 5. 启用审计日志（企业版）
- Truemysql> INSTALL PLUGIN audit_log SONAME 'audit_log.so';
+ mysql> INSTALL PLUGIN audit_log SONAME 'audit_log.so';
  ```
 
 ## 3. SQL 注入常见问题 (FAQ)
@@ -715,11 +715,11 @@
 **A**：不一定。如果 ORM 被错误使用，仍然可能存在 SQL 注入：
 ```python
  # 危险：使用 raw SQL 拼接
- Truesession.execute(f"SELECT * FROM users WHERE id = {user_id}")
+ session.execute(f"SELECT * FROM users WHERE id = {user_id}")
  # 安全：使用 ORM 查询
- Truesession.query(User).filter(User.id == user_id).first()
+ session.query(User).filter(User.id == user_id).first()
  # 危险：使用 filter with text
- Truesession.query(User).filter(text(f"id = {user_id}")).first()
+ session.query(User).filter(text(f"id = {user_id}")).first()
  ```
 
 ### Q3：转义单引号能防止 SQL 注入吗？

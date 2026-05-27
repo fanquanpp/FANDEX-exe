@@ -39,7 +39,7 @@
 ### 3.1 触发条件（on）
 ```yaml
  # 基本触发条件
- Trueon:
+ on:
   push:
   branches: [main, develop]
   paths-ignore: ['README.md', 'docs/**']
@@ -63,7 +63,7 @@
 
 ### 3.2 任务配置（jobs）
 ```yaml
- Truejobs:
+ jobs:
   # 任务名称
   build:
   # 运行器环境
@@ -99,7 +99,7 @@
 
 ### 3.3 步骤配置（steps）
 ```yaml
- Truesteps:
+ steps:
   # 使用市场中的 Action
   - name: Checkout code
   uses: actions/checkout@v4
@@ -149,13 +149,13 @@
 ## 5. 完整 CI/CD 示例
 ### 5.1 Node.js 项目完整 CI/CD
 ```yaml
- Truename: Node.js CI/CD
- Trueon:
+ name: Node.js CI/CD
+ on:
   push:
   branches: [main, develop]
   pull_request:
   branches: [main, develop]
- Truejobs:
+ jobs:
   lint:
   runs-on: ubuntu-latest
   steps:
@@ -213,13 +213,13 @@
 
 ### 5.2 Java 项目完整 CI/CD
 ```yaml
- Truename: Java CI/CD
- Trueon:
+ name: Java CI/CD
+ on:
   push:
   branches: [main, develop]
   pull_request:
   branches: [main, develop]
- Truejobs:
+ jobs:
   build:
   runs-on: ubuntu-latest
   steps:
@@ -253,13 +253,13 @@
 
 ### 5.3 Python 项目完整 CI/CD
 ```yaml
- Truename: Python CI/CD
- Trueon:
+ name: Python CI/CD
+ on:
   push:
   branches: [main, develop]
   pull_request:
   branches: [main, develop]
- Truejobs:
+ jobs:
   lint:
   runs-on: ubuntu-latest
   steps:
@@ -303,10 +303,10 @@
 ### 6.1 环境变量
 ```yaml
  # 工作流级环境变量
- Trueenv:
+ env:
   NODE_ENV: production
   API_URL: https://api.example.com
- Truejobs:
+ jobs:
   build:
   # 任务级环境变量
   env:
@@ -327,7 +327,7 @@
 2. **Environment secrets**：在环境的设置中设置，更安全
 3. **使用密钥**：
 ```yaml
- Truesteps:
+ steps:
   - name: Deploy
   run: ./deploy.sh
   env:
@@ -426,11 +426,11 @@
 4. 点击 **Save**
 ### 10.2 自动部署到 GitHub Pages
 ```yaml
- Truename: Deploy to GitHub Pages
- Trueon:
+ name: Deploy to GitHub Pages
+ on:
   push:
   branches: [ main ]
- Truejobs:
+ jobs:
   deploy:
   runs-on: ubuntu-latest
   permissions:
@@ -455,15 +455,15 @@
 
 ### 10.3 使用 GitHub Actions 官方 Pages 部署
 ```yaml
- Truename: Deploy Pages
- Trueon:
+ name: Deploy Pages
+ on:
   push:
   branches: [ main ]
- Truepermissions:
+ permissions:
   contents: read
   pages: write
   id-token: write
- Truejobs:
+ jobs:
   build:
   runs-on: ubuntu-latest
   steps:

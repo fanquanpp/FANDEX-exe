@@ -98,8 +98,8 @@
   console.log(this.name); // 输出: undefined (继承全局作用域的 this)
   }
  True};
- Trueobj.regularFunction();
- Trueobj.arrowFunction();
+ obj.regularFunction();
+ obj.arrowFunction();
  ```
 
 ### 1.4 函数参数
@@ -138,7 +138,7 @@
  function test() {
   console.log(globalVar); // 可以访问全局变量
  True}
- Truetest(); // 输出: 全局变量
+ test(); // 输出: 全局变量
  console.log(globalVar); // 可以访问全局变量
  ```
 
@@ -150,7 +150,7 @@
   const localVar = '局部变量';
   console.log(localVar); // 可以访问局部变量
  True}
- Truetest(); // 输出: 局部变量
+ test(); // 输出: 局部变量
  // console.log(localVar); // 错误: localVar is not defined
  ```
 
@@ -184,7 +184,7 @@
   inner();
   // console.log(innerVar); // 错误: innerVar is not defined
  True}
- Trueouter();
+ outer();
  // console.log(outerVar); // 错误: outerVar is not defined
  ```
 
@@ -275,9 +275,9 @@
   };
  True}
  const button = document.createElement('button');
- Truebutton.textContent = '点击我';
+ button.textContent = '点击我';
  document.body.appendChild(button);
- Truebutton.addEventListener('click', createButtonClickHandler());
+ button.addEventListener('click', createButtonClickHandler());
  ```
 
 ### 3.4 闭包的注意事项
@@ -317,16 +317,16 @@
   console.log(this);
  True}
  // 直接调用，this 指向全局对象 (window)
- Truetest();
+ test();
  // 作为对象方法调用，this 指向对象
  const obj = {
   name: '张三',
   test: test
  True};
- Trueobj.test(); // this 指向 obj
+ obj.test(); // this 指向 obj
  // 使用 call 或 apply 显式绑定 this
  const anotherObj = { name: '李四' };
- Truetest.call(anotherObj); // this 指向 anotherObj
+ test.call(anotherObj); // this 指向 anotherObj
  ```
 
 ### 4.2 箭头函数中的 `this`
@@ -347,7 +347,7 @@
   }, 1000);
   }
  True};
- Trueobj.regularFunction();
+ obj.regularFunction();
  ```
 
 ### 4.3 构造函数中的 `this`
@@ -363,7 +363,7 @@
  True}
  const person = new Person('张三', 30);
  console.log(person.name); // 输出: 张三
- Trueperson.greet(); // 输出: Hello, my name is 张三
+ person.greet(); // 输出: Hello, my name is 张三
  ```
 
 ### 4.4 显式绑定 `this`
@@ -375,7 +375,7 @@
   console.log(`${greeting}, ${this.name}!`);
  True}
  const person = { name: '张三' };
- Truegreet.call(person, 'Hello'); // 输出: Hello, 张三!
+ greet.call(person, 'Hello'); // 输出: Hello, 张三!
  ```
 
 #### 4.4.2 apply() 方法
@@ -399,7 +399,7 @@
  True}
  const person = { name: '张三' };
  const boundGreet = greet.bind(person);
- TrueboundGreet(); // 输出: Hello, 张三!
+ boundGreet(); // 输出: Hello, 张三!
  ```
 
 ## 5. 最佳实践
@@ -439,9 +439,9 @@
   // 实际的搜索逻辑
  True}, 300);
  // 输入时会防抖，只有停止输入 300ms 后才会执行搜索
- TruedebouncedSearch('JavaScript');
- TruedebouncedSearch('JavaScript 闭包');
- TruedebouncedSearch('JavaScript 闭包 this');
+ debouncedSearch('JavaScript');
+ debouncedSearch('JavaScript 闭包');
+ debouncedSearch('JavaScript 闭包 this');
  // 最终只会执行一次: 搜索: JavaScript 闭包 this
  ```
 
@@ -465,7 +465,7 @@
   // 实际的滚动处理逻辑
  True}, 1000);
  // 滚动时会节流，每 1000ms 最多执行一次
- Truewindow.addEventListener('scroll', throttledScroll);
+ window.addEventListener('scroll', throttledScroll);
  ```
 
 ### 6.3 示例 3：模块化代码

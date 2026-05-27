@@ -17,7 +17,7 @@
 ```cpp
  // 基本函数模板
  template <typename T>
- TrueT max(T a, T b) {
+ T max(T a, T b) {
   return a > b ? a : b;
  True}
  // 使用示例
@@ -48,7 +48,7 @@
 可以显式指定模板参数类型。
 ```cpp
  template <typename T>
- TrueT add(T a, T b) {
+ T add(T a, T b) {
   return a + b;
  True}
  int main() {
@@ -66,7 +66,7 @@
 ```cpp
  // 通用版本
  template <typename T>
- TrueT max(T a, T b) {
+ T max(T a, T b) {
   std::cout << "Template version" << std::endl;
   return a > b ? a : b;
  True}
@@ -190,7 +190,7 @@
   }
  True};
  // 使用默认分配器
- TrueMyVector<int> v1;
+ MyVector<int> v1;
  // 使用自定义分配器
  // MyVector<int, CustomAllocator<int>> v2;
  ```
@@ -256,7 +256,7 @@
 ```cpp
  // 使用折叠表达式求和
  template <typename... Args>
- Trueauto sum(Args... args) {
+ auto sum(Args... args) {
   return (args + ...);
  True}
  // 使用折叠表达式打印
@@ -293,26 +293,26 @@
 ```cpp
  // 编译期计算阶乘
  template <int N>
- Truestruct Factorial {
+ struct Factorial {
   static constexpr int value = N * Factorial<N-1>::value;
  True};
  // 特化版本作为递归终止条件
  template <>
- Truestruct Factorial<0> {
+ struct Factorial<0> {
   static constexpr int value = 1;
  True};
  // 编译期计算斐波那契数列
  template <int N>
- Truestruct Fibonacci {
+ struct Fibonacci {
   static constexpr int value = Fibonacci<N-1>::value + Fibonacci<N-2>::value;
  True};
  // 特化版本
  template <>
- Truestruct Fibonacci<0> {
+ struct Fibonacci<0> {
   static constexpr int value = 0;
  True};
  template <>
- Truestruct Fibonacci<1> {
+ struct Fibonacci<1> {
   static constexpr int value = 1;
  True};
  // 使用示例
@@ -330,16 +330,16 @@
 ```cpp
  // 自定义类型 trait
  template <typename T>
- Truestruct IsIntegral {
+ struct IsIntegral {
   static constexpr bool value = false;
  True};
  // 特化
  template <>
- Truestruct IsIntegral<int> {
+ struct IsIntegral<int> {
   static constexpr bool value = true;
  True};
  template <>
- Truestruct IsIntegral<long> {
+ struct IsIntegral<long> {
   static constexpr bool value = true;
  True};
  // 使用示例

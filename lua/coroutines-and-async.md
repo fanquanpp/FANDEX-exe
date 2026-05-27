@@ -17,18 +17,18 @@
 协程（Coroutine）是一种特殊的函数，可以在执行过程中挂起，并在后续恢复执行。与线程不同，协程是协作式的，而不是抢占式的：
 ```lua
  True-- 创建协程
- Truelocal co = coroutine.create(function()
+ local co = coroutine.create(function()
   print("协程开始执行")
   coroutine.yield() -- 挂起协程
   print("协程恢复执行")
   return "协程执行完成"
- Trueend)
+ end)
  print("协程状态:", coroutine.status(co)) -- 输出 suspended
  True-- 启动协程
- Truecoroutine.resume(co) -- 输出 协程开始执行
+ coroutine.resume(co) -- 输出 协程开始执行
  print("协程状态:", coroutine.status(co)) -- 输出 suspended
  True-- 恢复协程
- Truelocal success, result = coroutine.resume(co) -- 输出 协程恢复执行
+ local success, result = coroutine.resume(co) -- 输出 协程恢复执行
  print("协程状态:", coroutine.status(co)) -- 输出 dead
  print("协程返回值:", result) -- 输出 协程执行完成
  ```
@@ -40,11 +40,11 @@
 - **normal**：协程正在运行其他协程
 - **dead**：协程执行完毕或出错
 ```lua
- Truelocal co = coroutine.create(function()
+ local co = coroutine.create(function()
   print("协程状态:", coroutine.status(co)) -- 输出 running
- Trueend)
+ end)
  print("创建后:", coroutine.status(co)) -- 输出 suspended
- Truecoroutine.resume(co) -- 输出 协程状态: running
+ coroutine.resume(co) -- 输出 协程状态: running
  print("执行后:", coroutine.status(co)) -- 输出 dead
  ```
 
@@ -58,11 +58,11 @@
   coroutine.yield(i)
   end
   end)
- Trueend
+ end
  True-- 使用自定义迭代器
  for i in range(1, 5) do
   print(i) -- 输出 1, 2, 3, 4, 5
- Trueend
+ end
  ```
 
 ### 2.2 协程与生产者-消费者模式
@@ -74,17 +74,17 @@
   coroutine.yield(value)
   end
   end)
- Trueend
+ end
  function consumer(prod)
   while  do
   local status, value = coroutine.resume(prod)
   if not value then break end
   print("消费:", value)
   end
- Trueend
+ end
  True-- 使用生产者-消费者模式
- Truelocal prod = producer()
- Trueconsumer(prod)
+ local prod = producer()
+ consumer(prod)
  ```
 
 ## 3. 异步编程 | Asynchronous Programming
@@ -109,7 +109,7 @@
   end
   end
   checkTimer()
- Trueend
+ end
  True-- 使用协程包装异步操作
  function asyncOperationWithCoroutine()
   local co = coroutine.running()
@@ -117,9 +117,9 @@
   coroutine.resume(co, result)
   end)
   return coroutine.yield()
- Trueend
+ end
  True-- 使用示例
- Truelocal result = asyncOperationWithCoroutine()
+ local result = asyncOperationWithCoroutine()
  print("结果:", result) -- 输出 结果: 异步操作完成
  ```
 
@@ -127,16 +127,16 @@
 在游戏开发中，协程常与事件循环结合使用：
 ```lua
  True-- 模拟游戏事件循环
- Truelocal events = {}
+ local events = {}
  function addEvent(event)
   table.insert(events, event)
- Trueend
+ end
  function processEvents()
   while #events > 0 do
   local event = table.remove(events, 1)
   event()
   end
- Trueend
+ end
  True-- 使用协程实现延时操作
  function delay(seconds, callback)
   local startTime = os.time()
@@ -148,7 +148,7 @@
   end
   end
   addEvent(checkTime)
- Trueend
+ end
  True-- 使用协程包装延时操作
  function wait(seconds)
   local co = coroutine.running()
@@ -156,7 +156,7 @@
   coroutine.resume(co)
   end)
   coroutine.yield()
- Trueend
+ end
  True-- 示例：游戏角色移动
  function moveCharacter()
   local co = coroutine.create(function()
@@ -167,13 +167,13 @@
   print("移动完成")
   end)
   addEvent(function() coroutine.resume(co) end)
- Trueend
+ end
  True-- 运行事件循环
- TruemoveCharacter()
+ moveCharacter()
  while  do
   processEvents()
   -- 这里应该有适当的休眠，避免CPU占用过高
- Trueend
+ end
  ```
 
 ## 4. 协程的实际应用 | Practical Applications
@@ -199,7 +199,7 @@
   end
   end
   end)
- Trueend
+ end
  ```
 
 ### 4.2 网络请求处理
@@ -222,14 +222,14 @@
   end
   checkTimer()
   return coroutine.yield()
- Trueend
+ end
  True-- 使用示例
- Truelocal co = coroutine.create(function()
+ local co = coroutine.create(function()
   local response = httpGet("https://api.example.com/data")
   print("收到响应:", response)
   -- 处理响应数据
- Trueend)
- Truecoroutine.resume(co)
+ end)
+ coroutine.resume(co)
  ```
 
 ## 5. 协程的优缺点 | Pros and Cons

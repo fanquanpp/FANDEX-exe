@@ -324,7 +324,7 @@
  #include <vector>
  #include <iostream>
  // 自定义类型
- Truestruct Person {
+ struct Person {
   std::string name;
   int age;
   Person(const std::string& n, int a) : name(n), age(a) {}

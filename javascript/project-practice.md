@@ -33,11 +33,11 @@
 - LocalStorage
 #### 1.1.3 项目结构
 ```
- Truetodo-app/
- True├── index.html
- True├── style.css
- True├── script.js
- True└── README.md
+ todo-app/
+ ├── index.html
+ ├── style.css
+ ├── script.js
+ └── README.md
  ```
 
 #### 1.1.4 完整实现
@@ -262,11 +262,11 @@
 - OpenWeather API
 #### 1.2.3 项目结构
 ```
- Trueweather-app/
- True├── index.html
- True├── style.css
- True├── script.js
- True└── README.md
+ weather-app/
+ ├── index.html
+ ├── style.css
+ ├── script.js
+ └── README.md
  ```
 
 #### 1.2.4 完整实现
@@ -319,7 +319,7 @@
 
 **style.css**
 ```css
- Truebody {
+ body {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   min-height: 100vh;
  True}
@@ -446,11 +446,11 @@
 - LocalStorage
 #### 1.3.3 项目结构
 ```
- Trueshopping-cart/
- True├── index.html
- True├── style.css
- True├── script.js
- True└── README.md
+ shopping-cart/
+ ├── index.html
+ ├── style.css
+ ├── script.js
+ └── README.md
  ```
 
 #### 1.3.4 完整实现
@@ -678,17 +678,17 @@
 - **工具模块**：通用功能
 #### 2.1.2 代码组织
 ```
- Trueproject/
- True├── src/
- True│ ├── components/ # UI 组件
- True│ ├── services/ # API 服务
- True│ ├── utils/ # 工具函数
- True│ ├── store/ # 状态管理
- True│ ├── styles/ # 样式文件
- True│ └── main.js # 入口文件
- True├── public/ # 静态资源
- True├── package.json # 项目配置
- True└── README.md # 项目说明
+ project/
+ ├── src/
+ │ ├── components/ # UI 组件
+ │ ├── services/ # API 服务
+ │ ├── utils/ # 工具函数
+ │ ├── store/ # 状态管理
+ │ ├── styles/ # 样式文件
+ │ └── main.js # 入口文件
+ ├── public/ # 静态资源
+ ├── package.json # 项目配置
+ └── README.md # 项目说明
  ```
 
 ### 2.2 依赖管理
@@ -743,10 +743,10 @@
 ```javascript
  // utils.test.js
  const { sum, multiply } = require('./utils');
- Truetest('sum adds two numbers', () => {
+ test('sum adds two numbers', () => {
   expect(sum(1, 2)).toBe(3);
  True});
- Truetest('multiply multiplies two numbers', () => {
+ test('multiply multiplies two numbers', () => {
   expect(multiply(2, 3)).toBe(6);
  True});
  ```
@@ -764,7 +764,7 @@
 #### 3.2.2 测试示例
 ```javascript
  // cypress/integration/home.spec.js
- Truedescribe('Home page', () => {
+ describe('Home page', () => {
   it('should load the home page', () => {
   cy.visit('/');
   cy.contains('Welcome to My App');
@@ -799,19 +799,19 @@
 #### 4.2.1 Dockerfile 示例
 ```dockerfile
  from node:16-alpine
- TrueWORKDIR /app
- TrueCOPY package*.json ./
- TrueRUN npm install
- TrueCOPY . .
- TrueRUN npm run build
- TrueEXPOSE 3000
- TrueCMD ["npm", "start"]
+ WORKDIR /app
+ COPY package*.json ./
+ RUN npm install
+ COPY . .
+ RUN npm run build
+ EXPOSE 3000
+ CMD ["npm", "start"]
  ```
 
 #### 4.2.2 docker-compose.yml 示例
 ```yaml
- Trueversion: '3'
- Trueservices:
+ version: '3'
+ services:
   app:
   build: .
   ports:
@@ -823,13 +823,13 @@
 ### 4.3 CI/CD 配置
 #### 4.3.1 GitHub Actions 示例
 ```yaml
- Truename: CI/CD
- Trueon:
+ name: CI/CD
+ on:
   push:
   branches: [ main ]
   pull_request:
   branches: [ main ]
- Truejobs:
+ jobs:
   build:
   runs-on: ubuntu-latest
   steps:
@@ -891,23 +891,23 @@
 ### 7.1 完整项目示例
 #### 7.1.1 项目结构
 ```
- Truemy-app/
- True├── src/
- True│ ├── components/
- True│ │ ├── Header.js
- True│ │ ├── Footer.js
- True│ │ └── ProductCard.js
- True│ ├── services/
- True│ │ └── api.js
- True│ ├── utils/
- True│ │ └── helpers.js
- True│ ├── styles/
- True│ │ └── main.css
- True│ └── main.js
- True├── public/
- True│ └── index.html
- True├── package.json
- True└── README.md
+ my-app/
+ ├── src/
+ │ ├── components/
+ │ │ ├── Header.js
+ │ │ ├── Footer.js
+ │ │ └── ProductCard.js
+ │ ├── services/
+ │ │ └── api.js
+ │ ├── utils/
+ │ │ └── helpers.js
+ │ ├── styles/
+ │ │ └── main.css
+ │ └── main.js
+ ├── public/
+ │ └── index.html
+ ├── package.json
+ └── README.md
  ```
 
 #### 7.1.2 核心文件

@@ -40,91 +40,91 @@
 ### 3.1 查看分支
 ```bash
  # 查看本地分支
- Truegit branch
+ git branch
  # 查看远程分支
- Truegit branch -r
+ git branch -r
  # 查看所有分支（本地和远程）
- Truegit branch -a
+ git branch -a
  # 查看分支及其最后一次提交
- Truegit branch -v
+ git branch -v
  ```
 
 <a id="3.2"></a>
 ### 3.2 创建分支
 ```bash
  # 创建新分支
- Truegit branch <分支名>
+ git branch <分支名>
  ```
 
 <a id="3.3"></a>
 ### 3.3 切换分支
 ```bash
  # 切换分支
- Truegit checkout <分支名>
+ git checkout <分支名>
  # 或 Git 2.23+ 推荐
- Truegit switch <分支名>
+ git switch <分支名>
  ```
 
 <a id="3.4"></a>
 ### 3.4 创建并切换分支
 ```bash
  # 创建并切换分支
- Truegit checkout -b <分支名>
+ git checkout -b <分支名>
  # 或 Git 2.23+ 推荐
- Truegit switch -c <分支名>
+ git switch -c <分支名>
  ```
 
 <a id="3.5"></a>
 ### 3.5 合并分支
 ```bash
  # 合并分支到当前分支
- Truegit merge <分支名>
+ git merge <分支名>
  # 快速合并（Fast-forward）
  # 当主分支没有新提交时，会执行快速合并
- Truegit checkout main
- Truegit merge feature/login
+ git checkout main
+ git merge feature/login
  # 三方合并（3-way merge）
  # 当主分支有新提交时，会执行三方合并
- Truegit checkout main
- Truegit merge feature/payment
+ git checkout main
+ git merge feature/payment
  ```
 
 #### 3.5.1 合并策略
 ```bash
  # 使用策略合并
- Truegit merge --strategy-option theirs feature/branch # 优先使用对方分支的修改
- Truegit merge --strategy-option ours feature/branch # 优先使用当前分支的修改
+ git merge --strategy-option theirs feature/branch # 优先使用对方分支的修改
+ git merge --strategy-option ours feature/branch # 优先使用当前分支的修改
  # 递归策略（默认）
- Truegit merge --strategy recursive feature/branch
+ git merge --strategy recursive feature/branch
  # 章鱼策略（适合合并多个分支）
- Truegit merge --strategy octopus feature1 feature2 feature3
+ git merge --strategy octopus feature1 feature2 feature3
  ```
 
 <a id="3.6"></a>
 ### 3.6 删除分支
 ```bash
  # 删除分支（仅当分支已合并）
- Truegit branch -d <分支名>
+ git branch -d <分支名>
  # 强制删除分支（无论是否合并）
- Truegit branch -D <分支名>
+ git branch -D <分支名>
  # 删除远程分支
- Truegit push <远程仓库名> --delete <分支名>
+ git push <远程仓库名> --delete <分支名>
  ```
 
 <a id="3.7"></a>
 ### 3.7 重命名分支
 ```bash
  # 重命名分支
- Truegit branch -m <旧分支名> <新分支名>
+ git branch -m <旧分支名> <新分支名>
  ```
 
 <a id="3.8"></a>
 ### 3.8 设置上游分支
 ```bash
  # 设置分支的上游分支
- Truegit branch --set-upstream-to=origin/<远程分支名> <本地分支名>
+ git branch --set-upstream-to=origin/<远程分支名> <本地分支名>
  # 首次推送时设置上游分支
- Truegit push -u <远程仓库名> <本地分支名>
+ git push -u <远程仓库名> <本地分支名>
  ```
 
 <a id="4"></a>
@@ -170,19 +170,19 @@ GitFlow 是一种详细的分支管理策略，适合大型项目和复杂的发
 #### 5.3.3 GitFlow 示例
 ```bash
  # 初始化 GitFlow
- Truegit flow init
+ git flow init
  # 创建功能分支
- Truegit flow feature start login
+ git flow feature start login
  # 完成功能分支
- Truegit flow feature finish login
+ git flow feature finish login
  # 创建发布分支
- Truegit flow release start v1.0.0
+ git flow release start v1.0.0
  # 完成发布分支
- Truegit flow release finish v1.0.0
+ git flow release finish v1.0.0
  # 创建热修复分支
- Truegit flow hotfix start security-patch
+ git flow hotfix start security-patch
  # 完成热修复分支
- Truegit flow hotfix finish security-patch
+ git flow hotfix finish security-patch
  ```
 
 <a id="5.4"></a>
@@ -260,46 +260,46 @@ GitFlow 是一种详细的分支管理策略，适合大型项目和复杂的发
 #### 7.2.1 小型项目（个人或小团队）
 ```bash
  # 初始化仓库
- Truegit init
+ git init
  # 创建并切换到功能分支
- Truegit checkout -b feature/login
+ git checkout -b feature/login
  # 开发完成后合并到主分支
- Truegit checkout main
- Truegit merge feature/login
+ git checkout main
+ git merge feature/login
  # 删除功能分支
- Truegit branch -d feature/login
+ git branch -d feature/login
  ```
 
 #### 7.2.2 中型项目（团队协作）
 ```bash
  # 从远程仓库克隆
- Truegit clone <远程仓库URL>
+ git clone <远程仓库URL>
  # 创建功能分支
- Truegit checkout -b feature/payment
+ git checkout -b feature/payment
  # 定期同步主分支
- Truegit checkout feature/payment
- Truegit pull origin main
+ git checkout feature/payment
+ git pull origin main
  # 完成后推送到远程
- Truegit push origin feature/payment
+ git push origin feature/payment
  # 创建 Pull Request 进行代码审查
  # 合并后删除本地分支
- Truegit branch -d feature/payment
+ git branch -d feature/payment
  ```
 
 #### 7.2.3 大型项目（GitFlow）
 ```bash
  # 初始化 GitFlow
- Truegit flow init
+ git flow init
  # 创建功能分支
- Truegit flow feature start user-profile
+ git flow feature start user-profile
  # 开发完成
- Truegit flow feature finish user-profile
+ git flow feature finish user-profile
  # 创建发布分支
- Truegit flow release start v2.0.0
+ git flow release start v2.0.0
  # 完成发布
- Truegit flow release finish v2.0.0
+ git flow release finish v2.0.0
  # 紧急修复
- Truegit flow hotfix start critical-bug
+ git flow hotfix start critical-bug
  ```
 
 <a id="8"></a>

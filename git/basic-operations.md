@@ -30,7 +30,7 @@ Git 中的文件有两种状态：
 - **未追踪（Untracked）**：不在版本控制中的新文件
 ### 1.3 文件状态流转
 ```
- True未追踪 ──git add──> 已暂存 ──git commit──> 未修改
+ 未追踪 ──git add──> 已暂存 ──git commit──> 未修改
   ^ |
   | v
   └── rm / 删除文件 <── 已修改 <── 编辑文件 ──┘
@@ -39,7 +39,7 @@ Git 中的文件有两种状态：
 ## 2. 状态管理
 ### 2.1 查看状态
 ```bash
- Truegit status
+ git status
  ```
 
 输出说明：
@@ -48,7 +48,7 @@ Git 中的文件有两种状态：
 - `Untracked files`：未追踪的新文件
 ### 2.2 简略格式
 ```bash
- Truegit status -s
+ git status -s
  ```
 
 输出标记：
@@ -60,26 +60,26 @@ Git 中的文件有两种状态：
 ### 3.1 暂存操作
 ```bash
  # 暂存单个文件
- Truegit add <file>
+ git add <file>
  # 暂存所有文件
- Truegit add .
+ git add .
  # 暂存所有已追踪文件的修改
- Truegit add -u
+ git add -u
  # 交互式暂存
- Truegit add -p
+ git add -p
  ```
 
 ### 3.2 提交操作
 ```bash
  # 提交暂存区的文件
- Truegit commit -m "commit message"
+ git commit -m "commit message"
  # 提交所有已追踪文件的修改（跳过暂存）
- Truegit commit -a -m "commit message"
+ git commit -a -m "commit message"
  # 修改最后一次提交
- Truegit commit --amend -m "new message"
+ git commit --amend -m "new message"
  # 提交空目录（需要在里面添加 .gitkeep）
- Truegit add directory/.gitkeep
- Truegit commit -m "add directory"
+ git add directory/.gitkeep
+ git commit -m "add directory"
  ```
 
 ### 3.3 提交信息规范
@@ -102,94 +102,94 @@ Git 中的文件有两种状态：
 ### 4.1 查看提交历史
 ```bash
  # 查看完整提交历史
- Truegit log
+ git log
  # 查看简洁的提交历史
- Truegit log --oneline
+ git log --oneline
  # 查看最近 N 次提交
- Truegit log -n 5
+ git log -n 5
  # 查看分支合并历史
- Truegit log --graph --oneline --all
+ git log --graph --oneline --all
  # 查看特定文件的修改历史
- Truegit log <file>
+ git log <file>
  # 查看某次提交的详细信息
- Truegit show <commit-hash>
+ git show <commit-hash>
  ```
 
 ### 4.2 查看差异
 ```bash
  # 查看工作区与暂存区的差异
- Truegit diff
+ git diff
  # 查看暂存区与上次提交的差异
- Truegit diff --cached
+ git diff --cached
  # 查看两个分支的差异
- Truegit diff <branch1>..<branch2>
+ git diff <branch1>..<branch2>
  # 查看特定文件的差异
- Truegit diff <file>
+ git diff <file>
  ```
 
 ## 5. 标签管理
 ### 5.1 创建标签
 ```bash
  # 创建轻量标签
- Truegit tag <tag-name>
+ git tag <tag-name>
  # 创建附注标签
- Truegit tag -a <tag-name> -m "tag message"
+ git tag -a <tag-name> -m "tag message"
  # 为特定提交创建标签
- Truegit tag -a <tag-name> <commit-hash> -m "tag message"
+ git tag -a <tag-name> <commit-hash> -m "tag message"
  ```
 
 ### 5.2 查看和操作标签
 ```bash
  # 查看所有标签
- Truegit tag
+ git tag
  # 查看标签详细信息
- Truegit show <tag-name>
+ git show <tag-name>
  # 删除标签
- Truegit tag -d <tag-name>
+ git tag -d <tag-name>
  # 推送标签到远程
- Truegit push <remote-name> <tag-name>
+ git push <remote-name> <tag-name>
  # 推送所有标签到远程
- Truegit push <remote-name> --tags
+ git push <remote-name> --tags
  # 检出到特定标签
- Truegit checkout <tag-name>
+ git checkout <tag-name>
  ```
 
 ## 6. 撤销操作
 ### 6.1 撤销工作区修改
 ```bash
  # 撤销单个文件的修改
- Truegit checkout -- <file>
+ git checkout -- <file>
  # 撤销所有文件的修改
- Truegit checkout -- .
+ git checkout -- .
  # 使用 git restore（Git 2.23+）
- Truegit restore <file>
- Truegit restore .
+ git restore <file>
+ git restore .
  ```
 
 ### 6.2 撤销暂存
 ```bash
  # 撤销暂存（保留工作区修改）
- Truegit reset HEAD <file>
+ git reset HEAD <file>
  # 使用 git restore（Git 2.23+）
- Truegit restore --staged <file>
+ git restore --staged <file>
  ```
 
 ### 6.3 撤销提交
 ```bash
  # 软回退：撤销提交，保留修改在暂存区
- Truegit reset --soft HEAD~1
+ git reset --soft HEAD~1
  # 混合回退：撤销提交，保留修改在工作区
- Truegit reset --mixed HEAD~1
+ git reset --mixed HEAD~1
  # 硬回退：撤销提交，丢弃所有修改
- Truegit reset --hard HEAD~1
+ git reset --hard HEAD~1
  ```
 
 ### 6.4 使用 git revert
 ```bash
  # 创建一个新提交来撤销指定提交
- Truegit revert <commit-hash>
+ git revert <commit-hash>
  # 撤销多个提交
- Truegit revert <commit-hash1> <commit-hash2>
+ git revert <commit-hash1> <commit-hash2>
  ```
 
 **注意**：`git reset` 会改写历史，已推送到远程的提交不建议使用；`git revert` 是安全的撤销方式，会创建新的提交。
@@ -197,59 +197,59 @@ Git 中的文件有两种状态：
 ### 7.1 添加和查看远程仓库
 ```bash
  # 添加远程仓库
- Truegit remote add origin <url>
+ git remote add origin <url>
  # 查看远程仓库
- Truegit remote -v
+ git remote -v
  # 修改远程仓库 URL
- Truegit remote set-url origin <new-url>
+ git remote set-url origin <new-url>
  # 删除远程仓库
- Truegit remote remove origin
+ git remote remove origin
  ```
 
 ### 7.2 推送和拉取
 ```bash
  # 推送到远程仓库
- Truegit push origin main
+ git push origin main
  # 拉取远程仓库的更新
- Truegit pull origin main
+ git pull origin main
  # 获取远程仓库的更新（不合并）
- Truegit fetch origin
+ git fetch origin
  ```
 
 ## 8. 日常开发流程
 ### 8.1 标准开发流程
 ```bash
  # 1. 拉取最新代码
- Truegit pull origin main
+ git pull origin main
  # 2. 创建功能分支
- Truegit checkout -b feature/new-feature
+ git checkout -b feature/new-feature
  # 3. 开发并提交
- Truegit add .
- Truegit commit -m "feat: add new feature"
+ git add .
+ git commit -m "feat: add new feature"
  # 4. 推送到远程
- Truegit push origin feature/new-feature
+ git push origin feature/new-feature
  # 5. 合并到主分支
- Truegit checkout main
- Truegit merge feature/new-feature
- Truegit push origin main
+ git checkout main
+ git merge feature/new-feature
+ git push origin main
  # 6. 删除功能分支
- Truegit branch -d feature/new-feature
+ git branch -d feature/new-feature
  ```
 
 ### 8.2 紧急修复流程
 ```bash
  # 1. 创建修复分支
- Truegit checkout -b hotfix/fix-bug
+ git checkout -b hotfix/fix-bug
  # 2. 修复并提交
- Truegit add .
- Truegit commit -m "fix: fix critical bug"
+ git add .
+ git commit -m "fix: fix critical bug"
  # 3. 合并到主分支和开发分支
- Truegit checkout main
- Truegit merge hotfix/fix-bug
- Truegit checkout develop
- Truegit merge hotfix/fix-bug
+ git checkout main
+ git merge hotfix/fix-bug
+ git checkout develop
+ git merge hotfix/fix-bug
  # 4. 删除修复分支
- Truegit branch -d hotfix/fix-bug
+ git branch -d hotfix/fix-bug
  ```
 
 ## 9. 最佳实践

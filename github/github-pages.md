@@ -60,44 +60,44 @@
  # macOS：使用 Homebrew: brew install ruby
  # Linux：使用包管理器
  # 安装 Jekyll 和 Bundler
- Truegem install jekyll bundler
+ gem install jekyll bundler
  # 检查安装
- Truejekyll -v
+ jekyll -v
  ```
 
 ### 5.2 创建站点
 ```bash
  # 创建新站点
- Truejekyll new my-site
- Truecd my-site
+ jekyll new my-site
+ cd my-site
  # 安装依赖
- Truebundle install
+ bundle install
  # 本地预览
- Truebundle exec jekyll serve
+ bundle exec jekyll serve
  # 访问 http://localhost:4000
  ```
 
 ### 5.3 配置文件
 `_config.yml`：
 ```yaml
- Truetitle: My Site
- Trueemail: your-email@example.com
- Truedescription: >- # this means to ignore newlines until "baseurl":
+ title: My Site
+ email: your-email@example.com
+ description: >- # this means to ignore newlines until "baseurl":
   Write an awesome description for your new site here. You can edit this
   line in _config.yml. It will appear in your document head meta (for
   Google search results) and in your feed.xml site description.
- Truebaseurl: "" # the subpath of your site, e.g. /blog
- Trueurl: "https://yourusername.github.io" # the base hostname & protocol for your site, e.g. http://example.com
- Truetwitter_username: jekyllrb
- Truegithub_username: jekyll
+ baseurl: "" # the subpath of your site, e.g. /blog
+ url: "https://yourusername.github.io" # the base hostname & protocol for your site, e.g. http://example.com
+ twitter_username: jekyllrb
+ github_username: jekyll
  # Build settings
- Truetheme: minima
- Trueplugins:
+ theme: minima
+ plugins:
   - jekyll-feed
  # Exclude from processing.
  # The following items will not be processed, by default. Create a custom list
  # to override the default setting.
- Trueexclude:
+ exclude:
   - Gemfile
   - Gemfile.lock
   - node_modules
@@ -109,36 +109,36 @@
 
 ### 5.4 目录结构
 ```
- Truemy-site/
- True├── _config.yml
- True├── _data/
- True├── _drafts/
- True├── _includes/
- True├── _layouts/
- True├── _posts/
- True├── _sass/
- True├── assets/
- True├── Gemfile
- True├── Gemfile.lock
- True└── index.md
+ my-site/
+ ├── _config.yml
+ ├── _data/
+ ├── _drafts/
+ ├── _includes/
+ ├── _layouts/
+ ├── _posts/
+ ├── _sass/
+ ├── assets/
+ ├── Gemfile
+ ├── Gemfile.lock
+ └── index.md
  ```
 
 ### 5.5 GitHub Actions 部署
 `.github/workflows/jekyll.yml`：
 ```yaml
- Truename: Deploy Jekyll site to Pages
- Trueon:
+ name: Deploy Jekyll site to Pages
+ on:
   push:
   branches: [main]
   workflow_dispatch:
- Truepermissions:
+ permissions:
   contents: read
   pages: write
   id-token: write
- Trueconcurrency:
+ concurrency:
   group: "pages"
   cancel-in-progress:  
- Truejobs:
+ jobs:
   build:
   runs-on: ubuntu-latest
   steps:
@@ -172,23 +172,23 @@
 ```bash
  # 安装 Node.js（推荐 16+）
  # 检查安装
- Truenode -v
- Truenpm -v
+ node -v
+ npm -v
  ```
 
 ### 6.2 创建站点
 ```bash
  # 创建 VitePress 站点
- Truenpm create vitepress@latest docs
+ npm create vitepress@latest docs
  # 进入目录
- Truecd docs
+ cd docs
  # 安装依赖
- Truenpm install
+ npm install
  # 本地预览
- Truenpm run docs:dev
+ npm run docs:dev
  # 访问 http://localhost:5173
  # 构建
- Truenpm run docs:build
+ npm run docs:build
  # 构建产物在 .vitepress/dist 目录
  ```
 
@@ -223,34 +223,34 @@
 ### 6.4 目录结构
 ```
  docs/
- True├── .vitepress/
- True│ ├── config.ts
- True│ └── dist/
- True├── guide/
- True│ ├── index.md
- True│ └── getting-started.md
- True├── api/
- True│ ├── index.md
- True│ └── reference.md
- True└── index.md
+ ├── .vitepress/
+ │ ├── config.ts
+ │ └── dist/
+ ├── guide/
+ │ ├── index.md
+ │ └── getting-started.md
+ ├── api/
+ │ ├── index.md
+ │ └── reference.md
+ └── index.md
  ```
 
 ### 6.5 GitHub Actions 部署
 `.github/workflows/vitepress.yml`：
 ```yaml
- Truename: Deploy VitePress site to Pages
- Trueon:
+ name: Deploy VitePress site to Pages
+ on:
   push:
   branches: [main]
   workflow_dispatch:
- Truepermissions:
+ permissions:
   contents: read
   pages: write
   id-token: write
- Trueconcurrency:
+ concurrency:
   group: "pages"
   cancel-in-progress:  
- Truejobs:
+ jobs:
   build:
   runs-on: ubuntu-latest
   steps:
@@ -291,37 +291,37 @@
  # macOS：使用 Homebrew: brew install hugo
  # Linux：使用包管理器或二进制文件
  # 检查安装
- Truehugo version
+ hugo version
  ```
 
 ### 7.2 创建站点
 ```bash
  # 创建新站点
- Truehugo new site my-site --format yaml
- Truecd my-site
+ hugo new site my-site --format yaml
+ cd my-site
  # 添加主题（使用 git submodule）
- Truegit init
- Truegit submodule add https://github.com/theNewDynamic/gohugo-theme-ananke.git themes/ananke
+ git init
+ git submodule add https://github.com/theNewDynamic/gohugo-theme-ananke.git themes/ananke
  # 配置主题
- Trueecho 'theme: ananke' >> config.yaml
+ echo 'theme: ananke' >> config.yaml
  # 创建内容
- Truehugo new posts/my-first-post.md
+ hugo new posts/my-first-post.md
  # 本地预览
- Truehugo server -D
+ hugo server -D
  # 访问 http://localhost:1313
  # 构建
- Truehugo --minify
+ hugo --minify
  # 构建产物在 public 目录
  ```
 
 ### 7.3 配置文件
 `config.yaml`：
 ```yaml
- TruebaseURL: https://yourusername.github.io/repo/ # 项目站点需要设置
- TruelanguageCode: en-us
- Truetitle: My New Hugo Site
- Truetheme: ananke
- Trueparams:
+ baseURL: https://yourusername.github.io/repo/ # 项目站点需要设置
+ languageCode: en-us
+ title: My New Hugo Site
+ theme: ananke
+ params:
   description: "My Hugo site"
   author: "Your Name"
   social:
@@ -331,36 +331,36 @@
 
 ### 7.4 目录结构
 ```
- Truemy-site/
- True├── archetypes/
- True├── content/
- True│ └── posts/
- True│ └── my-first-post.md
- True├── data/
- True├── layouts/
- True├── static/
- True├── themes/
- True│ └── ananke/
- True├── config.yaml
- True└── go.mod
+ my-site/
+ ├── archetypes/
+ ├── content/
+ │ └── posts/
+ │ └── my-first-post.md
+ ├── data/
+ ├── layouts/
+ ├── static/
+ ├── themes/
+ │ └── ananke/
+ ├── config.yaml
+ └── go.mod
  ```
 
 ### 7.5 GitHub Actions 部署
 `.github/workflows/hugo.yml`：
 ```yaml
- Truename: Deploy Hugo site to Pages
- Trueon:
+ name: Deploy Hugo site to Pages
+ on:
   push:
   branches: [main]
   workflow_dispatch:
- Truepermissions:
+ permissions:
   contents: read
   pages: write
   id-token: write
- Trueconcurrency:
+ concurrency:
   group: "pages"
   cancel-in-progress:  
- Truejobs:
+ jobs:
   build:
   runs-on: ubuntu-latest
   steps:
@@ -406,9 +406,9 @@
 ### 8.3 验证配置
 ```bash
  # 验证 DNS 配置
- Truedig yourdomain.com +noall +answer
+ dig yourdomain.com +noall +answer
  # 验证 HTTPS
- Truecurl -I https://yourdomain.com
+ curl -I https://yourdomain.com
  ```
 
 ## 9. 常见问题与解决方案

@@ -37,19 +37,19 @@
 **示例**:
 ```python
  # 打开文件进行读取
- Truef = open("data.txt", "r", encoding="utf-8")
+ f = open("data.txt", "r", encoding="utf-8")
  # 打开文件进行写入
- Truef = open("output.txt", "w", encoding="utf-8")
+ f = open("output.txt", "w", encoding="utf-8")
  # 打开文件进行追加
- Truef = open("log.txt", "a", encoding="utf-8")
+ f = open("log.txt", "a", encoding="utf-8")
  # 打开二进制文件
- Truef = open("image.jpg", "rb")
+ f = open("image.jpg", "rb")
  ```
 
 ### 1.2 `close()` 方法
 文件使用完毕后，必须调用 `close()` 方法关闭文件，以释放系统资源。
 ```python
- Truef = open("data.txt", "r")
+ f = open("data.txt", "r")
  try:
   content = f.read()
  finally:
@@ -120,7 +120,7 @@
 #### 2.2.2 `writelines()` 方法
 写入字符串列表到文件。
 ```python
- Truelines = ["Line 1\n", "Line 2\n", "Line 3\n"]
+ lines = ["Line 1\n", "Line 2\n", "Line 3\n"]
  with open("output.txt", "w") as f:
   f.writelines(lines)
  ```
@@ -237,7 +237,7 @@
   break
   dst.write(chunk)
  # 使用
- Truecopy_file("source.jpg", "destination.jpg")
+ copy_file("source.jpg", "destination.jpg")
  ```
 
 ## 6. 文件编码
@@ -279,7 +279,7 @@
   # 处理每一行
   process_line(line)
  # 使用
- Trueprocess_large_file("large_file.txt")
+ process_large_file("large_file.txt")
  ```
 
 ### 7.2 分块读取
@@ -294,7 +294,7 @@
   # 处理每一块
   process_chunk(chunk)
  # 使用
- Trueprocess_large_binary_file("large_file.bin")
+ process_large_binary_file("large_file.bin")
  ```
 
 ### 7.3 示例：统计大文件中的单词数
@@ -316,10 +316,10 @@
 ```python
  import os
  # 获取当前目录
- Truecurrent_dir = os.getcwd()
+ current_dir = os.getcwd()
  print(f"Current directory: {current_dir}")
  # 路径拼接
- Truefile_path = os.path.join(current_dir, "data.txt")
+ file_path = os.path.join(current_dir, "data.txt")
  print(f"File path: {file_path}")
  # 检查文件是否存在
  if os.path.exists(file_path):
@@ -347,7 +347,7 @@
  import os
  import shutil
  # 创建目录
- Trueos.makedirs("new_directory", exist_ok=True)
+ os.makedirs("new_directory", exist_ok=True)
  # 重命名文件
  if os.path.exists("old_name.txt"):
   os.rename("old_name.txt", "new_name.txt")
@@ -390,7 +390,7 @@
   except Exception as e:
   print(f"Error: {e}")
  # 使用
- Trueread_and_process_text("input.txt")
+ read_and_process_text("input.txt")
  ```
 
 ### 9.2 CSV 文件处理
@@ -408,15 +408,15 @@
   writer = csv.writer(f)
   writer.writerows(data)
  # 使用
- Trueread_csv("data.csv")
+ read_csv("data.csv")
  # 写入数据
- Truedata = [
+ data = [
   ["Name", "Age", "City"],
   ["Alice", 30, "New York"],
   ["Bob", 25, "London"],
   ["Charlie", 35, "Paris"]
  True]
- Truewrite_csv("output.csv", data)
+ write_csv("output.csv", data)
  ```
 
 ### 9.3 JSON 文件处理
@@ -433,7 +433,7 @@
   json.dump(data, f, indent=2, ensure_ascii=False)
  # 使用
  # 读取 JSON
- Truedata = read_json("data.json")
+ data = read_json("data.json")
  print(data)
  # 写入 JSON
  new_data = {
@@ -442,7 +442,7 @@
   "city": "New York",
   "hobbies": ["reading", "traveling", "coding"]
  True}
- Truewrite_json("output.json", new_data)
+ write_json("output.json", new_data)
  ```
 
 ### 9.4 日志文件处理
@@ -455,9 +455,9 @@
   with open(log_file, "a", encoding="utf-8") as f:
   f.write(log_entry)
  # 使用
- Truelog_message("Application started")
- Truelog_message("User logged in: Alice")
- Truelog_message("Error: Database connection failed")
+ log_message("Application started")
+ log_message("User logged in: Alice")
+ log_message("Error: Database connection failed")
  ```
 
 ## 10. 最佳实践

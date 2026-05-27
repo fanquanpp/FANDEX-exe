@@ -31,7 +31,7 @@ GitHub 支持多种类型的 Issue 模板：
 在仓库根目录创建 `.github/ISSUE_TEMPLATE/` 目录，然后添加相应的模板文件：
 ```
  .github/
- True└── ISSUE_TEMPLATE/
+ └── ISSUE_TEMPLATE/
   ├── bug_report.md
   ├── feature_request.md
   ├── question.md
@@ -42,11 +42,11 @@ GitHub 支持多种类型的 Issue 模板：
 每个模板文件都需要包含 YAML 前置元数据：
 ```markdown
  True---
- Truename: 模板名称
- Trueabout: 模板用途
- Truetitle: "[前缀] 标题"
- Truelabels: 标签1, 标签2
- Trueassignees: 处理人
+ name: 模板名称
+ about: 模板用途
+ title: "[前缀] 标题"
+ labels: 标签1, 标签2
+ assignees: 处理人
  True---
  ```
 
@@ -54,57 +54,57 @@ GitHub 支持多种类型的 Issue 模板：
 ##### 2.2.3.1 Bug 报告模板
 ```markdown
  True---
- Truename: Bug 报告
- Trueabout: 报告可复现的缺陷
- Truetitle: "[BUG] "
- Truelabels: bug
+ name: Bug 报告
+ about: 报告可复现的缺陷
+ title: "[BUG] "
+ labels: bug
  templates: bug_report.md
- Trueassignees: ""
+ assignees: ""
  True---
  ## 环境
  True- OS：例如 Windows 11, macOS 14, Ubuntu 22.04
  True- 版本：例如 v1.2.3
  True- 浏览器（如果适用）：例如 Chrome 100, Firefox 98
  ## 复现步骤
- True1. 打开应用
- True2. 点击 X 按钮
- True3. 输入 Y
- True4. 观察结果
+ 1. 打开应用
+ 2. 点击 X 按钮
+ 3. 输入 Y
+ 4. 观察结果
  ## 期望行为
- True描述你期望看到的结果
+ 描述你期望看到的结果
  ## 实际行为
- True描述实际发生的情况
+ 描述实际发生的情况
  ## 截图
- True如果适用，请添加截图来帮助解释问题
+ 如果适用，请添加截图来帮助解释问题
  ## 额外信息
- True任何其他相关信息
+ 任何其他相关信息
  ```
 
 ##### 2.2.3.2 功能请求模板
 ```markdown
  True---
- Truename: 功能请求
- Trueabout: 建议新功能
- Truetitle: "[FEATURE] "
- Truelabels: enhancement
+ name: 功能请求
+ about: 建议新功能
+ title: "[FEATURE] "
+ labels: enhancement
  templates: feature_request.md
- Trueassignees: ""
+ assignees: ""
  True---
  ## 功能描述
- True简要描述你希望添加的功能
+ 简要描述你希望添加的功能
  ## 问题背景
- True解释为什么需要这个功能，它解决了什么问题
+ 解释为什么需要这个功能，它解决了什么问题
  ## 实现建议
- True描述你希望如何实现这个功能
+ 描述你希望如何实现这个功能
  ## 额外信息
- True任何其他相关信息
+ 任何其他相关信息
  ```
 
 ### 2.3 模板配置文件
 使用 `config.yml` 文件可以自定义 Issue 模板选择界面：
 ```yaml
- Trueblank_issues_enabled: false
- Truecontact_links:
+ blank_issues_enabled: false
+ contact_links:
   - name: 社区支持
   url: https://github.com/org/repo/discussions
   about: 对于一般问题，请使用讨论区
@@ -152,13 +152,13 @@ GitHub 支持多种类型的 Issue 模板：
 ### 5.1 GitHub Actions 自动化
 #### 5.1.1 自动打标签
 ```yaml
- Truename: Label issues and PRs
- Trueon:
+ name: Label issues and PRs
+ on:
   issues:
   types: [opened, edited]
   pull_request:
   types: [opened, edited]
- Truejobs:
+ jobs:
   label:
   runs-on: ubuntu-latest
   steps:
@@ -169,11 +169,11 @@ GitHub 支持多种类型的 Issue 模板：
 
 #### 5.1.2 自动分配 Issue
 ```yaml
- Truename: Auto assign issues
- Trueon:
+ name: Auto assign issues
+ on:
   issues:
   types: [opened]
- Truejobs:
+ jobs:
   assign:
   runs-on: ubuntu-latest
   steps:

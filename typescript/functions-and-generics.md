@@ -145,11 +145,11 @@
  // 使用示例
  const numberContainer = new NumberContainer(42);
  console.log(numberContainer.getValue()); // 42
- TruenumberContainer.setValue(100);
+ numberContainer.setValue(100);
  console.log(numberContainer.getValue()); // 100
  const stringContainer = new StringContainer("Hello");
  console.log(stringContainer.getValue()); // Hello
- TruestringContainer.setValue("World");
+ stringContainer.setValue("World");
  console.log(stringContainer.getValue()); // World
  ```
 
@@ -163,7 +163,7 @@
  const stringNumberPair: Pair<string, number> = ["age", 30];
  const numberCallback: Callback<number> = (value) => console.log(`Value: ${value}`);
  const stringToNumber: Transform<string, number> = (value) => parseInt(value);
- TruenumberCallback(42); // 输出: Value: 42
+ numberCallback(42); // 输出: Value: 42
  console.log(stringToNumber("123")); // 输出: 123
  ```
 
@@ -181,9 +181,9 @@
   return arg;
  True}
  // 使用示例
- TruelogLength("Hello"); // 输出: Length: 5
- TruelogLength([1, 2, 3]); // 输出: Length: 3
- TruelogLength({ length: 10, value: "test" }); // 输出: Length: 10
+ logLength("Hello"); // 输出: Length: 5
+ logLength([1, 2, 3]); // 输出: Length: 3
+ logLength({ length: 10, value: "test" }); // 输出: Length: 10
  // 错误示例：数字没有 length 属性
  // logLength(42); // 编译错误
  ```
@@ -208,7 +208,7 @@
   length: 5,
   value: 42
  True};
- TrueprocessItem(item); // 输出: Name: Test, Length: 5
+ processItem(item); // 输出: Name: Test, Length: 5
  ```
 
 ### 3.3 泛型约束与 keyof
@@ -262,11 +262,11 @@
  // 使用示例
  const numberBox = new Box<number>(42);
  console.log(numberBox.getData()); // 42
- TruenumberBox.setData(100);
+ numberBox.setData(100);
  console.log(numberBox.getData()); // 100
  const stringBox = new Box<string>("Hello");
  console.log(stringBox.getData()); // Hello
- TruestringBox.setData("World");
+ stringBox.setData("World");
  console.log(stringBox.getData()); // World
  ```
 
@@ -283,11 +283,11 @@
  True}
  // 使用示例
  const numberPrinter = new Printer<number>();
- TruenumberPrinter.print(42); // 输出: 42
+ numberPrinter.print(42); // 输出: 42
  const stringPrinter = new Printer<string>();
- TruestringPrinter.print("Hello"); // 输出: Hello
+ stringPrinter.print("Hello"); // 输出: Hello
  const objPrinter = new Printer<{ name: string; toString(): string }>();
- TrueobjPrinter.print({ 
+ objPrinter.print({ 
   name: "Test", 
   toString() { return `Object: ${this.name}`; } 
  True}); // 输出: Object: Test
@@ -541,7 +541,7 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
   callback(node.value);
   node.children.forEach(child => traverse(child, callback));
  True}
- Truetraverse(tree, value => console.log(value)); // 输出: 1, 2, 4, 5, 3, 6
+ traverse(tree, value => console.log(value)); // 输出: 1, 2, 4, 5, 3, 6
  ```
 
 ### 7.2 条件类型与泛型
@@ -709,16 +709,16 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
  // 使用示例
  // 数字队列
  const numberQueue = new Queue<number>();
- TruenumberQueue.enqueue(1);
- TruenumberQueue.enqueue(2);
- TruenumberQueue.enqueue(3);
+ numberQueue.enqueue(1);
+ numberQueue.enqueue(2);
+ numberQueue.enqueue(3);
  console.log(numberQueue.dequeue()); // 1
  console.log(numberQueue.peek()); // 2
  // 字符串栈
  const stringStack = new Stack<string>();
- TruestringStack.push("a");
- TruestringStack.push("b");
- TruestringStack.push("c");
+ stringStack.push("a");
+ stringStack.push("b");
+ stringStack.push("c");
  console.log(stringStack.pop()); // c
  console.log(stringStack.peek()); // b
  // 对象队列

@@ -17,11 +17,11 @@
 多表联查是指通过一定的条件将两个或多个表的数据关联在一起，从而获取更丰富的信息。
 ```sql
  True-- 基本联查结构
- TrueSELECT 列列表
+ SELECT 列列表
  from 表1
- TrueJOIN 表2 ON 连接条件
- TrueJOIN 表3 ON 连接条件
- TrueWHERE 过滤条件;
+ JOIN 表2 ON 连接条件
+ JOIN 表3 ON 连接条件
+ WHERE 过滤条件;
  ```
 
 ### 1.2 联查的必要性
@@ -40,30 +40,30 @@
 **定义**：只返回两个表中匹配连接条件的行。
 **Venn 图表示**：两个集合的交集
 ```
- True表A 表B INNER JOIN
+ 表A 表B INNER JOIN
  True┌───────┐ ┌───────┐ ┌───────┐
- True│ 1 │ │ A │ │ 1, A │
- True│ 2 │────│ B │ │ 2, B │
- True│ 3 │────│ C │ │ 3, C │
- True│ 4 │ │ │ └───────┘
- True└───────┘ └───────┘
+ │ 1 │ │ A │ │ 1, A │
+ │ 2 │────│ B │ │ 2, B │
+ │ 3 │────│ C │ │ 3, C │
+ │ 4 │ │ │ └───────┘
+ └───────┘ └───────┘
  ```
 
 **语法**：
 ```sql
- TrueSELECT *
+ SELECT *
  from table1
  inNER JOIN table2 ON table1.id = table2.id;
  True-- 简写形式
- TrueSELECT *
+ SELECT *
  from table1
- TrueJOIN table2 ON table1.id = table2.id;
+ JOIN table2 ON table1.id = table2.id;
  ```
 
 **示例**：
 ```sql
  True-- 查询员工及其所属部门
- TrueSELECT e.emp_name, d.dept_name
+ SELECT e.emp_name, d.dept_name
  from employees e
  inNER JOIN departments d ON e.dept_id = d.dept_id;
  ```
@@ -72,56 +72,56 @@
 **定义**：返回左表的所有行，以及右表中匹配的行；右表不匹配的部分用 NULL 填充。
 **Venn 图表示**：左集合全部 + 交集部分
 ```
- True表A 表B LEFT JOIN
+ 表A 表B LEFT JOIN
  True┌───────┐ ┌───────┐ ┌───────┬─────┐
- True│ 1 │────│ A │ │ 1 │ A │
- True│ 2 │────│ B │ │ 2 │ B │
- True│ 3 │────│ C │ │ 3 │ C │
- True│ 4 │ │ │ │ 4 │NULL │
- True└───────┘ └───────┘ └───────┴─────┘
+ │ 1 │────│ A │ │ 1 │ A │
+ │ 2 │────│ B │ │ 2 │ B │
+ │ 3 │────│ C │ │ 3 │ C │
+ │ 4 │ │ │ │ 4 │NULL │
+ └───────┘ └───────┘ └───────┴─────┘
  ```
 
 **语法**：
 ```sql
- TrueSELECT *
+ SELECT *
  from table1
- TrueLEFT JOIN table2 ON table1.id = table2.id;
+ LEFT JOIN table2 ON table1.id = table2.id;
  ```
 
 **示例**：
 ```sql
  True-- 查询所有部门及其员工（包括没有员工的部门）
- TrueSELECT d.dept_name, e.emp_name
+ SELECT d.dept_name, e.emp_name
  from departments d
- TrueLEFT JOIN employees e ON d.dept_id = e.dept_id;
+ LEFT JOIN employees e ON d.dept_id = e.dept_id;
  ```
 
 ### 2.3 RIGHT JOIN（右外连接）
 **定义**：返回右表的所有行，以及左表中匹配的行；左表不匹配的部分用 NULL 填充。
 **Venn 图表示**：右集合全部 + 交集部分
 ```
- True表A 表B RIGHT JOIN
+ 表A 表B RIGHT JOIN
  True┌───────┐ ┌───────┐ ┌─────┬───────┐
- True│ 1 │────│ A │ │ 1 │ A │
- True│ 2 │────│ B │ │ 2 │ B │
- True│ │ │ C │ │NULL │ C │
- True│ │ │ D │ │NULL │ D │
- True└───────┘ └───────┘ └─────┴───────┘
+ │ 1 │────│ A │ │ 1 │ A │
+ │ 2 │────│ B │ │ 2 │ B │
+ │ │ │ C │ │NULL │ C │
+ │ │ │ D │ │NULL │ D │
+ └───────┘ └───────┘ └─────┴───────┘
  ```
 
 **语法**：
 ```sql
- TrueSELECT *
+ SELECT *
  from table1
- TrueRIGHT JOIN table2 ON table1.id = table2.id;
+ RIGHT JOIN table2 ON table1.id = table2.id;
  ```
 
 **示例**：
 ```sql
  True-- 查询所有订单及其用户（包括没有关联用户的订单）
- TrueSELECT o.order_id, u.username
+ SELECT o.order_id, u.username
  from users u
- TrueRIGHT JOIN orders o ON u.id = o.user_id;
+ RIGHT JOIN orders o ON u.id = o.user_id;
  ```
 
 ### 2.4 FULL JOIN（全外连接）
@@ -129,26 +129,26 @@
 **注意**：MySQL 不直接支持 FULL JOIN，需要通过 `UNION` 模拟。
 **Venn 图表示**：两个集合的并集
 ```
- True表A 表B FULL JOIN
+ 表A 表B FULL JOIN
  True┌───────┐ ┌───────┐ ┌─────┬─────┐
- True│ 1 │────│ A │ │ 1 │ A │
- True│ 2 │────│ B │ │ 2 │ B │
- True│ 3 │ │ C │ │ 3 │NULL │
- True│ │ │ D │ │NULL │ C │
- True└───────┘ └───────┘ │NULL │ D │
+ │ 1 │────│ A │ │ 1 │ A │
+ │ 2 │────│ B │ │ 2 │ B │
+ │ 3 │ │ C │ │ 3 │NULL │
+ │ │ │ D │ │NULL │ C │
+ └───────┘ └───────┘ │NULL │ D │
   └─────┴─────┘
  ```
 
 **语法**：
 ```sql
  True-- 模拟 FULL JOIN
- TrueSELECT *
+ SELECT *
  from table1
- TrueLEFT JOIN table2 ON table1.id = table2.id
- TrueUNION
- TrueSELECT *
+ LEFT JOIN table2 ON table1.id = table2.id
+ UNION
+ SELECT *
  from table1
- TrueRIGHT JOIN table2 ON table1.id = table2.id;
+ RIGHT JOIN table2 ON table1.id = table2.id;
  ```
 
 ### 2.5 CROSS JOIN（交叉连接）
@@ -157,19 +157,19 @@
 **语法**：
 ```sql
  True-- 显式交叉连接
- TrueSELECT * FROM table1 CROSS JOIN table2;
+ SELECT * FROM table1 CROSS JOIN table2;
  True-- 隐式交叉连接
- TrueSELECT * FROM table1, table2;
+ SELECT * FROM table1, table2;
  True-- 带条件的交叉连接
- TrueSELECT * FROM table1 CROSS JOIN table2 WHERE condition;
+ SELECT * FROM table1 CROSS JOIN table2 WHERE condition;
  ```
 
 **示例**：
 ```sql
  True-- 生成部门和员工的所有组合
- TrueSELECT d.dept_name, e.emp_name
+ SELECT d.dept_name, e.emp_name
  from departments d
- TrueCROSS JOIN employees e;
+ CROSS JOIN employees e;
  ```
 
 ### 2.6 NATURAL JOIN（自然连接）
@@ -178,42 +178,42 @@
 **语法**：
 ```sql
  True-- 自然内连接
- TrueSELECT * FROM employees NATURAL JOIN departments;
+ SELECT * FROM employees NATURAL JOIN departments;
  True-- 自然左连接
- TrueSELECT * FROM employees NATURAL LEFT JOIN departments;
+ SELECT * FROM employees NATURAL LEFT JOIN departments;
  True-- 自然右连接
- TrueSELECT * FROM employees NATURAL RIGHT JOIN departments;
+ SELECT * FROM employees NATURAL RIGHT JOIN departments;
  ```
 
 ### 2.7 USING 子句
 **定义**：当两个表有相同列名时，可以使用 USING 简化连接语法。
 **语法**：
 ```sql
- TrueSELECT e.emp_name, d.dept_name
+ SELECT e.emp_name, d.dept_name
  from employees e
- TrueJOIN departments d USING (dept_id);
+ JOIN departments d USING (dept_id);
  ```
 
 **等价于**：
 ```sql
- TrueSELECT e.emp_name, d.dept_name
+ SELECT e.emp_name, d.dept_name
  from employees e
- TrueJOIN departments d ON e.dept_id = d.dept_id;
+ JOIN departments d ON e.dept_id = d.dept_id;
  ```
 
 ---
 ## 3. 联查执行原理
 ### 3.1 联查执行顺序
 ```sql
- TrueSELECT 列列表 -- 5. 选择列
+ SELECT 列列表 -- 5. 选择列
  from 表1 -- 1. 加载表1
- TrueJOIN 表2 ON 条件 -- 2. 联查表2
- TrueJOIN 表3 ON 条件 -- 3. 联查表3
- TrueWHERE 过滤条件 -- 4. 过滤行
- TrueGROUP BY 分组列 -- 6. 分组
- TrueHAVING 分组过滤 -- 7. 分组过滤
- TrueORDER BY 排序列 -- 8. 排序
- TrueLIMIT 限制行数; -- 9. 限制结果
+ JOIN 表2 ON 条件 -- 2. 联查表2
+ JOIN 表3 ON 条件 -- 3. 联查表3
+ WHERE 过滤条件 -- 4. 过滤行
+ GROUP BY 分组列 -- 6. 分组
+ HAVING 分组过滤 -- 7. 分组过滤
+ ORDER BY 排序列 -- 8. 排序
+ LIMIT 限制行数; -- 9. 限制结果
  ```
 
 ### 3.2 联查算法
@@ -222,10 +222,10 @@
 **适用场景**：小表驱动大表
 ```sql
  True-- 执行计划示例
- TrueEXPLAIN
- TrueSELECT e.emp_name, d.dept_name
+ EXPLAIN
+ SELECT e.emp_name, d.dept_name
  from employees e
- TrueJOIN departments d ON e.dept_id = d.dept_id;
+ JOIN departments d ON e.dept_id = d.dept_id;
  ```
 
 **执行过程**：
@@ -237,10 +237,10 @@
 **适用场景**：大表之间的连接，MySQL 8.0+ 支持
 ```sql
  True-- 强制使用哈希连接（MySQL 8.0+）
- TrueSELECT /*+ HASH_JOIN(d) */
+ SELECT /*+ HASH_JOIN(d) */
   e.emp_name, d.dept_name
  from employees e
- TrueJOIN departments d ON e.dept_id = d.dept_id;
+ JOIN departments d ON e.dept_id = d.dept_id;
  ```
 
 **执行过程**：
@@ -261,10 +261,10 @@
 3. 查看执行计划中的 `type` 和 `rows` 字段判断
 ```sql
  True-- 查看执行计划
- TrueEXPLAIN ANALYZE
- TrueSELECT e.emp_name, d.dept_name
+ EXPLAIN ANALYZE
+ SELECT e.emp_name, d.dept_name
  from employees e
- TrueJOIN departments d ON e.dept_id = d.dept_id;
+ JOIN departments d ON e.dept_id = d.dept_id;
  ```
 
 ---
@@ -272,37 +272,37 @@
 ### 4.1 一对多关系联查
 ```sql
  True-- 订单与订单项（一对多）
- TrueSELECT 
+ SELECT 
   o.order_id,
   o.order_date,
   oi.product_name,
   oi.quantity,
   oi.price
  from orders o
- TrueJOIN order_items oi ON o.order_id = oi.order_id
- TrueWHERE o.order_date >= '2024-01-01';
+ JOIN order_items oi ON o.order_id = oi.order_id
+ WHERE o.order_date >= '2024-01-01';
  ```
 
 ### 4.2 多对多关系联查
 ```sql
  True-- 学生与课程（多对多，需中间表）
- TrueSELECT 
+ SELECT 
   s.student_name,
   c.course_name
  from students s
- TrueJOIN student_course sc ON s.student_id = sc.student_id
- TrueJOIN courses c ON sc.course_id = c.course_id
- TrueWHERE c.course_name = '数学';
+ JOIN student_course sc ON s.student_id = sc.student_id
+ JOIN courses c ON sc.course_id = c.course_id
+ WHERE c.course_name = '数学';
  ```
 
 ### 4.3 自连接
 ```sql
  True-- 查询员工及其上级
- TrueSELECT 
+ SELECT 
   e.emp_name AS 员工,
   m.emp_name AS 上级
  from employees e
- TrueLEFT JOIN employees m ON e.manager_id = m.emp_id;
+ LEFT JOIN employees m ON e.manager_id = m.emp_id;
  True-- 查询层级关系
  with RECURSIVE emp_hierarchy AS (
   SELECT emp_id, emp_name, manager_id, 1 AS level
@@ -313,13 +313,13 @@
   FROM employees e
   JOIN emp_hierarchy eh ON e.manager_id = eh.emp_id
  True)
- TrueSELECT * FROM emp_hierarchy ORDER BY level, emp_id;
+ SELECT * FROM emp_hierarchy ORDER BY level, emp_id;
  ```
 
 ### 4.4 三表及以上联查
 ```sql
  True-- 查询订单完整信息（用户、订单、商品）
- TrueSELECT 
+ SELECT 
   u.username,
   o.order_id,
   o.order_date,
@@ -327,26 +327,26 @@
   oi.quantity,
   oi.price
  from users u
- TrueJOIN orders o ON u.id = o.user_id
- TrueJOIN order_items oi ON o.order_id = oi.order_id
- TrueJOIN products p ON oi.product_id = p.product_id
- TrueWHERE o.order_date BETWEEN '2024-01-01' AND '2024-01-31';
+ JOIN orders o ON u.id = o.user_id
+ JOIN order_items oi ON o.order_id = oi.order_id
+ JOIN products p ON oi.product_id = p.product_id
+ WHERE o.order_date BETWEEN '2024-01-01' AND '2024-01-31';
  ```
 
 ### 4.5 条件联查
 ```sql
  True-- 查询特定条件的联查
- TrueSELECT 
+ SELECT 
   e.emp_name,
   d.dept_name,
   COUNT(o.order_id) AS order_count
  from employees e
- TrueJOIN departments d ON e.dept_id = d.dept_id
- TrueLEFT JOIN orders o ON e.emp_id = o.emp_id
- TrueWHERE d.dept_name = '技术部'
+ JOIN departments d ON e.dept_id = d.dept_id
+ LEFT JOIN orders o ON e.emp_id = o.emp_id
+ WHERE d.dept_name = '技术部'
   AND e.hire_date < '2020-01-01'
- TrueGROUP BY e.emp_id, e.emp_name, d.dept_name
- TrueHAVING COUNT(o.order_id) > 10;
+ GROUP BY e.emp_id, e.emp_name, d.dept_name
+ HAVING COUNT(o.order_id) > 10;
  ```
 
 ---
@@ -355,12 +355,12 @@
 **原则**：确保连接列和 WHERE 条件列有索引
 ```sql
  True-- 创建连接列索引
- TrueCREATE INDEX idx_employees_dept_id ON employees(dept_id);
- TrueCREATE INDEX idx_orders_user_id ON orders(user_id);
+ CREATE INDEX idx_employees_dept_id ON employees(dept_id);
+ CREATE INDEX idx_orders_user_id ON orders(user_id);
  True-- 创建复合索引（覆盖查询）
- TrueCREATE INDEX idx_orders_user_date ON orders(user_id, order_date);
+ CREATE INDEX idx_orders_user_date ON orders(user_id, order_date);
  True-- 创建唯一索引
- TrueCREATE UNIQUE INDEX idx_users_email ON users(email);
+ CREATE UNIQUE INDEX idx_users_email ON users(email);
  ```
 
 ### 5.2 减少数据量
@@ -370,58 +370,58 @@
 3. 使用 LIMIT 限制结果集
 ```sql
  True-- 低效
- TrueSELECT * FROM employees JOIN departments ON ...;
+ SELECT * FROM employees JOIN departments ON ...;
  True-- 高效
- TrueSELECT e.emp_name, d.dept_name 
+ SELECT e.emp_name, d.dept_name 
  from employees e
- TrueJOIN departments d ON e.dept_id = d.dept_id
- TrueWHERE e.status = 1
- TrueLIMIT 100;
+ JOIN departments d ON e.dept_id = d.dept_id
+ WHERE e.status = 1
+ LIMIT 100;
  ```
 
 ### 5.3 优化连接顺序
 **原则**：小表驱动大表
 ```sql
  True-- 执行计划分析
- TrueEXPLAIN
- TrueSELECT e.emp_name, o.order_id
+ EXPLAIN
+ SELECT e.emp_name, o.order_id
  from employees e
- TrueJOIN orders o ON e.emp_id = o.emp_id;
+ JOIN orders o ON e.emp_id = o.emp_id;
  ```
 
 ### 5.4 使用提示优化器
 ```sql
  True-- 强制使用特定索引
- TrueSELECT /*+ INDEX(e idx_employees_dept_id) */
+ SELECT /*+ INDEX(e idx_employees_dept_id) */
   e.emp_name, d.dept_name
  from employees e
- TrueJOIN departments d ON e.dept_id = d.dept_id;
+ JOIN departments d ON e.dept_id = d.dept_id;
  True-- 强制哈希连接
- TrueSELECT /*+ HASH_JOIN(d) */
+ SELECT /*+ HASH_JOIN(d) */
   e.emp_name, d.dept_name
  from employees e
- TrueJOIN departments d ON e.dept_id = d.dept_id;
+ JOIN departments d ON e.dept_id = d.dept_id;
  True-- 强制排序合并连接
- TrueSELECT /*+ MERGE_JOIN(d) */
+ SELECT /*+ MERGE_JOIN(d) */
   e.emp_name, d.dept_name
  from employees e
- TrueJOIN departments d ON e.dept_id = d.dept_id;
+ JOIN departments d ON e.dept_id = d.dept_id;
  ```
 
 ### 5.5 避免复杂子查询
 **优化前**：
 ```sql
- TrueSELECT emp_name
+ SELECT emp_name
  from employees
- TrueWHERE dept_id IN (SELECT dept_id FROM departments WHERE dept_name LIKE '%技术%');
+ WHERE dept_id IN (SELECT dept_id FROM departments WHERE dept_name LIKE '%技术%');
  ```
 
 **优化后**：
 ```sql
- TrueSELECT e.emp_name
+ SELECT e.emp_name
  from employees e
- TrueJOIN departments d ON e.dept_id = d.dept_id
- TrueWHERE d.dept_name LIKE '%技术%';
+ JOIN departments d ON e.dept_id = d.dept_id
+ WHERE d.dept_name LIKE '%技术%';
  ```
 
 ---
@@ -432,14 +432,14 @@
 **解决方案**：
 ```sql
  True-- 使用 DISTINCT 去重
- TrueSELECT DISTINCT e.emp_name
+ SELECT DISTINCT e.emp_name
  from employees e
- TrueJOIN orders o ON e.emp_id = o.emp_id;
+ JOIN orders o ON e.emp_id = o.emp_id;
  True-- 使用 GROUP BY 去重
- TrueSELECT e.emp_name
+ SELECT e.emp_name
  from employees e
- TrueJOIN orders o ON e.emp_id = o.emp_id
- TrueGROUP BY e.emp_id, e.emp_name;
+ JOIN orders o ON e.emp_id = o.emp_id
+ GROUP BY e.emp_id, e.emp_name;
  ```
 
 ### 6.2 NULL 值处理
@@ -447,17 +447,17 @@
 **解决方案**：
 ```sql
  True-- 使用 COALESCE 替换 NULL
- TrueSELECT 
+ SELECT 
   e.emp_name,
   COALESCE(d.dept_name, '无部门') AS dept_name
  from employees e
- TrueLEFT JOIN departments d ON e.dept_id = d.dept_id;
+ LEFT JOIN departments d ON e.dept_id = d.dept_id;
  True-- 使用 IFNULL 替换 NULL
- TrueSELECT 
+ SELECT 
   e.emp_name,
   IFNULL(d.dept_name, '无部门') AS dept_name
  from employees e
- TrueLEFT JOIN departments d ON e.dept_id = d.dept_id;
+ LEFT JOIN departments d ON e.dept_id = d.dept_id;
  ```
 
 ### 6.3 性能问题
@@ -469,12 +469,12 @@
 4. 减少返回数据量
 ```sql
  True-- 分析执行计划
- TrueEXPLAIN ANALYZE
- TrueSELECT ...
+ EXPLAIN ANALYZE
+ SELECT ...
  True-- 查看索引使用情况
- TrueSHOW INDEX FROM employees;
+ SHOW INDEX FROM employees;
  True-- 查看慢查询日志
- TrueSHOW VARIABLES LIKE 'slow_query_log';
+ SHOW VARIABLES LIKE 'slow_query_log';
  ```
 
 ### 6.4 连接条件错误
@@ -486,13 +486,13 @@
 **解决方案**：
 ```sql
  True-- 错误：缺少连接条件
- TrueSELECT * FROM employees, departments; -- 笛卡尔积
+ SELECT * FROM employees, departments; -- 笛卡尔积
  True-- 正确：添加连接条件
- TrueSELECT * FROM employees e JOIN departments d ON e.dept_id = d.dept_id;
+ SELECT * FROM employees e JOIN departments d ON e.dept_id = d.dept_id;
  True-- 错误：错误的连接条件
- TrueSELECT * FROM employees e JOIN departments d ON e.emp_id = d.dept_id;
+ SELECT * FROM employees e JOIN departments d ON e.emp_id = d.dept_id;
  True-- 正确：使用正确的连接条件
- TrueSELECT * FROM employees e JOIN departments d ON e.dept_id = d.dept_id;
+ SELECT * FROM employees e JOIN departments d ON e.dept_id = d.dept_id;
  ```
 
 ---

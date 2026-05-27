@@ -294,7 +294,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
 ```cpp
  // 函数模板
  template <typename T>
- TrueT add(T a, T b) {
+ T add(T a, T b) {
   return a + b;
  True}
  // 类模板

@@ -26,14 +26,14 @@
 #### 1.2.2 类图
 ```
  True+----------------+ +----------------+ +----------------+ +----------------+
- True| FileManager |<----| CommandParser |---->| UI |<----| ErrorHandler |
+ | FileManager |<----| CommandParser |---->| UI |<----| ErrorHandler |
  True+----------------+ +----------------+ +----------------+ +----------------+
- True| - list_dir() | | - parse() | | - display() | | - handle() |
- True| - create_file()| | - get_command()| | - get_input() | | - log_error() |
- True| - delete_file()| +----------------+ +----------------+ +----------------+
- True| - move_file() |
- True| - copy_file() |
- True| - create_dir() |
+ | - list_dir() | | - parse() | | - display() | | - handle() |
+ | - create_file()| | - get_command()| | - get_input() | | - log_error() |
+ | - delete_file()| +----------------+ +----------------+ +----------------+
+ | - move_file() |
+ | - copy_file() |
+ | - create_dir() |
  True+----------------+
  ```
 
@@ -357,12 +357,12 @@
 ### 1.4 构建与部署
 #### 1.4.1 CMake 配置
 ```cmake
- Truecmake_minimum_required(VERSION 3.10)
- Trueproject(FileManager)
- Trueset(CMAKE_CXX_STANDARD 17)
- Trueset(CMAKE_CXX_STANDARD_REQUIRED ON)
+ cmake_minimum_required(VERSION 3.10)
+ project(FileManager)
+ set(CMAKE_CXX_STANDARD 17)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  # 添加可执行文件
- Trueadd_executable(FileManager 
+ add_executable(FileManager 
   main.cpp
   FileManager.cpp
   CommandParser.cpp
@@ -370,37 +370,37 @@
   ErrorHandler.cpp
  True)
  # 包含头文件目录
- Truetarget_include_directories(FileManager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+ target_include_directories(FileManager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
  # 链接必要的库
  if(WIN32)
   # Windows 特定配置
   target_link_libraries(FileManager PRIVATE shlwapi)
- Trueendif()
+ endif()
  ```
 
 #### 1.4.2 目录结构
 ```
- TrueFileManager/
- True├── CMakeLists.txt
- True├── main.cpp
- True├── FileManager.h
- True├── FileManager.cpp
- True├── CommandParser.h
- True├── CommandParser.cpp
- True├── UI.h
- True├── UI.cpp
- True├── ErrorHandler.h
- True├── ErrorHandler.cpp
- True└── error.log
+ FileManager/
+ ├── CMakeLists.txt
+ ├── main.cpp
+ ├── FileManager.h
+ ├── FileManager.cpp
+ ├── CommandParser.h
+ ├── CommandParser.cpp
+ ├── UI.h
+ ├── UI.cpp
+ ├── ErrorHandler.h
+ ├── ErrorHandler.cpp
+ └── error.log
  ```
 
 ### 1.5 测试
 #### 1.5.1 功能测试
 ```bash
  # 编译
- Truemkdir build && cd build
- Truecmake ..
- Truecmake --build .
+ mkdir build && cd build
+ cmake ..
+ cmake --build .
  # 运行
  ./FileManager
  # 测试命令
@@ -714,12 +714,12 @@
 ### 2.4 构建与部署
 #### 2.4.1 CMake 配置
 ```cmake
- Truecmake_minimum_required(VERSION 3.10)
- Trueproject(HTTPServer)
- Trueset(CMAKE_CXX_STANDARD 11)
- Trueset(CMAKE_CXX_STANDARD_REQUIRED ON)
+ cmake_minimum_required(VERSION 3.10)
+ project(HTTPServer)
+ set(CMAKE_CXX_STANDARD 11)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  # 添加可执行文件
- Trueadd_executable(HTTPServer 
+ add_executable(HTTPServer 
   main.cpp
   HTTPServer.cpp
   ThreadPool.cpp
@@ -727,27 +727,27 @@
   FileServer.cpp
  True)
  # 包含头文件目录
- Truetarget_include_directories(HTTPServer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+ target_include_directories(HTTPServer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
  # 链接必要的库
  if(UNIX)
   target_link_libraries(HTTPServer PRIVATE pthread)
- Trueendif()
+ endif()
  ```
 
 #### 2.4.2 目录结构
 ```
- TrueHTTPServer/
- True├── CMakeLists.txt
- True├── main.cpp
- True├── HTTPServer.h
- True├── HTTPServer.cpp
- True├── ThreadPool.h
- True├── ThreadPool.cpp
- True├── RequestHandler.h
- True├── RequestHandler.cpp
- True├── FileServer.h
- True├── FileServer.cpp
- True└── www/
+ HTTPServer/
+ ├── CMakeLists.txt
+ ├── main.cpp
+ ├── HTTPServer.h
+ ├── HTTPServer.cpp
+ ├── ThreadPool.h
+ ├── ThreadPool.cpp
+ ├── RequestHandler.h
+ ├── RequestHandler.cpp
+ ├── FileServer.h
+ ├── FileServer.cpp
+ └── www/
   ├── index.html
   ├── style.css
   └── script.js
@@ -757,19 +757,19 @@
 #### 2.5.1 功能测试
 ```bash
  # 编译
- Truemkdir build && cd build
- Truecmake ..
- Truecmake --build .
+ mkdir build && cd build
+ cmake ..
+ cmake --build .
  # 创建 www 目录和测试文件
- Truemkdir -p www
- Trueecho "<html><body><h1>Hello, HTTP Server!</h1></body></html>" > www/index.html
+ mkdir -p www
+ echo "<html><body><h1>Hello, HTTP Server!</h1></body></html>" > www/index.html
  # 运行服务器
  ./HTTPServer 8080
  # 在浏览器中访问
  # http://localhost:8080
  # 或使用 curl 测试
- Truecurl http://localhost:8080
- Truecurl http://localhost:8080/nonexistent.html
+ curl http://localhost:8080
+ curl http://localhost:8080/nonexistent.html
  ```
 
 ## 3. 项目三：简单的数据库系统
@@ -906,26 +906,26 @@
 ### 3.4 构建与部署
 #### 3.4.1 CMake 配置
 ```cmake
- Truecmake_minimum_required(VERSION 3.10)
- Trueproject(SimpleDatabase)
- Trueset(CMAKE_CXX_STANDARD 17)
- Trueset(CMAKE_CXX_STANDARD_REQUIRED ON)
+ cmake_minimum_required(VERSION 3.10)
+ project(SimpleDatabase)
+ set(CMAKE_CXX_STANDARD 17)
+ set(CMAKE_CXX_STANDARD_REQUIRED ON)
  # 添加可执行文件
- Trueadd_executable(SimpleDatabase 
+ add_executable(SimpleDatabase 
   main.cpp
   Database.cpp
  True)
  # 包含头文件目录
- Truetarget_include_directories(SimpleDatabase PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+ target_include_directories(SimpleDatabase PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
  ```
 
 ### 3.5 测试
 #### 3.5.1 功能测试
 ```bash
  # 编译
- Truemkdir build && cd build
- Truecmake ..
- Truecmake --build .
+ mkdir build && cd build
+ cmake ..
+ cmake --build .
  # 运行
  ./SimpleDatabase
  # 测试命令

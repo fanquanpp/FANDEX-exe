@@ -59,21 +59,21 @@ f(n) = omega(g(n)) 当且仅当对任意正常数c，存在n0，使得对所有 
 ### 2.2 常见复杂度等级
 从快到慢排列：
 ```
- TrueO(1) < O(log n) < O(sqrt(n)) < O(n) < O(n log n) < O(n^2) < O(n^3) < O(2^n) < O(n!) < O(n^n)
+ O(1) < O(log n) < O(sqrt(n)) < O(n) < O(n log n) < O(n^2) < O(n^3) < O(2^n) < O(n!) < O(n^n)
  ```
 
 **可视化：不同复杂度在n=1..20时的增长曲线**
 ```
- Truen值 | O(1) O(logn) O(n) O(nlogn) O(n^2) O(2^n)
+ n值 | O(1) O(logn) O(n) O(nlogn) O(n^2) O(2^n)
  True-------|--------------------------------------------------
- True1 | 1 0 1 0 1 2
- True2 | 1 1 2 2 4 4
- True4 | 1 2 4 8 16 16
- True8 | 1 3 8 24 64 256
- True16 | 1 4 16 64 256 65536
- True32 | 1 5 32 160 1024 4294967296
- True64 | 1 6 64 384 4096 1.8e19
- True1024 | 1 10 1024 10240 1048576 1.8e308
+ 1 | 1 0 1 0 1 2
+ 2 | 1 1 2 2 4 4
+ 4 | 1 2 4 8 16 16
+ 8 | 1 3 8 24 64 256
+ 16 | 1 4 16 64 256 65536
+ 32 | 1 5 32 160 1024 4294967296
+ 64 | 1 6 64 384 4096 1.8e19
+ 1024 | 1 10 1024 10240 1048576 1.8e308
  ```
 
 **实际意义**：假设每秒执行10^9次运算：
@@ -119,7 +119,7 @@ f(n) = omega(g(n)) 当且仅当对任意正常数c，存在n0，使得对所有 
 用m位比特数组近似表示n个元素的集合，查询O(k)（k个哈希函数），空间仅m/n比特/元素，代价是存在假阳性（误判存在）。
 ### 3.3 权衡决策框架
 ```
- True是否需要最优时间？ --是--> 空间是否充裕？ --是--> 以空间换时间
+ 是否需要最优时间？ --是--> 空间是否充裕？ --是--> 以空间换时间
   | |
   | +--否--> 寻找时间-空间折中方案
   |
@@ -147,7 +147,7 @@ f(n) = omega(g(n)) 当且仅当对任意正常数c，存在n0，使得对所有 
   cn/4 cn/4 cn/4 cn/4 -- 第2层: cn
   ... ... ... ...
   c c c c c c -- 第log n层: cn
- True总计: cn * (log n + 1) = O(n log n)
+ 总计: cn * (log n + 1) = O(n log n)
  ```
 
 ### 4.2 主定理（Master Theorem）
@@ -189,7 +189,7 @@ f(n) = omega(g(n)) 当且仅当对任意正常数c，存在n0，使得对所有 
   return work_per_level, total
  def f_merge_sort(n):
   return n
- Truework, total = analyze_recurrence(2, 2, f_merge_sort, 1024)
+ work, total = analyze_recurrence(2, 2, f_merge_sort, 1024)
  for i, w in enumerate(work):
   print(f"Level {i}: {w:.1f}")
  print(f"Total: {total:.1f}")
@@ -201,7 +201,7 @@ f(n) = omega(g(n)) 当且仅当对任意正常数c，存在n0，使得对所有 
  #include <cmath>
  #include <functional>
  using namespace std;
- Truevector<double> analyzeRecurrence(int a, int b, function<double(double)> f, int n) {
+ vector<double> analyzeRecurrence(int a, int b, function<double(double)> f, int n) {
   int levels = static_cast<int>(log(n) / log(b));
   vector<double> workPerLevel;
   for (int i = 0; i <= levels; i++) {
@@ -339,7 +339,7 @@ n个操作序列的聚合分析：
 - 例子：Floyd-Warshall中dist[k][i][j]依赖dist[k-1]
 **决策流程**：
 ```
- True问题是否可分解为独立子问题？ --是--> 分治
+ 问题是否可分解为独立子问题？ --是--> 分治
   |
   +--否--> 问题是否有最优子结构？ --否--> 回溯/暴力搜索
   |

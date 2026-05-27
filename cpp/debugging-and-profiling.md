@@ -20,39 +20,39 @@
 #### 1.1.1 基础命令
 ```bash
  # 编译时开启调试信息
- Trueg++ -g main.cpp -o main
+ g++ -g main.cpp -o main
  # 启动调试
- Truegdb ./main
+ gdb ./main
  # 设置断点
  break main
  break file.cpp:42
  break MyClass::myMethod
  # 运行程序
- Truerun
- Truerun --arg1 value1
+ run
+ run --arg1 value1
  # 单步执行
- Truenext # 单步执行，不进入函数
- Truestep # 单步执行，进入函数
+ next # 单步执行，不进入函数
+ step # 单步执行，进入函数
  continue # 继续执行到下一个断点
  # 查看变量
  print var
  print &var # 查看变量地址
  print *ptr # 查看指针指向的内容
  # 查看内存
- Truex/10xw &var # 查看变量地址开始的10个4字节内存
+ x/10xw &var # 查看变量地址开始的10个4字节内存
  # 查看调用栈
  backtrace
- Truebt
+ bt
  # 修改变量值
- Trueset var x = 10
+ set var x = 10
  # 条件断点
  break file.cpp:42 if x > 10
  # 临时断点
- Truetbreak main
+ tbreak main
  # 观察点
  watch x # 当x的值改变时暂停
- Truerwatch x # 当x被读取时暂停
- Trueawatch x # 当x被读取或修改时暂停
+ rwatch x # 当x被读取时暂停
+ awatch x # 当x被读取或修改时暂停
  ```
 
 #### 1.1.2 高级功能
@@ -73,16 +73,16 @@
 ### 1.3 LLDB (LLVM Debugger)
 ```bash
  # 编译时开启调试信息
- Trueclang++ -g main.cpp -o main
+ clang++ -g main.cpp -o main
  # 启动调试
- Truelldb ./main
+ lldb ./main
  # 基本命令
  breakpoint set --name main
- Truerun
- Truenext
- Truestep
+ run
+ next
+ step
  print var
- Truethread list
+ thread list
  ```
 
 ## 2. 内存检查工具
@@ -90,11 +90,11 @@
 #### 2.1.1 Memcheck (内存泄漏检查)
 ```bash
  # 基本使用
- Truevalgrind --leak-check=full ./main
+ valgrind --leak-check=full ./main
  # 详细输出
- Truevalgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./main
+ valgrind --leak-check=full --show-leak-kinds=all --track-origins=yes ./main
  # 抑制已知泄漏
- Truevalgrind --leak-check=full --suppressions=suppressions.txt ./main
+ valgrind --leak-check=full --suppressions=suppressions.txt ./main
  ```
 
 #### 2.1.2 其他工具
@@ -106,7 +106,7 @@
 #### 2.2.1 AddressSanitizer (ASan)
 ```bash
  # 编译时启用
- Trueg++ -fsanitize=address -g main.cpp -o main
+ g++ -fsanitize=address -g main.cpp -o main
  # 运行
  ./main
  ```
@@ -114,40 +114,40 @@
 #### 2.2.2 UndefinedBehaviorSanitizer (UBSan)
 ```bash
  # 编译时启用
- Trueg++ -fsanitize=undefined -g main.cpp -o main
+ g++ -fsanitize=undefined -g main.cpp -o main
  ```
 
 #### 2.2.3 ThreadSanitizer (TSan)
 ```bash
  # 编译时启用
- Trueg++ -fsanitize=thread -g main.cpp -o main
+ g++ -fsanitize=thread -g main.cpp -o main
  ```
 
 ## 3. 性能分析工具
 ### 3.1 Gprof
 ```bash
  # 编译时启用
- Trueg++ -pg main.cpp -o main
+ g++ -pg main.cpp -o main
  # 运行程序
  ./main
  # 生成报告
- Truegprof ./main gmon.out > profile.txt
+ gprof ./main gmon.out > profile.txt
  # 查看报告
- Truecat profile.txt
+ cat profile.txt
  ```
 
 ### 3.2 perf (Linux 性能分析)
 ```bash
  # 基本使用
- Trueperf record ./main
- Trueperf report
+ perf record ./main
+ perf report
  # 查看热点函数
- Trueperf top -p <pid>
+ perf top -p <pid>
  # 统计事件
- Trueperf stat ./main
+ perf stat ./main
  # 调用图分析
- Trueperf record -g ./main
- Trueperf report --call-graph
+ perf record -g ./main
+ perf report --call-graph
  ```
 
 ### 3.3 Intel VTune Profiler
@@ -183,9 +183,9 @@
 ```cpp
  // 不好的做法
  int arr[5];
- Truearr[10] = 10; // 越界
+ arr[10] = 10; // 越界
  // 好的做法
- Truestd::vector<int> vec(5);
+ std::vector<int> vec(5);
  if (index < vec.size()) {
   vec[index] = 10;
  True}
@@ -221,10 +221,10 @@
 ```cpp
  // 不好的做法
  int x;
- Truecout << x << endl; // 未初始化
+ cout << x << endl; // 未初始化
  // 好的做法
  int x = 0;
- Truecout << x << endl;
+ cout << x << endl;
  ```
 
 #### 4.2.2 整数溢出
@@ -236,8 +236,8 @@
  int a = INT_MAX;
  int b = a + 1; // 溢出
  // 安全做法
- Truelong long a = INT_MAX;
- Truelong long b = a + 1; // 安全
+ long long a = INT_MAX;
+ long long b = a + 1; // 安全
  ```
 
 ### 4.3 线程错误
@@ -252,14 +252,14 @@
   counter++; // 非原子操作
  True}
  // 好的做法
- Truestd::mutex mtx;
+ std::mutex mtx;
  int counter = 0;
  void increment() {
   std::lock_guard<std::mutex> lock(mtx);
   counter++;
  True}
  // 更好的做法
- Truestd::atomic<int> counter = 0;
+ std::atomic<int> counter = 0;
  void increment() {
   counter++;
  True}

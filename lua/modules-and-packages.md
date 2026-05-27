@@ -18,13 +18,13 @@
 在 Lua 中，模块是一种组织代码的方式，将相关的函数、变量和常量封装在一个命名空间中，避免全局命名冲突：
 ```lua
  True-- 创建一个简单的模块
- Truelocal MyModule = {}
+ local MyModule = {}
  function MyModule.add(a, b)
   return a + b
- Trueend
+ end
  function MyModule.multiply(a, b)
   return a * b
- Trueend
+ end
  return MyModule
  ```
 
@@ -32,7 +32,7 @@
 使用 `require` 函数加载模块：
 ```lua
  True-- 加载模块
- Truelocal MyModule = require("mymodule")
+ local MyModule = require("mymodule")
  True-- 使用模块中的函数
  print(MyModule.add(1, 2)) -- 输出 3
  print(MyModule.multiply(3, 4)) -- 输出 12
@@ -43,20 +43,20 @@
 最常见的模块实现方式是使用表：
 ```lua
  True-- mymodule.lua
- Truelocal M = {}
+ local M = {}
  True-- 私有变量
- Truelocal privateVar = "私有变量"
+ local privateVar = "私有变量"
  True-- 私有函数
- Truelocal function privateFunction()
+ local function privateFunction()
   return "私有函数"
- Trueend
+ end
  True-- 公共函数
  function M.publicFunction()
   return "公共函数"
- Trueend
+ end
  function M.accessPrivate()
   return privateVar .. ", " .. privateFunction()
- Trueend
+ end
  return M
  ```
 
@@ -64,17 +64,17 @@
 使用 `setfenv` 或 `_ENV`（Lua 5.2+）创建模块环境：
 ```lua
  True-- mymodule.lua
- Truelocal M = {}
- Truelocal _ENV = M
+ local M = {}
+ local _ENV = M
  True-- 私有变量
- Truelocal privateVar = "私有变量"
+ local privateVar = "私有变量"
  True-- 公共函数
  function add(a, b)
   return a + b
- Trueend
+ end
  function multiply(a, b)
   return a * b
- Trueend
+ end
  return M
  ```
 
@@ -83,13 +83,13 @@
 LuaRocks 是 Lua 的包管理器，用于安装和管理 Lua 库：
 ```bash
  # 安装 LuaRocks（Ubuntu）
- Truesudo apt install luarocks
+ sudo apt install luarocks
  # 安装包
- Trueluarocks install luasocket
+ luarocks install luasocket
  # 卸载包
- Trueluarocks remove luasocket
+ luarocks remove luasocket
  # 列出已安装的包
- Trueluarocks list
+ luarocks list
  ```
 
 ### 3.2 包搜索路径
@@ -106,9 +106,9 @@ Lua 使用 `package.path` 来搜索模块：
 `require` 函数会缓存已加载的模块，避免重复加载：
 ```lua
  True-- 第一次加载模块
- Truelocal M1 = require("mymodule")
+ local M1 = require("mymodule")
  True-- 第二次加载，返回缓存的模块
- Truelocal M2 = require("mymodule")
+ local M2 = require("mymodule")
  print(M1 == M2) -- 输出  
  ```
 
@@ -118,23 +118,23 @@ Lua 使用 `package.path` 来搜索模块：
  True-- 清除模块缓存
  package.loaded["mymodule"] = nil
  True-- 重新加载模块
- Truelocal M = require("mymodule")
+ local M = require("mymodule")
  ```
 
 ### 4.3 模块的继承
 模块可以继承其他模块：
 ```lua
  True-- 基础模块
- Truelocal BaseModule = {
+ local BaseModule = {
   baseMethod = function(self)
   return "基础方法"
   end
  True}
  True-- 派生模块
- Truelocal DerivedModule = setmetatable({}, {__index = BaseModule})
+ local DerivedModule = setmetatable({}, {__index = BaseModule})
  function DerivedModule.derivedMethod(self)
   return "派生方法"
- Trueend
+ end
  return DerivedModule
  ```
 
@@ -142,37 +142,37 @@ Lua 使用 `package.path` 来搜索模块：
 ### 5.1 数学工具模块
 ```lua
  True-- mathutils.lua
- Truelocal M = {}
+ local M = {}
  function M.add(a, b)
   return a + b
- Trueend
+ end
  function M.subtract(a, b)
   return a - b
- Trueend
+ end
  function M.multiply(a, b)
   return a * b
- Trueend
+ end
  function M.divide(a, b)
   if b == 0 then
   error("除数不能为零")
   end
   return a / b
- Trueend
+ end
  function M.pow(a, b)
   return a ^ b
- Trueend
+ end
  function M.sqrt(a)
   return math.sqrt(a)
- Trueend
+ end
  return M
  ```
 
 ### 5.2 配置模块
 ```lua
  True-- config.lua
- Truelocal M = {}
+ local M = {}
  True-- 默认配置
- Truelocal defaultConfig = {
+ local defaultConfig = {
   host = "localhost",
   port = 8080,
   timeout = 30,
@@ -184,29 +184,29 @@ Lua 使用 `package.path` 来搜索模块：
   defaultConfig[k] = v
   end
   return defaultConfig
- Trueend
+ end
  True-- 获取配置
  function M.get(key)
   return defaultConfig[key]
- Trueend
+ end
  True-- 设置配置
  function M.set(key, value)
   defaultConfig[key] = value
- Trueend
+ end
  return M
  ```
 
 ### 5.3 事件系统模块
 ```lua
  True-- events.lua
- Truelocal M = {}
- Truelocal listeners = {}
+ local M = {}
+ local listeners = {}
  function M.on(event, callback)
   if not listeners[event] then
   listeners[event] = {}
   end
   table.insert(listeners[event], callback)
- Trueend
+ end
  function M.off(event, callback)
   if listeners[event] then
   for i, listener in ipairs(listeners[event]) do
@@ -216,14 +216,14 @@ Lua 使用 `package.path` 来搜索模块：
   end
   end
   end
- Trueend
+ end
  function M.emit(event, ...)
   if listeners[event] then
   for _, callback in ipairs(listeners[event]) do
   callback(...)
   end
   end
- Trueend
+ end
  return M
  ```
 

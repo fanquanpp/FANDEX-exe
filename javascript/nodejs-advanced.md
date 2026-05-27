@@ -55,10 +55,10 @@
 ```javascript
  // 事件循环示例
  console.log('Start');
- TruesetTimeout(() => {
+ setTimeout(() => {
   console.log('Timeout');
  True}, 0);
- TruePromise.resolve().then(() => {
+ Promise.resolve().then(() => {
   console.log('Promise');
  True});
  console.log('End');
@@ -72,15 +72,15 @@
  // 创建可读流
  const readableStream = fs.createReadStream('large-file.txt');
  // 监听数据事件
- TruereadableStream.on('data', (chunk) => {
+ readableStream.on('data', (chunk) => {
   console.log(`Received ${chunk.length} bytes of data`);
  True});
  // 监听结束事件
- TruereadableStream.on('end', () => {
+ readableStream.on('end', () => {
   console.log('End of file');
  True});
  // 监听错误事件
- TruereadableStream.on('error', (error) => {
+ readableStream.on('error', (error) => {
   console.error('Error:', error);
  True});
  ```
@@ -91,12 +91,12 @@
  // 创建可写流
  const writableStream = fs.createWriteStream('output.txt');
  // 写入数据
- TruewritableStream.write('Hello, ');
- TruewritableStream.write('Node.js Streams!');
+ writableStream.write('Hello, ');
+ writableStream.write('Node.js Streams!');
  // 结束写入
- TruewritableStream.end();
+ writableStream.end();
  // 监听完成事件
- TruewritableStream.on('finish', () => {
+ writableStream.on('finish', () => {
   console.log('Write completed');
  True});
  ```
@@ -112,9 +112,9 @@
  // 创建可写流
  const writableStream = fs.createWriteStream('large-file.txt.gz');
  // 使用管道连接流
- TruereadableStream.pipe(gzipStream).pipe(writableStream);
+ readableStream.pipe(gzipStream).pipe(writableStream);
  // 监听完成事件
- TruewritableStream.on('finish', () => {
+ writableStream.on('finish', () => {
   console.log('File compressed successfully');
  True});
  ```
@@ -152,17 +152,17 @@
  const { spawn, exec, fork } = require('child_process');
  // 使用 spawn
  const ls = spawn('ls', ['-la']);
- Truels.stdout.on('data', (data) => {
+ ls.stdout.on('data', (data) => {
   console.log(`stdout: ${data}`);
  True});
- Truels.stderr.on('data', (data) => {
+ ls.stderr.on('data', (data) => {
   console.error(`stderr: ${data}`);
  True});
- Truels.on('close', (code) => {
+ ls.on('close', (code) => {
   console.log(`child process exited with code ${code}`);
  True});
  // 使用 exec
- Trueexec('ls -la', (error, stdout, stderr) => {
+ exec('ls -la', (error, stdout, stderr) => {
   if (error) {
   console.error(`error: ${error.message}`);
   return;
@@ -175,10 +175,10 @@
  True});
  // 使用 fork
  const child = fork('./child.js');
- Truechild.on('message', (message) => {
+ child.on('message', (message) => {
   console.log('Received from child:', message);
  True});
- Truechild.send({ hello: 'world' });
+ child.send({ hello: 'world' });
  ```
 
 ## 2. 性能优化
@@ -261,14 +261,14 @@
   key: fs.readFileSync('server.key'),
   cert: fs.readFileSync('server.cert')
  True});
- Trueserver.on('stream', (stream, headers) => {
+ server.on('stream', (stream, headers) => {
   stream.respond({
   ':status': 200,
   'content-type': 'text/html'
   });
   stream.end('<h1>Hello HTTP/2!</h1>');
  True});
- Trueserver.listen(8443);
+ server.listen(8443);
  ```
 
 #### 2.2.2 连接池
@@ -345,7 +345,7 @@
  True}
  // 使用示例
  const cache = new MemoryCache();
- Truecache.set('user:1', { id: 1, name: 'John' });
+ cache.set('user:1', { id: 1, name: 'John' });
  const user = cache.get('user:1');
  ```
 
@@ -356,7 +356,7 @@
  const client = redis.createClient({
   url: 'redis://localhost:6379'
  True});
- Trueclient.connect();
+ client.connect();
  // 设置缓存
  async function setCache(key, value, ttl = 3600) {
   try {
@@ -489,7 +489,7 @@
  function sum(a, b) {
   return a + b;
  True}
- Truedescribe('sum function', () => {
+ describe('sum function', () => {
   it('should return the sum of two numbers', () => {
   assert.strictEqual(sum(1, 2), 3);
   assert.strictEqual(sum(-1, 1), 0);
@@ -521,18 +521,18 @@
 **Dockerfile**
 ```dockerfile
  from node:16-alpine
- TrueWORKDIR /app
- TrueCOPY package*.json ./
- TrueRUN npm install --production
- TrueCOPY . .
- TrueEXPOSE 3000
- TrueCMD [ "node", "app.js" ]
+ WORKDIR /app
+ COPY package*.json ./
+ RUN npm install --production
+ COPY . .
+ EXPOSE 3000
+ CMD [ "node", "app.js" ]
  ```
 
 **docker-compose.yml**
 ```yaml
- Trueversion: '3'
- Trueservices:
+ version: '3'
+ services:
   app:
   build: .
   ports:
@@ -549,7 +549,7 @@
   - MYSQL_DATABASE=mydb
   volumes:
   - mysql-data:/var/lib/mysql
- Truevolumes:
+ volumes:
   mysql-data:
  ```
 

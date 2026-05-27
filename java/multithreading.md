@@ -44,10 +44,10 @@
   }
  True}
  // 使用
- TrueMyThread thread1 = new MyThread();
- TrueMyThread thread2 = new MyThread();
- Truethread1.start();
- Truethread2.start();
+ MyThread thread1 = new MyThread();
+ MyThread thread2 = new MyThread();
+ thread1.start();
+ thread2.start();
  ```
 
 ### 2.2 实现 Runnable 接口
@@ -66,11 +66,11 @@
   }
  True}
  // 使用
- TrueRunnable runnable = new MyRunnable();
- TrueThread thread1 = new Thread(runnable, "Thread-1");
- TrueThread thread2 = new Thread(runnable, "Thread-2");
- Truethread1.start();
- Truethread2.start();
+ Runnable runnable = new MyRunnable();
+ Thread thread1 = new Thread(runnable, "Thread-1");
+ Thread thread2 = new Thread(runnable, "Thread-2");
+ thread1.start();
+ thread2.start();
  ```
 
 ### 2.3 实现 Callable 接口
@@ -86,10 +86,10 @@
   }
  True}
  // 使用
- TrueCallable<Integer> callable = new MyCallable();
- TrueFutureTask<Integer> futureTask = new FutureTask<>(callable);
- TrueThread thread = new Thread(futureTask);
- Truethread.start();
+ Callable<Integer> callable = new MyCallable();
+ FutureTask<Integer> futureTask = new FutureTask<>(callable);
+ Thread thread = new Thread(futureTask);
+ thread.start();
  try {
   // 获取结果
   Integer result = futureTask.get();
@@ -102,7 +102,7 @@
 ### 2.4 使用 Lambda 表达式
 ```java
  // 使用 Lambda 表达式创建线程
- TrueThread thread1 = new Thread(() -> {
+ Thread thread1 = new Thread(() -> {
   for (int i = 0; i < 10; i++) {
   System.out.println(Thread.currentThread().getName() + ": " + i);
   try {
@@ -112,7 +112,7 @@
   }
   }
  True}, "Thread-1");
- Truethread1.start();
+ thread1.start();
  ```
 
 ## 3. 线程生命周期 (Lifecycle)
@@ -127,16 +127,16 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 ### 3.2 状态转换图
 ```
  True┌─────────┐ start() ┌──────────┐ CPU调度 ┌──────────┐
- True│ NEW │───────────────→│ RUNNABLE │──────────────→│ RUNNING │
- True└─────────┘ └──────────┘ └──────────┘
+ │ NEW │───────────────→│ RUNNABLE │──────────────→│ RUNNING │
+ └─────────┘ └──────────┘ └──────────┘
   ↑ ↑ │
   │ │ │
   │ await() │ wait()/sleep() │
   │ join() │ join(timeout) │
   │ │ │
  True┌─────────┐ run()结束 ┌──────────┐←─────────────┘
- True│TERMINATED│←───────────────┐ │ WAITING │
- True└─────────┘ │ └──────────┘
+ │TERMINATED│←───────────────┐ │ WAITING │
+ └─────────┘ │ └──────────┘
   │ ↑
   │ │
   │ sleep(timeout)
@@ -180,7 +180,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 
 #### 4.2.2 同步代码块
 ```java
- Truesynchronized (this) {
+ synchronized (this) {
   count++;
  True}
  ```
@@ -276,7 +276,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 - **newScheduledThreadPool(int corePoolSize)**: 创建支持定时和周期性任务的线程池
 ```java
  // 创建固定大小的线程池
- TrueExecutorService executorService = Executors.newFixedThreadPool(5);
+ ExecutorService executorService = Executors.newFixedThreadPool(5);
  // 提交任务
  for (int i = 0; i < 10; i++) {
   final int taskId = i;
@@ -290,13 +290,13 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   });
  True}
  // 关闭线程池
- TrueexecutorService.shutdown();
+ executorService.shutdown();
  ```
 
 #### 5.3.2 自定义线程池
 使用 `ThreadPoolExecutor` 构造函数自定义线程池参数。
 ```java
- TrueThreadPoolExecutor executor = new ThreadPoolExecutor(
+ ThreadPoolExecutor executor = new ThreadPoolExecutor(
   5, // 核心线程数
   10, // 最大线程数
   60L, // 空闲线程存活时间
@@ -324,7 +324,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 ### 6.1 CountDownLatch
 - **倒计时门闩**，等待一组线程完成
 ```java
- TrueCountDownLatch latch = new CountDownLatch(3);
+ CountDownLatch latch = new CountDownLatch(3);
  for (int i = 0; i < 3; i++) {
   new Thread(() -> {
   System.out.println(Thread.currentThread().getName() + " is working");
@@ -337,15 +337,15 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   System.out.println(Thread.currentThread().getName() + " finished");
   }).start();
  True}
- TrueSystem.out.println("Waiting for all threads to finish...");
- Truelatch.await(); // 等待倒计时为0
- TrueSystem.out.println("All threads have finished");
+ System.out.println("Waiting for all threads to finish...");
+ latch.await(); // 等待倒计时为0
+ System.out.println("All threads have finished");
  ```
 
 ### 6.2 CyclicBarrier
 - **循环栅栏**，等待一组线程达到屏障
 ```java
- TrueCyclicBarrier barrier = new CyclicBarrier(3, () -> {
+ CyclicBarrier barrier = new CyclicBarrier(3, () -> {
   System.out.println("All threads have reached the barrier");
  True});
  for (int i = 0; i < 3; i++) {
@@ -366,7 +366,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 ### 6.3 Semaphore
 - **信号量**，控制同时访问资源的线程数
 ```java
- TrueSemaphore semaphore = new Semaphore(2); // 最多2个线程同时访问
+ Semaphore semaphore = new Semaphore(2); // 最多2个线程同时访问
  for (int i = 0; i < 5; i++) {
   new Thread(() -> {
   try {
@@ -388,7 +388,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 - **CompletableFuture**: 提供了更丰富的异步操作 API
 ```java
  // 使用 CompletableFuture
- TrueCompletableFuture.supplyAsync(() -> {
+ CompletableFuture.supplyAsync(() -> {
   System.out.println("Task executed in thread: " + Thread.currentThread().getName());
   try {
   Thread.sleep(1000);
@@ -402,7 +402,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   ex.printStackTrace();
   return "Error occurred";
  True});
- TrueSystem.out.println("Main thread continues");
+ System.out.println("Main thread continues");
  // 等待异步任务完成
  try {
   Thread.sleep(2000);

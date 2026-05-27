@@ -118,9 +118,9 @@ Lua 的设计哲学可以概括为以下几点：
 ### 2.2 验证安装
 ```bash
  # 检查 Lua 版本
- Truelua -v
+ lua -v
  # 进入 Lua 交互式环境
- Truelua
+ lua
  # 退出 Lua 交互式环境
  True> exit()
  # 或按 Ctrl+D
@@ -180,12 +180,12 @@ Lua 的设计哲学可以概括为以下几点：
 ```lua
  True-- variables.lua
  True-- 全局变量
- Truename = "Lua"
- Trueversion = 5.4
- Trueis_great =  
+ name = "Lua"
+ version = 5.4
+ is_great =  
  True-- 局部变量
- Truelocal count = 10
- Truelocal message = "Hello"
+ local count = 10
+ local message = "Hello"
  True-- 打印变量
  print(name, version, is_great)
  print(count, message)
@@ -195,26 +195,26 @@ Lua 的设计哲学可以概括为以下几点：
 ```lua
  True-- control_flow.lua
  True-- if 语句
- Truelocal score = 85
+ local score = 85
  if score >= 90 then
   print("优秀")
  elseif score >= 70 then
   print("良好")
  else
   print("需要努力")
- Trueend
+ end
  True-- for 循环
  print("数字 1-5:")
  for i = 1, 5 do
   print(i)
- Trueend
+ end
  True-- while 循环
- Truelocal i = 1
+ local i = 1
  print("数字 1-3:")
  while i <= 3 do
   print(i)
   i = i + 1
- Trueend
+ end
  ```
 
 ### 4.4 函数
@@ -223,14 +223,14 @@ Lua 的设计哲学可以概括为以下几点：
  True-- 基本函数
  function add(a, b)
   return a + b
- Trueend
+ end
  True-- 调用函数
- Truelocal result = add(5, 3)
+ local result = add(5, 3)
  print("5 + 3 = " .. result)
  True-- 匿名函数
- Truelocal multiply = function(a, b)
+ local multiply = function(a, b)
   return a * b
- Trueend
+ end
  print("4 * 6 = " .. multiply(4, 6))
  True-- 闭包
  function create_counter()
@@ -239,8 +239,8 @@ Lua 的设计哲学可以概括为以下几点：
   count = count + 1
   return count
   end
- Trueend
- Truelocal counter = create_counter()
+ end
+ local counter = create_counter()
  print(counter()) -- 1
  print(counter()) -- 2
  print(counter()) -- 3
@@ -250,10 +250,10 @@ Lua 的设计哲学可以概括为以下几点：
 ```lua
  True-- tables.lua
  True-- 数组
- Truelocal fruits = {"apple", "banana", "orange"}
+ local fruits = {"apple", "banana", "orange"}
  print("第一个水果:", fruits[1])
  True-- 哈希表
- Truelocal person = {
+ local person = {
   name = "John",
   age = 30,
   email = "john@example.com"
@@ -261,7 +261,7 @@ Lua 的设计哲学可以概括为以下几点：
  print("姓名:", person.name)
  print("年龄:", person["age"])
  True-- 混合表
- Truelocal mixed = {
+ local mixed = {
   "hello",
   name = "Lua",
   123,

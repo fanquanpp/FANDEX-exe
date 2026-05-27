@@ -25,16 +25,16 @@
 ### 1.2 盒模型示意图
 ```
  True+---------------------------------------------+
- True| Margin |
- True| +---------------------------------------+ |
- True| | Border | |
- True| | +-------------------------------+ | |
- True| | | Padding | | |
- True| | | +-----------------------+ | | |
- True| | | | Content | | | |
- True| | | +-----------------------+ | | |
- True| | +-------------------------------+ | |
- True| +---------------------------------------+ |
+ | Margin |
+ | +---------------------------------------+ |
+ | | Border | |
+ | | +-------------------------------+ | |
+ | | | Padding | | |
+ | | | +-----------------------+ | | |
+ | | | | Content | | | |
+ | | | +-----------------------+ | | |
+ | | +-------------------------------+ | |
+ | +---------------------------------------+ |
  True+---------------------------------------------+
  ```
 
@@ -105,7 +105,7 @@
   box-sizing: border-box;
  True}
  /* 方法 3: 继承方式，更灵活 */
- Truehtml {
+ html {
   box-sizing: border-box;
  True}
  True*, *::before, *::after {
@@ -124,15 +124,15 @@
 ### 3.1 外边距的基本用法
 ```css
  /* 四个方向的外边距 */
- Truemargin: 10px; /* 四个方向都是 10px */
- Truemargin: 10px 20px; /* 上下 10px，左右 20px */
- Truemargin: 10px 20px 30px; /* 上 10px，左右 20px，下 30px */
- Truemargin: 10px 20px 30px 40px; /* 上 10px，右 20px，下 30px，左 40px */
+ margin: 10px; /* 四个方向都是 10px */
+ margin: 10px 20px; /* 上下 10px，左右 20px */
+ margin: 10px 20px 30px; /* 上 10px，左右 20px，下 30px */
+ margin: 10px 20px 30px 40px; /* 上 10px，右 20px，下 30px，左 40px */
  /* 单个方向的外边距 */
- Truemargin-top: 10px;
- Truemargin-right: 20px;
- Truemargin-bottom: 30px;
- Truemargin-left: 40px;
+ margin-top: 10px;
+ margin-right: 20px;
+ margin-bottom: 30px;
+ margin-left: 40px;
  ```
 
 ### 3.2 水平居中
@@ -422,7 +422,7 @@
   border-radius: 4px;
  True}
  /* 按钮的盒模型设置 */
- Truebutton {
+ button {
   box-sizing: border-box;
   padding: 10px 20px;
   border: 1px solid #333;

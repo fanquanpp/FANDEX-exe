@@ -27,44 +27,44 @@ Vue3 项目需要 Node.js 18+ 环境。可以从 [Node.js 官网](https://nodejs
 使用 Vite 创建 Vue3 项目是推荐的方式：
 ```bash
  # 使用 npm
- Truenpm create vite@latest my-vue3-app -- --template vue
+ npm create vite@latest my-vue3-app -- --template vue
  # 使用 yarn
- Trueyarn create vite my-vue3-app --template vue
+ yarn create vite my-vue3-app --template vue
  # 使用 pnpm
- Truepnpm create vite my-vue3-app --template vue
+ pnpm create vite my-vue3-app --template vue
  ```
 
 ### 2.3 项目结构
 创建的 Vue3 项目结构如下：
 ```
- Truemy-vue3-app/
- True├── node_modules/ # 依赖包
- True├── public/ # 静态资源
- True├── src/ # 源代码
- True│ ├── assets/ # 资源文件
- True│ ├── components/ # 组件
- True│ ├── router/ # 路由（需手动创建）
- True│ ├── store/ # 状态管理（需手动创建）
- True│ ├── views/ # 页面（需手动创建）
- True│ ├── App.vue # 根组件
- True│ └── main.js # 入口文件
- True├── .gitignore # Git 忽略文件
- True├── index.html # HTML 模板
- True├── package.json # 项目配置
- True├── vite.config.js # Vite 配置
- True└── README.md # 项目说明
+ my-vue3-app/
+ ├── node_modules/ # 依赖包
+ ├── public/ # 静态资源
+ ├── src/ # 源代码
+ │ ├── assets/ # 资源文件
+ │ ├── components/ # 组件
+ │ ├── router/ # 路由（需手动创建）
+ │ ├── store/ # 状态管理（需手动创建）
+ │ ├── views/ # 页面（需手动创建）
+ │ ├── App.vue # 根组件
+ │ └── main.js # 入口文件
+ ├── .gitignore # Git 忽略文件
+ ├── index.html # HTML 模板
+ ├── package.json # 项目配置
+ ├── vite.config.js # Vite 配置
+ └── README.md # 项目说明
  ```
 
 ### 2.4 安装常用依赖
 ```bash
  # 安装 Vue Router
- Truenpm install vue-router@4
+ npm install vue-router@4
  # 安装 Pinia（Vue3 推荐的状态管理库）
- Truenpm install pinia
+ npm install pinia
  # 安装 TypeScript（可选）
- Truenpm install typescript
+ npm install typescript
  # 安装 ESLint 和 Prettier（可选）
- Truenpm install eslint prettier
+ npm install eslint prettier
  ```
 
 ## 3. 第一个 Vue3 应用 | First Vue3 App
@@ -85,10 +85,10 @@ Vue3 项目需要 Node.js 18+ 环境。可以从 [Node.js 官网](https://nodejs
   text-align: center;
   margin-top: 50px;
  True}
- Trueh1 {
+ h1 {
   color: #42b983;
  True}
- Truebutton {
+ button {
   padding: 10px 20px;
   font-size: 16px;
   background-color: #42b983;
@@ -97,7 +97,7 @@ Vue3 项目需要 Node.js 18+ 环境。可以从 [Node.js 官网](https://nodejs
   border-radius: 4px;
   cursor: pointer;
  True}
- Truebutton:hover {
+ button:hover {
   background-color: #35495e;
  True}
  </style>
@@ -106,11 +106,11 @@ Vue3 项目需要 Node.js 18+ 环境。可以从 [Node.js 官网](https://nodejs
 ### 3.2 运行项目
 ```bash
  # 进入项目目录
- Truecd my-vue3-app
+ cd my-vue3-app
  # 安装依赖
- Truenpm install
+ npm install
  # 启动开发服务器
- Truenpm run dev
+ npm run dev
  ```
 
 访问终端中显示的地址（通常是 <http://localhost:5173），即可看到你的第一个> Vue3 应用。

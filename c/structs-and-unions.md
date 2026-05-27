@@ -24,7 +24,7 @@
 #### 1.2.1 基本定义
 ```c
  // 结构体定义
- Truestruct Person {
+ struct Person {
   char name[50]; // 姓名
   int age; // 年龄
   float height; // 身高
@@ -34,7 +34,7 @@
 #### 1.2.2 同时定义结构体变量
 ```c
  // 定义结构体的同时声明变量
- Truestruct Person {
+ struct Person {
   char name[50];
   int age;
  True} p1, p2; // 声明两个 Person 类型的变量
@@ -43,7 +43,7 @@
 #### 1.2.3 匿名结构体
 ```c
  // 匿名结构体（只能在定义时声明变量）
- Truestruct {
+ struct {
   int x;
   int y;
  True} point;
@@ -53,11 +53,11 @@
 #### 1.3.1 静态初始化
 ```c
  // 按顺序初始化
- Truestruct Person p1 = {"Alice", 25, 1.65};
+ struct Person p1 = {"Alice", 25, 1.65};
  // 部分初始化（未初始化的成员为 0 或空）
- Truestruct Person p2 = {"Bob"}; // age 和 height 为 0
+ struct Person p2 = {"Bob"}; // age 和 height 为 0
  // C99 及以上：指定成员初始化
- Truestruct Person p3 = {
+ struct Person p3 = {
   .name = "Charlie",
   .age = 30
  True}; // height 为 0
@@ -65,10 +65,10 @@
 
 #### 1.3.2 动态初始化
 ```c
- Truestruct Person p4;
- Truestrcpy(p4.name, "David");
- Truep4.age = 35;
- Truep4.height = 1.75;
+ struct Person p4;
+ strcpy(p4.name, "David");
+ p4.age = 35;
+ p4.height = 1.75;
  ```
 
 ### 1.4 结构体成员的访问
@@ -81,7 +81,7 @@
 
 #### 1.4.2 通过指针访问（使用箭头运算符）
 ```c
- Truestruct Person *ptr = &p1;
+ struct Person *ptr = &p1;
  printf("Name: %s\n", ptr->name);
  printf("Age: %d\n", ptr->age);
  printf("Height: %.2f\n", ptr->height);
@@ -107,13 +107,13 @@
   p->age = new_age;
  True}
  // 调用
- Trueupdate_person(&p1, 26);
+ update_person(&p1, 26);
  ```
 
 ### 1.6 结构体数组
 ```c
  // 定义结构体数组
- Truestruct Person people[3] = {
+ struct Person people[3] = {
   {"Alice", 25, 1.65},
   {"Bob", 30, 1.75},
   {"Charlie", 35, 1.80}
@@ -128,19 +128,19 @@
 ### 1.7 嵌套结构体
 ```c
  // 定义日期结构体
- Truestruct Date {
+ struct Date {
   int day;
   int month;
   int year;
  True};
  // 定义包含日期的结构体
- Truestruct Person {
+ struct Person {
   char name[50];
   int age;
   struct Date birthday; // 嵌套结构体
  True};
  // 初始化
- Truestruct Person p = {
+ struct Person p = {
   "Alice",
   25,
   {15, 5, 1999} // 初始化嵌套的 Date 结构体
@@ -160,7 +160,7 @@
 3. 结构体的总大小必须是其最大成员大小的整数倍
 #### 1.8.3 示例
 ```c
- Truestruct Example {
+ struct Example {
   char c; // 1 字节
   // 3 字节填充
   int i; // 4 字节
@@ -187,14 +187,14 @@
 ```c
  // 设置对齐字节数为 1
  #pragma pack(1)
- Truestruct PackedExample {
+ struct PackedExample {
   char c;
   int i;
   double d;
  True};
  #pragma pack() // 恢复默认对齐
  // 使用 packed 属性
- Truestruct __attribute__((packed)) PackedStruct {
+ struct __attribute__((packed)) PackedStruct {
   char c;
   int i;
   double d;
@@ -209,7 +209,7 @@
   struct Node *next;
  True} Node;
  // 创建新节点
- TrueNode *create_node(int data) {
+ Node *create_node(int data) {
   Node *new_node = (Node *)malloc(sizeof(Node));
   if (new_node == NULL) {
   return NULL;
@@ -264,17 +264,17 @@
 ### 2.2 联合体的定义与使用
 ```c
  // 联合体定义
- Trueunion Data {
+ union Data {
   int i; // 4 字节
   float f; // 4 字节
   char c; // 1 字节
   char str[20]; // 20 字节
  True}; // 大小为 20 字节
  // 使用
- Trueunion Data data;
- Truedata.i = 100;
+ union Data data;
+ data.i = 100;
  printf("data.i = %d\n", data.i); // 输出 100
- Truedata.f = 3.14;
+ data.f = 3.14;
  printf("data.f = %f\n", data.f); // 输出 3.14
  printf("data.i = %d\n", data.i); // 输出会改变，因为共享内存
  ```
@@ -285,7 +285,7 @@
 #### 2.3.2 类型转换
 - 可以通过联合体实现不同类型之间的转换。
 ```c
- Trueunion FloatInt {
+ union FloatInt {
   float f;
   int i;
  True};
@@ -303,7 +303,7 @@
  enum DataType {
   INT, FLOAT, STRING
  True};
- Truestruct TaggedUnion {
+ struct TaggedUnion {
   enum DataType type; // 类型标签
   union {
   int i;
@@ -327,13 +327,13 @@
   }
  True}
  // 使用
- Truestruct TaggedUnion tu1;
- Truetu1.type = INT;
- Truetu1.data.i = 42;
+ struct TaggedUnion tu1;
+ tu1.type = INT;
+ tu1.data.i = 42;
  print_data(tu1);
- Truestruct TaggedUnion tu2;
- Truetu2.type = FLOAT;
- Truetu2.data.f = 3.14;
+ struct TaggedUnion tu2;
+ tu2.type = FLOAT;
+ tu2.data.f = 3.14;
  print_data(tu2);
  ```
 
@@ -341,21 +341,21 @@
 - 可以使用联合体和位域来操作数据的特定位。
 ```c
  // 位域结构体
- Truestruct Flags {
+ struct Flags {
   unsigned int is_active : 1; // 1位
   unsigned int is_admin : 1; // 1位
   unsigned int level : 3; // 3位
  True};
  // 联合体
- Trueunion FlagUnion {
+ union FlagUnion {
   struct Flags flags;
   unsigned char value; // 1字节
  True};
  // 使用
- Trueunion FlagUnion fu;
- Truefu.value = 0; // 初始化
- Truefu.flags.is_active = 1;
- Truefu.flags.level = 3;
+ union FlagUnion fu;
+ fu.value = 0; // 初始化
+ fu.flags.is_active = 1;
+ fu.flags.level = 3;
  printf("Value: 0x%X\n", fu.value); // 输出 0x0B (1011)
  ```
 
@@ -433,7 +433,7 @@
   // 打开文件
  True}
  // 使用
- Trueopen_file("data.txt", MODE_READ | MODE_WRITE);
+ open_file("data.txt", MODE_READ | MODE_WRITE);
  ```
 
 ## 4. `typedef` 类型别名
@@ -451,15 +451,15 @@
  typedef long long int64;
  typedef double real;
  // 使用
- Trueuint count = 100;
+ uint count = 100;
  int64 large_number = 9999999999;
- Truereal pi = 3.14159;
+ real pi = 3.14159;
  ```
 
 #### 4.2.2 为结构体创建别名
 ```c
  // 方式 1：先定义结构体，再创建别名
- Truestruct Person {
+ struct Person {
   char name[50];
   int age;
  True};
@@ -475,7 +475,7 @@
   int age;
  True} Person;
  // 使用
- TruePerson p = {"Alice", 25};
+ Person p = {"Alice", 25};
  ```
 
 #### 4.2.3 为指针类型创建别名
@@ -485,7 +485,7 @@
  typedef char *StrPtr;
  // 使用
  intPtr p1, p2; // 相当于 int *p1, *p2;
- TrueStrPtr s1, s2; // 相当于 char *s1, *s2;
+ StrPtr s1, s2; // 相当于 char *s1, *s2;
  ```
 
 #### 4.2.4 为函数指针创建别名
@@ -496,7 +496,7 @@
  int ascending(int a, int b) {
   return a - b;
  True}
- TrueCompareFunc cmp = ascending;
+ CompareFunc cmp = ascending;
  int result = cmp(5, 3);
  ```
 
@@ -610,7 +610,7 @@
   ShapeData data;
  True} Shape;
  // 计算面积
- Truefloat calculate_area(Shape shape) {
+ float calculate_area(Shape shape) {
   switch (shape.type) {
   case CIRCLE:
   return 3.14159 * shape.data.circle.radius * shape.data.circle.radius;

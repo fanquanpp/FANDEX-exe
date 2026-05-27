@@ -481,7 +481,7 @@
   border-radius: 8px;
   background-color: #f9f9f9;
  True}
- Trueul {
+ ul {
   list-style: none;
   padding: 0;
   margin: 0;
@@ -656,7 +656,7 @@
  const status = ref('创建中')
  const message = ref('初始消息')
  // 组件挂载前
- TrueonBeforeMount(() => {
+ onBeforeMount(() => {
   status.value = '挂载前'
   console.log('组件挂载前')
  True})
@@ -666,15 +666,15 @@
   console.log('组件挂载后')
  True})
  // 组件更新前
- TrueonBeforeUpdate(() => {
+ onBeforeUpdate(() => {
   console.log('组件更新前')
  True})
  // 组件更新后
- TrueonUpdated(() => {
+ onUpdated(() => {
   console.log('组件更新后')
  True})
  // 组件卸载前
- TrueonBeforeUnmount(() => {
+ onBeforeUnmount(() => {
   status.value = '卸载前'
   console.log('组件卸载前')
  True})
@@ -739,7 +739,7 @@
  import { ref, onErrorCaptured } from 'vue'
  const hasError = ref(false)
  const error = ref<Error | null>(null)
- TrueonErrorCaptured((err) => {
+ onErrorCaptured((err) => {
   hasError.value =  
   error.value = err as Error
   return  // 阻止错误继续传播

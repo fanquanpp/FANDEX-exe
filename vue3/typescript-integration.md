@@ -34,11 +34,11 @@ TypeScript 是 JavaScript 的超集，它添加了静态类型系统，提供了
 使用 Vite 创建 Vue3 + TypeScript 项目：
 ```bash
  # 使用 npm
- Truenpm create vite@latest my-vue3-ts-app -- --template vue-ts
+ npm create vite@latest my-vue3-ts-app -- --template vue-ts
  # 使用 yarn
- Trueyarn create vite my-vue3-ts-app --template vue-ts
+ yarn create vite my-vue3-ts-app --template vue-ts
  # 使用 pnpm
- Truepnpm create vite my-vue3-ts-app --template vue-ts
+ pnpm create vite my-vue3-ts-app --template vue-ts
  ```
 
 ### 2.2 配置 TypeScript
@@ -72,11 +72,11 @@ TypeScript 配置文件 `tsconfig.json`：
 ### 2.3 安装依赖
 ```bash
  # 安装 TypeScript
- Truenpm install typescript
+ npm install typescript
  # 安装 Vue 类型定义
- Truenpm install @vue/runtime-core
+ npm install @vue/runtime-core
  # 安装 ESLint 和 Prettier
- Truenpm install eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin prettier
+ npm install eslint @typescript-eslint/parser @typescript-eslint/eslint-plugin prettier
  ```
 
 ## 3. 基本类型使用 | Basic Type Usage

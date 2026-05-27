@@ -135,7 +135,7 @@ C 语言是由 **Dennis Ritchie** 于 1972 年在贝尔实验室 (Bell Labs) 开
 ### 编译与运行
 ```bash
  # 使用 GCC 编译
- Truegcc hello.c -o hello
+ gcc hello.c -o hello
  # 运行程序
  ./hello
  # 输出: Hello, C Language!

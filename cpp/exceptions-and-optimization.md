@@ -201,7 +201,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
 使用引用、指针或移动语义避免不必要的拷贝操作。
 ```cpp
  // 不好的做法：拷贝参数
- Truestd::vector<int> process_vector(std::vector<int> v) {
+ std::vector<int> process_vector(std::vector<int> v) {
   // 处理 v
   return v; // 返回时再次拷贝
  True}
@@ -210,7 +210,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   // 处理 v（只读）
  True}
  // 好的做法：使用移动语义
- Truestd::vector<int> create_vector() {
+ std::vector<int> create_vector() {
   std::vector<int> v = {1, 2, 3, 4, 5};
   return v; // 编译器会进行返回值优化 (RVO)
  True}
@@ -219,8 +219,8 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
 #### 2.1.5 预分配内存
 对于容器，预先分配内存可以减少动态内存分配的次数。
 ```cpp
- Truestd::vector<int> v;
- Truev.reserve(1000); // 预先分配 1000 个元素的空间
+ std::vector<int> v;
+ v.reserve(1000); // 预先分配 1000 个元素的空间
  for (int i = 0; i < 1000; i++) {
   v.push_back(i); // 不需要频繁重新分配内存
  True}
@@ -247,8 +247,8 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
 ```cpp
  #include <memory>
  // 推荐使用 make_unique 和 make_shared
- Truestd::unique_ptr<int> up = std::make_unique<int>(42);
- Truestd::shared_ptr<int> sp = std::make_shared<int>(100);
+ std::unique_ptr<int> up = std::make_unique<int>(42);
+ std::shared_ptr<int> sp = std::make_shared<int>(100);
  // 避免循环引用
  class A {
  public:
@@ -372,30 +372,30 @@ Google Benchmark 是一个用于基准测试的框架，可以测量代码的执
   benchmark::DoNotOptimize(result);
   }
  True}
- TrueBENCHMARK(BM_Square);
- TrueBENCHMARK_MAIN();
+ BENCHMARK(BM_Square);
+ BENCHMARK_MAIN();
  ```
 
 #### 3.1.2 gprof
 `gprof` 是 GCC 提供的性能分析工具，可以分析函数调用次数和执行时间。
 ```bash
  # 编译时添加 -pg 选项
- Trueg++ -pg -O2 program.cpp -o program
+ g++ -pg -O2 program.cpp -o program
  # 运行程序，生成 gmon.out 文件
  ./program
  # 分析结果
- Truegprof program gmon.out > analysis.txt
+ gprof program gmon.out > analysis.txt
  ```
 
 #### 3.1.3 perf
 `perf` 是 Linux 系统下的性能分析工具，可以分析 CPU 使用率、缓存命中率等。
 ```bash
  # 记录性能数据
- Trueperf record ./program
+ perf record ./program
  # 查看分析结果
- Trueperf report
+ perf report
  # 查看热点函数
- Trueperf top -p <pid>
+ perf top -p <pid>
  ```
 
 ### 3.2 内存分析工具
@@ -403,18 +403,18 @@ Google Benchmark 是一个用于基准测试的框架，可以测量代码的执
 Valgrind 是一个内存调试和内存泄漏检测工具。
 ```bash
  # 检测内存泄漏
- Truevalgrind --leak-check=full ./program
+ valgrind --leak-check=full ./program
  # 检测内存访问错误
- Truevalgrind --tool=memcheck ./program
+ valgrind --tool=memcheck ./program
  # 检测缓存使用情况
- Truevalgrind --tool=cachegrind ./program
+ valgrind --tool=cachegrind ./program
  ```
 
 #### 3.2.2 AddressSanitizer
 AddressSanitizer (ASan) 是一个内存错误检测工具，集成在 GCC 和 Clang 中。
 ```bash
  # 编译时添加 -fsanitize=address 选项
- Trueg++ -fsanitize=address -g program.cpp -o program
+ g++ -fsanitize=address -g program.cpp -o program
  # 运行程序
  ./program
  ```
@@ -424,9 +424,9 @@ AddressSanitizer (ASan) 是一个内存错误检测工具，集成在 GCC 和 Cl
 GDB 是一个强大的命令行调试器。
 ```bash
  # 编译时添加 -g 选项
- Trueg++ -g program.cpp -o program
+ g++ -g program.cpp -o program
  # 启动 GDB
- Truegdb ./program
+ gdb ./program
  # 常用命令
  # break main # 在 main 函数处设置断点
  # run # 运行程序
@@ -440,9 +440,9 @@ GDB 是一个强大的命令行调试器。
 LLDB 是 LLVM 项目的调试器，功能类似于 GDB。
 ```bash
  # 编译时添加 -g 选项
- Trueclang++ -g program.cpp -o program
+ clang++ -g program.cpp -o program
  # 启动 LLDB
- Truelldb ./program
+ lldb ./program
  # 常用命令
  # breakpoint set --name main # 在 main 函数处设置断点
  # run # 运行程序
@@ -603,7 +603,7 @@ LLDB 是 LLVM 项目的调试器，功能类似于 GDB。
  #include <memory>
  #include <vector>
  // 自定义删除器
- Truestruct CustomDeleter {
+ struct CustomDeleter {
   void operator()(int* p) {
   std::cout << "Custom deleter called" << std::endl;
   delete p;

@@ -32,7 +32,7 @@
  // 基本类型数组
  int[] arr1 = {1, 2, 3, 4, 5};
  // 引用类型数组
- TrueString[] arr2 = {"Java", "Python", "C++"};
+ String[] arr2 = {"Java", "Python", "C++"};
  // 使用 new 关键字的静态初始化
  int[] arr3 = new int[]{1, 2, 3};
  ```
@@ -61,7 +61,7 @@
 ```java
  int[] arr = {10, 20, 30};
  int first = arr[0]; // 获取第一个元素
- Truearr[1] = 25; // 修改第二个元素
+ arr[1] = 25; // 修改第二个元素
  ```
 
 #### 1.3.2 数组长度
@@ -91,7 +91,7 @@
 **方法3：使用 Stream API (Java 8+)**
 ```java
  int[] arr = {1, 2, 3, 4, 5};
- TrueArrays.stream(arr).forEach(System.out::println);
+ Arrays.stream(arr).forEach(System.out::println);
  ```
 
 ## 2. 多维数组 (Multidimensional Arrays)
@@ -113,18 +113,18 @@
  int[][] matrix = new int[3][3];
  // 方式2：先指定行数，后指定列数
  int[][] matrix = new int[3][];
- Truematrix[0] = new int[3];
- Truematrix[1] = new int[3];
- Truematrix[2] = new int[3];
+ matrix[0] = new int[3];
+ matrix[1] = new int[3];
+ matrix[2] = new int[3];
  ```
 
 #### 2.1.2 不规则数组 (Jagged Arrays)
 二维数组的每行可以有不同的长度。
 ```java
  int[][] jagged = new int[3][];
- Truejagged[0] = new int[2]; // 第一行 2 个元素
- Truejagged[1] = new int[5]; // 第二行 5 个元素
- Truejagged[2] = new int[3]; // 第三行 3 个元素
+ jagged[0] = new int[2]; // 第一行 2 个元素
+ jagged[1] = new int[5]; // 第二行 5 个元素
+ jagged[2] = new int[3]; // 第三行 3 个元素
  ```
 
 #### 2.1.3 二维数组的遍历
@@ -159,8 +159,8 @@ Java 支持三维及以上的多维数组，使用较少。
  // 三维数组
  int[][][] cube = new int[2][3][4];
  // 初始化三维数组
- Truecube[0][0][0] = 1;
- Truecube[0][0][1] = 2;
+ cube[0][0][0] = 1;
+ cube[0][0][1] = 2;
  // ...
  ```
 
@@ -169,10 +169,10 @@ Java 支持三维及以上的多维数组，使用较少。
 - **栈 (Stack)**: 存放数组引用变量（如 `arr`）
 - **堆 (Heap)**: 存放数组实体（连续的内存块，存储实际数据）
 ```
- True栈 堆
+ 栈 堆
  True┌───────┐ ┌─────┐
- True│ arr │──────→ │ 10 │
- True└───────┘ ├─────┤
+ │ arr │──────→ │ 10 │
+ └───────┘ ├─────┤
   │ 20 │
   ├─────┤
   │ 30 │
@@ -185,10 +185,10 @@ Java 支持三维及以上的多维数组，使用较少。
  - 第一级：存放指向每行数组的引用
  - 第二级：存放每行的实际数据
 ```
- True栈 堆
+ 栈 堆
  True┌────────┐ ┌───────┐
- True│ matrix │────────→ │ 引用1 │────→ [1, 2, 3]
- True└────────┘ ├───────┤
+ │ matrix │────────→ │ 引用1 │────→ [1, 2, 3]
+ └────────┘ ├───────┤
   │ 引用2 │────→ [4, 5, 6]
   ├───────┤
   │ 引用3 │────→ [7, 8, 9]
@@ -207,7 +207,7 @@ Java 支持三维及以上的多维数组，使用较少。
 ```java
  int[] original = {1, 2, 3, 4, 5};
  int[] copy = new int[original.length];
- TrueSystem.arraycopy(original, 0, copy, 0, original.length);
+ System.arraycopy(original, 0, copy, 0, original.length);
  ```
 
 **方法3：使用 `Arrays.copyOfRange()`**
@@ -220,15 +220,15 @@ Java 支持三维及以上的多维数组，使用较少。
 **方法1：使用 `Arrays.sort()`**
 ```java
  int[] arr = {5, 2, 8, 1, 3};
- TrueArrays.sort(arr); // 升序排序
- TrueSystem.out.println(Arrays.toString(arr)); // [1, 2, 3, 5, 8]
+ Arrays.sort(arr); // 升序排序
+ System.out.println(Arrays.toString(arr)); // [1, 2, 3, 5, 8]
  ```
 
 **方法2：使用 `Arrays.sort()` 自定义比较器**
 ```java
- TrueString[] arr = {"banana", "apple", "orange"};
- TrueArrays.sort(arr, Comparator.reverseOrder()); // 降序排序
- TrueSystem.out.println(Arrays.toString(arr)); // [orange, banana, apple]
+ String[] arr = {"banana", "apple", "orange"};
+ Arrays.sort(arr, Comparator.reverseOrder()); // 降序排序
+ System.out.println(Arrays.toString(arr)); // [orange, banana, apple]
  ```
 
 ### 4.3 数组查找
@@ -253,23 +253,23 @@ Java 支持三维及以上的多维数组，使用较少。
 ### 4.4 数组填充
 ```java
  int[] arr = new int[5];
- TrueArrays.fill(arr, 10); // 填充所有元素为 10
- TrueSystem.out.println(Arrays.toString(arr)); // [10, 10, 10, 10, 10]
+ Arrays.fill(arr, 10); // 填充所有元素为 10
+ System.out.println(Arrays.toString(arr)); // [10, 10, 10, 10, 10]
  // 填充指定范围
  int[] arr2 = new int[5];
- TrueArrays.fill(arr2, 1, 4, 5); // 填充索引 1-3 的元素为 5
- TrueSystem.out.println(Arrays.toString(arr2)); // [0, 5, 5, 5, 0]
+ Arrays.fill(arr2, 1, 4, 5); // 填充索引 1-3 的元素为 5
+ System.out.println(Arrays.toString(arr2)); // [0, 5, 5, 5, 0]
  ```
 
 ### 4.5 数组比较
 ```java
  int[] arr1 = {1, 2, 3};
  int[] arr2 = {1, 2, 3};
- Trueboolean equal = Arrays.equals(arr1, arr2); //  
+ boolean equal = Arrays.equals(arr1, arr2); //  
  // 多维数组比较
  int[][] matrix1 = {{1, 2}, {3, 4}};
  int[][] matrix2 = {{1, 2}, {3, 4}};
- Trueboolean equal2 = Arrays.deepEquals(matrix1, matrix2); //  
+ boolean equal2 = Arrays.deepEquals(matrix1, matrix2); //  
  ```
 
 ## 5. `Arrays` 工具类详解
@@ -324,17 +324,17 @@ Java 支持三维及以上的多维数组，使用较少。
 ```java
  // 基本类型数组转集合
  int[] arr = {1, 2, 3, 4, 5};
- TrueList<Integer> list = Arrays.stream(arr)
+ List<Integer> list = Arrays.stream(arr)
   .boxed()
   .collect(Collectors.toList());
  // 引用类型数组转集合
- TrueString[] arr2 = {"Java", "Python", "C++"};
- TrueList<String> list2 = Arrays.asList(arr2);
+ String[] arr2 = {"Java", "Python", "C++"};
+ List<String> list2 = Arrays.asList(arr2);
  ```
 
 ### 6.2 集合转数组
 ```java
- TrueList<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
+ List<Integer> list = Arrays.asList(1, 2, 3, 4, 5);
  // 方法1：指定数组大小
  integer[] arr = list.toArray(new Integer[list.size()]);
  // 方法2：使用 Stream API
@@ -352,7 +352,7 @@ Java 支持三维及以上的多维数组，使用较少。
  // 示例
  int[] arr = {1, 2, 2, 3, 4, 4, 5};
  int[] unique = removeDuplicates(arr);
- TrueSystem.out.println(Arrays.toString(unique)); // [1, 2, 3, 4, 5]
+ System.out.println(Arrays.toString(unique)); // [1, 2, 3, 4, 5]
  ```
 
 ### 7.2 数组最大值和最小值
@@ -365,8 +365,8 @@ Java 支持三维及以上的多维数组，使用较少。
  True}
  // 示例
  int[] arr = {5, 2, 8, 1, 3};
- TrueSystem.out.println("Max: " + findMax(arr)); // 8
- TrueSystem.out.println("Min: " + findMin(arr)); // 1
+ System.out.println("Max: " + findMax(arr)); // 8
+ System.out.println("Min: " + findMin(arr)); // 1
  ```
 
 ### 7.3 数组反转
@@ -384,8 +384,8 @@ Java 支持三维及以上的多维数组，使用较少。
  True}
  // 示例
  int[] arr = {1, 2, 3, 4, 5};
- Truereverse(arr);
- TrueSystem.out.println(Arrays.toString(arr)); // [5, 4, 3, 2, 1]
+ reverse(arr);
+ System.out.println(Arrays.toString(arr)); // [5, 4, 3, 2, 1]
  ```
 
 ### 7.4 二维数组转置

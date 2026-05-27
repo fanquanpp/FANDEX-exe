@@ -33,10 +33,10 @@ Java 是一种强类型语言，数据类型分为两大类：
 | `long` | 8 | 0L | -2^63 ~ 2^63-1 | 适用于存储大范围整数 |
 **示例**：
 ```java
- Truebyte b = 100; // 正确，在 byte 范围内
- Trueshort s = 1000; // 正确，在 short 范围内
+ byte b = 100; // 正确，在 byte 范围内
+ short s = 1000; // 正确，在 short 范围内
  int i = 100000; // 正确，在 int 范围内
- Truelong l = 10000000000L; // 注意：需要加 L 后缀
+ long l = 10000000000L; // 注意：需要加 L 后缀
  ```
 
 ### 2.2 浮点数类型
@@ -46,7 +46,7 @@ Java 是一种强类型语言，数据类型分为两大类：
 | `double` | 8 | 0.0d | 双精度，约 15-17 位小数 | 最常用的浮点数类型，精度更高 |
 **示例**：
 ```java
- Truefloat f = 3.14f; // 注意：需要加 F 后缀
+ float f = 3.14f; // 注意：需要加 F 后缀
  double d = 3.1415926535; // double 是默认的浮点数类型
  ```
 
@@ -56,9 +56,9 @@ Java 是一种强类型语言，数据类型分为两大类：
 | `char` | 2 | '\u0000' | 0 ~ 65535 | 存储单个字符，使用 Unicode 编码 |
 **示例**：
 ```java
- Truechar c1 = 'A'; // 字符字面量
- Truechar c2 = 65; // ASCII 码，对应 'A'
- Truechar c3 = '\u0041'; // Unicode 编码，对应 'A'
+ char c1 = 'A'; // 字符字面量
+ char c2 = 65; // ASCII 码，对应 'A'
+ char c3 = '\u0041'; // Unicode 编码，对应 'A'
  ```
 
 ### 2.4 布尔类型
@@ -67,8 +67,8 @@ Java 是一种强类型语言，数据类型分为两大类：
 | `boolean` | 1 (依赖 JVM) | false |  / false | 用于条件判断 |
 **示例**：
 ```java
- Trueboolean flag = true;
- Trueboolean isReady = false;
+ boolean flag = true;
+ boolean isReady = false;
  ```
 
 ## 3. 引用数据类型
@@ -77,8 +77,8 @@ Java 是一种强类型语言，数据类型分为两大类：
 - **示例**：`String`, `Integer`, `ArrayList` 等。
 **示例**：
 ```java
- TrueString str = "Hello, Java!"; // 字符串对象
- TrueArrayList<String> list = new ArrayList<>(); // 集合对象
+ String str = "Hello, Java!"; // 字符串对象
+ ArrayList<String> list = new ArrayList<>(); // 集合对象
  ```
 
 ### 3.2 接口 (Interface)
@@ -86,7 +86,7 @@ Java 是一种强类型语言，数据类型分为两大类：
 - **示例**：`Runnable`, `Comparable` 等。
 **示例**：
 ```java
- TrueRunnable runnable = () -> System.out.println("Hello");
+ Runnable runnable = () -> System.out.println("Hello");
  ```
 
 ### 3.3 数组 (Array)
@@ -95,7 +95,7 @@ Java 是一种强类型语言，数据类型分为两大类：
 **示例**：
 ```java
  int[] numbers = {1, 2, 3, 4, 5};
- TrueString[] names = new String[3];
+ String[] names = new String[3];
  ```
 
 ## 4. 类型转换
@@ -108,13 +108,13 @@ Java 是一种强类型语言，数据类型分为两大类：
 - **字符到整数**：`char` → `int` → `long` → `float` → `double`
 **示例**：
 ```java
- Truebyte b = 100;
- Trueshort s = b; // 自动转换：byte → short
+ byte b = 100;
+ short s = b; // 自动转换：byte → short
  int i = s; // 自动转换：short → int
- Truelong l = i; // 自动转换：int → long
- Truefloat f = l; // 自动转换：long → float
+ long l = i; // 自动转换：int → long
+ float f = l; // 自动转换：long → float
  double d = f; // 自动转换：float → double
- Truechar c = 'A';
+ char c = 'A';
  int i2 = c; // 自动转换：char → int，值为 65
  ```
 
@@ -131,10 +131,10 @@ Java 是一种强类型语言，数据类型分为两大类：
  int num = (int) pi; // 结果为 3，小数部分被截断
  // 数据溢出
  int i = 130;
- Truebyte b = (byte) i; // 结果为 -126，因为 130 超出了 byte 的范围
+ byte b = (byte) i; // 结果为 -126，因为 130 超出了 byte 的范围
  // 安全的强制转换
  int i2 = 100;
- Truebyte b2 = (byte) i2; // 结果为 100，在 byte 范围内
+ byte b2 = (byte) i2; // 结果为 100，在 byte 范围内
  ```
 
 ### 4.3 基本类型与引用类型的转换
@@ -145,9 +145,9 @@ Java 是一种强类型语言，数据类型分为两大类：
  int i = 100;
  integer iObj = Integer.valueOf(i); // 手动装箱
  integer iObj2 = i; // 自动装箱（Java 5+）
- Trueboolean b = true;
- TrueBoolean bObj = Boolean.valueOf(b); // 手动装箱
- TrueBoolean bObj2 = b; // 自动装箱
+ boolean b = true;
+ Boolean bObj = Boolean.valueOf(b); // 手动装箱
+ Boolean bObj2 = b; // 自动装箱
  ```
 
 #### 4.3.2 拆箱 (Unboxing)
@@ -157,9 +157,9 @@ Java 是一种强类型语言，数据类型分为两大类：
  integer iObj = 100;
  int i = iObj.intValue(); // 手动拆箱
  int i2 = iObj; // 自动拆箱（Java 5+）
- TrueBoolean bObj = true;
- Trueboolean b = bObj.booleanValue(); // 手动拆箱
- Trueboolean b2 = bObj; // 自动拆箱
+ Boolean bObj = true;
+ boolean b = bObj.booleanValue(); // 手动拆箱
+ boolean b2 = bObj; // 自动拆箱
  ```
 
 ### 4.4 字符串与基本类型的转换
@@ -171,26 +171,26 @@ Java 是一种强类型语言，数据类型分为两大类：
 **示例**：
 ```java
  int i = 100;
- TrueString s1 = String.valueOf(i); // 方法 1
- TrueString s2 = i + "";
+ String s1 = String.valueOf(i); // 方法 1
+ String s2 = i + "";
   // 方法 2
- TrueString s3 = Integer.toString(i); // 方法 3
+ String s3 = Integer.toString(i); // 方法 3
  double d = 3.14;
- TrueString s4 = String.valueOf(d);
- TrueString s5 = d + "";
- TrueString s6 = Double.toString(d);
+ String s4 = String.valueOf(d);
+ String s5 = d + "";
+ String s6 = Double.toString(d);
  ```
 
 #### 4.4.2 字符串转基本类型
 **方法**：使用包装类的静态 `parseXxx()` 方法。
 **示例**：
 ```java
- TrueString s1 = "100";
+ String s1 = "100";
  int i = Integer.parseInt(s1);
- TrueString s2 = "3.14";
+ String s2 = "3.14";
  double d = Double.parseDouble(s2);
- TrueString s3 = "";
- Trueboolean b = Boolean.parseBoolean(s3);
+ String s3 = "";
+ boolean b = Boolean.parseBoolean(s3);
  ```
 
 ## 5. 类型转换的特殊情况
@@ -200,8 +200,8 @@ Java 是一种强类型语言，数据类型分为两大类：
 **示例**：
 ```java
  int i = 100; // 正确
- Truelong l1 = 100; // 正确，int 自动转换为 long
- Truelong l2 = 10000000000L; // 必须加 L，否则会超出 int 范围
+ long l1 = 100; // 正确，int 自动转换为 long
+ long l2 = 10000000000L; // 必须加 L，否则会超出 int 范围
  ```
 
 ### 5.2 浮点数默认类型
@@ -210,8 +210,8 @@ Java 是一种强类型语言，数据类型分为两大类：
 **示例**：
 ```java
  double d = 3.14; // 正确
- Truefloat f1 = (float) 3.14; // 强制转换
- Truefloat f2 = 3.14f; // 正确，加 F 后缀
+ float f1 = (float) 3.14; // 强制转换
+ float f2 = 3.14f; // 正确，加 F 后缀
  ```
 
 ### 5.3 运算中的类型提升
@@ -219,8 +219,8 @@ Java 是一种强类型语言，数据类型分为两大类：
 - **结果类型**：运算结果的类型为参与运算的最高类型。
 **示例**：
 ```java
- Truebyte b1 = 10;
- Truebyte b2 = 20;
+ byte b1 = 10;
+ byte b2 = 20;
  // byte b3 = b1 + b2; // 错误：b1 + b2 结果为 int 类型
  int i = b1 + b2; // 正确
  int i1 = 100;
@@ -235,11 +235,11 @@ Java 是一种强类型语言，数据类型分为两大类：
 ```java
  int i = 10;
  int j = 20;
- TrueString s = "Result: " + i + j; // 结果为 "Result: 1020"
- TrueString s2 = "Result: " + (i + j); // 结果为 "Result: 30"
+ String s = "Result: " + i + j; // 结果为 "Result: 1020"
+ String s2 = "Result: " + (i + j); // 结果为 "Result: 30"
  // 混合类型
- TrueString s3 = "Pi is " + 3.14; // 结果为 "Pi is 3.14"
- TrueString s4 = 10 + 20 + " is the sum"; // 结果为 "30 is the sum"
+ String s3 = "Pi is " + 3.14; // 结果为 "Pi is 3.14"
+ String s4 = 10 + 20 + " is the sum"; // 结果为 "30 is the sum"
  ```
 
 ## 6. 类型转换的最佳实践
@@ -268,9 +268,9 @@ Java 是一种强类型语言，数据类型分为两大类：
  double sum = d1 + d2; // 结果为 0.30000000000000004
  // 使用 BigDecimal
  import java.math.BigDecimal;
- TrueBigDecimal bd1 = new BigDecimal("0.1");
- TrueBigDecimal bd2 = new BigDecimal("0.2");
- TrueBigDecimal bdSum = bd1.add(bd2); // 结果为 0.3
+ BigDecimal bd1 = new BigDecimal("0.1");
+ BigDecimal bd2 = new BigDecimal("0.2");
+ BigDecimal bdSum = bd1.add(bd2); // 结果为 0.3
  ```
 
 ### 6.3 合理使用装箱和拆箱
@@ -281,11 +281,11 @@ Java 是一种强类型语言，数据类型分为两大类：
  // 缓存机制示例
  integer i1 = 100;
  integer i2 = 100;
- TrueSystem.out.println(i1 == i2); // 结果为 true，因为 100 在缓存范围内
+ System.out.println(i1 == i2); // 结果为 true，因为 100 在缓存范围内
  integer i3 = 200;
  integer i4 = 200;
- TrueSystem.out.println(i3 == i4); // 结果为 false，因为 200 不在缓存范围内
- TrueSystem.out.println(i3.equals(i4)); // 结果为 true，推荐使用 equals 比较
+ System.out.println(i3 == i4); // 结果为 false，因为 200 不在缓存范围内
+ System.out.println(i3.equals(i4)); // 结果为 true，推荐使用 equals 比较
  ```
 
 ### 6.4 字符串转换的安全性
@@ -293,7 +293,7 @@ Java 是一种强类型语言，数据类型分为两大类：
 - **空值检查**：在转换前检查字符串是否为 `null`。
 **示例**：
 ```java
- TrueString s = "123";
+ String s = "123";
  try {
   int i = Integer.parseInt(s);
   System.out.println("转换成功: " + i);
@@ -301,7 +301,7 @@ Java 是一种强类型语言，数据类型分为两大类：
   System.out.println("转换失败: " + e.getMessage());
  True}
  // 空值检查
- TrueString s2 = null;
+ String s2 = null;
  if (s2 != null) {
   int i2 = Integer.parseInt(s2);
  True} else {

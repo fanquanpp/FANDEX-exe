@@ -8,11 +8,11 @@
 ### 1.1 表格
 #### 1.1.1 基本表格
 ```markdown
- True| 姓名 | 年龄 | 职业 |
- True| :--- | :--- | :--- |
- True| 张三 | 25 | 工程师 |
- True| 李四 | 30 | 设计师 |
- True| 王五 | 35 | 产品经理 |
+ | 姓名 | 年龄 | 职业 |
+ | :--- | :--- | :--- |
+ | 张三 | 25 | 工程师 |
+ | 李四 | 30 | 设计师 |
+ | 王五 | 35 | 产品经理 |
  ```
 
 显示效果：
@@ -23,10 +23,10 @@
 | 王五 | 35 | 产品经理 |
 #### 1.1.2 对齐方式
 ```markdown
- True| 左对齐 | 居中对齐 | 右对齐 |
- True| :--- | :---: | ---: |
- True| 内容 | 内容 | 内容 |
- True| 长内容 | 长内容 | 长内容 |
+ | 左对齐 | 居中对齐 | 右对齐 |
+ | :--- | :---: | ---: |
+ | 内容 | 内容 | 内容 |
+ | 长内容 | 长内容 | 长内容 |
  ```
 
 显示效果：
@@ -53,12 +53,12 @@
   console.log('Hello, Markdown!');
   return true;
  True}
- Truehello();
+ hello();
  ```
 
 ### 1.3 脚注
 ```markdown
- True这是一个有脚注的句子[^1]。
+ 这是一个有脚注的句子[^1]。
  [^1]: 这是脚注的内容。
  ```
 
@@ -72,9 +72,9 @@
 
 ### 1.5 定义列表
 ```markdown
- True术语 1
+ 术语 1
  True: 术语 1 的定义
- True术语 2
+ 术语 2
  True: 术语 2 的定义
  True: 术语 2 的另一个定义
  ```
@@ -82,7 +82,7 @@
 ### 1.6 数学公式
 #### 1.6.1 行内公式
 ```markdown
- True质能方程：$E=mc^2$
+ 质能方程：$E=mc^2$
  ```
 
 #### 1.6.2 块级公式
@@ -95,13 +95,13 @@
 ### 1.7 admonition
 ```markdown
  True::: tip
- True这是一个提示
+ 这是一个提示
  True:::
  True::: warning
- True这是一个警告
+ 这是一个警告
  True:::
  True::: danger
- True这是一个危险警告
+ 这是一个危险警告
  True:::
  ```
 
@@ -143,28 +143,28 @@
  # macOS: brew install pandoc
  # Linux: sudo apt install pandoc
  # 转换 Markdown 到 HTML
- Truepandoc input.md -o output.html
+ pandoc input.md -o output.html
  # 转换 Markdown 到 PDF
- Truepandoc input.md -o output.pdf
+ pandoc input.md -o output.pdf
  # 转换 Markdown 到 Word
- Truepandoc input.md -o output.docx
+ pandoc input.md -o output.docx
  ```
 
 #### 2.1.2 使用 Node.js 工具
 ```bash
  # 安装 markdown-it
- Truenpm install markdown-it
+ npm install markdown-it
  # 创建转换脚本
- Truecat > convert.js << 'EOF'
+ cat > convert.js << 'EOF'
  const fs = require('fs');
  const md = require('markdown-it')();
  const input = fs.readFileSync('input.md', 'utf8');
  const output = md.render(input);
- Truefs.writeFileSync('output.html', output);
+ fs.writeFileSync('output.html', output);
  console.log('Conversion completed!');
- TrueEOF
+ EOF
  # 运行转换
- Truenode convert.js
+ node convert.js
  ```
 
 ### 2.2 静态站点生成
@@ -172,21 +172,21 @@
 **安装 VuePress**
 ```bash
  # 全局安装
- Truenpm install -g vuepress
+ npm install -g vuepress
  # 或本地安装
- Truenpm install vuepress --save-dev
+ npm install vuepress --save-dev
  ```
 
 **创建文档结构**
 ```
  docs/
- True├── .vuepress/
- True│ ├── config.js
- True│ └── public/
- True├── README.md
- True├── guide/
- True│ └── README.md
- True└── api/
+ ├── .vuepress/
+ │ ├── config.js
+ │ └── public/
+ ├── README.md
+ ├── guide/
+ │ └── README.md
+ └── api/
   └── README.md
  ```
 
@@ -225,25 +225,25 @@
 #### 2.2.2 使用 MkDocs
 **安装 MkDocs**
 ```bash
- Truepip install mkdocs
+ pip install mkdocs
  ```
 
 **创建文档结构**
 ```
  docs/
- True├── index.md
- True├── guide.md
- True└── api.md
+ ├── index.md
+ ├── guide.md
+ └── api.md
  ```
 
 **配置文件**
 ```yaml
  # mkdocs.yml
- Truesite_name: My Documentation
- Truesite_description: This is my documentation site
- Truetheme:
+ site_name: My Documentation
+ site_description: This is my documentation site
+ theme:
   name: material
- Truenav:
+ nav:
   - Home: index.md
   - Guide: guide.md
   - API: api.md
@@ -252,43 +252,43 @@
 **构建站点**
 ```bash
  # 开发模式
- Truemkdocs serve
+ mkdocs serve
  # 构建模式
- Truemkdocs build
+ mkdocs build
  ```
 
 ### 2.3 文档测试
 #### 2.3.1 使用 markdown-link-check
 ```bash
  # 安装
- Truenpm install -g markdown-link-check
+ npm install -g markdown-link-check
  # 检查链接
- Truemarkdown-link-check README.md
+ markdown-link-check README.md
  # 检查整个目录
- Truefind . -name "*.md" -exec markdown-link-check {} \;
+ find . -name "*.md" -exec markdown-link-check {} \;
  ```
 
 #### 2.3.2 使用 markdownlint
 ```bash
  # 安装
- Truenpm install -g markdownlint-cli
+ npm install -g markdownlint-cli
  # 检查文档
- Truemarkdownlint README.md
+ markdownlint README.md
  # 检查整个目录
- Truemarkdownlint .
+ markdownlint .
  ```
 
 ### 2.4 文档版本控制
 #### 2.4.1 使用 Git 分支
 ```bash
  # 创建版本分支
- Truegit branch docs/v1.0
- Truegit branch docs/v2.0
+ git branch docs/v1.0
+ git branch docs/v2.0
  # 切换到特定版本
- Truegit checkout docs/v1.0
+ git checkout docs/v1.0
  # 合并更改
- Truegit checkout main
- Truegit merge docs/v1.0
+ git checkout main
+ git merge docs/v1.0
  ```
 
 #### 2.4.2 使用 VuePress 多版本
@@ -310,12 +310,12 @@
 **目录结构**
 ```
  docs/
- True├── .vuepress/
- True├── 1.0/
- True│ └── README.md
- True├── 2.0/
- True│ └── README.md
- True└── README.md
+ ├── .vuepress/
+ ├── 1.0/
+ │ └── README.md
+ ├── 2.0/
+ │ └── README.md
+ └── README.md
  ```
 
 ## 3. 高级应用
@@ -373,11 +373,11 @@ function hello() {
 ## 7. 许可证
 ```
  #### 3.2.2 文档风格指南
- True1. **一致性**：保持术语和格式的一致性
- True2. **清晰度**：使用简洁明了的语言
- True3. **完整性**：覆盖所有重要内容
- True4. **准确性**：确保信息准确无误
- True5. **可维护性**：便于更新和维护
+ 1. **一致性**：保持术语和格式的一致性
+ 2. **清晰度**：使用简洁明了的语言
+ 3. **完整性**：覆盖所有重要内容
+ 4. **准确性**：确保信息准确无误
+ 5. **可维护性**：便于更新和维护
  ### 3.3 自动化文档生成
  #### 3.3.1 从代码生成文档
  True**使用 JSDoc**
@@ -429,27 +429,27 @@ typedoc --out docs src
  True- **项目计划模板**
  ## 5. 最佳实践
  ### 5.1 内容组织
- True1. **分层结构**：使用标题层级组织内容
- True2. **逻辑顺序**：按照逻辑顺序排列内容
- True3. **模块化**：将内容分解为模块
- True4. **导航辅助**：使用目录和链接
+ 1. **分层结构**：使用标题层级组织内容
+ 2. **逻辑顺序**：按照逻辑顺序排列内容
+ 3. **模块化**：将内容分解为模块
+ 4. **导航辅助**：使用目录和链接
  ### 5.2 格式规范
- True1. **标题格式**：使用 # 符号，避免使用 === 或 ---
- True2. **列表格式**：使用 - 或 * 作为无序列表标记
- True3. **代码块**：使用 ``` 包围代码块，并指定语言
- True4. **链接格式**：使用 [文本](链接) 格式
- True5. **图片格式**：使用 ![alt](链接) 格式
+ 1. **标题格式**：使用 # 符号，避免使用 === 或 ---
+ 2. **列表格式**：使用 - 或 * 作为无序列表标记
+ 3. **代码块**：使用 ``` 包围代码块，并指定语言
+ 4. **链接格式**：使用 [文本](链接) 格式
+ 5. **图片格式**：使用 ![alt](链接) 格式
  ### 5.3 内容质量
- True1. **准确性**：确保信息准确无误
- True2. **完整性**：覆盖所有重要内容
- True3. **清晰度**：使用简洁明了的语言
- True4. **一致性**：保持术语和格式的一致性
- True5. **可访问性**：考虑不同读者的需求
+ 1. **准确性**：确保信息准确无误
+ 2. **完整性**：覆盖所有重要内容
+ 3. **清晰度**：使用简洁明了的语言
+ 4. **一致性**：保持术语和格式的一致性
+ 5. **可访问性**：考虑不同读者的需求
  ### 5.4 版本控制
- True1. **使用 Git**：对文档进行版本控制
- True2. **提交信息**：使用清晰的提交信息
- True3. **分支管理**：使用分支管理不同版本的文档
- True4. **合并策略**：制定合理的合并策略
+ 1. **使用 Git**：对文档进行版本控制
+ 2. **提交信息**：使用清晰的提交信息
+ 3. **分支管理**：使用分支管理不同版本的文档
+ 4. **合并策略**：制定合理的合并策略
  ## 6. 项目实战
  ### 6.1 构建个人知识库
  True**目录结构**
@@ -535,4 +535,4 @@ npm run dev
  True- [VuePress 文档](https://vuepress.vuejs.org/)
  True- [MkDocs 文档](https://www.mkdocs.org/)
  True- [Obsidian 文档](https://help.obsidian.md/)
- True通过本教程，你已经了解了 Markdown 的高级语法和文档自动化工具。在实际项目中，你可以使用这些技术来创建高质量的文档，提高工作效率，构建个人知识库或项目文档。
+ 通过本教程，你已经了解了 Markdown 的高级语法和文档自动化工具。在实际项目中，你可以使用这些技术来创建高质量的文档，提高工作效率，构建个人知识库或项目文档。

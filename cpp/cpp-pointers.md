@@ -19,7 +19,7 @@
  int x = 10; // 声明一个整数变量
  int* p = &x; // 声明一个指向整数的指针，指向 x 的地址
  True*p = 20; // 通过指针修改 x 的值
- Truestd::cout << x; // 输出 20
+ std::cout << x; // 输出 20
  ```
 
 ## 2. 指针的类型
@@ -36,14 +36,14 @@
 ```cpp
  int arr[] = {1, 2, 3, 4, 5};
  int* p = arr; // 指向数组的第一个元素
- Truestd::cout << *p << std::endl; // 输出 1
- Truestd::cout << *(p + 1) << std::endl; // 输出 2
- Truestd::cout << *(p + 2) << std::endl; // 输出 3
+ std::cout << *p << std::endl; // 输出 1
+ std::cout << *(p + 1) << std::endl; // 输出 2
+ std::cout << *(p + 2) << std::endl; // 输出 3
  // 指针算术
- Truep++; // 指针向后移动一个元素（4 字节）
- Truestd::cout << *p << std::endl; // 输出 2
- Truep--; // 指针向前移动一个元素
- Truestd::cout << *p << std::endl; // 输出 1
+ p++; // 指针向后移动一个元素（4 字节）
+ std::cout << *p << std::endl; // 输出 2
+ p--; // 指针向前移动一个元素
+ std::cout << *p << std::endl; // 输出 1
  ```
 
 ## 4. 空指针和野指针
@@ -86,8 +86,8 @@
  int arr[5] = {1, 2, 3, 4, 5};
  int (*p)[5] = &arr; // 指向包含 5 个整数的数组的指针
  // 访问数组指针
- Truestd::cout << (*p)[0] << std::endl; // 输出 1
- Truestd::cout << (*p)[1] << std::endl; // 输出 2
+ std::cout << (*p)[0] << std::endl; // 输出 1
+ std::cout << (*p)[1] << std::endl; // 输出 2
  ```
 
 ---

@@ -20,12 +20,12 @@
 Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
 ```
  throwable
- True├── Error
- True│ ├── VirtualMachineError
- True│ │ ├── StackOverflowError
- True│ │ └── OutOfMemoryError
- True│ └── ...
- True└── Exception
+ ├── Error
+ │ ├── VirtualMachineError
+ │ │ ├── StackOverflowError
+ │ │ └── OutOfMemoryError
+ │ └── ...
+ └── Exception
   ├── Checked Exception
   │ ├── IOException
   │ ├── SQLException
@@ -346,7 +346,7 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
 ### 8.2 资源泄漏
 ```java
  // 错误：没有关闭资源
- TrueBufferedReader br = null;
+ BufferedReader br = null;
  try {
   br = new BufferedReader(new FileReader("file.txt"));
   // 使用 br

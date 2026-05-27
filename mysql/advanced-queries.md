@@ -25,7 +25,7 @@
 **作用**：只返回两个表中匹配条件的行。
 **语法**：
 ```sql
- TrueSELECT * 
+ SELECT * 
  from table1 
  inNER JOIN table2 
   ON table1.id = table2.id;
@@ -33,13 +33,13 @@
 
 **图解**：
 ```
- True表A 表B 结果
+ 表A 表B 结果
  True┌───┐ ┌───┐ ┌───┐
- True│ 1 │ ────── │ A │ │ 1 │
- True│ 2 │ ────── │ B │ │ 2 │
- True│ 3 │ ────── │ C │ │ 3 │
- True│ 4 │ │ │ └───┘
- True└───┘ └───┘
+ │ 1 │ ────── │ A │ │ 1 │
+ │ 2 │ ────── │ B │ │ 2 │
+ │ 3 │ ────── │ C │ │ 3 │
+ │ 4 │ │ │ └───┘
+ └───┘ └───┘
  ```
 
 **特点**：只有两边都匹配的数据才会出现在结果中。
@@ -48,21 +48,21 @@
 **作用**：返回左表的所有行，以及右表中匹配的行；右表不匹配的部分用 NULL 填充。
 **语法**：
 ```sql
- TrueSELECT * 
+ SELECT * 
  from table1 
- TrueLEFT JOIN table2 
+ LEFT JOIN table2 
   ON table1.id = table2.id;
  ```
 
 **图解**：
 ```
- True表A 表B 结果
+ 表A 表B 结果
  True┌───┐ ┌───┐ ┌───┬─────┐
- True│ 1 │ ────── │ A │ │ 1 │ A │
- True│ 2 │ ────── │ B │ │ 2 │ B │
- True│ 3 │ ────── │ C │ │ 3 │ C │
- True│ 4 │ │ │ │ 4 │ NULL│
- True└───┘ └───┘ └───┴─────┘
+ │ 1 │ ────── │ A │ │ 1 │ A │
+ │ 2 │ ────── │ B │ │ 2 │ B │
+ │ 3 │ ────── │ C │ │ 3 │ C │
+ │ 4 │ │ │ │ 4 │ NULL│
+ └───┘ └───┘ └───┴─────┘
  ```
 
 **特点**：左表的数据全部保留，右表没有匹配的用 NULL 填充。
@@ -71,21 +71,21 @@
 **作用**：返回右表的所有行，以及左表中匹配的行；左表不匹配的部分用 NULL 填充。
 **语法**：
 ```sql
- TrueSELECT * 
+ SELECT * 
  from table1 
- TrueRIGHT JOIN table2 
+ RIGHT JOIN table2 
   ON table1.id = table2.id;
  ```
 
 **图解**：
 ```
- True表A 表B 结果
+ 表A 表B 结果
  True┌───┐ ┌───┐ ┌─────┬───┐
- True│ 1 │ ────── │ A │ │ 1 │ A │
- True│ 2 │ ────── │ B │ │ 2 │ B │
- True│ │ │ C │ │ NULL│ C │
- True│ │ │ D │ │ NULL│ D │
- True└───┘ └───┘ └─────┴───┘
+ │ 1 │ ────── │ A │ │ 1 │ A │
+ │ 2 │ ────── │ B │ │ 2 │ B │
+ │ │ │ C │ │ NULL│ C │
+ │ │ │ D │ │ NULL│ D │
+ └───┘ └───┘ └─────┴───┘
  ```
 
 **特点**：右表的数据全部保留，左表没有匹配的用 NULL 填充。
@@ -96,26 +96,26 @@
 **语法**：
 ```sql
  True-- 模拟 FULL JOIN
- TrueSELECT * 
+ SELECT * 
  from table1 
- TrueLEFT JOIN table2 
+ LEFT JOIN table2 
   ON table1.id = table2.id
- TrueUNION
- TrueSELECT * 
+ UNION
+ SELECT * 
  from table1 
- TrueRIGHT JOIN table2 
+ RIGHT JOIN table2 
   ON table1.id = table2.id;
  ```
 
 **图解**：
 ```
- True表A 表B 结果
+ 表A 表B 结果
  True┌───┐ ┌───┐ ┌─────┬─────┐
- True│ 1 │ ────── │ A │ │ 1 │ A │
- True│ 2 │ ────── │ B │ │ 2 │ B │
- True│ 3 │ │ C │ │ 3 │ NULL│
- True│ │ │ D │ │ NULL│ C │
- True└───┘ └───┘ │ NULL│ D │
+ │ 1 │ ────── │ A │ │ 1 │ A │
+ │ 2 │ ────── │ B │ │ 2 │ B │
+ │ 3 │ │ C │ │ 3 │ NULL│
+ │ │ │ D │ │ NULL│ C │
+ └───┘ └───┘ │ NULL│ D │
   └─────┴─────┘
  ```
 
@@ -124,12 +124,12 @@
 **示例表结构**:
 ```sql
  True-- 部门表
- TrueCREATE TABLE departments (
+ CREATE TABLE departments (
   dept_id INT PRIMARY KEY,
   dept_name VARCHAR(50) NOT NULL
  True);
  True-- 员工表
- TrueCREATE TABLE employees (
+ CREATE TABLE employees (
   emp_id INT PRIMARY KEY,
   emp_name VARCHAR(50) NOT NULL,
   dept_id INT,
@@ -150,7 +150,7 @@
 **INNER JOIN 示例**:
 ```sql
  True-- 查询员工及其所属部门
- TrueSELECT e.emp_id, e.emp_name, d.dept_name, e.salary
+ SELECT e.emp_id, e.emp_name, d.dept_name, e.salary
  from employees e
  inNER JOIN departments d ON e.dept_id = d.dept_id;
  True-- 结果:
@@ -165,9 +165,9 @@
 **LEFT JOIN 示例**:
 ```sql
  True-- 查询所有部门及其员工（包括没有员工的部门）
- TrueSELECT d.dept_id, d.dept_name, e.emp_name, e.salary
+ SELECT d.dept_id, d.dept_name, e.emp_name, e.salary
  from departments d
- TrueLEFT JOIN employees e ON d.dept_id = e.dept_id;
+ LEFT JOIN employees e ON d.dept_id = e.dept_id;
  True-- 结果:
  True-- dept_id | dept_name | emp_name | salary
  True-- 1 | 技术部 | 张三 | 8000.00
@@ -180,9 +180,9 @@
 **RIGHT JOIN 示例**:
 ```sql
  True-- 查询所有员工及其部门（如果员工没有部门也会显示）
- TrueSELECT e.emp_id, e.emp_name, d.dept_name, e.salary
+ SELECT e.emp_id, e.emp_name, d.dept_name, e.salary
  from departments d
- TrueRIGHT JOIN employees e ON d.dept_id = e.dept_id;
+ RIGHT JOIN employees e ON d.dept_id = e.dept_id;
  True-- 结果:
  True-- emp_id | emp_name | dept_name | salary
  True-- 1 | 张三 | 技术部 | 8000.00
@@ -195,13 +195,13 @@
 **FULL JOIN 模拟**:
 ```sql
  True-- 模拟 FULL JOIN
- TrueSELECT d.dept_id, d.dept_name, e.emp_name, e.salary
+ SELECT d.dept_id, d.dept_name, e.emp_name, e.salary
  from departments d
- TrueLEFT JOIN employees e ON d.dept_id = e.dept_id
- TrueUNION
- TrueSELECT d.dept_id, d.dept_name, e.emp_name, e.salary
+ LEFT JOIN employees e ON d.dept_id = e.dept_id
+ UNION
+ SELECT d.dept_id, d.dept_name, e.emp_name, e.salary
  from departments d
- TrueRIGHT JOIN employees e ON d.dept_id = e.dept_id;
+ RIGHT JOIN employees e ON d.dept_id = e.dept_id;
  ```
 
 ### 1.3 多表联查实战（商品管理系统）
@@ -217,7 +217,7 @@
 
 **实战示例1：查询员工及其销售订单**
 ```sql
- TrueSELECT 
+ SELECT 
   e.Employees_id,
   e.Employees_name,
   s.Sales_id,
@@ -230,7 +230,7 @@
 
 **实战示例2：查询员工销售订单详情（含客户信息）**
 ```sql
- TrueSELECT 
+ SELECT 
   e.Employees_name,
   s.Sales_id,
   c.Customer_name,
@@ -245,7 +245,7 @@
 
 **实战示例3：查询完整订单信息（五表联查）**
 ```sql
- TrueSELECT 
+ SELECT 
   e.Employees_name AS 员工姓名,
   s.Sales_id AS 订单编号,
   c.Customer_name AS 客户姓名,
@@ -263,12 +263,12 @@
   ON s.Sales_id = sl.Sales_id
  inNER JOIN commodity_info m 
   ON sl.Commodity_id = m.Commodity_id
- TrueORDER BY s.Sales_time DESC;
+ ORDER BY s.Sales_time DESC;
  ```
 
 **实战示例4：统计各销售员的销售业绩**
 ```sql
- TrueSELECT 
+ SELECT 
   e.Employees_name AS 销售员,
   COUNT(DISTINCT s.Sales_id) AS 订单数,
   SUM(sl.Sales_Number) AS 销售总量,
@@ -278,13 +278,13 @@
   ON e.Employees_id = s.Employees_id
  inNER JOIN sales_list sl 
   ON s.Sales_id = sl.Sales_id
- TrueGROUP BY e.Employees_id, e.Employees_name
- TrueORDER BY 销售总业绩 DESC;
+ GROUP BY e.Employees_id, e.Employees_name
+ ORDER BY 销售总业绩 DESC;
  ```
 
 **实战示例5：查询客户购买的商品明细**
 ```sql
- TrueSELECT 
+ SELECT 
   c.Customer_name AS 客户姓名,
   m.Commodity_name AS 商品名称,
   SUM(sl.Sales_Number) AS 购买数量,
@@ -296,61 +296,61 @@
   ON s.Sales_id = sl.Sales_id
  inNER JOIN commodity_info m 
   ON sl.Commodity_id = m.Commodity_id
- TrueGROUP BY c.Customer_id, c.Customer_name, m.Commodity_name
- TrueORDER BY c.Customer_name, 消费金额 DESC;
+ GROUP BY c.Customer_id, c.Customer_name, m.Commodity_name
+ ORDER BY c.Customer_name, 消费金额 DESC;
  ```
 
 **实战示例6：自连接查询 - 查询同名员工**
 ```sql
- TrueSELECT 
+ SELECT 
   e1.Employees_name AS 姓名,
   e1.Employees_id AS 员工ID1,
   e2.Employees_id AS 员工ID2
  from employees_info e1
  inNER JOIN employees_info e2 
   ON e1.Employees_name = e2.Employees_name
- TrueWHERE e1.Employees_id < e2.Employees_id;
+ WHERE e1.Employees_id < e2.Employees_id;
  ```
 
 **实战示例7：自连接查询 - 同城市供应商**
 ```sql
- TrueSELECT 
+ SELECT 
   s1.Supplier_name AS 供应商1,
   s1.Address AS 城市,
   s2.Supplier_name AS 同城市供应商
  from supplier_info s1
  inNER JOIN supplier_info s2 
   ON s1.Address = s2.Address
- TrueWHERE s1.Supplier_id <> s2.Supplier_id
- TrueORDER BY s1.Address, s1.Supplier_name;
+ WHERE s1.Supplier_id <> s2.Supplier_id
+ ORDER BY s1.Address, s1.Supplier_name;
  ```
 
 **外连接实战示例1：查询所有员工及他们的销售记录**
 ```sql
- TrueSELECT 
+ SELECT 
   e.Employees_name,
   s.Sales_id,
   s.Sales_time
  from employees_info e
- TrueLEFT JOIN sales_info s 
+ LEFT JOIN sales_info s 
   ON e.Employees_id = s.Employees_id;
  ```
 
 **外连接实战示例2：统计每种商品的销量（包含未销售的商品）**
 ```sql
- TrueSELECT 
+ SELECT 
   c.Commodity_name,
   IFNULL(SUM(sl.Sales_Number), 0) AS 销售数量
  from commodity_info c
- TrueLEFT JOIN sales_list sl 
+ LEFT JOIN sales_list sl 
   ON c.Commodity_id = sl.Commodity_id
- TrueGROUP BY c.Commodity_id, c.Commodity_name
- TrueORDER BY 销售数量 DESC;
+ GROUP BY c.Commodity_id, c.Commodity_name
+ ORDER BY 销售数量 DESC;
  ```
 
 **外连接实战示例3：查询采购信息（包含没有采购的商品）**
 ```sql
- TrueSELECT 
+ SELECT 
   c.Commodity_name,
   pi.Purchase_id,
   pi.Purchase_time,
@@ -359,24 +359,24 @@
   su.Supplier_name,
   e.Employees_name
  from commodity_info c
- TrueLEFT JOIN purchase_list pl 
+ LEFT JOIN purchase_list pl 
   ON c.Commodity_id = pl.Commodity_id
- TrueLEFT JOIN purchase_info pi 
+ LEFT JOIN purchase_info pi 
   ON pl.Purchase_id = pi.Purchase_id
- TrueLEFT JOIN supplier_info su 
+ LEFT JOIN supplier_info su 
   ON pi.Supplier_id = su.Supplier_id
- TrueLEFT JOIN employees_info e 
+ LEFT JOIN employees_info e 
   ON pi.Employees_id = e.Employees_id;
  ```
 
 **外连接实战示例4：查询有销售记录的员工**
 ```sql
- TrueSELECT DISTINCT
+ SELECT DISTINCT
   e.Employees_name
  from employees_info e
- TrueRIGHT JOIN sales_info s 
+ RIGHT JOIN sales_info s 
   ON e.Employees_id = s.Employees_id
- TrueWHERE e.Employees_id IS NOT NULL;
+ WHERE e.Employees_id IS NOT NULL;
  ```
 
 ### 1.4 其他连接类型
@@ -384,41 +384,41 @@
 返回两个表的笛卡尔积：
 ```sql
  True-- 交叉连接
- TrueSELECT * FROM table1 CROSS JOIN table2;
+ SELECT * FROM table1 CROSS JOIN table2;
  True-- 等价于
- TrueSELECT * FROM table1, table2;
+ SELECT * FROM table1, table2;
  True-- 示例：生成所有部门和所有员工的组合
- TrueSELECT d.dept_name, e.emp_name
+ SELECT d.dept_name, e.emp_name
  from departments d
- TrueCROSS JOIN employees e;
+ CROSS JOIN employees e;
  ```
 
 #### 1.4.2 自然连接 (NATURAL JOIN)
 自动根据相同列名进行连接：
 ```sql
  True-- 自然内连接
- TrueSELECT * FROM employees NATURAL JOIN departments;
+ SELECT * FROM employees NATURAL JOIN departments;
  True-- 自然左连接
- TrueSELECT * FROM employees NATURAL LEFT JOIN departments;
+ SELECT * FROM employees NATURAL LEFT JOIN departments;
  True-- 自然右连接
- TrueSELECT * FROM employees NATURAL RIGHT JOIN departments;
+ SELECT * FROM employees NATURAL RIGHT JOIN departments;
  ```
 
 #### 1.4.3 USING 子句
 当两个表有相同列名时，可以使用 USING 简化连接：
 ```sql
  True-- 使用 USING 简化连接
- TrueSELECT e.emp_name, d.dept_name
+ SELECT e.emp_name, d.dept_name
  from employees e
- TrueJOIN departments d USING (dept_id);
+ JOIN departments d USING (dept_id);
  ```
 
 ### 1.5 连接优先级与括号
 ```sql
  True-- 使用括号控制连接顺序
- TrueSELECT *
+ SELECT *
  from employees e
- TrueLEFT JOIN (
+ LEFT JOIN (
   departments d
   JOIN projects p ON d.dept_id = p.dept_id
  True) ON e.dept_id = d.dept_id;
@@ -429,9 +429,9 @@
 使用 `GROUP BY` 配合聚合函数进行分组统计：
 ```sql
  True-- 按部门分组，计算每个部门的平均工资
- TrueSELECT dept_id, AVG(salary) as avg_salary
+ SELECT dept_id, AVG(salary) as avg_salary
  from employees
- TrueGROUP BY dept_id;
+ GROUP BY dept_id;
  True-- 结果:
  True-- dept_id | avg_salary
  True-- 1 | 8500.00
@@ -443,10 +443,10 @@
 `HAVING` 用于对分组后的结果进行过滤，而 `WHERE` 是在分组前过滤：
 ```sql
  True-- 查找平均工资大于 7000 的部门
- TrueSELECT dept_id, AVG(salary) as avg_salary
+ SELECT dept_id, AVG(salary) as avg_salary
  from employees
- TrueGROUP BY dept_id
- TrueHAVING AVG(salary) > 7000;
+ GROUP BY dept_id
+ HAVING AVG(salary) > 7000;
  True-- 结果:
  True-- dept_id | avg_salary
  True-- 1 | 8500.00
@@ -456,9 +456,9 @@
 ### 2.3 多列分组
 ```sql
  True-- 按部门和入职年份分组，计算平均工资
- TrueSELECT dept_id, YEAR(hire_date) as hire_year, AVG(salary) as avg_salary
+ SELECT dept_id, YEAR(hire_date) as hire_year, AVG(salary) as avg_salary
  from employees
- TrueGROUP BY dept_id, YEAR(hire_date);
+ GROUP BY dept_id, YEAR(hire_date);
  ```
 
 ### 2.4 常用聚合函数
@@ -472,7 +472,7 @@
 | `GROUP_CONCAT()` | 拼接字符串 | `GROUP_CONCAT(name SEPARATOR ',')` |
 ```sql
  True-- 计算员工总数、总工资、平均工资、最高工资和最低工资
- TrueSELECT 
+ SELECT 
   COUNT(*) as total_employees,
   SUM(salary) as total_salary,
   AVG(salary) as avg_salary,
@@ -486,12 +486,12 @@
 生成小计和总计：
 ```sql
  True-- 使用 ROLLUP 生成汇总
- TrueSELECT 
+ SELECT 
   dept_id, 
   YEAR(hire_date) as hire_year,
   COUNT(*) as employee_count
  from employees
- TrueGROUP BY dept_id, YEAR(hire_date) WITH ROLLUP;
+ GROUP BY dept_id, YEAR(hire_date) WITH ROLLUP;
  True-- 结果:
  True-- dept_id | hire_year | employee_count
  True-- 1 | 2020 | 2
@@ -507,12 +507,12 @@
 灵活指定分组组合：
 ```sql
  True-- 使用 GROUPING SETS 指定多个分组维度
- TrueSELECT 
+ SELECT 
   dept_id, 
   YEAR(hire_date) as hire_year,
   COUNT(*) as employee_count
  from employees
- TrueGROUP BY GROUPING SETS (
+ GROUP BY GROUPING SETS (
   (dept_id, YEAR(hire_date)), -- 部门+年份
   (dept_id), -- 仅部门
   () -- 总计
@@ -522,22 +522,22 @@
 ### 2.6 GROUP\_CONCAT 的高级用法
 ```sql
  True-- 按部门分组，拼接员工姓名
- TrueSELECT 
+ SELECT 
   dept_id,
   GROUP_CONCAT(emp_name SEPARATOR ', ') as employees
  from employees
- TrueGROUP BY dept_id;
+ GROUP BY dept_id;
  True-- 结果:
  True-- dept_id | employees
  True-- 1 | 张三, 李四
  True-- 2 | 王五, 赵六
  True-- 3 | 钱七
  True-- 排序后拼接
- TrueSELECT 
+ SELECT 
   dept_id,
   GROUP_CONCAT(emp_name ORDER BY salary DESC SEPARATOR ', ') as employees
  from employees
- TrueGROUP BY dept_id;
+ GROUP BY dept_id;
  ```
 
 ## 3. 子查询 (Subqueries)
@@ -545,9 +545,9 @@
 返回单一值的子查询：
 ```sql
  True-- 查询工资高于平均工资的员工
- TrueSELECT emp_name, salary
+ SELECT emp_name, salary
  from employees
- TrueWHERE salary > (SELECT AVG(salary) FROM employees);
+ WHERE salary > (SELECT AVG(salary) FROM employees);
  True-- 结果:
  True-- emp_name | salary
  True-- 李四 | 9000.00
@@ -558,9 +558,9 @@
 返回一列值的子查询，通常配合 `IN`, `ANY`, `ALL` 使用：
 ```sql
  True-- 查询技术部和市场部的员工
- TrueSELECT emp_name, dept_id
+ SELECT emp_name, dept_id
  from employees
- TrueWHERE dept_id IN (SELECT dept_id FROM departments WHERE dept_name IN ('技术部', '市场部'));
+ WHERE dept_id IN (SELECT dept_id FROM departments WHERE dept_name IN ('技术部', '市场部'));
  True-- 结果:
  True-- emp_name | dept_id
  True-- 张三 | 1
@@ -573,18 +573,18 @@
 返回一行多列的子查询：
 ```sql
  True-- 查询与张三同部门同工资的员工
- TrueSELECT emp_name, dept_id, salary
+ SELECT emp_name, dept_id, salary
  from employees
- TrueWHERE (dept_id, salary) = (SELECT dept_id, salary FROM employees WHERE emp_name = '张三');
+ WHERE (dept_id, salary) = (SELECT dept_id, salary FROM employees WHERE emp_name = '张三');
  ```
 
 ### 3.4 表子查询
 返回一个表的子查询，可以作为临时表使用：
 ```sql
  True-- 查找每个部门工资最高的员工
- TrueSELECT e.emp_name, e.dept_id, e.salary
+ SELECT e.emp_name, e.dept_id, e.salary
  from employees e
- TrueJOIN (
+ JOIN (
   SELECT dept_id, MAX(salary) as max_salary
   FROM employees
   GROUP BY dept_id
@@ -600,7 +600,7 @@
 子查询中使用了外部查询的列：
 ```sql
  True-- 查询每个员工的工资在部门中的排名
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -608,7 +608,7 @@
   FROM employees e2 
   WHERE e2.dept_id = e1.dept_id AND e2.salary > e1.salary) as rank
  from employees e1
- TrueORDER BY dept_id, rank;
+ ORDER BY dept_id, rank;
  True-- 结果:
  True-- emp_name | dept_id | salary | rank
  True-- 李四 | 1 | 9000.00 | 1
@@ -622,21 +622,21 @@
 检查子查询是否返回任何行：
 ```sql
  True-- 查询有员工的部门
- TrueSELECT dept_id, dept_name
+ SELECT dept_id, dept_name
  from departments d
- TrueWHERE EXISTS (
+ WHERE EXISTS (
   SELECT 1 FROM employees e WHERE e.dept_id = d.dept_id
  True);
  True-- 查询没有员工的部门
- TrueSELECT dept_id, dept_name
+ SELECT dept_id, dept_name
  from departments d
- TrueWHERE NOT EXISTS (
+ WHERE NOT EXISTS (
   SELECT 1 FROM employees e WHERE e.dept_id = d.dept_id
  True);
  True-- 查询至少有一个员工工资超过8000的部门
- TrueSELECT dept_id, dept_name
+ SELECT dept_id, dept_name
  from departments d
- TrueWHERE EXISTS (
+ WHERE EXISTS (
   SELECT 1 FROM employees e 
   WHERE e.dept_id = d.dept_id AND e.salary > 8000
  True);
@@ -645,21 +645,21 @@
 ### 3.7 ANY/SOME 和 ALL
 ```sql
  True-- 查询工资高于任何部门平均工资的员工
- TrueSELECT emp_name, salary
+ SELECT emp_name, salary
  from employees
- TrueWHERE salary > ANY (
+ WHERE salary > ANY (
   SELECT AVG(salary) FROM employees GROUP BY dept_id
  True);
  True-- 查询工资高于所有部门平均工资的员工
- TrueSELECT emp_name, salary
+ SELECT emp_name, salary
  from employees
- TrueWHERE salary > ALL (
+ WHERE salary > ALL (
   SELECT AVG(salary) FROM employees GROUP BY dept_id
  True);
  True-- ANY 和 SOME 是等价的
- TrueSELECT emp_name, salary
+ SELECT emp_name, salary
  from employees
- TrueWHERE salary > SOME (
+ WHERE salary > SOME (
   SELECT AVG(salary) FROM employees GROUP BY dept_id
  True);
  ```
@@ -667,14 +667,14 @@
 ### 3.8 子查询的性能考虑
 ```sql
  True-- 高效：使用 JOIN 替代子查询
- TrueSELECT e.emp_name, e.salary
+ SELECT e.emp_name, e.salary
  from employees e
- TrueJOIN (SELECT AVG(salary) as avg_sal FROM employees) t
- TrueWHERE e.salary > t.avg_sal;
+ JOIN (SELECT AVG(salary) as avg_sal FROM employees) t
+ WHERE e.salary > t.avg_sal;
  True-- 低效：相关子查询（每一行都执行一次）
- TrueSELECT emp_name, salary
+ SELECT emp_name, salary
  from employees e1
- TrueWHERE salary > (SELECT AVG(salary) FROM employees e2 WHERE e2.dept_id = e1.dept_id);
+ WHERE salary > (SELECT AVG(salary) FROM employees e2 WHERE e2.dept_id = e1.dept_id);
  ```
 
 ## 4. 窗口函数 (Window Functions - MySQL 8.0+)
@@ -698,7 +698,7 @@
 **示例**:
 ```sql
  True-- 按部门对员工工资进行排名
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -718,7 +718,7 @@
 #### 4.2.2 聚合函数作为窗口函数
 ```sql
  True-- 计算累计工资
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -746,7 +746,7 @@
 **示例**:
 ```sql
  True-- 计算员工工资与前一个员工的工资差异
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -765,7 +765,7 @@
 ### 4.3 窗口范围
 ```sql
  True-- 使用 ROWS 定义窗口范围
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -788,7 +788,7 @@
 #### 4.4.1 百分比排名函数
 ```sql
  True-- PERCENT_RANK() - 计算百分比排名
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -802,7 +802,7 @@
  True-- 赵六 | 2 | 6000.00 | 1.0
  True-- 钱七 | 3 | 10000.00 | 0.0
  True-- CUME_DIST() - 计算累积分布
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -813,7 +813,7 @@
 #### 4.4.2 NTILE 函数
 ```sql
  True-- NTILE(n) - 将数据分成 n 个桶
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -831,7 +831,7 @@
 #### 4.4.3 LAG 和 LEAD 的高级用法
 ```sql
  True-- LAG/LEAD 指定默认值
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -839,7 +839,7 @@
   LEAD(salary, 1, 0) OVER (PARTITION BY dept_id ORDER BY salary) as next_salary
  from employees;
  True-- 计算环比增长率
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -852,7 +852,7 @@
 ### 4.5 命名窗口
 ```sql
  True-- 使用 WINDOW 子句定义可复用的窗口
- TrueSELECT 
+ SELECT 
   emp_name, 
   dept_id, 
   salary,
@@ -861,14 +861,14 @@
   DENSE_RANK() OVER w as dense_rank,
   AVG(salary) OVER (PARTITION BY dept_id) as dept_avg
  from employees
- TrueWINDOW w AS (PARTITION BY dept_id ORDER BY salary DESC);
+ WINDOW w AS (PARTITION BY dept_id ORDER BY salary DESC);
  ```
 
 ## 5. 实际应用示例
 ### 5.1 复杂查询示例
 ```sql
  True-- 查询每个部门工资最高的前两名员工
- TrueSELECT
+ SELECT
   emp_name,
   dept_name,
   salary,
@@ -882,7 +882,7 @@
   FROM employees e
   JOIN departments d ON e.dept_id = d.dept_id
  True) t
- TrueWHERE rank <= 2;
+ WHERE rank <= 2;
  True-- 结果:
  True-- emp_name | dept_name | salary | rank
  True-- 李四 | 技术部 | 9000.00 | 1
@@ -895,55 +895,55 @@
 ### 5.2 内连接实战 (商品管理系统)
 ```sql
  True-- 查询员工姓名以及对应的岗位名称
- TrueSELECT employees_info.Employees_name, post_info.Post_name
+ SELECT employees_info.Employees_name, post_info.Post_name
  from employees_info
- TrueJOIN post_info ON employees_info.Post_id = post_info.Post_id;
+ JOIN post_info ON employees_info.Post_id = post_info.Post_id;
  True-- 查询商品名称对应的销售数量
- TrueSELECT commodity_info.Commodity_name, SUM(sales_list.Sales_Number) AS 销售数量
+ SELECT commodity_info.Commodity_name, SUM(sales_list.Sales_Number) AS 销售数量
  from commodity_info
- TrueJOIN sales_list ON commodity_info.Commodity_id = sales_list.Commodity_id
- TrueGROUP BY commodity_info.Commodity_name;
+ JOIN sales_list ON commodity_info.Commodity_id = sales_list.Commodity_id
+ GROUP BY commodity_info.Commodity_name;
  True-- 内连接员工表和销售信息表
- TrueSELECT employees_info.*, sales_info.*
+ SELECT employees_info.*, sales_info.*
  from employees_info
  inNER JOIN sales_info ON employees_info.Employees_id = sales_info.Employees_id;
  True-- 列出员工销售订单信息（员工编号、姓名、性别、订单编号、客户编号、销售时间）
- TrueSELECT employees_info.Employees_id, employees_info.Employees_name, employees_info.Employees_sex,
+ SELECT employees_info.Employees_id, employees_info.Employees_name, employees_info.Employees_sex,
   sales_info.Sales_id, sales_info.Customer_id, sales_info.Sales_time
  from employees_info
  inNER JOIN sales_info ON employees_info.Employees_id = sales_info.Employees_id;
  True-- 列出员工'王小妮'的销售订单信息（多表连接）
- TrueSELECT employees_info.Employees_id, employees_info.Employees_name, employees_info.Employees_sex,
+ SELECT employees_info.Employees_id, employees_info.Employees_name, employees_info.Employees_sex,
   sales_info.Sales_id, sales_info.Customer_id, customer_info.Customer_name, sales_info.Sales_time
  from employees_info
  inNER JOIN sales_info ON employees_info.Employees_id = sales_info.Employees_id
  inNER JOIN customer_info ON sales_info.Customer_id = customer_info.Customer_id
- TrueWHERE employees_info.Employees_name = '王小妮';
+ WHERE employees_info.Employees_name = '王小妮';
  True-- 使用WHERE子句实现多表连接查询
- TrueSELECT employees_info.Employees_id, employees_info.Employees_name, employees_info.Employees_sex,
+ SELECT employees_info.Employees_id, employees_info.Employees_name, employees_info.Employees_sex,
   sales_info.Sales_id, sales_info.Customer_id, customer_info.Customer_name, sales_info.Sales_time
  from employees_info, sales_info, customer_info
- TrueWHERE employees_info.Employees_id = sales_info.Employees_id
+ WHERE employees_info.Employees_id = sales_info.Employees_id
   AND sales_info.Customer_id = customer_info.Customer_id
   AND employees_info.Employees_name = '王小妮';
  True-- 统计各销售员ID的销售业绩并按降序排列
- TrueSELECT employees_info.Employees_id, employees_info.Employees_name,
+ SELECT employees_info.Employees_id, employees_info.Employees_name,
   SUM(sales_list.Sales_price * sales_list.Sales_Number) AS 销售总业绩
  from employees_info
  inNER JOIN sales_info ON employees_info.Employees_id = sales_info.Employees_id
  inNER JOIN sales_list ON sales_info.Sales_id = sales_list.Sales_id
- TrueGROUP BY employees_info.Employees_id, employees_info.Employees_name
- TrueORDER BY 销售总业绩 DESC;
+ GROUP BY employees_info.Employees_id, employees_info.Employees_name
+ ORDER BY 销售总业绩 DESC;
  True-- 查询客户购买的商品名称和购买数量
- TrueSELECT customer_info.Customer_name, commodity_info.Commodity_name,
+ SELECT customer_info.Customer_name, commodity_info.Commodity_name,
   SUM(sales_list.Sales_Number) AS 购买数量
  from customer_info
  inNER JOIN sales_info ON customer_info.Customer_id = sales_info.Customer_id
  inNER JOIN sales_list ON sales_info.Sales_id = sales_list.Sales_id
  inNER JOIN commodity_info ON sales_list.Commodity_id = commodity_info.Commodity_id
- TrueGROUP BY customer_info.Customer_name, commodity_info.Commodity_name;
+ GROUP BY customer_info.Customer_name, commodity_info.Commodity_name;
  True-- 完整订单信息查询（员工姓名、订单编号、客户名称、商品名称、销售时间、销售数量）
- TrueSELECT employees_info.Employees_name, sales_info.Sales_id, customer_info.Customer_name,
+ SELECT employees_info.Employees_name, sales_info.Sales_id, customer_info.Customer_name,
   commodity_info.Commodity_name, sales_info.Sales_time, sales_list.Sales_Number
  from employees_info
  inNER JOIN sales_info ON employees_info.Employees_id = sales_info.Employees_id
@@ -951,44 +951,44 @@
  inNER JOIN sales_list ON sales_info.Sales_id = sales_list.Sales_id
  inNER JOIN commodity_info ON sales_list.Commodity_id = commodity_info.Commodity_id;
  True-- 自连接查询：查询与翔云公司在同一个城市的供应商信息
- TrueSELECT s1.Supplier_name, s1.Address, s2.Supplier_name AS 同城市供应商
+ SELECT s1.Supplier_name, s1.Address, s2.Supplier_name AS 同城市供应商
  from supplier_info s1
  inNER JOIN supplier_info s2 ON s1.Address = s2.Address
- TrueWHERE s1.Supplier_name = '翔云公司' AND s1.Supplier_id <> s2.Supplier_id;
+ WHERE s1.Supplier_name = '翔云公司' AND s1.Supplier_id <> s2.Supplier_id;
  True-- 自连接查询：查询与王华员工姓名同名的员工信息
- TrueSELECT e1.Employees_name, e1.Employees_id, e2.Employees_id AS 同名员工ID
+ SELECT e1.Employees_name, e1.Employees_id, e2.Employees_id AS 同名员工ID
  from employees_info e1
  inNER JOIN employees_info e2 ON e1.Employees_name = e2.Employees_name
- TrueWHERE e1.Employees_name = '王华' AND e1.Employees_id <> e2.Employees_id;
+ WHERE e1.Employees_name = '王华' AND e1.Employees_id <> e2.Employees_id;
  ```
 
 ### 5.3 外连接实战 (商品管理系统)
 ```sql
  True-- 内连接（只返回匹配记录）
- TrueSELECT Employees_name, b.*
+ SELECT Employees_name, b.*
  from employees_info a
- TrueJOIN sales_info b ON a.Employees_id = b.Employees_id;
+ JOIN sales_info b ON a.Employees_id = b.Employees_id;
  True-- 左外连接（返回左表所有记录，右表无匹配补NULL）
- TrueSELECT Employees_name, b.*
+ SELECT Employees_name, b.*
  from employees_info a
- TrueLEFT JOIN sales_info b ON a.Employees_id = b.Employees_id;
+ LEFT JOIN sales_info b ON a.Employees_id = b.Employees_id;
  True-- 右外连接（返回右表所有记录，左表无匹配补NULL）
- TrueSELECT Employees_name, b.*
+ SELECT Employees_name, b.*
  from sales_info b
- TrueRIGHT JOIN employees_info a ON a.Employees_id = b.Employees_id;
+ RIGHT JOIN employees_info a ON a.Employees_id = b.Employees_id;
  True-- 左外连接：统计每种商品的销量
- TrueSELECT Commodity_name, IFNULL(SUM(Sales_Number), 0) AS 销售数量
+ SELECT Commodity_name, IFNULL(SUM(Sales_Number), 0) AS 销售数量
  from commodity_info a
- TrueLEFT JOIN sales_list b ON a.Commodity_id = b.Commodity_id
- TrueGROUP BY Commodity_name;
+ LEFT JOIN sales_list b ON a.Commodity_id = b.Commodity_id
+ GROUP BY Commodity_name;
  True-- 左外连接：查询采购信息，包含没有采购的商品名称
- TrueSELECT Commodity_name, Purchase_id, Purchase_time, Purchase_Number, Purchase_price,
+ SELECT Commodity_name, Purchase_id, Purchase_time, Purchase_Number, Purchase_price,
   supplier_info.Supplier_name, employees_info.Employees_name
  from commodity_info a
- TrueLEFT JOIN purchase_list b ON a.Commodity_id = b.Commodity_id
- TrueLEFT JOIN purchase_info c ON b.Purchase_id = c.Purchase_id
- TrueLEFT JOIN supplier_info ON c.Supplier_id = supplier_info.Supplier_id
- TrueLEFT JOIN employees_info ON c.Employees_id = employees_info.Employees_id;
+ LEFT JOIN purchase_list b ON a.Commodity_id = b.Commodity_id
+ LEFT JOIN purchase_info c ON b.Purchase_id = c.Purchase_id
+ LEFT JOIN supplier_info ON c.Supplier_id = supplier_info.Supplier_id
+ LEFT JOIN employees_info ON c.Employees_id = employees_info.Employees_id;
  ```
 
 ### 5.4 性能优化建议
@@ -1000,7 +1000,7 @@
 ### 5.5 复杂报表查询示例
 ```sql
  True-- 月度销售报表（按部门分组）
- TrueSELECT 
+ SELECT 
   DATE_FORMAT(s.sales_time, '%Y-%m') as month,
   d.dept_name,
   COUNT(DISTINCT s.sales_id) as order_count,
@@ -1008,26 +1008,26 @@
   AVG(sl.sales_price * sl.sales_number) as avg_order_amount,
   MAX(sl.sales_price * sl.sales_number) as max_order_amount
  from sales_info s
- TrueJOIN sales_list sl ON s.sales_id = sl.sales_id
- TrueJOIN employees_info e ON s.employees_id = e.employees_id
- TrueJOIN departments d ON e.dept_id = d.dept_id
- TrueGROUP BY month, d.dept_name
- TrueORDER BY month DESC, total_amount DESC;
+ JOIN sales_list sl ON s.sales_id = sl.sales_id
+ JOIN employees_info e ON s.employees_id = e.employees_id
+ JOIN departments d ON e.dept_id = d.dept_id
+ GROUP BY month, d.dept_name
+ ORDER BY month DESC, total_amount DESC;
  True-- 客户购买分析（前10大客户）
- TrueSELECT 
+ SELECT 
   c.customer_name,
   COUNT(DISTINCT s.sales_id) as order_count,
   SUM(sl.sales_number) as total_quantity,
   SUM(sl.sales_price * sl.sales_number) as total_spent,
   ROUND(SUM(sl.sales_price * sl.sales_number) / (SELECT SUM(sl2.sales_price * sl2.sales_number) FROM sales_list sl2) * 100, 2) as percentage
  from customer_info c
- TrueJOIN sales_info s ON c.customer_id = s.customer_id
- TrueJOIN sales_list sl ON s.sales_id = sl.sales_id
- TrueGROUP BY c.customer_id, c.customer_name
- TrueORDER BY total_spent DESC
- TrueLIMIT 10;
+ JOIN sales_info s ON c.customer_id = s.customer_id
+ JOIN sales_list sl ON s.sales_id = sl.sales_id
+ GROUP BY c.customer_id, c.customer_name
+ ORDER BY total_spent DESC
+ LIMIT 10;
  True-- 商品销售趋势分析
- TrueSELECT 
+ SELECT 
   DATE_FORMAT(s.sales_time, '%Y-%m-%d') as date,
   ci.commodity_name,
   SUM(sl.sales_number) as daily_sales,
@@ -1036,11 +1036,11 @@
   ROUND((SUM(sl.sales_number) - LAG(SUM(sl.sales_number)) OVER (PARTITION BY ci.commodity_id ORDER BY DATE_FORMAT(s.sales_time, '%Y-%m-%d'))) 
   / LAG(SUM(sl.sales_number)) OVER (PARTITION BY ci.commodity_id ORDER BY DATE_FORMAT(s.sales_time, '%Y-%m-%d')) * 100, 2) as growth_rate
  from sales_info s
- TrueJOIN sales_list sl ON s.sales_id = sl.sales_id
- TrueJOIN commodity_info ci ON sl.commodity_id = ci.commodity_id
- TrueWHERE s.sales_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
- TrueGROUP BY date, ci.commodity_id, ci.commodity_name
- TrueORDER BY date, ci.commodity_name;
+ JOIN sales_list sl ON s.sales_id = sl.sales_id
+ JOIN commodity_info ci ON sl.commodity_id = ci.commodity_id
+ WHERE s.sales_time >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+ GROUP BY date, ci.commodity_id, ci.commodity_name
+ ORDER BY date, ci.commodity_name;
  ```
 
 ### 5.6 使用 CTE (Common Table Expressions)
@@ -1054,7 +1054,7 @@
   JOIN sales_list sl ON s.sales_id = sl.sales_id
   GROUP BY month
  True),
- Truemonthly_growth AS (
+ monthly_growth AS (
   SELECT 
   month,
   total_sales,
@@ -1063,7 +1063,7 @@
   / LAG(total_sales) OVER (ORDER BY month) * 100, 2) as growth_rate
   FROM monthly_sales
  True)
- TrueSELECT * FROM monthly_growth ORDER BY month DESC;
+ SELECT * FROM monthly_growth ORDER BY month DESC;
  True-- 递归 CTE 示例（查询部门层级）
  with RECURSIVE dept_hierarchy AS (
   SELECT 
@@ -1082,7 +1082,7 @@
   FROM departments d
   JOIN dept_hierarchy dh ON d.parent_dept_id = dh.dept_id
  True)
- TrueSELECT * FROM dept_hierarchy ORDER BY level, dept_id;
+ SELECT * FROM dept_hierarchy ORDER BY level, dept_id;
  ```
 
 ---

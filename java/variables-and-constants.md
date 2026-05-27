@@ -35,18 +35,18 @@
 ```java
  int age; // 声明一个整型变量
  double salary; // 声明一个双精度浮点型变量
- TrueString name; // 声明一个字符串变量
- Trueboolean isActive; // 声明一个布尔型变量
+ String name; // 声明一个字符串变量
+ boolean isActive; // 声明一个布尔型变量
  ```
 
 ### 2.2 变量的赋值
 **语法**：`变量名 = 值;`
 **示例**：
 ```java
- Trueage = 18; // 给整型变量赋值
- Truesalary = 5000.50; // 给双精度浮点型变量赋值
- Truename = "John"; // 给字符串变量赋值
- TrueisActive = true; // 给布尔型变量赋值
+ age = 18; // 给整型变量赋值
+ salary = 5000.50; // 给双精度浮点型变量赋值
+ name = "John"; // 给字符串变量赋值
+ isActive = true; // 给布尔型变量赋值
  ```
 
 ### 2.3 变量的声明与初始化
@@ -55,8 +55,8 @@
 ```java
  int age = 18; // 声明并初始化整型变量
  double salary = 5000.50; // 声明并初始化双精度浮点型变量
- TrueString name = "John"; // 声明并初始化字符串变量
- Trueboolean isActive = true; // 声明并初始化布尔型变量
+ String name = "John"; // 声明并初始化字符串变量
+ boolean isActive = true; // 声明并初始化布尔型变量
  ```
 
 ### 2.4 多个变量的声明与初始化
@@ -121,12 +121,12 @@
   }
  True}
  // 使用
- TruePerson person = new Person();
- Trueperson.display(); // 输出默认值
- Trueperson.name = "John";
- Trueperson.age = 30;
- Trueperson.isAdult = true;
- Trueperson.display(); // 输出赋值后的值
+ Person person = new Person();
+ person.display(); // 输出默认值
+ person.name = "John";
+ person.age = 30;
+ person.isAdult = true;
+ person.display(); // 输出赋值后的值
  ```
 
 ### 3.3 静态变量
@@ -207,8 +207,8 @@
   MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
  True}
  // 使用
- TrueDay today = Day.MONDAY;
- TrueSystem.out.println("Today is " + today);
+ Day today = Day.MONDAY;
+ System.out.println("Today is " + today);
  ```
 
 ## 5. var 类型推断

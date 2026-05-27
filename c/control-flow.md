@@ -761,10 +761,10 @@
   process(i);
  True}
  // 优化后（展开循环）
- Trueprocess(0);
- Trueprocess(1);
- Trueprocess(2);
- Trueprocess(3);
+ process(0);
+ process(1);
+ process(2);
+ process(3);
  ```
 
 ### 7.2 条件优化

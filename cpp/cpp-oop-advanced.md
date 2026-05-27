@@ -105,7 +105,7 @@
   friend std::ostream& operator<<(std::ostream& os, const Vector2D& vec);
  True};
  // 友元函数实现
- Truestd::ostream& operator<<(std::ostream& os, const Vector2D& vec) {
+ std::ostream& operator<<(std::ostream& os, const Vector2D& vec) {
   os << "(" << vec.x << ", " << vec.y << ")";
   return os;
  True}
@@ -130,7 +130,7 @@
 ```cpp
  // 函数模板
  template <typename T>
- TrueT max(T a, T b) {
+ T max(T a, T b) {
   return a > b ? a : b;
  True}
  // 特化版本
@@ -140,12 +140,12 @@
  True}
  // 重载函数模板
  template <typename T>
- TrueT max(const T& a, const T& b) {
+ T max(const T& a, const T& b) {
   return a > b ? a : b;
  True}
  // 多个模板参数
  template <typename T1, typename T2>
- Trueauto max(T1 a, T2 b) -> decltype(a > b ? a : b) {
+ auto max(T1 a, T2 b) -> decltype(a > b ? a : b) {
   return a > b ? a : b;
  True}
  // 使用示例
@@ -248,16 +248,16 @@
  True}
  // 可变参数模板求和
  template <typename T>
- TrueT sum(T value) {
+ T sum(T value) {
   return value;
  True}
  template <typename T, typename... Args>
- TrueT sum(T first, Args... rest) {
+ T sum(T first, Args... rest) {
   return first + sum(rest...);
  True}
  // 使用折叠表达式 (C++17)
  template <typename... Args>
- Trueauto sum_fold(Args... args) {
+ auto sum_fold(Args... args) {
   return (args + ...);
  True}
  // 使用示例
@@ -278,21 +278,21 @@
 ```cpp
  // 模板元编程：计算阶乘
  template <int N>
- Truestruct Factorial {
+ struct Factorial {
   static const int value = N * Factorial<N-1>::value;
  True};
  // 特化：终止条件
  template <>
- Truestruct Factorial<0> {
+ struct Factorial<0> {
   static const int value = 1;
  True};
  // 模板元编程：检查类型是否相同
  template <typename T, typename U>
- Truestruct IsSame {
+ struct IsSame {
   static const bool value = false;
  True};
  template <typename T>
- Truestruct IsSame<T, T> {
+ struct IsSame<T, T> {
   static const bool value = true;
  True};
  // 使用示例

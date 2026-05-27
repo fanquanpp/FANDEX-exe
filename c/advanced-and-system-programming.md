@@ -26,7 +26,7 @@
   struct Node *next;
  True} Node;
  // 创建新节点
- TrueNode* createNode(int data) {
+ Node* createNode(int data) {
   Node* newNode = (Node*)malloc(sizeof(Node));
   if (newNode == NULL) {
   printf("Memory allocation failed\n");
@@ -37,13 +37,13 @@
   return newNode;
  True}
  // 插入节点到链表头部
- TrueNode* insertAtHead(Node* head, int data) {
+ Node* insertAtHead(Node* head, int data) {
   Node* newNode = createNode(data);
   newNode->next = head;
   return newNode;
  True}
  // 插入节点到链表尾部
- TrueNode* insertAtTail(Node* head, int data) {
+ Node* insertAtTail(Node* head, int data) {
   Node* newNode = createNode(data);
   if (head == NULL) {
   return newNode;
@@ -97,7 +97,7 @@
   struct TreeNode *right;
  True} TreeNode;
  // 创建新节点
- TrueTreeNode* createTreeNode(int data) {
+ TreeNode* createTreeNode(int data) {
   TreeNode* newNode = (TreeNode*)malloc(sizeof(TreeNode));
   if (newNode == NULL) {
   printf("Memory allocation failed\n");
@@ -109,7 +109,7 @@
   return newNode;
  True}
  // 插入节点到二叉搜索树
- TrueTreeNode* insertBST(TreeNode* root, int data) {
+ TreeNode* insertBST(TreeNode* root, int data) {
   if (root == NULL) {
   return createTreeNode(data);
   }
@@ -326,7 +326,7 @@
  // 共享变量
  int counter = 0;
  // 互斥锁
- Truepthread_mutex_t mutex;
+ pthread_mutex_t mutex;
  // 线程函数
  void* increment(void* arg) {
   for (int i = 0; i < 100000; i++) {

@@ -20,9 +20,9 @@
 ### 1.1 环境配置
 ```bash
  # 安装 TypeScript
- Truenpm install typescript --save-dev
+ npm install typescript --save-dev
  # 初始化 tsconfig.json
- Truenpx tsc --init
+ npx tsc --init
  ```
 
 ### 1.2 项目分析
@@ -40,9 +40,9 @@
 #### 2.2.1 直接重命名法
 ```bash
  # 重命名文件
- Truemv src/index.js src/index.ts
+ mv src/index.js src/index.ts
  # 修复类型错误
- Truenpx tsc --noEmit
+ npx tsc --noEmit
  ```
 
 #### 2.2.2 JSDoc 注解法
@@ -62,7 +62,7 @@
 #### 2.2.3 类型声明法
 ```typescript
  // types/index.d.ts
- Truedeclare module 'my-module' {
+ declare module 'my-module' {
   export function someFunction(): void;
  True}
  ```
@@ -230,13 +230,13 @@
 ### 5.1 第三方库类型
 ```bash
  # 安装类型定义
- Truenpm install @types/node @types/express @types/react --save-dev
+ npm install @types/node @types/express @types/react --save-dev
  ```
 
 ### 5.2 自定义类型声明
 ```typescript
  // types/index.d.ts
- Truedeclare global {
+ declare global {
   interface Window {
   myApp: {
   version: string;

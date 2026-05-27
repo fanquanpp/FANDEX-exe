@@ -23,7 +23,7 @@
 当你需要扩展全局类型（例如给 `Window` 加字段）：
 ```ts
  export {}
- Truedeclare global {
+ declare global {
   interface Window {
   __APP_VERSION__: string
   }

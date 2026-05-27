@@ -17,25 +17,25 @@
 #### 1.1.1 创建数据库
 ```sql
  True-- 查看所有数据库
- TrueSHOW DATABASES;
+ SHOW DATABASES;
  True-- 创建数据库（指定字符集和校对规则）
- TrueCREATE DATABASE mydb
+ CREATE DATABASE mydb
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
  True-- 创建数据库（如果不存在）
- TrueCREATE DATABASE IF NOT EXISTS mydb;
+ CREATE DATABASE IF NOT EXISTS mydb;
  True-- 创建数据库（简写）
- TrueCREATE DATABASE mydb;
+ CREATE DATABASE mydb;
  True-- 删除数据库
- TrueDROP DATABASE IF EXISTS mydb;
+ DROP DATABASE IF EXISTS mydb;
  True-- 使用数据库
  use mydb;
  True-- 查看当前数据库
- TrueSELECT DATABASE();
+ SELECT DATABASE();
  True-- 查看数据库创建语句
- TrueSHOW CREATE DATABASE mydb;
+ SHOW CREATE DATABASE mydb;
  True-- 修改数据库字符集
- TrueALTER DATABASE mydb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+ ALTER DATABASE mydb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
  ```
 
 #### 1.1.2 字符集和排序规则详解
@@ -50,7 +50,7 @@
 - `utf8mb4_0900_ai_ci`：MySQL 8.0 新增，更准确的排序
 **推荐配置**：
 ```sql
- TrueCREATE DATABASE mydb
+ CREATE DATABASE mydb
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
  ```
@@ -59,7 +59,7 @@
 #### 1.2.1 创建表
 ```sql
  True-- 创建用户表（包含多种约束）
- TrueCREATE TABLE users (
+ CREATE TABLE users (
   id INT PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID',
   username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
   email VARCHAR(100) NOT NULL COMMENT '邮箱',
@@ -70,45 +70,45 @@
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
  True) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
  True-- 查看表结构
- TrueDESCRIBE users;
- TrueSHOW COLUMNS FROM users;
+ DESCRIBE users;
+ SHOW COLUMNS FROM users;
  True-- 查看表创建语句
- TrueSHOW CREATE TABLE users;
+ SHOW CREATE TABLE users;
  True-- 查看所有表
- TrueSHOW TABLES;
+ SHOW TABLES;
  True-- 查看表状态
- TrueSHOW TABLE STATUS FROM mydb;
+ SHOW TABLE STATUS FROM mydb;
  ```
 
 #### 1.2.2 修改表结构
 ```sql
  True-- 添加列
- TrueALTER TABLE users ADD COLUMN phone VARCHAR(20) AFTER email;
- TrueALTER TABLE users ADD COLUMN last_login DATETIME AFTER updated_at;
+ ALTER TABLE users ADD COLUMN phone VARCHAR(20) AFTER email;
+ ALTER TABLE users ADD COLUMN last_login DATETIME AFTER updated_at;
  True-- 修改列（类型、约束等）
- TrueALTER TABLE users MODIFY COLUMN age INT UNSIGNED NOT NULL DEFAULT 0;
+ ALTER TABLE users MODIFY COLUMN age INT UNSIGNED NOT NULL DEFAULT 0;
  True-- 修改列名和类型
- TrueALTER TABLE users CHANGE COLUMN username user_name VARCHAR(50) NOT NULL;
+ ALTER TABLE users CHANGE COLUMN username user_name VARCHAR(50) NOT NULL;
  True-- 删除列
- TrueALTER TABLE users DROP COLUMN phone;
+ ALTER TABLE users DROP COLUMN phone;
  True-- 添加索引
- TrueALTER TABLE users ADD INDEX idx_email (email);
- TrueALTER TABLE users ADD UNIQUE INDEX idx_username (username);
+ ALTER TABLE users ADD INDEX idx_email (email);
+ ALTER TABLE users ADD UNIQUE INDEX idx_username (username);
  True-- 添加外键
- TrueALTER TABLE orders ADD CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES users(id);
+ ALTER TABLE orders ADD CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES users(id);
  True-- 重命名表
- TrueALTER TABLE users RENAME TO customers;
- TrueRENAME TABLE users TO customers, orders TO purchase_orders;
+ ALTER TABLE users RENAME TO customers;
+ RENAME TABLE users TO customers, orders TO purchase_orders;
  True-- 删除表
- TrueDROP TABLE IF EXISTS users;
+ DROP TABLE IF EXISTS users;
  True-- 清空表（重置自增ID）
- TrueTRUNCATE TABLE users;
+ TRUNCATE TABLE users;
  ```
 
 #### 1.2.3 表结构设计示例
 ```sql
  True-- 订单主表
- TrueCREATE TABLE orders (
+ CREATE TABLE orders (
   order_id BIGINT PRIMARY KEY AUTO_INCREMENT,
   order_no VARCHAR(32) NOT NULL UNIQUE COMMENT '订单编号',
   user_id BIGINT NOT NULL COMMENT '用户ID',
@@ -126,7 +126,7 @@
   INDEX idx_status (status)
  True) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';
  True-- 订单明细表
- TrueCREATE TABLE order_items (
+ CREATE TABLE order_items (
   item_id BIGINT PRIMARY KEY AUTO_INCREMENT,
   order_id BIGINT NOT NULL COMMENT '订单ID',
   product_id BIGINT NOT NULL COMMENT '商品ID',
@@ -157,71 +157,71 @@
  ('钱七', 'qianqi@example.com', 'pass3', 35);
  True-- 插入查询结果
  inSERT INTO users (username, email, age)
- TrueSELECT username, email, age FROM old_users WHERE status = 1;
+ SELECT username, email, age FROM old_users WHERE status = 1;
  True-- 使用 SET 语法
  inSERT INTO users SET username='孙八', email='sunba@example.com', age=27;
  True-- 插入或更新（存在则更新，不存在则插入）
  inSERT INTO users (id, username, email) VALUES (1, '张三', 'new_email@example.com')
- TrueON DUPLICATE KEY UPDATE email='new_email@example.com', updated_at=NOW();
+ ON DUPLICATE KEY UPDATE email='new_email@example.com', updated_at=NOW();
  True-- 替换插入
  replace INTO users (id, username, email) VALUES (1, '张三', 'new_email@example.com');
  True-- 查看最后插入的ID
- TrueSELECT LAST_INSERT_ID();
+ SELECT LAST_INSERT_ID();
  ```
 
 #### 1.3.2 查询数据
 ```sql
  True-- 查询所有字段
- TrueSELECT * FROM users;
+ SELECT * FROM users;
  True-- 查询指定字段
- TrueSELECT id, username, email FROM users;
+ SELECT id, username, email FROM users;
  True-- 使用别名
- TrueSELECT id AS user_id, username AS name FROM users;
+ SELECT id AS user_id, username AS name FROM users;
  True-- 去重查询
- TrueSELECT DISTINCT status FROM users;
- TrueSELECT COUNT(DISTINCT status) FROM users;
+ SELECT DISTINCT status FROM users;
+ SELECT COUNT(DISTINCT status) FROM users;
  True-- 限制查询结果
- TrueSELECT * FROM users LIMIT 10;
- TrueSELECT * FROM users LIMIT 10 OFFSET 20;
- TrueSELECT * FROM users LIMIT 20, 10;
+ SELECT * FROM users LIMIT 10;
+ SELECT * FROM users LIMIT 10 OFFSET 20;
+ SELECT * FROM users LIMIT 20, 10;
  True-- 查询并计算
- TrueSELECT username, price, quantity, price * quantity AS total FROM order_items;
+ SELECT username, price, quantity, price * quantity AS total FROM order_items;
  True-- 条件查询
- TrueSELECT * FROM users WHERE age > 25 AND status = 1;
- TrueSELECT * FROM users WHERE age BETWEEN 20 AND 30;
- TrueSELECT * FROM users WHERE username LIKE '张%';
- TrueSELECT * FROM users WHERE email IN ('a@example.com', 'b@example.com');
+ SELECT * FROM users WHERE age > 25 AND status = 1;
+ SELECT * FROM users WHERE age BETWEEN 20 AND 30;
+ SELECT * FROM users WHERE username LIKE '张%';
+ SELECT * FROM users WHERE email IN ('a@example.com', 'b@example.com');
  True-- 排序查询
- TrueSELECT * FROM users ORDER BY created_at DESC;
- TrueSELECT * FROM users ORDER BY age ASC, created_at DESC;
+ SELECT * FROM users ORDER BY created_at DESC;
+ SELECT * FROM users ORDER BY age ASC, created_at DESC;
  True-- 分组查询
- TrueSELECT status, COUNT(*) AS count FROM users GROUP BY status;
- TrueSELECT status, AVG(age) AS avg_age FROM users GROUP BY status HAVING AVG(age) > 25;
+ SELECT status, COUNT(*) AS count FROM users GROUP BY status;
+ SELECT status, AVG(age) AS avg_age FROM users GROUP BY status HAVING AVG(age) > 25;
  True-- 连接查询
- TrueSELECT u.username, o.order_no, o.total_amount
+ SELECT u.username, o.order_no, o.total_amount
  from users u
  inNER JOIN orders o ON u.id = o.user_id
- TrueWHERE o.status = 2;
+ WHERE o.status = 2;
  ```
 
 #### 1.3.3 更新数据
 ```sql
  True-- 更新单条数据
- TrueUPDATE users SET age = 26 WHERE id = 1;
+ UPDATE users SET age = 26 WHERE id = 1;
  True-- 更新多条数据
- TrueUPDATE users SET age = age + 1 WHERE age < 30;
+ UPDATE users SET age = age + 1 WHERE age < 30;
  True-- 更新多个字段
- TrueUPDATE users SET age = 27, email = 'new_email@example.com', updated_at = NOW() WHERE id = 1;
+ UPDATE users SET age = 27, email = 'new_email@example.com', updated_at = NOW() WHERE id = 1;
  True-- 更新查询结果
- TrueUPDATE users SET status = 0 WHERE created_at < '2024-01-01';
+ UPDATE users SET status = 0 WHERE created_at < '2024-01-01';
  True-- 事务中的更新
- TrueSTART TRANSACTION;
- TrueUPDATE accounts SET balance = balance - 100 WHERE id = 1;
- TrueUPDATE accounts SET balance = balance + 100 WHERE id = 2;
+ START TRANSACTION;
+ UPDATE accounts SET balance = balance - 100 WHERE id = 1;
+ UPDATE accounts SET balance = balance + 100 WHERE id = 2;
  commit;
  True-- 注意：更新前最好先查询确认
- TrueSELECT * FROM users WHERE id = 1 FOR UPDATE;
- TrueUPDATE users SET age = 26 WHERE id = 1;
+ SELECT * FROM users WHERE id = 1 FOR UPDATE;
+ UPDATE users SET age = 26 WHERE id = 1;
  ```
 
 #### 1.3.4 删除数据
@@ -233,15 +233,15 @@
  True-- 删除所有数据（谨慎使用）
  delete FROM users;
  True-- 清空表（重置自增ID，性能更快）
- TrueTRUNCATE TABLE users;
+ TRUNCATE TABLE users;
  True-- 删除表
- TrueDROP TABLE IF EXISTS users;
+ DROP TABLE IF EXISTS users;
  True-- 级联删除
  delete FROM orders WHERE user_id = 1;
  True-- 或者设置外键级联删除
- TrueALTER TABLE orders ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+ ALTER TABLE orders ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
  True-- 删除前查询确认
- TrueSELECT * FROM users WHERE id = 1;
+ SELECT * FROM users WHERE id = 1;
  delete FROM users WHERE id = 1;
  ```
 
@@ -249,55 +249,55 @@
 #### 1.4.1 用户管理
 ```sql
  True-- 创建用户
- TrueCREATE USER 'newuser'@'localhost' IDENTIFIED BY 'password';
- TrueCREATE USER 'newuser'@'%' IDENTIFIED BY 'password'; -- 允许远程连接
- TrueCREATE USER 'newuser'@'192.168.1.%' IDENTIFIED BY 'password'; -- 允许特定网段
+ CREATE USER 'newuser'@'localhost' IDENTIFIED BY 'password';
+ CREATE USER 'newuser'@'%' IDENTIFIED BY 'password'; -- 允许远程连接
+ CREATE USER 'newuser'@'192.168.1.%' IDENTIFIED BY 'password'; -- 允许特定网段
  True-- 修改用户密码
- TrueALTER USER 'newuser'@'localhost' IDENTIFIED BY 'new_password';
+ ALTER USER 'newuser'@'localhost' IDENTIFIED BY 'new_password';
  True-- 使用 SET 修改密码
- TrueSET PASSWORD FOR 'newuser'@'localhost' = 'new_password';
+ SET PASSWORD FOR 'newuser'@'localhost' = 'new_password';
  True-- 删除用户
- TrueDROP USER 'newuser'@'localhost';
+ DROP USER 'newuser'@'localhost';
  True-- 查看所有用户
- TrueSELECT user, host FROM mysql.user;
+ SELECT user, host FROM mysql.user;
  True-- 查看用户权限
- TrueSHOW GRANTS FOR 'newuser'@'localhost';
+ SHOW GRANTS FOR 'newuser'@'localhost';
  True-- 重命名用户
- TrueRENAME USER 'olduser'@'localhost' TO 'newuser'@'localhost';
+ RENAME USER 'olduser'@'localhost' TO 'newuser'@'localhost';
  ```
 
 #### 1.4.2 权限管理
 ```sql
  True-- 授予所有权限
- TrueGRANT ALL PRIVILEGES ON mydb.* TO 'newuser'@'localhost';
- TrueFLUSH PRIVILEGES;
+ GRANT ALL PRIVILEGES ON mydb.* TO 'newuser'@'localhost';
+ FLUSH PRIVILEGES;
  True-- 授予特定权限
- TrueGRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO 'newuser'@'localhost';
+ GRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO 'newuser'@'localhost';
  True-- 授予所有数据库的所有权限
- TrueGRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost';
+ GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost';
  True-- 授予管理权限
- TrueGRANT CREATE USER ON *.* TO 'admin'@'localhost';
- TrueGRANT RELOAD ON *.* TO 'admin'@'localhost';
- TrueGRANT BACKUP ADMIN ON *.* TO 'admin'@'localhost';
+ GRANT CREATE USER ON *.* TO 'admin'@'localhost';
+ GRANT RELOAD ON *.* TO 'admin'@'localhost';
+ GRANT BACKUP ADMIN ON *.* TO 'admin'@'localhost';
  True-- 授予特定表的权限
- TrueGRANT SELECT, INSERT ON mydb.orders TO 'newuser'@'localhost';
+ GRANT SELECT, INSERT ON mydb.orders TO 'newuser'@'localhost';
  True-- 授予存储过程执行权限
- TrueGRANT EXECUTE ON PROCEDURE mydb.sp_name TO 'newuser'@'localhost';
+ GRANT EXECUTE ON PROCEDURE mydb.sp_name TO 'newuser'@'localhost';
  True-- 撤销权限
- TrueREVOKE ALL PRIVILEGES ON mydb.* FROM 'newuser'@'localhost';
- TrueREVOKE DELETE ON mydb.* FROM 'newuser'@'localhost';
+ REVOKE ALL PRIVILEGES ON mydb.* FROM 'newuser'@'localhost';
+ REVOKE DELETE ON mydb.* FROM 'newuser'@'localhost';
  True-- 查看权限层级
  True-- 全局层级：*.*
  True-- 数据库层级：db_name.*
  True-- 表层级：db_name.table_name
  True-- 列层级：需要单独授予每一列的权限
  True-- 角色管理（MySQL 8.0+）
- TrueCREATE ROLE 'app_read', 'app_write';
- TrueGRANT SELECT ON mydb.* TO 'app_read';
- TrueGRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO 'app_write';
- TrueGRANT 'app_read' TO 'user1'@'localhost';
- TrueGRANT 'app_write' TO 'user2'@'localhost';
- TrueSET DEFAULT ROLE 'app_read' FOR 'user1'@'localhost';
+ CREATE ROLE 'app_read', 'app_write';
+ GRANT SELECT ON mydb.* TO 'app_read';
+ GRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO 'app_write';
+ GRANT 'app_read' TO 'user1'@'localhost';
+ GRANT 'app_write' TO 'user2'@'localhost';
+ SET DEFAULT ROLE 'app_read' FOR 'user1'@'localhost';
  ```
 
 #### 1.4.3 权限层级说明
@@ -321,13 +321,13 @@
 #### 2.1.2 连接配置
 ```sql
  True-- 最大连接数
- TrueSET GLOBAL max_connections = 500;
+ SET GLOBAL max_connections = 500;
  True-- 连接超时时间
- TrueSET GLOBAL wait_timeout = 600;
- TrueSET GLOBAL interactive_timeout = 600;
+ SET GLOBAL wait_timeout = 600;
+ SET GLOBAL interactive_timeout = 600;
  True-- 查看当前连接数
- TrueSHOW STATUS LIKE 'Threads_connected';
- TrueSHOW VARIABLES LIKE 'max_connections';
+ SHOW STATUS LIKE 'Threads_connected';
+ SHOW VARIABLES LIKE 'max_connections';
  ```
 
 #### 2.1.3 InnoDB 配置
@@ -347,45 +347,45 @@
 #### 2.2.1 索引优化
 ```sql
  True-- 创建合适的索引
- TrueCREATE INDEX idx_username ON users(username);
- TrueCREATE INDEX idx_email_status ON users(email, status);
+ CREATE INDEX idx_username ON users(username);
+ CREATE INDEX idx_email_status ON users(email, status);
  True-- 复合索引设计原则
  True-- 1. 区分度高的列放前面
  True-- 2. 经常作为条件的列放前面
  True-- 3. 排序和分组的列应包含在索引中
  True-- 示例：为常用查询创建索引
  True-- 查询：WHERE status = 1 AND created_at > '2024-01-01' ORDER BY created_at
- TrueCREATE INDEX idx_status_created ON users(status, created_at);
+ CREATE INDEX idx_status_created ON users(status, created_at);
  ```
 
 #### 2.2.2 SQL 语句优化
 ```sql
  True-- 优化前
- TrueSELECT * FROM users WHERE YEAR(created_at) = 2024;
+ SELECT * FROM users WHERE YEAR(created_at) = 2024;
  True-- 优化后
- TrueSELECT * FROM users WHERE created_at >= '2024-01-01' AND created_at < '2025-01-01';
+ SELECT * FROM users WHERE created_at >= '2024-01-01' AND created_at < '2025-01-01';
  True-- 优化前（使用函数导致索引失效）
- TrueSELECT * FROM orders WHERE MONTH(order_time) = 1;
+ SELECT * FROM orders WHERE MONTH(order_time) = 1;
  True-- 优化后（范围查询可以利用索引）
- TrueSELECT * FROM orders WHERE order_time >= '2024-01-01' AND order_time < '2024-02-01';
+ SELECT * FROM orders WHERE order_time >= '2024-01-01' AND order_time < '2024-02-01';
  True-- 使用 EXPLAIN 分析查询
- TrueEXPLAIN SELECT * FROM users WHERE email = 'test@example.com';
+ EXPLAIN SELECT * FROM users WHERE email = 'test@example.com';
  ```
 
 #### 2.2.3 慢查询优化示例
 ```sql
  True-- 开启慢查询日志
- TrueSET GLOBAL slow_query_log = 'ON';
- TrueSET GLOBAL long_query_time = 1;
- TrueSET GLOBAL slow_query_log_file = '/var/log/mysql/slow.log';
+ SET GLOBAL slow_query_log = 'ON';
+ SET GLOBAL long_query_time = 1;
+ SET GLOBAL slow_query_log_file = '/var/log/mysql/slow.log';
  True-- 分析慢查询
  True-- 1. 查看慢查询
- TrueSHOW FULL PROCESSLIST;
+ SHOW FULL PROCESSLIST;
  True-- 2. 使用 EXPLAIN
- TrueEXPLAIN SELECT u.username, o.total_amount
+ EXPLAIN SELECT u.username, o.total_amount
  from users u
  inNER JOIN orders o ON u.id = o.user_id
- TrueWHERE o.created_at > '2024-01-01';
+ WHERE o.created_at > '2024-01-01';
  True-- 3. 优化建议
  True-- - 添加合适的索引
  True-- - 避免 SELECT *
@@ -404,7 +404,7 @@
 ### 2.4 分区表详解
 ```sql
  True-- 按日期范围分区
- TrueCREATE TABLE sales (
+ CREATE TABLE sales (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   sale_date DATE NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
@@ -418,12 +418,12 @@
   PARTITION pmax VALUES LESS THAN MAXVALUE
  True);
  True-- 按哈希分区
- TrueCREATE TABLE users (
+ CREATE TABLE users (
   id INT PRIMARY KEY,
   name VARCHAR(50)
  True) PARTITION BY HASH(id) PARTITIONS 8;
  True-- 按列表分区
- TrueCREATE TABLE products (
+ CREATE TABLE products (
   id INT PRIMARY KEY,
   category_id INT,
   name VARCHAR(50)
@@ -438,35 +438,35 @@
 ### 3.1 基础安全配置
 ```sql
  True-- 设置强密码（至少8位，包含大小写字母、数字、特殊字符）
- TrueALTER USER 'root'@'localhost' IDENTIFIED BY 'NewStrongPass@123';
+ ALTER USER 'root'@'localhost' IDENTIFIED BY 'NewStrongPass@123';
  True-- 删除匿名用户
  delete FROM mysql.user WHERE User = '';
  True-- 禁止 root 用户远程登录
  delete FROM mysql.user WHERE User = 'root' AND Host != 'localhost';
- TrueFLUSH PRIVILEGES;
+ FLUSH PRIVILEGES;
  True-- 创建应用专用用户
- TrueCREATE USER 'app_user'@'%' IDENTIFIED BY 'AppPass@2024';
- TrueGRANT SELECT, INSERT, UPDATE, DELETE ON production_db.* TO 'app_user'@'%';
- TrueFLUSH PRIVILEGES;
+ CREATE USER 'app_user'@'%' IDENTIFIED BY 'AppPass@2024';
+ GRANT SELECT, INSERT, UPDATE, DELETE ON production_db.* TO 'app_user'@'%';
+ FLUSH PRIVILEGES;
  True-- 限制用户只能从特定 IP 登录
- TrueCREATE USER 'app_user'@'192.168.1.%' IDENTIFIED BY 'AppPass@2024';
- TrueCREATE USER 'app_user'@'10.%.%.%' IDENTIFIED BY 'AppPass@2024';
+ CREATE USER 'app_user'@'192.168.1.%' IDENTIFIED BY 'AppPass@2024';
+ CREATE USER 'app_user'@'10.%.%.%' IDENTIFIED BY 'AppPass@2024';
  ```
 
 ### 3.2 SSL/TLS 配置
 ```sql
  True-- 检查 SSL 状态
- TrueSHOW VARIABLES LIKE 'have_ssl';
- TrueSHOW VARIABLES LIKE 'have_openssl';
+ SHOW VARIABLES LIKE 'have_ssl';
+ SHOW VARIABLES LIKE 'have_openssl';
  True-- 配置 SSL（需要在 my.cnf 中配置）
  True-- [mysqld]
  True-- ssl-ca=/path/to/ca.pem
  True-- ssl-cert=/path/to/server-cert.pem
  True-- ssl-key=/path/to/server-key.pem
  True-- 强制用户使用 SSL 连接
- TrueALTER USER 'root'@'localhost' REQUIRE SSL;
+ ALTER USER 'root'@'localhost' REQUIRE SSL;
  True-- 查看用户是否使用 SSL
- TrueSELECT user, host, ssl_type FROM mysql.user;
+ SELECT user, host, ssl_type FROM mysql.user;
  ```
 
 ### 3.3 审计和监控
@@ -474,13 +474,13 @@
  True-- 开启审计日志（企业版）
  True-- 安装审计插件后配置
  True-- 查看用户连接历史
- TrueSELECT * FROM mysql.general_log WHERE command_type='Connect' ORDER BY event_time DESC LIMIT 100;
+ SELECT * FROM mysql.general_log WHERE command_type='Connect' ORDER BY event_time DESC LIMIT 100;
  True-- 监控长时间运行的查询
- TrueSELECT * FROM information_schema.processlist WHERE Command != 'Sleep' AND Time > 60;
+ SELECT * FROM information_schema.processlist WHERE Command != 'Sleep' AND Time > 60;
  True-- 查看锁等待
- TrueSELECT * FROM information_schema.innodb_lock_waits;
+ SELECT * FROM information_schema.innodb_lock_waits;
  True-- 查看事务
- TrueSELECT * FROM information_schema.innodb_trx;
+ SELECT * FROM information_schema.innodb_trx;
  ```
 
 ## 4. 常见问题与解决方案
@@ -517,47 +517,47 @@
 ### 5.1 常用监控命令
 ```sql
  True-- 查看服务器状态
- TrueSHOW STATUS; -- 所有状态变量
- TrueSHOW GLOBAL STATUS; -- 全局状态
- TrueSHOW VARIABLES; -- 所有配置变量
- TrueSHOW GLOBAL VARIABLES;
+ SHOW STATUS; -- 所有状态变量
+ SHOW GLOBAL STATUS; -- 全局状态
+ SHOW VARIABLES; -- 所有配置变量
+ SHOW GLOBAL VARIABLES;
  True-- 关键指标
- TrueSHOW STATUS LIKE 'Threads_connected'; -- 当前连接数
- TrueSHOW STATUS LIKE 'Max_used_connections'; -- 历史最大连接数
- TrueSHOW STATUS LIKE 'Slow_queries'; -- 慢查询数量
- TrueSHOW STATUS LIKE 'Innodb_row_lock%'; -- 锁等待情况
- TrueSHOW STATUS LIKE 'Com_select'; -- 查询次数
- TrueSHOW STATUS LIKE 'Com_insert'; -- 插入次数
- TrueSHOW STATUS LIKE 'Com_update'; -- 更新次数
- TrueSHOW STATUS LIKE 'Com_delete'; -- 删除次数
+ SHOW STATUS LIKE 'Threads_connected'; -- 当前连接数
+ SHOW STATUS LIKE 'Max_used_connections'; -- 历史最大连接数
+ SHOW STATUS LIKE 'Slow_queries'; -- 慢查询数量
+ SHOW STATUS LIKE 'Innodb_row_lock%'; -- 锁等待情况
+ SHOW STATUS LIKE 'Com_select'; -- 查询次数
+ SHOW STATUS LIKE 'Com_insert'; -- 插入次数
+ SHOW STATUS LIKE 'Com_update'; -- 更新次数
+ SHOW STATUS LIKE 'Com_delete'; -- 删除次数
  True-- 查看进程
- TrueSHOW PROCESSLIST;
- TrueSHOW FULL PROCESSLIST;
+ SHOW PROCESSLIST;
+ SHOW FULL PROCESSLIST;
  True-- 查看 InnoDB 状态
- TrueSHOW ENGINE INNODB STATUS;
+ SHOW ENGINE INNODB STATUS;
  True-- 查看所有表状态
- TrueSHOW TABLE STATUS FROM database_name;
+ SHOW TABLE STATUS FROM database_name;
  True-- 查看索引使用情况
- TrueSHOW INDEX FROM table_name;
+ SHOW INDEX FROM table_name;
  ```
 
 ### 5.2 定期维护任务
 ```sql
  True-- 分析表（更新统计信息）
- TrueANALYZE TABLE users;
+ ANALYZE TABLE users;
  True-- 检查表
- TrueCHECK TABLE users;
+ CHECK TABLE users;
  True-- 修复表
- TrueREPAIR TABLE users;
+ REPAIR TABLE users;
  True-- 优化表（整理碎片）
- TrueOPTIMIZE TABLE users;
+ OPTIMIZE TABLE users;
  True-- 重新生成表统计
- TrueANALYZE TABLE users;
+ ANALYZE TABLE users;
  True-- 清理二进制日志
- TruePURGE BINARY LOGS BEFORE '2024-01-01 00:00:00';
- TruePURGE BINARY LOGS TO 'mysql-bin.000010';
+ PURGE BINARY LOGS BEFORE '2024-01-01 00:00:00';
+ PURGE BINARY LOGS TO 'mysql-bin.000010';
  True-- 查看表碎片
- TrueSELECT TABLE_NAME, Data_free FROM information_schema.tables WHERE Data_free > 0;
+ SELECT TABLE_NAME, Data_free FROM information_schema.tables WHERE Data_free > 0;
  ```
 
 ### 5.3 备份策略
@@ -565,19 +565,19 @@
  #!/bin/bash
  # 每日备份脚本示例
  backUP_DIR="/backup/mysql"
- TrueDATE=$(date +%Y%m%d)
- TrueMYSQL_USER="backup_user"
- TrueMYSQL_PASS="backup_password"
+ DATE=$(date +%Y%m%d)
+ MYSQL_USER="backup_user"
+ MYSQL_PASS="backup_password"
  # 创建备份目录
- Truemkdir -p $BACKUP_DIR
+ mkdir -p $BACKUP_DIR
  # 备份所有数据库
- Truemysqldump -u$MYSQL_USER -p$MYSQL_PASS --all-databases --routines --triggers --events > $BACKUP_DIR/all_db_$DATE.sql
+ mysqldump -u$MYSQL_USER -p$MYSQL_PASS --all-databases --routines --triggers --events > $BACKUP_DIR/all_db_$DATE.sql
  # 压缩备份
- Truegzip $BACKUP_DIR/all_db_$DATE.sql
+ gzip $BACKUP_DIR/all_db_$DATE.sql
  # 删除 7 天前的备份
- Truefind $BACKUP_DIR -name "*.sql.gz" -mtime +7 -delete
+ find $BACKUP_DIR -name "*.sql.gz" -mtime +7 -delete
  # 备份完成
- Trueecho "Backup completed: $DATE"
+ echo "Backup completed: $DATE"
  ```
 
 ---

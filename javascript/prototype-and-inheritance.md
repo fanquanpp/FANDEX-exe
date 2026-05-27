@@ -33,7 +33,7 @@
 ```js
  function Foo() {}
  const x = new Foo()
- TrueObject.getPrototypeOf(x) === Foo.prototype
+ Object.getPrototypeOf(x) === Foo.prototype
  ```
 
 ### 1.3 原型链的终点
@@ -42,36 +42,36 @@
  function Person(name) {
   this.name = name
  True}
- TruePerson.prototype.say = function () {
+ Person.prototype.say = function () {
   return `I am ${this.name}`
  True}
  const p = new Person('Alice')
- Truep.say()
- Truep.hasOwnProperty('name')
- Truep.toString()
- Truep.hasOwnProperty === Object.prototype.hasOwnProperty
+ p.say()
+ p.hasOwnProperty('name')
+ p.toString()
+ p.hasOwnProperty === Object.prototype.hasOwnProperty
  ```
 
 查找 `p.toString()` 的过程：
 ```
- Truep → Person.prototype → Object.prototype → null
+ p → Person.prototype → Object.prototype → null
  ```
 
 每一层都找不到 `toString`，直到 `Object.prototype` 上才找到。
 ### 1.4 原型链可视化
 ```
  True┌──────────────────────────────────────────────────────────┐
- True│ null │
- True│ ↑ │
- True│ Object.prototype │
- True│ (hasOwnProperty, toString, valueOf…) │
- True│ ↑ │
- True│ Person.prototype │
- True│ (say, constructor) │
- True│ ↑ │
- True│ p (实例对象) │
- True│ (name: "Alice") │
- True└──────────────────────────────────────────────────────────┘
+ │ null │
+ │ ↑ │
+ │ Object.prototype │
+ │ (hasOwnProperty, toString, valueOf…) │
+ │ ↑ │
+ │ Person.prototype │
+ │ (say, constructor) │
+ │ ↑ │
+ │ p (实例对象) │
+ │ (name: "Alice") │
+ └──────────────────────────────────────────────────────────┘
  ```
 
 ---
@@ -98,14 +98,14 @@
   return { y: 2 }
  True}
  const a = new Foo()
- Truea.x
- Truea.y
+ a.x
+ a.y
  function Bar() {
   this.x = 1
   return 42
  True}
  const b = new Bar()
- Trueb.x
+ b.x
  ```
 
 **规则**：构造函数如果返回一个**对象**，则 `new` 的结果就是该对象；如果返回**非对象**（或无 `return`），则返回 `this`。
@@ -113,15 +113,15 @@
 每个函数的 `prototype` 对象默认有一个 `constructor` 属性，指回函数本身：
 ```js
  function Foo() {}
- TrueFoo.prototype.constructor === Foo
+ Foo.prototype.constructor === Foo
  const x = new Foo()
- Truex.constructor === Foo
+ x.constructor === Foo
  ```
 
 [警告] 如果手动替换了 `prototype`，需要修复 `constructor`：
 ```js
  function Foo() {}
- TrueFoo.prototype = {
+ Foo.prototype = {
   constructor: Foo,
   method() { return 'hello' }
  True}
@@ -132,52 +132,52 @@
 ### 3.1 三角关系图解
 ```
  True┌─────────────────────────────────────────────────────────────────┐
- True│ │
- True│ Foo (构造函数) │
- True│ ├── Foo.prototype ──────────→ Foo.prototype (原型对象) │
- True│ │ ├── constructor → Foo │
- True│ │ ├── method1() │
- True│ │ └── __proto__ → Object.prototype │
- True│ │ │
- True│ └── Foo.__proto__ → Function.prototype │
- True│ (因为 Foo 本质上也是函数对象) │
- True│ │
- True│ x (实例) │
- True│ ├── x.__proto__ → Foo.prototype │
- True│ └── x.constructor → Foo (沿原型链找到) │
- True│ │
- True└─────────────────────────────────────────────────────────────────┘
+ │ │
+ │ Foo (构造函数) │
+ │ ├── Foo.prototype ──────────→ Foo.prototype (原型对象) │
+ │ │ ├── constructor → Foo │
+ │ │ ├── method1() │
+ │ │ └── __proto__ → Object.prototype │
+ │ │ │
+ │ └── Foo.__proto__ → Function.prototype │
+ │ (因为 Foo 本质上也是函数对象) │
+ │ │
+ │ x (实例) │
+ │ ├── x.__proto__ → Foo.prototype │
+ │ └── x.constructor → Foo (沿原型链找到) │
+ │ │
+ └─────────────────────────────────────────────────────────────────┘
  ```
 
 ### 3.2 核心等式
 ```js
  function Foo() {}
  const x = new Foo()
- Truex.__proto__ === Foo.prototype
- TrueFoo.prototype.constructor === Foo
- Truex.constructor === Foo
- TrueFoo.__proto__ === Function.prototype
- TrueFoo.prototype.__proto__ === Object.prototype
- TrueObject.prototype.__proto__ === null
+ x.__proto__ === Foo.prototype
+ Foo.prototype.constructor === Foo
+ x.constructor === Foo
+ Foo.__proto__ === Function.prototype
+ Foo.prototype.__proto__ === Object.prototype
+ Object.prototype.__proto__ === null
  ```
 
 ### 3.3 函数对象的原型链
 函数本身也是对象，它的原型链：
 ```
- TrueFoo → Function.prototype → Object.prototype → null
+ Foo → Function.prototype → Object.prototype → null
  ```
 
 ```js
  function Foo() {}
- TrueFoo.__proto__ === Function.prototype
+ Foo.__proto__ === Function.prototype
  function.prototype.__proto__ === Object.prototype
- TrueObject.prototype.__proto__ === null
+ Object.prototype.__proto__ === null
  ```
 
 ### 3.4 原型链的完整查找路径示例
 ```js
  function Animal(name) { this.name = name }
- TrueAnimal.prototype.eat = function () { return `${this.name} is eating` }
+ Animal.prototype.eat = function () { return `${this.name} is eating` }
  function Dog(name, breed) {
   Animal.call(this, name)
   this.breed = breed
@@ -186,14 +186,14 @@
  dog.prototype.constructor = Dog
  dog.prototype.bark = function () { return `${this.name} says woof!` }
  const d = new Dog('Rex', 'Shepherd')
- Trued.bark()
- Trued.eat()
- Trued.toString()
+ d.bark()
+ d.eat()
+ d.toString()
  ```
 
 查找路径：
 ```
- Trued → Dog.prototype → Animal.prototype → Object.prototype → null
+ d → Dog.prototype → Animal.prototype → Object.prototype → null
  ```
 
 ---
@@ -205,9 +205,9 @@
   greet() { return `Hello, I am ${this.name}` }
  True}
  const alice = Object.create(base)
- Truealice.name = 'Alice'
- Truealice.greet()
- TrueObject.getPrototypeOf(alice) === base
+ alice.name = 'Alice'
+ alice.greet()
+ Object.getPrototypeOf(alice) === base
  ```
 
 第二个参数可以定义属性描述符：
@@ -220,15 +220,15 @@
   configurable:  
   }
  True})
- Truebob.greet()
+ bob.greet()
  ```
 
 ### 4.2 `Object.create(null)`——纯净字典对象
 ```js
  const dict = Object.create(null)
- Truedict.key = 'value'
- Truedict.toString
- Truedict.hasOwnProperty
+ dict.key = 'value'
+ dict.toString
+ dict.hasOwnProperty
  'key' in dict
  ```
 
@@ -240,8 +240,8 @@
   greet() { return 'hello' }
  True}
  const obj = { name: 'test' }
- TrueObject.setPrototypeOf(obj, proto)
- Trueobj.greet()
+ Object.setPrototypeOf(obj, proto)
+ obj.greet()
  ```
 
 [警告] **强烈不推荐**在性能敏感代码中使用，原因：
@@ -254,9 +254,9 @@
 ```js
  function Foo() {}
  const x = new Foo()
- TrueObject.getPrototypeOf(x) === Foo.prototype
- TrueObject.getPrototypeOf(Foo.prototype) === Object.prototype
- TrueObject.getPrototypeOf(Object.prototype) === null
+ Object.getPrototypeOf(x) === Foo.prototype
+ Object.getPrototypeOf(Foo.prototype) === Object.prototype
+ Object.getPrototypeOf(Object.prototype) === null
  ```
 
 ---
@@ -266,14 +266,14 @@
  function Parent() {
   this.colors = ['red', 'blue']
  True}
- TrueParent.prototype.say = function () { return 'parent' }
+ Parent.prototype.say = function () { return 'parent' }
  function Child() {}
- TrueChild.prototype = new Parent()
- TrueChild.prototype.constructor = Child
+ Child.prototype = new Parent()
+ Child.prototype.constructor = Child
  const c1 = new Child()
  const c2 = new Child()
- Truec1.colors.push('green')
- Truec2.colors
+ c1.colors.push('green')
+ c2.colors
  ```
 
 问题：
@@ -285,16 +285,16 @@
   this.name = name
   this.colors = ['red', 'blue']
  True}
- TrueParent.prototype.say = function () { return this.name }
+ Parent.prototype.say = function () { return this.name }
  function Child(name) {
   Parent.call(this, name)
  True}
  const c1 = new Child('Alice')
  const c2 = new Child('Bob')
- Truec1.colors.push('green')
- Truec1.colors
- Truec2.colors
- Truec1.say
+ c1.colors.push('green')
+ c1.colors
+ c2.colors
+ c1.say
  ```
 
 优点：可传参、每个实例独立状态。缺点：方法无法复用（每次实例化都复制一份），且无法继承原型上的方法。
@@ -305,19 +305,19 @@
   this.name = name
   this.colors = ['red', 'blue']
  True}
- TrueParent.prototype.say = function () { return this.name }
+ Parent.prototype.say = function () { return this.name }
  function Child(name, age) {
   Parent.call(this, name)
   this.age = age
  True}
- TrueChild.prototype = Object.create(Parent.prototype)
- TrueChild.prototype.constructor = Child
+ Child.prototype = Object.create(Parent.prototype)
+ Child.prototype.constructor = Child
  const c1 = new Child('Alice', 20)
  const c2 = new Child('Bob', 25)
- Truec1.colors.push('green')
- Truec1.colors
- Truec2.colors
- Truec1.say()
+ c1.colors.push('green')
+ c1.colors
+ c2.colors
+ c1.say()
  ```
 
 这也是 ES5 下最常用、最稳定的写法之一。
@@ -334,20 +334,20 @@
   this.name = name
   this.colors = ['red', 'blue']
  True}
- TrueParent.prototype.say = function () { return this.name }
+ Parent.prototype.say = function () { return this.name }
  function Child(name, age) {
   Parent.call(this, name)
   this.age = age
  True}
  inheritPrototype(Child, Parent)
- TrueChild.prototype.introduce = function () {
+ Child.prototype.introduce = function () {
   return `${this.say()}, age ${this.age}`
  True}
  const c = new Child('Alice', 20)
- Truec.say()
- Truec.introduce()
- Truec instanceof Child
- Truec instanceof Parent
+ c.say()
+ c.introduce()
+ c instanceof Child
+ c instanceof Parent
  ```
 
 **优点**：
@@ -381,11 +381,11 @@
   }
  True}
  const c = new Child('Alice', 20)
- Truec.say()
- Truec.introduce()
- Truec instanceof Child
- Truec instanceof Parent
- TrueChild.version()
+ c.say()
+ c.introduce()
+ c instanceof Child
+ c instanceof Parent
+ Child.version()
  ```
 
 **`class` 继承的注意事项**：
@@ -417,11 +417,11 @@
 ```js
  const base = { x: 1, y: 2 }
  const obj = Object.create(base)
- Trueobj.z = 3
- Trueobj.z
- Trueobj.x
- Trueobj.y
- Trueobj.w
+ obj.z = 3
+ obj.z
+ obj.x
+ obj.y
+ obj.w
  ```
 
 查找过程：`obj 自身 → base → Object.prototype → null`
@@ -430,11 +430,11 @@
 ```js
  const base = { x: 1 }
  const obj = Object.create(base)
- Trueobj.x = 2
- Trueobj.x
- Truebase.x
+ obj.x = 2
+ obj.x
+ base.x
  delete obj.x
- Trueobj.x
+ obj.x
  ```
 
 ### 6.3 属性设置与遮蔽规则
@@ -446,12 +446,12 @@
   set y(val) { this._y = val }
  True}
  const obj = Object.create(base)
- Trueobj.x = 100
- Trueobj.x
- Truebase.x
- Trueobj.y = 200
- Trueobj.y
- Trueobj._y
+ obj.x = 100
+ obj.x
+ base.x
+ obj.y = 200
+ obj.y
+ obj._y
  ```
 
 **规则**：
@@ -464,28 +464,28 @@
 ```js
  const base = { x: 1 }
  const obj = Object.create(base)
- Trueobj.x = 2
+ obj.x = 2
  ('x' in obj)
- TrueObject.hasOwn(obj, 'x')
+ Object.hasOwn(obj, 'x')
  delete obj.x
- TrueObject.hasOwn(obj, 'x')
- Trueobj.x
+ Object.hasOwn(obj, 'x')
+ obj.x
  ```
 
 ### 6.5 属性枚举与检测方法对比
 ```js
  const base = { inherited:  }
  const obj = Object.create(base)
- Trueobj.own =  
- TrueObject.defineProperty(obj, 'hidden', { value: 1, enumerable: false })
+ obj.own =  
+ Object.defineProperty(obj, 'hidden', { value: 1, enumerable: false })
  'own' in obj
  'inherited' in obj
  'hidden' in obj
- TrueObject.hasOwn(obj, 'own')
- TrueObject.hasOwn(obj, 'inherited')
- TrueObject.hasOwn(obj, 'hidden')
- TrueObject.keys(obj)
- TrueObject.getOwnPropertyNames(obj)
+ Object.hasOwn(obj, 'own')
+ Object.hasOwn(obj, 'inherited')
+ Object.hasOwn(obj, 'hidden')
+ Object.keys(obj)
+ Object.getOwnPropertyNames(obj)
  for (const key in obj) { console.log(key) }
  ```
 
@@ -503,11 +503,11 @@
 ```js
  function Foo() {}
  const x = new Foo()
- Truex instanceof Foo
- Truex instanceof Object
- TrueFoo instanceof Function
+ x instanceof Foo
+ x instanceof Object
+ Foo instanceof Function
  function instanceof Object
- TrueObject instanceof Function
+ Object instanceof Function
  ```
 
 **`instanceof` 的实现原理**：
@@ -521,17 +521,17 @@
   }
   return false
  True}
- TruemyInstanceof(x, Foo)
- TruemyInstanceof(x, Object)
- TruemyInstanceof(x, Array)
+ myInstanceof(x, Foo)
+ myInstanceof(x, Object)
+ myInstanceof(x, Array)
  ```
 
 **`instanceof` 的局限性**：
 ```js
  const str = 'hello'
- Truestr instanceof String
+ str instanceof String
  const obj = Object.create(null)
- Trueobj instanceof Object
+ obj instanceof Object
  ```
 
 - 原始值使用 `instanceof` 始终返回 `false`
@@ -545,17 +545,17 @@
  dog.prototype = Object.create(Animal.prototype)
  dog.prototype.constructor = Dog
  const d = new Dog()
- TrueAnimal.prototype.isPrototypeOf(d)
+ Animal.prototype.isPrototypeOf(d)
  dog.prototype.isPrototypeOf(d)
- TrueObject.prototype.isPrototypeOf(d)
+ Object.prototype.isPrototypeOf(d)
  ```
 
 **`instanceof` vs `isPrototypeOf`**：
 ```js
- Trued instanceof Dog
+ d instanceof Dog
  dog.prototype.isPrototypeOf(d)
- Trued instanceof Animal
- TrueAnimal.prototype.isPrototypeOf(d)
+ d instanceof Animal
+ Animal.prototype.isPrototypeOf(d)
  ```
 
 | 对比项 | `instanceof` | `isPrototypeOf` |
@@ -566,15 +566,15 @@
 | 原始值 | 始终 `false` | 始终 `false` |
 ### 7.3 更可靠的类型判断
 ```js
- TrueObject.prototype.toString.call([])
- TrueObject.prototype.toString.call({})
- TrueObject.prototype.toString.call('hello')
- TrueObject.prototype.toString.call(42)
- TrueObject.prototype.toString.call(null)
- TrueObject.prototype.toString.call(undefined)
- TrueObject.prototype.toString.call(() => {})
- TrueObject.prototype.toString.call(new Date())
- TrueObject.prototype.toString.call(/regex/)
+ Object.prototype.toString.call([])
+ Object.prototype.toString.call({})
+ Object.prototype.toString.call('hello')
+ Object.prototype.toString.call(42)
+ Object.prototype.toString.call(null)
+ Object.prototype.toString.call(undefined)
+ Object.prototype.toString.call(() => {})
+ Object.prototype.toString.call(new Date())
+ Object.prototype.toString.call(/regex/)
  ```
 
 `Object.prototype.toString` 是最可靠的类型判断方法，不受跨 realm 影响。
@@ -604,11 +604,11 @@
 ```js
  function Foo() {}
  const a = new Foo()
- TrueFoo.prototype.method = function () { return 'new method' }
- Truea.method()
- TrueFoo.prototype = { otherMethod() { return 'other' } }
- Truea.otherMethod
- Truea.method()
+ Foo.prototype.method = function () { return 'new method' }
+ a.method()
+ Foo.prototype = { otherMethod() { return 'other' } }
+ a.otherMethod
+ a.method()
  ```
 
 ### 8.3 对需要枚举的对象
@@ -617,8 +617,8 @@
 - 使用 `Object.hasOwn()` 代替 `obj.hasOwnProperty()`（更安全，避免 `hasOwnProperty` 被遮蔽）
 ```js
  const obj = Object.create(null)
- Trueobj.hasOwnProperty
- TrueObject.hasOwn(obj, 'key')
+ obj.hasOwnProperty
+ Object.hasOwn(obj, 'key')
  ```
 
 ### 8.4 方法定义的最佳位置
@@ -626,12 +626,12 @@
  function Person(name) {
   this.name = name
  True}
- TruePerson.prototype.greet = function () {
+ Person.prototype.greet = function () {
   return `Hello, ${this.name}`
  True}
  const p1 = new Person('Alice')
  const p2 = new Person('Bob')
- Truep1.greet === p2.greet
+ p1.greet === p2.greet
  ```
 
 方法定义在原型上，所有实例共享同一个函数引用，节省内存。如果定义在构造函数内，每次 `new` 都会创建新的函数对象。
@@ -646,7 +646,7 @@
   }
  True}
  const payload = JSON.parse('{"__proto__":{"isAdmin":true}}')
- Truemerge({}, payload)
+ merge({}, payload)
  ({}).isAdmin
  ```
 
@@ -656,7 +656,7 @@
 - 对纯字典对象使用 `Object.create(null)`，避免原型链
 ```js
  const dict = Object.create(null)
- Truedict['__proto__'] = { polluted:  }
+ dict['__proto__'] = { polluted:  }
  ({}).polluted
  ```
 
@@ -675,8 +675,8 @@
 - 使用 `Map` 代替普通对象存储键值对
 ```js
  const map = new Map()
- Truemap.set('__proto__', { polluted:  })
- Truemap.get('__proto__')
+ map.set('__proto__', { polluted:  })
+ map.get('__proto__')
  ({}).polluted
  ```
 

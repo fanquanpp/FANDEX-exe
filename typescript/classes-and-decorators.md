@@ -174,7 +174,7 @@ TypeScript 提供了构造函数简写语法，可以在构造函数参数中直
 ### 3.2 抽象类使用示例
 ```typescript
  // 抽象基类
- Trueabstract class Shape {
+ abstract class Shape {
   // 抽象方法
   abstract getArea(): number;
   // 抽象方法
@@ -215,11 +215,11 @@ TypeScript 提供了构造函数简写语法，可以在构造函数参数中直
  const circle = new Circle(5);
  console.log(circle.getArea()); // 输出: 78.53981633974483
  console.log(circle.getPerimeter()); // 输出: 31.41592653589793
- Truecircle.printInfo(); // 输出: Area: 78.53981633974483, Perimeter: 31.41592653589793
+ circle.printInfo(); // 输出: Area: 78.53981633974483, Perimeter: 31.41592653589793
  const rectangle = new Rectangle(4, 6);
  console.log(rectangle.getArea()); // 输出: 24
  console.log(rectangle.getPerimeter()); // 输出: 20
- Truerectangle.printInfo(); // 输出: Area: 24, Perimeter: 20
+ rectangle.printInfo(); // 输出: Area: 24, Perimeter: 20
  // 错误示例：抽象类不能直接实例化
  // const shape = new Shape(); // 编译错误
  ```
@@ -345,8 +345,8 @@ TypeScript 提供了构造函数简写语法，可以在构造函数参数中直
  console.log(person.name); // 输出: Alice
  console.log(person.age); // 输出: 30
  // 使用 setter 修改属性
- Trueperson.name = "Bob";
- Trueperson.age = 25;
+ person.name = "Bob";
+ person.age = 25;
  console.log(person.name); // 输出: Bob
  console.log(person.age); // 输出: 25
  // 错误示例：无效的输入
@@ -387,7 +387,7 @@ TypeScript 提供了构造函数简写语法，可以在构造函数参数中直
  console.log(product.name); // 输出: Laptop
  console.log(product.price); // 输出: 999.99
  // 修改价格
- Trueproduct.price = 899.99;
+ product.price = 899.99;
  console.log(product.price); // 输出: 899.99
  // 错误示例：尝试修改只读属性
  // product.id = 2; // 编译错误
@@ -532,9 +532,9 @@ TypeScript 支持四种类型的装饰器：
  // 使用示例
  const person = new Person("Alice", 30);
  console.log(person.name); // 输出: Getting name: Alice
- Trueperson.name = "Bob"; // 输出: Setting name from Alice to Bob
+ person.name = "Bob"; // 输出: Setting name from Alice to Bob
  console.log(person.age); // 输出: Getting age: 30
- Trueperson.age = 25; // 输出: Setting age from 30 to 25
+ person.age = 25; // 输出: Setting age from 30 to 25
  ```
 
 ### 6.6 参数装饰器
@@ -667,12 +667,12 @@ TypeScript 支持类的继承，允许子类继承父类的属性和方法。
  dog.move(); // 输出: Buddy moves
  dog.fetch(); // 输出: Buddy fetches a ball
  const cat = new Cat("Whiskers", "Tabby");
- Truecat.makeSound(); // 输出: Whiskers meows
- Truecat.move(); // 输出: Whiskers moves
- Truecat.climb(); // 输出: Whiskers climbs a tree
+ cat.makeSound(); // 输出: Whiskers meows
+ cat.move(); // 输出: Whiskers moves
+ cat.climb(); // 输出: Whiskers climbs a tree
  // 多态
  const animals: Animal[] = [dog, cat];
- Trueanimals.forEach(animal => {
+ animals.forEach(animal => {
   animal.makeSound(); // 调用各自子类的实现
   animal.move();
  True});
@@ -705,9 +705,9 @@ TypeScript 支持类的继承，允许子类继承父类的属性和方法。
  True}
  // 使用示例
  const car = new Car("Toyota", "Corolla", 4);
- Truecar.start(); // 输出: Toyota Corolla starts, Car with 4 doors is ready
- Truecar.drive(); // 输出: Toyota Corolla drives
- Truecar.honk(); // 输出: Toyota Corolla honks
+ car.start(); // 输出: Toyota Corolla starts, Car with 4 doors is ready
+ car.drive(); // 输出: Toyota Corolla drives
+ car.honk(); // 输出: Toyota Corolla honks
  ```
 
 ### 7.3 多态的应用
@@ -774,8 +774,8 @@ TypeScript 支持类的继承，允许子类继承父类的属性和方法。
  // 使用示例
  const animal = new LivingAnimal("Buddy");
  console.log(animal.name); // 输出: Buddy
- Trueanimal.eat(); // 输出: Eating
- Trueanimal.sleep(); // 输出: Sleeping
+ animal.eat(); // 输出: Eating
+ animal.sleep(); // 输出: Sleeping
  ```
 
 ### 8.2 类的静态工厂方法
@@ -861,7 +861,7 @@ TypeScript 支持类的继承，允许子类继承父类的属性和方法。
 ### 10.1 完整的类实现示例
 ```typescript
  // 抽象基类
- Trueabstract class Vehicle {
+ abstract class Vehicle {
   constructor(
   public brand: string,
   public model: string,
@@ -952,20 +952,20 @@ TypeScript 支持类的继承，允许子类继承父类的属性和方法。
  True}
  // 使用示例
  const car = new Car("Toyota", "Corolla", 2020, 4);
- Truecar.start();
- Truecar.honk();
- Truecar.stop();
+ car.start();
+ car.honk();
+ car.stop();
  console.log(car.getInfo());
  const motorcycle = new Motorcycle("Harley-Davidson", "Sportster", 2019, false);
- Truemotorcycle.start();
- Truemotorcycle.wheelie();
- Truemotorcycle.stop();
+ motorcycle.start();
+ motorcycle.wheelie();
+ motorcycle.stop();
  console.log(motorcycle.getInfo());
  const truck = new Truck("Ford", "F-150", 2021, 1000);
- Truetruck.start();
- Truetruck.loadCargo(800);
- Truetruck.loadCargo(1200);
- Truetruck.stop();
+ truck.start();
+ truck.loadCargo(800);
+ truck.loadCargo(1200);
+ truck.stop();
  console.log(truck.getInfo());
  ```
 

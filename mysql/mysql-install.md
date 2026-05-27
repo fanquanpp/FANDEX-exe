@@ -51,14 +51,14 @@ Docker 部署是最便捷的方式，适合开发和测试环境：
  # 进入容器
  docker exec -it mysql bash
  # 在容器内连接 MySQL
- Truemysql -u root -p
+ mysql -u root -p
  ```
 
 ### 2.2 Docker Compose 部署
 创建 `docker-compose.yml` 文件：
 ```yaml
- Trueversion: '3.8'
- Trueservices:
+ version: '3.8'
+ services:
   mysql:
   image: mysql:8.4
   container_name: mysql
@@ -73,7 +73,7 @@ Docker 部署是最便捷的方式，适合开发和测试环境：
   - mysql-data:/var/lib/mysql
   - ./my.cnf:/etc/mysql/conf.d/my.cnf
   command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
- Truevolumes:
+ volumes:
   mysql-data:
  ```
 
@@ -164,41 +164,41 @@ Docker 部署是最便捷的方式，适合开发和测试环境：
 ### 4.1 Ubuntu/Debian 安装
 ```bash
  # 更新包列表
- Truesudo apt update
+ sudo apt update
  # 安装 MySQL 服务器
- Truesudo apt install mysql-server -y
+ sudo apt install mysql-server -y
  # 安全配置（设置 root 密码、移除匿名用户等）
- Truesudo mysql_secure_installation
+ sudo mysql_secure_installation
  # 启动服务
- Truesudo systemctl start mysql
- Truesudo systemctl enable mysql
+ sudo systemctl start mysql
+ sudo systemctl enable mysql
  # 检查服务状态
- Truesudo systemctl status mysql
+ sudo systemctl status mysql
  # 验证安装
- Truesudo mysql -u root
+ sudo mysql -u root
  ```
 
 ### 4.2 CentOS/RHEL 安装
 ```bash
  # 安装 MySQL 仓库
- Truesudo yum install -y https://dev.mysql.com/get/mysql80-community-release-el7-3.noarch.rpm
+ sudo yum install -y https://dev.mysql.com/get/mysql80-community-release-el7-3.noarch.rpm
  # 安装 MySQL 服务器
- Truesudo yum install -y mysql-community-server
+ sudo yum install -y mysql-community-server
  # 启动服务
- Truesudo systemctl start mysqld
- Truesudo systemctl enable mysqld
+ sudo systemctl start mysqld
+ sudo systemctl enable mysqld
  # 获取临时密码
- Truesudo grep 'temporary password' /var/log/mysqld.log
+ sudo grep 'temporary password' /var/log/mysqld.log
  # 安全配置
- Truesudo mysql_secure_installation
+ sudo mysql_secure_installation
  # 验证安装
- Truemysql -u root -p
+ mysql -u root -p
  ```
 
 ### 4.3 Docker 方式（各 Linux 通用）
 ```bash
  # 安装 Docker（如果未安装）
- Truecurl -fsSL https://get.docker.com | sh
+ curl -fsSL https://get.docker.com | sh
  # 拉取并运行 MySQL
  docker run -d \
   --name mysql \
@@ -214,15 +214,15 @@ Docker 部署是最便捷的方式，适合开发和测试环境：
  # 如果未安装 Homebrew，先安装
  True/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
  # 更新 Homebrew
- Truebrew update
+ brew update
  # 安装 MySQL
- Truebrew install mysql
+ brew install mysql
  # 启动 MySQL 服务
- Truebrew services start mysql
+ brew services start mysql
  # 安全配置
- Truemysql_secure_installation
+ mysql_secure_installation
  # 连接 MySQL
- Truemysql -u root
+ mysql -u root
  ```
 
 ### 5.2 使用 DMG 安装包
@@ -248,19 +248,19 @@ Docker 部署是最便捷的方式，适合开发和测试环境：
 ### 6.2 Linux/macOS 配置
 ```bash
  # 编辑环境变量文件
- Truesudo nano /etc/profile # 全局配置
+ sudo nano /etc/profile # 全局配置
  # 或
- Truenano ~/.bashrc # 用户级配置
+ nano ~/.bashrc # 用户级配置
  # 在文件末尾添加（根据实际安装路径）
  export PATH=$PATH:/usr/bin/mysql
  # 或
  export PATH=$PATH:/usr/local/mysql/bin
  # 使配置生效
- Truesource /etc/profile # 全局配置
+ source /etc/profile # 全局配置
  # 或
- Truesource ~/.bashrc # 用户级配置
+ source ~/.bashrc # 用户级配置
  # 验证配置
- Truemysql --version
+ mysql --version
  ```
 
 ## 7. MySQL 配置文件详解
@@ -273,42 +273,42 @@ Docker 部署是最便捷的方式，适合开发和测试环境：
 ### 7.2 配置文件结构
 ```ini
  [mysqld] # 服务器端配置
- Trueport=3306
- Truebasedir=/usr/local/mysql
- Truedatadir=/var/lib/mysql
- Truecharacter-set-server=utf8mb4
- Truecollation-server=utf8mb4_unicode_ci
- Truemax_connections=200
+ port=3306
+ basedir=/usr/local/mysql
+ datadir=/var/lib/mysql
+ character-set-server=utf8mb4
+ collation-server=utf8mb4_unicode_ci
+ max_connections=200
  [mysql] # 客户端配置
  default-character-set=utf8mb4
  [client] # 客户端连接配置
- Trueport=3306
- Truehost=localhost
+ port=3306
+ host=localhost
  ```
 
 ### 7.3 常用配置参数
 ```ini
  [mysqld]
  # 基础配置
- Trueport=3306
- Truebind-address=0.0.0.0
+ port=3306
+ bind-address=0.0.0.0
  # 字符集配置
- Truecharacter-set-server=utf8mb4
- Truecollation-server=utf8mb4_unicode_ci
+ character-set-server=utf8mb4
+ collation-server=utf8mb4_unicode_ci
  # InnoDB 配置
  innodb_buffer_pool_size=1G # 建议为服务器内存的 70-80%
  innodb_log_file_size=256M
  innodb_flush_log_at_trx_commit=1
  # 连接配置
- Truemax_connections=200
- Truewait_timeout=600
+ max_connections=200
+ wait_timeout=600
  interactive_timeout=600
  # 日志配置
- Trueslow_query_log=1
- Trueslow_query_log_file=/var/log/mysql/slow.log
- Truelong_query_time=2
+ slow_query_log=1
+ slow_query_log_file=/var/log/mysql/slow.log
+ long_query_time=2
  # 字符集
- Truecharacter-set-server=utf8mb4
+ character-set-server=utf8mb4
  ```
 
 ## 8. 管理工具
@@ -325,19 +325,19 @@ Docker 部署是最便捷的方式，适合开发和测试环境：
 ### 8.2 mysqldump 备份示例
 ```bash
  # 备份单个数据库
- Truemysqldump -u root -p database_name > backup.sql
+ mysqldump -u root -p database_name > backup.sql
  # 备份多个数据库
- Truemysqldump -u root -p --databases db1 db2 > backup.sql
+ mysqldump -u root -p --databases db1 db2 > backup.sql
  # 备份所有数据库
- Truemysqldump -u root -p --all-databases > all_databases_backup.sql
+ mysqldump -u root -p --all-databases > all_databases_backup.sql
  # 备份表结构（不包含数据）
- Truemysqldump -u root -p --no-data database_name > structure_only.sql
+ mysqldump -u root -p --no-data database_name > structure_only.sql
  # 备份数据（不包含表结构）
- Truemysqldump -u root -p --no-create-info database_name > data_only.sql
+ mysqldump -u root -p --no-create-info database_name > data_only.sql
  # 压缩备份
- Truemysqldump -u root -p database_name | gzip > backup.sql.gz
+ mysqldump -u root -p database_name | gzip > backup.sql.gz
  # 恢复数据库
- Truemysql -u root -p database_name < backup.sql
+ mysql -u root -p database_name < backup.sql
  ```
 
 ### 8.3 GUI 工具对比

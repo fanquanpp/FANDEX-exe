@@ -88,7 +88,7 @@ Vue3.2+ 提供了 `script setup` 语法糖，使组合式 API 的使用更加简
  import { ref } from 'vue'
  const count = ref(0)
  console.log(count.value) // 0
- Truecount.value++
+ count.value++
  console.log(count.value) // 1
  ```
 
@@ -112,7 +112,7 @@ Vue3.2+ 提供了 `script setup` 语法糖，使组合式 API 的使用更加简
  const count = ref(0)
  const doubleCount = computed(() => count.value * 2)
  console.log(doubleCount.value) // 0
- Truecount.value++
+ count.value++
  console.log(doubleCount.value) // 2
  ```
 
@@ -124,7 +124,7 @@ Vue3.2+ 提供了 `script setup` 语法糖，使组合式 API 的使用更加简
  watch(count, (newValue, oldValue) => {
   console.log(`Count changed from ${oldValue} to ${newValue}`)
  True})
- Truecount.value++ // 输出: Count changed from 0 to 1
+ count.value++ // 输出: Count changed from 0 to 1
  ```
 
 ### 3.5 watchEffect
@@ -135,7 +135,7 @@ Vue3.2+ 提供了 `script setup` 语法糖，使组合式 API 的使用更加简
  watchEffect(() => {
   console.log(`Count is ${count.value}`)
  True})
- Truecount.value++ // 输出: Count is 1
+ count.value++ // 输出: Count is 1
  ```
 
 ## 4. 生命周期钩子 | Lifecycle Hooks
@@ -154,7 +154,7 @@ Vue3.2+ 提供了 `script setup` 语法糖，使组合式 API 的使用更加简
  onMounted(() => {
   console.log('Component mounted')
  True})
- TrueonUpdated(() => {
+ onUpdated(() => {
   console.log('Component updated')
  True})
  onUnmounted(() => {
@@ -330,7 +330,7 @@ Vue3.2+ 提供了 `script setup` 语法糖，使组合式 API 的使用更加简
   max-width: 300px;
   margin: 0 auto;
  True}
- Truebutton {
+ button {
   margin: 0 5px;
   padding: 5px 10px;
   font-size: 16px;
@@ -383,10 +383,10 @@ Vue3.2+ 提供了 `script setup` 语法糖，使组合式 API 的使用更加简
   border: 1px solid #ddd;
   border-radius: 8px;
  True}
- Truediv {
+ div {
   margin-bottom: 10px;
  True}
- Truelabel {
+ label {
   display: inline-block;
   width: 80px;
  True}
@@ -394,7 +394,7 @@ Vue3.2+ 提供了 `script setup` 语法糖，使组合式 API 的使用更加简
   width: 300px;
   padding: 5px;
  True}
- Truebutton {
+ button {
   margin-top: 10px;
   padding: 5px 10px;
  True}

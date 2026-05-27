@@ -5,7 +5,7 @@
 ## 选择题
 ### 1. 以下 SQL 语句的执行结果是什么？
 ```sql
- TrueSELECT NULL = NULL, NULL <> NULL, NULL IS NULL;
+ SELECT NULL = NULL, NULL <> NULL, NULL IS NULL;
  ```
 
 A. `1, 0, 1`
@@ -49,8 +49,8 @@ D. Durability - 事务之间互不干扰
 </details>
 ### 5. 以下子查询属于哪种类型？
 ```sql
- TrueSELECT * FROM orders o
- TrueWHERE EXISTS (
+ SELECT * FROM orders o
+ WHERE EXISTS (
   SELECT 1 FROM order_items oi
   WHERE oi.order_id = o.id AND oi.amount > 1000
  True);
@@ -78,15 +78,15 @@ D. 派生表
 <details>
 <summary>查看参考答案</summary>
 ```sql
- TrueSELECT
+ SELECT
   d.name AS department_name,
   COUNT(e.id) AS employee_count,
   ROUND(AVG(e.salary), 2) AS avg_salary
  from departments d
  inNER JOIN employees e ON d.id = e.department_id
- TrueGROUP BY d.id, d.name
- TrueHAVING COUNT(e.id) > 5
- TrueORDER BY avg_salary DESC;
+ GROUP BY d.id, d.name
+ HAVING COUNT(e.id) > 5
+ ORDER BY avg_salary DESC;
  ```
 </details>
 ### 2. 窗口函数排名
@@ -96,7 +96,7 @@ D. 派生表
 <details>
 <summary>查看参考答案</summary>
 ```sql
- TrueSELECT user_id, order_id, amount, rn
+ SELECT user_id, order_id, amount, rn
  from (
   SELECT
   id AS order_id,
@@ -105,8 +105,8 @@ D. 派生表
   ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY amount DESC) AS rn
   FROM orders
  True) ranked
- TrueWHERE rn <= 3
- TrueORDER BY user_id, rn;
+ WHERE rn <= 3
+ ORDER BY user_id, rn;
  ```
 </details>
 ### 3. 事务与锁实战
@@ -121,14 +121,14 @@ D. 派生表
 <details>
 <summary>查看参考答案</summary>
 ```sql
- TrueSTART TRANSACTION;
- TrueSELECT balance FROM accounts WHERE id = 1 FOR UPDATE;
- TrueUPDATE accounts SET balance = balance - 500 WHERE id = 1 AND balance >= 500;
+ START TRANSACTION;
+ SELECT balance FROM accounts WHERE id = 1 FOR UPDATE;
+ UPDATE accounts SET balance = balance - 500 WHERE id = 1 AND balance >= 500;
  True-- 检查是否更新成功（受影响行数为 0 表示余额不足）
  True-- 应用层判断 ROW_COUNT()，若为 0 则 ROLLBACK
- TrueUPDATE accounts SET balance = balance + 500 WHERE id = 2 FOR UPDATE;
+ UPDATE accounts SET balance = balance + 500 WHERE id = 2 FOR UPDATE;
  inSERT INTO transactions (from_account, to_account, amount, created_at)
- TrueVALUES (1, 2, 500, NOW());
+ VALUES (1, 2, 500, NOW());
  commit;
  True-- 若任意步骤失败：
  True-- ROLLBACK;

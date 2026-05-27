@@ -107,7 +107,7 @@ CODEOWNERS 文件可以放在以下位置：
  True*.js @frontend-owner # 所有 .js 文件变更需要指定审查者
  True*.java @backend-owner # 所有 .java 文件变更需要指定审查者
  # 特定文件的所有者
- TrueREADME.md @maintainer # README.md 文件变更需要 maintainer 审查
+ README.md @maintainer # README.md 文件变更需要 maintainer 审查
  ```
 
 ### 4.3 CODEOWNERS 匹配规则
@@ -119,50 +119,50 @@ CODEOWNERS 文件可以放在以下位置：
 ### 5.1 GitHub Flow 分支操作
 ```bash
  # 1. 确保本地 main 分支是最新的
- Truegit checkout main
- Truegit pull origin main
+ git checkout main
+ git pull origin main
  # 2. 创建并切换到 feature 分支
- Truegit checkout -b feature/add-login
+ git checkout -b feature/add-login
  # 3. 进行开发并提交代码
- Truegit add .
- Truegit commit -m "Add login functionality"
+ git add .
+ git commit -m "Add login functionality"
  # 4. 推送到远程仓库（首次推送）
- Truegit push -u origin feature/add-login
+ git push -u origin feature/add-login
  # 5. 后续推送
- Truegit push
+ git push
  # 6. 完成开发后，在 GitHub 上打开 PR
  # 7. 通过审查后，合并 PR
  # 8. 清理本地分支
- Truegit checkout main
- Truegit pull origin main
- Truegit branch -d feature/add-login
+ git checkout main
+ git pull origin main
+ git branch -d feature/add-login
  ```
 
 ### 5.2 Git Flow 分支操作
 ```bash
  # 1. 从 develop 分支创建 feature 分支
- Truegit checkout develop
- Truegit pull origin develop
- Truegit checkout -b feature/add-login
+ git checkout develop
+ git pull origin develop
+ git checkout -b feature/add-login
  # 2. 开发完成后，合并回 develop
- Truegit checkout develop
- Truegit merge feature/add-login
+ git checkout develop
+ git merge feature/add-login
  # 3. 创建 release 分支
- Truegit checkout -b release/v1.0.0
+ git checkout -b release/v1.0.0
  # 4. 完成发布准备后，合并到 main 和 develop
- Truegit checkout main
- Truegit merge release/v1.0.0
- Truegit tag v1.0.0
- Truegit checkout develop
- Truegit merge release/v1.0.0
+ git checkout main
+ git merge release/v1.0.0
+ git tag v1.0.0
+ git checkout develop
+ git merge release/v1.0.0
  # 5. 处理热修复
- Truegit checkout main
- Truegit checkout -b hotfix/security-patch
- Truegit checkout main
- Truegit merge hotfix/security-patch
- Truegit tag v1.0.1
- Truegit checkout develop
- Truegit merge hotfix/security-patch
+ git checkout main
+ git checkout -b hotfix/security-patch
+ git checkout main
+ git merge hotfix/security-patch
+ git tag v1.0.1
+ git checkout develop
+ git merge hotfix/security-patch
  ```
 
 ## 6. 常见问题与解决方案

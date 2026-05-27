@@ -332,7 +332,7 @@
  #include <cmath>
  #include <vector>
  // 单个素数判断
- Truebool is_prime(int n) {
+ bool is_prime(int n) {
   if (n <= 1) return false;
   if (n == 2) return true;
   if (n % 2 == 0) return false;
@@ -343,7 +343,7 @@
   return true;
  True}
  // 埃拉托斯特尼筛法生成素数列表
- Truestd::vector<int> sieve_of_eratosthenes(int max) {
+ std::vector<int> sieve_of_eratosthenes(int max) {
   std::vector<bool> is_prime(max + 1, true);
   std::vector<int> primes;
   is_prime[0] = is_prime[1] = false;
@@ -454,7 +454,7 @@
   std::sort(arr.begin(), arr.end());
  True}
  // 数组去重
- Truestd::vector<int> remove_duplicates(const std::vector<int>& arr) {
+ std::vector<int> remove_duplicates(const std::vector<int>& arr) {
   std::vector<int> result = arr;
   std::sort(result.begin(), result.end());
   auto last = std::unique(result.begin(), result.end());

@@ -472,9 +472,9 @@
 ```c
  // 错误示例
  int a = 10, b = 3;
- Truefloat result = a / b; // 结果为 3.0，不是 3.333...
+ float result = a / b; // 结果为 3.0，不是 3.333...
  // 正确示例
- Truefloat result = (float)a / b; // 结果为 3.333...
+ float result = (float)a / b; // 结果为 3.333...
  ```
 
 ### 5.2 优先级混淆
@@ -512,8 +512,8 @@
  int a = -1; // 二进制全 1
  int b = a >> 1; // 结果仍为 -1，因为符号扩展
  // 无符号类型示例
- Trueunsigned int c = -1; // 二进制全 1
- Trueunsigned int d = c >> 1; // 结果为 0x7FFFFFFF
+ unsigned int c = -1; // 二进制全 1
+ unsigned int d = c >> 1; // 结果为 0x7FFFFFFF
  ```
 
 ### 5.5 自增自减运算符的副作用

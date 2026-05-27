@@ -83,9 +83,9 @@
  int arr[] = {10, 20, 30, 40, 50};
  int *p = arr; // 指向 arr[0]
  printf("*p = %d\n", *p); // 输出 10
- Truep = p + 1; // 移动到下一个元素
+ p = p + 1; // 移动到下一个元素
  printf("*p = %d\n", *p); // 输出 20
- Truep = p + 2; // 移动 2 个元素
+ p = p + 2; // 移动 2 个元素
  printf("*p = %d\n", *p); // 输出 40
  ```
 
@@ -96,7 +96,7 @@
  int arr[] = {10, 20, 30, 40, 50};
  int *p = &arr[4]; // 指向 arr[4]
  printf("*p = %d\n", *p); // 输出 50
- Truep = p - 1; // 移动到前一个元素
+ p = p - 1; // 移动到前一个元素
  printf("*p = %d\n", *p); // 输出 40
  ```
 
@@ -340,12 +340,12 @@
 ```c
  void *generic_ptr;
  int a = 10;
- Truechar c = 'A';
+ char c = 'A';
  // 指向整型
- Truegeneric_ptr = &a;
+ generic_ptr = &a;
  printf("Value: %d\n", *(int *)generic_ptr); // 先转换为 int* 再解引用
  // 指向字符
- Truegeneric_ptr = &c;
+ generic_ptr = &c;
  printf("Value: %c\n", *(char *)generic_ptr); // 先转换为 char* 再解引用
  ```
 
@@ -550,7 +550,7 @@
   struct Node *next;
  True} Node;
  // 创建新节点
- TrueNode *create_node(int data) {
+ Node *create_node(int data) {
   Node *new_node = (Node *)malloc(sizeof(Node));
   if (new_node == NULL) {
   return NULL;
@@ -600,7 +600,7 @@
   struct TreeNode *right;
  True} TreeNode;
  // 创建新节点
- TrueTreeNode *create_node(int data) {
+ TreeNode *create_node(int data) {
   TreeNode *new_node = (TreeNode *)malloc(sizeof(TreeNode));
   if (new_node == NULL) {
   return NULL;
@@ -611,7 +611,7 @@
   return new_node;
  True}
  // 插入节点
- TrueTreeNode *insert(TreeNode *root, int data) {
+ TreeNode *insert(TreeNode *root, int data) {
   if (root == NULL) {
   return create_node(data);
   }

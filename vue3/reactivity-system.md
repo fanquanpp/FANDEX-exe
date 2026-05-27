@@ -33,7 +33,7 @@ Vue3 的响应式系统主要包括以下几个部分：
  import { ref } from 'vue'
  const count = ref(0)
  console.log(count.value) // 0
- Truecount.value++
+ count.value++
  console.log(count.value) // 1
  ```
 
@@ -69,7 +69,7 @@ Vue3 的响应式系统主要包括以下几个部分：
  const count = ref(0)
  const doubleCount = computed(() => count.value * 2)
  console.log(doubleCount.value) // 0
- Truecount.value++
+ count.value++
  console.log(doubleCount.value) // 2
  ```
 
@@ -81,7 +81,7 @@ Vue3 的响应式系统主要包括以下几个部分：
  watch(count, (newValue, oldValue) => {
   console.log(`Count changed from ${oldValue} to ${newValue}`)
  True})
- Truecount.value++ // 输出: Count changed from 0 to 1
+ count.value++ // 输出: Count changed from 0 to 1
  ```
 
 `watch` 也可以监听多个数据源：
@@ -93,8 +93,8 @@ Vue3 的响应式系统主要包括以下几个部分：
   console.log(`Count changed from ${oldCount} to ${newCount}`)
   console.log(`Message changed from ${oldMessage} to ${newMessage}`)
  True})
- Truecount.value++ // 输出: Count changed from 0 to 1
- Truemessage.value = 'Hi' // 输出: Message changed from Hello to Hi
+ count.value++ // 输出: Count changed from 0 to 1
+ message.value = 'Hi' // 输出: Message changed from Hello to Hi
  ```
 
 ### 2.5 watchEffect
@@ -105,10 +105,10 @@ Vue3 的响应式系统主要包括以下几个部分：
  const stop = watchEffect(() => {
   console.log(`Count is ${count.value}`)
  True})
- Truecount.value++ // 输出: Count is 1
+ count.value++ // 输出: Count is 1
  // 停止监听
- Truestop()
- Truecount.value++ // 不会输出
+ stop()
+ count.value++ // 不会输出
  ```
 
 ## 3. 响应式工具 | Reactive Utilities
@@ -139,7 +139,7 @@ Vue3 的响应式系统主要包括以下几个部分：
  const countRef = toRef(state, 'count')
  console.log(countRef.value) // 0
  // 修改 ref 会影响原对象
- TruecountRef.value++
+ countRef.value++
  console.log(state.count) // 1
  ```
 
@@ -210,7 +210,7 @@ Vue3 的响应式系统主要包括以下几个部分：
  // 修改内部属性
  user.value.age = 31
  // 手动触发更新
- TruetriggerRef(user)
+ triggerRef(user)
  ```
 
 ### 3.8 customRef
@@ -383,7 +383,7 @@ Vue3 的响应式系统主要包括以下几个部分：
   max-width: 400px;
   margin: 0 auto;
  True}
- Truebutton {
+ button {
   margin: 0 5px;
   padding: 5px 10px;
   font-size: 16px;
@@ -443,16 +443,16 @@ Vue3 的响应式系统主要包括以下几个部分：
   max-width: 400px;
   margin: 0 auto;
  True}
- Truebutton {
+ button {
   margin: 0 5px;
   padding: 5px 10px;
   font-size: 16px;
  True}
- Trueul {
+ ul {
   list-style-type: none;
   padding: 0;
  True}
- Trueli {
+ li {
   padding: 5px 0;
   border-bottom: 1px solid #eee;
  True}

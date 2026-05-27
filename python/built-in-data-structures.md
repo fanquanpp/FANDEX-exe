@@ -18,28 +18,28 @@
 ### 1.1 列表的创建
 ```python
  # 创建空列表
- Trueempty_list = []
- Trueempty_list = list()
+ empty_list = []
+ empty_list = list()
  # 创建带有初始元素的列表
- Truenumbers = [1, 2, 3, 4, 5]
- Truefruits = ["apple", "banana", "cherry"]
- Truemixed = [1, "apple", True, 3.14]
+ numbers = [1, 2, 3, 4, 5]
+ fruits = ["apple", "banana", "cherry"]
+ mixed = [1, "apple", True, 3.14]
  # 使用列表推导式创建列表
- Truesquares = [x ** 2 for x in range(10)]
+ squares = [x ** 2 for x in range(10)]
  print(squares) # 输出: [0, 1, 4, 9, 16, 25, 36, 49, 64, 81]
  # 使用range创建列表
- Truenumbers = list(range(1, 10, 2))
+ numbers = list(range(1, 10, 2))
  print(numbers) # 输出: [1, 3, 5, 7, 9]
  # 复制列表
- Trueoriginal = [1, 2, 3]
- Truecopy1 = original.copy()
- Truecopy2 = list(original)
- Truecopy3 = original[:] # 切片复制
+ original = [1, 2, 3]
+ copy1 = original.copy()
+ copy2 = list(original)
+ copy3 = original[:] # 切片复制
  ```
 
 ### 1.2 列表的访问
 ```python
- Truefruits = ["apple", "banana", "cherry"]
+ fruits = ["apple", "banana", "cherry"]
  # 通过索引访问元素
  print(fruits[0]) # 输出: apple
  print(fruits[1]) # 输出: banana
@@ -58,56 +58,56 @@
 
 ### 1.3 列表的修改
 ```python
- Truefruits = ["apple", "banana", "cherry"]
+ fruits = ["apple", "banana", "cherry"]
  # 修改元素
- Truefruits[1] = "grape"
+ fruits[1] = "grape"
  print(fruits) # 输出: ['apple', 'grape', 'cherry']
  # 添加元素
- Truefruits.append("orange") # 在末尾添加
+ fruits.append("orange") # 在末尾添加
  print(fruits) # 输出: ['apple', 'grape', 'cherry', 'orange']
- Truefruits.insert(1, "pear") # 在指定位置插入
+ fruits.insert(1, "pear") # 在指定位置插入
  print(fruits) # 输出: ['apple', 'pear', 'grape', 'cherry', 'orange']
  # 扩展列表
- Truemore_fruits = ["mango", "kiwi"]
- Truefruits.extend(more_fruits) # 添加另一个列表的所有元素
+ more_fruits = ["mango", "kiwi"]
+ fruits.extend(more_fruits) # 添加另一个列表的所有元素
  print(fruits) # 输出: ['apple', 'pear', 'grape', 'cherry', 'orange', 'mango', 'kiwi']
  # 删除元素
- Truefruits.remove("cherry") # 移除指定值的元素
+ fruits.remove("cherry") # 移除指定值的元素
  print(fruits) # 输出: ['apple', 'pear', 'grape', 'orange', 'mango', 'kiwi']
- Truepopped = fruits.pop() # 移除并返回最后一个元素
+ popped = fruits.pop() # 移除并返回最后一个元素
  print(popped) # 输出: kiwi
  print(fruits) # 输出: ['apple', 'pear', 'grape', 'orange', 'mango']
- Truepopped = fruits.pop(1) # 移除并返回指定位置的元素
+ popped = fruits.pop(1) # 移除并返回指定位置的元素
  print(popped) # 输出: pear
  print(fruits) # 输出: ['apple', 'grape', 'orange', 'mango']
  # 清空列表
- Truefruits.clear()
+ fruits.clear()
  print(fruits) # 输出: []
  ```
 
 ### 1.4 列表的常用方法
 ```python
- Truenumbers = [3, 1, 4, 1, 5, 9, 2, 6]
+ numbers = [3, 1, 4, 1, 5, 9, 2, 6]
  # 排序
- Truenumbers.sort()
+ numbers.sort()
  print(numbers) # 输出: [1, 1, 2, 3, 4, 5, 6, 9]
  # 反向排序
- Truenumbers.sort(reverse=True)
+ numbers.sort(reverse=True)
  print(numbers) # 输出: [9, 6, 5, 4, 3, 2, 1, 1]
  # 反转列表
- Truenumbers.reverse()
+ numbers.reverse()
  print(numbers) # 输出: [1, 1, 2, 3, 4, 5, 6, 9]
  # 统计元素出现次数
  print(numbers.count(1)) # 输出: 2
  # 查找元素索引
  print(numbers.index(5)) # 输出: 5
  # 列表拼接
- Truelist1 = [1, 2, 3]
- Truelist2 = [4, 5, 6]
- Truecombined = list1 + list2
+ list1 = [1, 2, 3]
+ list2 = [4, 5, 6]
+ combined = list1 + list2
  print(combined) # 输出: [1, 2, 3, 4, 5, 6]
  # 列表重复
- Truerepeated = [1, 2] * 3
+ repeated = [1, 2] * 3
  print(repeated) # 输出: [1, 2, 1, 2, 1, 2]
  ```
 
@@ -123,28 +123,28 @@
 ### 2.1 元组的创建
 ```python
  # 创建元组
- Trueempty_tuple = ()
- Trueempty_tuple = tuple()
+ empty_tuple = ()
+ empty_tuple = tuple()
  # 创建带有初始元素的元组
- Truenumbers = (1, 2, 3, 4, 5)
- Truefruits = ("apple", "banana", "cherry")
- Truemixed = (1, "apple", True, 3.14)
+ numbers = (1, 2, 3, 4, 5)
+ fruits = ("apple", "banana", "cherry")
+ mixed = (1, "apple", True, 3.14)
  # 注意: 单个元素的元组需要加逗号
- Truesingle_element = (1,)
+ single_element = (1,)
  print(type(single_element)) # 输出: <class 'tuple'>
  # 不带括号的元组
- Trueimplicit_tuple = 1, 2, 3
+ implicit_tuple = 1, 2, 3
  print(type(implicit_tuple)) # 输出: <class 'tuple'>
  # 从其他序列创建元组
- Truelist_to_tuple = tuple([1, 2, 3])
+ list_to_tuple = tuple([1, 2, 3])
  print(list_to_tuple) # 输出: (1, 2, 3)
- Truestring_to_tuple = tuple("hello")
+ string_to_tuple = tuple("hello")
  print(string_to_tuple) # 输出: ('h', 'e', 'l', 'l', 'o')
  ```
 
 ### 2.2 元组的访问
 ```python
- Truefruits = ("apple", "banana", "cherry")
+ fruits = ("apple", "banana", "cherry")
  # 通过索引访问元素
  print(fruits[0]) # 输出: apple
  print(fruits[1]) # 输出: banana
@@ -165,40 +165,40 @@
 ### 2.3 元组的解包
 ```python
  # 基本解包
- Truecoordinates = (10, 20, 30)
- Truex, y, z = coordinates
+ coordinates = (10, 20, 30)
+ x, y, z = coordinates
  print(x, y, z) # 输出: 10 20 30
  # 部分解包
- Truenumbers = (1, 2, 3, 4, 5)
- Truefirst, *middle, last = numbers
+ numbers = (1, 2, 3, 4, 5)
+ first, *middle, last = numbers
  print(first) # 输出: 1
  print(middle) # 输出: [2, 3, 4]
  print(last) # 输出: 5
  # 交换变量
- Truea, b = 1, 2
- Truea, b = b, a
+ a, b = 1, 2
+ a, b = b, a
  print(a, b) # 输出: 2 1
  # 函数返回多个值
  def get_user():
   return "Alice", 30, "New York"
- Truename, age, city = get_user()
+ name, age, city = get_user()
  print(name, age, city) # 输出: Alice 30 New York
  ```
 
 ### 2.4 元组的常用方法
 ```python
- Truenumbers = (3, 1, 4, 1, 5, 9)
+ numbers = (3, 1, 4, 1, 5, 9)
  # 统计元素出现次数
  print(numbers.count(1)) # 输出: 2
  # 查找元素索引
  print(numbers.index(5)) # 输出: 4
  # 元组拼接
- Truetuple1 = (1, 2, 3)
- Truetuple2 = (4, 5, 6)
- Truecombined = tuple1 + tuple2
+ tuple1 = (1, 2, 3)
+ tuple2 = (4, 5, 6)
+ combined = tuple1 + tuple2
  print(combined) # 输出: (1, 2, 3, 4, 5, 6)
  # 元组重复
- Truerepeated = (1, 2) * 3
+ repeated = (1, 2) * 3
  print(repeated) # 输出: (1, 2, 1, 2, 1, 2)
  ```
 
@@ -212,27 +212,27 @@
 ### 3.1 字典的创建
 ```python
  # 创建空字典
- Trueempty_dict = {}
- Trueempty_dict = dict()
+ empty_dict = {}
+ empty_dict = dict()
  # 创建带有初始键值对的字典
- Trueperson = {"name": "Alice", "age": 30, "city": "New York"}
+ person = {"name": "Alice", "age": 30, "city": "New York"}
  # 使用dict()构造函数
- Trueperson = dict(name="Alice", age=30, city="New York")
+ person = dict(name="Alice", age=30, city="New York")
  # 从键值对列表创建
- Trueitems = [("name", "Alice"), ("age", 30), ("city", "New York")]
- Trueperson = dict(items)
+ items = [("name", "Alice"), ("age", 30), ("city", "New York")]
+ person = dict(items)
  # 从两个列表创建（键和值）
- Truekeys = ["name", "age", "city"]
- Truevalues = ["Alice", 30, "New York"]
- Trueperson = dict(zip(keys, values))
+ keys = ["name", "age", "city"]
+ values = ["Alice", 30, "New York"]
+ person = dict(zip(keys, values))
  # 字典推导式
- Truesquares = {x: x**2 for x in range(5)}
+ squares = {x: x**2 for x in range(5)}
  print(squares) # 输出: {0: 0, 1: 1, 2: 4, 3: 9, 4: 16}
  ```
 
 ### 3.2 字典的访问
 ```python
- Trueperson = {"name": "Alice", "age": 30, "city": "New York"}
+ person = {"name": "Alice", "age": 30, "city": "New York"}
  # 通过键访问值
  print(person["name"]) # 输出: Alice
  print(person["age"]) # 输出: 30
@@ -252,31 +252,31 @@
 
 ### 3.3 字典的修改
 ```python
- Trueperson = {"name": "Alice", "age": 30, "city": "New York"}
+ person = {"name": "Alice", "age": 30, "city": "New York"}
  # 添加或修改键值对
- Trueperson["country"] = "USA" # 添加新键值对
+ person["country"] = "USA" # 添加新键值对
  print(person) # 输出: {'name': 'Alice', 'age': 30, 'city': 'New York', 'country': 'USA'}
- Trueperson["age"] = 31 # 修改现有值
+ person["age"] = 31 # 修改现有值
  print(person) # 输出: {'name': 'Alice', 'age': 31, 'city': 'New York', 'country': 'USA'}
  # 使用update()方法更新
- Trueperson.update({"city": "Boston", "job": "Engineer"})
+ person.update({"city": "Boston", "job": "Engineer"})
  print(person) # 输出: {'name': 'Alice', 'age': 31, 'city': 'Boston', 'country': 'USA', 'job': 'Engineer'}
  # 删除键值对
- Trueremoved_value = person.pop("country") # 移除并返回值
+ removed_value = person.pop("country") # 移除并返回值
  print(removed_value) # 输出: USA
  print(person) # 输出: {'name': 'Alice', 'age': 31, 'city': 'Boston', 'job': 'Engineer'}
  # 删除最后一个键值对（Python 3.7+）
- Truelast_item = person.popitem()
+ last_item = person.popitem()
  print(last_item) # 输出: ('job', 'Engineer')
  print(person) # 输出: {'name': 'Alice', 'age': 31, 'city': 'Boston'}
  # 清空字典
- Trueperson.clear()
+ person.clear()
  print(person) # 输出: {}
  ```
 
 ### 3.4 字典的遍历
 ```python
- Trueperson = {"name": "Alice", "age": 30, "city": "New York"}
+ person = {"name": "Alice", "age": 30, "city": "New York"}
  # 遍历键
  for key in person:
   print(key)
@@ -302,49 +302,49 @@
 ### 4.1 集合的创建
 ```python
  # 创建空集合
- Trueempty_set = set() # 注意: {} 创建的是空字典
+ empty_set = set() # 注意: {} 创建的是空字典
  # 创建带有初始元素的集合
- Truenumbers = {1, 2, 3, 4, 5}
- Truefruits = {"apple", "banana", "cherry"}
+ numbers = {1, 2, 3, 4, 5}
+ fruits = {"apple", "banana", "cherry"}
  # 从其他序列创建集合
- Truelist_to_set = set([1, 2, 3, 3, 4, 5])
+ list_to_set = set([1, 2, 3, 3, 4, 5])
  print(list_to_set) # 输出: {1, 2, 3, 4, 5}（自动去重）
- Truestring_to_set = set("hello")
+ string_to_set = set("hello")
  print(string_to_set) # 输出: {'h', 'e', 'l', 'o'}（自动去重）
  # 集合推导式
- Truesquares = {x**2 for x in range(5)}
+ squares = {x**2 for x in range(5)}
  print(squares) # 输出: {0, 1, 4, 9, 16}
  ```
 
 ### 4.2 集合的操作
 ```python
- Truefruits = {"apple", "banana", "cherry"}
+ fruits = {"apple", "banana", "cherry"}
  # 添加元素
- Truefruits.add("orange")
+ fruits.add("orange")
  print(fruits) # 输出: {'apple', 'banana', 'cherry', 'orange'}
  # 添加多个元素
- Truefruits.update(["mango", "kiwi"])
+ fruits.update(["mango", "kiwi"])
  print(fruits) # 输出: {'apple', 'banana', 'cherry', 'orange', 'mango', 'kiwi'}
  # 删除元素
- Truefruits.remove("cherry") # 如果元素不存在会抛出错误
+ fruits.remove("cherry") # 如果元素不存在会抛出错误
  print(fruits) # 输出: {'apple', 'banana', 'orange', 'mango', 'kiwi'}
- Truefruits.discard("grape") # 如果元素不存在不会抛出错误
+ fruits.discard("grape") # 如果元素不存在不会抛出错误
  print(fruits) # 输出: {'apple', 'banana', 'orange', 'mango', 'kiwi'}
  # 移除并返回任意元素
- Truepopped = fruits.pop()
+ popped = fruits.pop()
  print(popped) # 输出: 任意元素，如 'apple'
  print(fruits) # 输出: 剩余元素
  # 清空集合
- Truefruits.clear()
+ fruits.clear()
  print(fruits) # 输出: set()
  ```
 
 ### 4.3 集合运算
 ```python
- Trueset1 = {1, 2, 3, 4, 5}
- Trueset2 = {4, 5, 6, 7, 8}
+ set1 = {1, 2, 3, 4, 5}
+ set2 = {4, 5, 6, 7, 8}
  # 并集
- Trueunion = set1 | set2
+ union = set1 | set2
  print(union) # 输出: {1, 2, 3, 4, 5, 6, 7, 8}
  print(set1.union(set2)) # 同上
  # 交集
@@ -352,20 +352,20 @@
  print(intersection) # 输出: {4, 5}
  print(set1.intersection(set2)) # 同上
  # 差集
- Truedifference = set1 - set2
+ difference = set1 - set2
  print(difference) # 输出: {1, 2, 3}
  print(set1.difference(set2)) # 同上
  # 对称差集（并集减去交集）
- Truesymmetric_difference = set1 ^ set2
+ symmetric_difference = set1 ^ set2
  print(symmetric_difference) # 输出: {1, 2, 3, 6, 7, 8}
  print(set1.symmetric_difference(set2)) # 同上
  # 子集检查
- Trueset3 = {1, 2, 3}
+ set3 = {1, 2, 3}
  print(set3.issubset(set1)) # 输出:  
  # 超集检查
  print(set1.issuperset(set3)) # 输出:  
  # 不相交检查
- Trueset4 = {6, 7, 8}
+ set4 = {6, 7, 8}
  print(set1.isdisjoint(set4)) # 输出:  
  ```
 
@@ -419,13 +419,13 @@ Python 标准库中还提供了一些高级数据结构：
  from collections import OrderedDict
  # 在 Python 3.7+ 中，普通字典已经保持插入顺序
  # 但 OrderedDict 提供了额外的方法
- Trueod = OrderedDict()
- Trueod['a'] = 1
- Trueod['b'] = 2
- Trueod['c'] = 3
+ od = OrderedDict()
+ od['a'] = 1
+ od['b'] = 2
+ od['c'] = 3
  print(list(od.keys())) # 输出: ['a', 'b', 'c']
  # 移动元素到末尾
- Trueod.move_to_end('a')
+ od.move_to_end('a')
  print(list(od.keys())) # 输出: ['b', 'c', 'a']
  ```
 
@@ -433,15 +433,15 @@ Python 标准库中还提供了一些高级数据结构：
 ```python
  from collections import defaultdict
  # 自动为不存在的键提供默认值
- Trued = defaultdict(int) # 默认值为 0
- Trued['a'] += 1
- Trued['b'] += 1
+ d = defaultdict(int) # 默认值为 0
+ d['a'] += 1
+ d['b'] += 1
  print(d) # 输出: defaultdict(<class 'int'>, {'a': 1, 'b': 1})
  # 使用列表作为默认值
- Trued = defaultdict(list)
- Trued['a'].append(1)
- Trued['a'].append(2)
- Trued['b'].append(3)
+ d = defaultdict(list)
+ d['a'].append(1)
+ d['a'].append(2)
+ d['b'].append(3)
  print(d) # 输出: defaultdict(<class 'list'>, {'a': [1, 2], 'b': [3]})
  ```
 
@@ -449,7 +449,7 @@ Python 标准库中还提供了一些高级数据结构：
 ```python
  from collections import Counter
  # 统计元素出现次数
- Truec = Counter(['a', 'b', 'a', 'c', 'b', 'a'])
+ c = Counter(['a', 'b', 'a', 'c', 'b', 'a'])
  print(c) # 输出: Counter({'a': 3, 'b': 2, 'c': 1})
  # 访问次数
  print(c['a']) # 输出: 3
@@ -461,12 +461,12 @@ Python 标准库中还提供了一些高级数据结构：
 ```python
  from collections import deque
  # 双端队列，支持高效的两端操作
- Truedq = deque([1, 2, 3])
+ dq = deque([1, 2, 3])
  # 从右侧添加
- Truedq.append(4)
+ dq.append(4)
  print(dq) # 输出: deque([1, 2, 3, 4])
  # 从左侧添加
- Truedq.appendleft(0)
+ dq.appendleft(0)
  print(dq) # 输出: deque([0, 1, 2, 3, 4])
  # 从右侧移除
  print(dq.pop()) # 输出: 4

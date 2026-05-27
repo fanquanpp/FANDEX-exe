@@ -164,63 +164,63 @@ Canvas 是 HTML5 提供的一个用于绘制图形的元素，通过 JavaScript 
 #### 2.3.1 绘制矩形
 ```javascript
  // 填充矩形
- Truectx.fillStyle = "#FF0000";
- Truectx.fillRect(10, 10, 150, 75);
+ ctx.fillStyle = "#FF0000";
+ ctx.fillRect(10, 10, 150, 75);
  // 描边矩形
- Truectx.strokeStyle = "#0000FF";
- Truectx.lineWidth = 2;
- Truectx.strokeRect(200, 10, 150, 75);
+ ctx.strokeStyle = "#0000FF";
+ ctx.lineWidth = 2;
+ ctx.strokeRect(200, 10, 150, 75);
  // 清除矩形区域
- Truectx.clearRect(50, 25, 50, 30);
+ ctx.clearRect(50, 25, 50, 30);
  ```
 
 #### 2.3.2 绘制路径
 ```javascript
  // 绘制三角形
- Truectx.beginPath();
- Truectx.moveTo(50, 150);
- Truectx.lineTo(150, 150);
- Truectx.lineTo(100, 50);
- Truectx.closePath();
- Truectx.fillStyle = "#FFFF00";
- Truectx.fill();
- Truectx.strokeStyle = "#000000";
- Truectx.lineWidth = 2;
- Truectx.stroke();
+ ctx.beginPath();
+ ctx.moveTo(50, 150);
+ ctx.lineTo(150, 150);
+ ctx.lineTo(100, 50);
+ ctx.closePath();
+ ctx.fillStyle = "#FFFF00";
+ ctx.fill();
+ ctx.strokeStyle = "#000000";
+ ctx.lineWidth = 2;
+ ctx.stroke();
  ```
 
 #### 2.3.3 绘制圆形和弧线
 ```javascript
  // 绘制圆形
- Truectx.beginPath();
- Truectx.arc(250, 100, 50, 0, Math.PI * 2);
- Truectx.fillStyle = "#00FF00";
- Truectx.fill();
+ ctx.beginPath();
+ ctx.arc(250, 100, 50, 0, Math.PI * 2);
+ ctx.fillStyle = "#00FF00";
+ ctx.fill();
  // 绘制弧线
- Truectx.beginPath();
- Truectx.arc(250, 200, 50, 0, Math.PI);
- Truectx.strokeStyle = "#FF00FF";
- Truectx.lineWidth = 3;
- Truectx.stroke();
+ ctx.beginPath();
+ ctx.arc(250, 200, 50, 0, Math.PI);
+ ctx.strokeStyle = "#FF00FF";
+ ctx.lineWidth = 3;
+ ctx.stroke();
  ```
 
 #### 2.3.4 绘制文本
 ```javascript
  // 填充文本
- Truectx.font = "30px Arial";
- Truectx.fillStyle = "#000000";
- Truectx.fillText("Hello Canvas", 50, 250);
+ ctx.font = "30px Arial";
+ ctx.fillStyle = "#000000";
+ ctx.fillText("Hello Canvas", 50, 250);
  // 描边文本
- Truectx.font = "24px Times New Roman";
- Truectx.strokeStyle = "#FF0000";
- Truectx.strokeText("Hello Canvas", 50, 290);
+ ctx.font = "24px Times New Roman";
+ ctx.strokeStyle = "#FF0000";
+ ctx.strokeText("Hello Canvas", 50, 290);
  ```
 
 #### 2.3.5 绘制图像
 ```javascript
  const img = new Image();
- Trueimg.src = "image.jpg";
- Trueimg.onload = function() {
+ img.src = "image.jpg";
+ img.onload = function() {
   // 绘制完整图像
   ctx.drawImage(img, 300, 150);
   // 绘制部分图像
@@ -231,30 +231,30 @@ Canvas 是 HTML5 提供的一个用于绘制图形的元素，通过 JavaScript 
 ### 2.4 Canvas 变换
 #### 2.4.1 平移
 ```javascript
- Truectx.save(); // 保存当前状态
- Truectx.translate(100, 50); // 平移原点到 (100, 50)
- Truectx.fillStyle = "#FF0000";
- Truectx.fillRect(0, 0, 100, 50);
- Truectx.restore(); // 恢复之前的状态
+ ctx.save(); // 保存当前状态
+ ctx.translate(100, 50); // 平移原点到 (100, 50)
+ ctx.fillStyle = "#FF0000";
+ ctx.fillRect(0, 0, 100, 50);
+ ctx.restore(); // 恢复之前的状态
  ```
 
 #### 2.4.2 旋转
 ```javascript
- Truectx.save();
- Truectx.translate(200, 100); // 先平移到旋转中心
- Truectx.rotate(Math.PI / 4); // 旋转 45 度
- Truectx.fillStyle = "#00FF00";
- Truectx.fillRect(-50, -25, 100, 50);
- Truectx.restore();
+ ctx.save();
+ ctx.translate(200, 100); // 先平移到旋转中心
+ ctx.rotate(Math.PI / 4); // 旋转 45 度
+ ctx.fillStyle = "#00FF00";
+ ctx.fillRect(-50, -25, 100, 50);
+ ctx.restore();
  ```
 
 #### 2.4.3 缩放
 ```javascript
- Truectx.save();
- Truectx.scale(1.5, 0.8); // 水平缩放 1.5 倍，垂直缩放 0.8 倍
- Truectx.fillStyle = "#0000FF";
- Truectx.fillRect(50, 150, 100, 50);
- Truectx.restore();
+ ctx.save();
+ ctx.scale(1.5, 0.8); // 水平缩放 1.5 倍，垂直缩放 0.8 倍
+ ctx.fillStyle = "#0000FF";
+ ctx.fillRect(50, 150, 100, 50);
+ ctx.restore();
  ```
 
 ### 2.5 Canvas 动画

@@ -64,8 +64,8 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
 ```cpp
  int i = 10;
  double d = i; // 隐式转换：int -> double
- Truechar c = 'A';
- Truei = c; // 隐式转换：char -> int
+ char c = 'A';
+ i = c; // 隐式转换：char -> int
  ```
 
 #### 1.4.2 显式类型转换
@@ -75,16 +75,16 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  int i = (int)d; // 截断小数部分
  // C++ 风格转换
  // static_cast: 静态类型转换
- Truei = static_cast<int>(d);
+ i = static_cast<int>(d);
  // dynamic_cast: 动态类型转换（用于多态）
- TrueBase* base = new Derived();
- TrueDerived* derived = dynamic_cast<Derived*>(base);
+ Base* base = new Derived();
+ Derived* derived = dynamic_cast<Derived*>(base);
  // const_cast: 移除 const 修饰
  const int& const_ref = i;
  int& ref = const_cast<int&>(const_ref);
  // reinterpret_cast: 重新解释类型
  int* p = &i;
- Truelong addr = reinterpret_cast<long>(p);
+ long addr = reinterpret_cast<long>(p);
  ```
 
 ## 2. 控制流 (Control Flow)
@@ -151,7 +151,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  True}
  // 使用枚举的 switch 语句
  enum Color { RED, GREEN, BLUE };
- TrueColor color = GREEN;
+ Color color = GREEN;
  switch (color) {
   case RED:
   std::cout << "红色" << std::endl;
@@ -168,7 +168,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  True}
  // 使用枚举类的 switch 语句 (C++11)
  enum class Direction { UP, DOWN, LEFT, RIGHT };
- TrueDirection dir = Direction::UP;
+ Direction dir = Direction::UP;
  switch (dir) {
   case Direction::UP:
   std::cout << "向上" << std::endl;
@@ -192,7 +192,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  for (int i = 0; i < 10; ++i) {
   std::cout << i << " ";
  True}
- Truestd::cout << std::endl;
+ std::cout << std::endl;
  // 循环变量作用域控制
  {
   for (int i = 0; i < 5; ++i) {
@@ -205,21 +205,21 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::cout << "i: " << i << ", j: " << j << std::endl;
  True}
  // 范围 for 循环 (C++11)
- Truestd::vector<int> numbers = {1, 2, 3, 4, 5};
+ std::vector<int> numbers = {1, 2, 3, 4, 5};
  for (int num : numbers) {
   std::cout << num << " ";
  True}
- Truestd::cout << std::endl;
+ std::cout << std::endl;
  // 使用 auto 的范围 for 循环 (C++11)
  for (auto num : numbers) {
   std::cout << num << " ";
  True}
- Truestd::cout << std::endl;
+ std::cout << std::endl;
  // 使用 const 引用的范围 for 循环（避免复制）
  for (const auto& num : numbers) {
   std::cout << num << " ";
  True}
- Truestd::cout << std::endl;
+ std::cout << std::endl;
  // 使用引用的范围 for 循环（可以修改元素）
  for (auto& num : numbers) {
   num *= 2; // 每个元素都乘以 2
@@ -229,7 +229,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  for (int x : arr) {
   std::cout << x << " ";
  True}
- Truestd::cout << std::endl;
+ std::cout << std::endl;
  ```
 
 #### 2.2.2 while 循环
@@ -240,9 +240,9 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::cout << i << " ";
   ++i;
  True}
- Truestd::cout << std::endl;
+ std::cout << std::endl;
  // 无限循环（需要内部 break）
- Truei = 0;
+ i = 0;
  while (true) {
   std::cout << i << " ";
   ++i;
@@ -250,9 +250,9 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   break;
   }
  True}
- Truestd::cout << std::endl;
+ std::cout << std::endl;
  // 基于条件的 while 循环
- Truestd::string input;
+ std::string input;
  while (true) {
   std::cout << "输入 'quit' 退出: ";
   std::cin >> input;
@@ -271,14 +271,14 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::cout << i << " ";
   ++i;
  True} while (i < 10);
- Truestd::cout << std::endl;
+ std::cout << std::endl;
  // 至少执行一次的情况
- Truestd::string password;
+ std::string password;
  do {
   std::cout << "请输入密码: ";
   std::cin >> password;
  True} while (password != "123456");
- Truestd::cout << "密码正确！" << std::endl;
+ std::cout << "密码正确！" << std::endl;
  ```
 
 ### 2.3 跳转语句
@@ -336,7 +336,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::cout << j << " ";
  True}
  // 在范围 for 循环中使用 continue
- Truestd::vector<int> nums = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+ std::vector<int> nums = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
  for (auto num : nums) {
   if (num % 3 == 0) {
   continue;
@@ -352,7 +352,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   return a + b; // 返回值并结束函数
  True}
  // 提前返回
- Truebool is_even(int n) {
+ bool is_even(int n) {
   if (n % 2 == 0) {
   return true; // 提前返回
   }
@@ -386,7 +386,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  // 基本 goto 语句
  int main() {
   int i = 0;
- Trueloop:
+ loop:
   std::cout << i << " ";
   ++i;
   if (i < 10) {
@@ -404,11 +404,11 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::cout << "i: " << i << ", j: " << j << std::endl;
   }
   }
- Trueexit_loops:
+ exit_loops:
   std::cout << "跳出循环" << std::endl;
  True}
  // 使用 goto 进行错误处理
- Truebool process_data() {
+ bool process_data() {
   // 模拟错误
   bool error = true;
   if (error) {
@@ -416,7 +416,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   }
   // 正常处理
   return true;
- Trueerror_handler:
+ error_handler:
   std::cout << "处理错误" << std::endl;
   return false;
  True}

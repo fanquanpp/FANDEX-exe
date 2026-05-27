@@ -17,8 +17,8 @@
 ```cpp
  int x = 10;
  int& r = x; // 声明对 x 的引用
- Truer = 20; // 修改 r 就是修改 x
- Truestd::cout << x; // 输出 20
+ r = 20; // 修改 r 就是修改 x
+ std::cout << x; // 输出 20
  ```
 
 ## 2. 引用的特性

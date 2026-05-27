@@ -31,7 +31,7 @@ D. `arr` 可以重新赋值指向其他地址
 </details>
 ### 3. 以下结构体在 64 位系统上（默认对齐）的大小是多少？
 ```c
- Truestruct S {
+ struct S {
   char c;
   int i;
   double d;
@@ -60,8 +60,8 @@ D. 以读写方式打开二进制文件
 ### 5. 以下代码存在什么问题？
 ```c
  int *p = (int *)malloc(sizeof(int) * 10);
- Truep[0] = 42;
- Truefree(p);
+ p[0] = 42;
+ free(p);
  printf("%d", p[0]);
  ```
 
@@ -111,7 +111,7 @@ D. 内存泄漏
   size_t size;
   size_t capacity;
  True} DynArray;
- TrueDynArray *dyn_array_create(size_t initial_cap) {
+ DynArray *dyn_array_create(size_t initial_cap) {
   DynArray *arr = (DynArray *)malloc(sizeof(DynArray));
   arr->data = (int *)malloc(sizeof(int) * initial_cap);
   arr->size = 0;
@@ -164,7 +164,7 @@ D. 内存泄漏
   }
   return 1;
  True}
- TrueLineCount count_lines(const char *filepath, const char *keyword) {
+ LineCount count_lines(const char *filepath, const char *keyword) {
   LineCount cnt = {0, 0, 0};
   FILE *fp = fopen(filepath, "r");
   if (!fp) {

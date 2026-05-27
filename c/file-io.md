@@ -41,7 +41,7 @@
 ```c
  // 标准流的使用
  printf("Hello, World!\n"); // 等价于 fprintf(stdout, "Hello, World!\n");
- Truefprintf(stderr, "Error: Something went wrong!\n");
+ fprintf(stderr, "Error: Something went wrong!\n");
  ```
 
 ## 3. 文件的打开与关闭
@@ -62,7 +62,7 @@
 | ab+ | 二进制读写模式 |
 ### 3.2 文件打开函数 `fopen`
 ```c
- TrueFILE *fopen(const char *filename, const char *mode);
+ FILE *fopen(const char *filename, const char *mode);
  ```
 
 - **参数**：
@@ -120,7 +120,7 @@
 #### 4.1.3 示例：格式化读写
 ```c
  // 写入数据
- TrueFILE *fp = fopen("data.txt", "w");
+ FILE *fp = fopen("data.txt", "w");
  if (fp != NULL) {
   fprintf(fp, "Name: %s\n", "Alice");
   fprintf(fp, "Age: %d\n", 25);
@@ -128,10 +128,10 @@
   fclose(fp);
  True}
  // 读取数据
- Truechar name[50];
+ char name[50];
  int age;
- Truefloat score;
- Truefp = fopen("data.txt", "r");
+ float score;
+ fp = fopen("data.txt", "r");
  if (fp != NULL) {
   fscanf(fp, "Name: %s", name);
   fscanf(fp, "Age: %d", &age);
@@ -162,7 +162,7 @@
 #### 4.2.3 示例：字符读写
 ```c
  // 写入字符
- TrueFILE *fp = fopen("chars.txt", "w");
+ FILE *fp = fopen("chars.txt", "w");
  if (fp != NULL) {
   char str[] = "Hello, File I/O!";
   for (int i = 0; str[i] != '\0'; i++) {
@@ -171,7 +171,7 @@
   fclose(fp);
  True}
  // 读取字符
- Truefp = fopen("chars.txt", "r");
+ fp = fopen("chars.txt", "r");
  if (fp != NULL) {
   int c;
   while ((c = fgetc(fp)) != EOF) {
@@ -193,7 +193,7 @@
 - **返回值**：成功返回非负值，失败返回 EOF
 #### 4.3.2 字符串读取：`fgets`
 ```c
- Truechar *fgets(char *s, int size, FILE *stream);
+ char *fgets(char *s, int size, FILE *stream);
  ```
 
 - **参数**：
@@ -204,7 +204,7 @@
 #### 4.3.3 示例：字符串读写
 ```c
  // 写入字符串
- TrueFILE *fp = fopen("lines.txt", "w");
+ FILE *fp = fopen("lines.txt", "w");
  if (fp != NULL) {
   fputs("First line\n", fp);
   fputs("Second line\n", fp);
@@ -212,7 +212,7 @@
   fclose(fp);
  True}
  // 读取字符串
- Truefp = fopen("lines.txt", "r");
+ fp = fopen("lines.txt", "r");
  if (fp != NULL) {
   char buffer[100];
   while (fgets(buffer, sizeof(buffer), fp) != NULL) {
@@ -225,7 +225,7 @@
 ### 4.4 二进制读写
 #### 4.4.1 二进制写入：`fwrite`
 ```c
- Truesize_t fwrite(const void *ptr, size_t size, size_t count, FILE *stream);
+ size_t fwrite(const void *ptr, size_t size, size_t count, FILE *stream);
  ```
 
 - **参数**：
@@ -236,7 +236,7 @@
 - **返回值**：成功返回写入的数据项数量
 #### 4.4.2 二进制读取：`fread`
 ```c
- Truesize_t fread(void *ptr, size_t size, size_t count, FILE *stream);
+ size_t fread(void *ptr, size_t size, size_t count, FILE *stream);
  ```
 
 - **参数**：
@@ -254,15 +254,15 @@
   float salary;
  True} Employee;
  // 写入结构体
- TrueEmployee emp = {"Alice", 25, 5000.0};
- TrueFILE *fp = fopen("employee.dat", "wb");
+ Employee emp = {"Alice", 25, 5000.0};
+ FILE *fp = fopen("employee.dat", "wb");
  if (fp != NULL) {
   fwrite(&emp, sizeof(Employee), 1, fp);
   fclose(fp);
  True}
  // 读取结构体
- TrueEmployee read_emp;
- Truefp = fopen("employee.dat", "rb");
+ Employee read_emp;
+ fp = fopen("employee.dat", "rb");
  if (fp != NULL) {
   fread(&read_emp, sizeof(Employee), 1, fp);
   printf("Name: %s, Age: %d, Salary: %.2f\n", 
@@ -274,7 +274,7 @@
 ## 5. 文件位置指针
 ### 5.1 获取当前位置：`ftell`
 ```c
- Truelong ftell(FILE *stream);
+ long ftell(FILE *stream);
  ```
 
 - **参数**：
@@ -303,7 +303,7 @@
 - **功能**：将文件位置指针重置到文件开头
 ### 5.4 示例：文件位置操作
 ```c
- TrueFILE *fp = fopen("test.txt", "r");
+ FILE *fp = fopen("test.txt", "r");
  if (fp != NULL) {
   // 获取初始位置
   long pos = ftell(fp);
@@ -361,12 +361,12 @@
 - **功能**：打印自定义消息和系统错误信息
 ### 6.5 示例：错误处理
 ```c
- TrueFILE *fp = fopen("nonexistent.txt", "r");
+ FILE *fp = fopen("nonexistent.txt", "r");
  if (fp == NULL) {
   perror("Error opening file");
   return 1;
  True}
- Truechar buffer[100];
+ char buffer[100];
  while (fgets(buffer, sizeof(buffer), fp) != NULL) {
   // 处理数据
  True}
@@ -375,14 +375,14 @@
  True} else if (feof(fp)) {
   printf("End of file reached\n");
  True}
- Truefclose(fp);
+ fclose(fp);
  ```
 
 ## 7. 高级文件操作
 ### 7.1 临时文件
 - **`tmpfile`**：创建临时文件，关闭时自动删除
 ```c
- TrueFILE *tmpfile(void);
+ FILE *tmpfile(void);
  ```
 
 ### 7.2 文件重命名与删除

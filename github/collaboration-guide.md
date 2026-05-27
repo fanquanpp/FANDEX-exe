@@ -58,12 +58,12 @@
  - **DCO 签名**：使用 `Signed-off-by: Name <email@example.com>` 进行 DCO 签名
 ### 2.7 示例
 ```text
- Truefeat(auth): add refresh token rotation
- TrueImplement refresh token rotation to improve security.
+ feat(auth): add refresh token rotation
+ Implement refresh token rotation to improve security.
  this change requires clients to handle token rotation properly.
  breakING CHANGE: Clients must now handle refresh token rotation.
- TrueCloses #456
- TrueSigned-off-by: John Doe <john@example.com>
+ Closes #456
+ Signed-off-by: John Doe <john@example.com>
  ```
 
 ### 2.8 工具支持
@@ -75,7 +75,7 @@
 在仓库根目录创建 `.github/pull_request_template.md` 文件：
 ```markdown
  ## 背景
- True简要描述本次 PR 的背景和目的。
+ 简要描述本次 PR 的背景和目的。
  ## 关联 Issue
  True- Closes #123
  True- Relates to #456
@@ -100,7 +100,7 @@
  True- [ ] 测试覆盖充分
  True- [ ] 性能无劣化
  ## 其他说明
- True如有其他需要说明的内容，请在此处补充。
+ 如有其他需要说明的内容，请在此处补充。
  ```
 
 ### 3.2 分支命名规范

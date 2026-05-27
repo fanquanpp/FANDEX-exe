@@ -209,29 +209,29 @@ C 语言共有 32 个基本关键字：
 ### 5.2 编译示例
 ```bash
  # 1. 预处理
- Truegcc -E hello.c -o hello.i
+ gcc -E hello.c -o hello.i
  # 2. 编译
   gcc -S hello.i -o hello.s
  # 3. 汇编
- Truegcc -c hello.s -o hello.o
+ gcc -c hello.s -o hello.o
  # 4. 链接
- Truegcc hello.o -o hello
+ gcc hello.o -o hello
  # 一步完成所有步骤
- Truegcc hello.c -o hello
+ gcc hello.c -o hello
  # 启用优化
- Truegcc -O2 hello.c -o hello
+ gcc -O2 hello.c -o hello
  # 生成调试信息
- Truegcc -g hello.c -o hello
+ gcc -g hello.c -o hello
  ```
 
 ### 5.3 多文件编译
 ```bash
  # 编译多个源文件
- Truegcc file1.c file2.c -o program
+ gcc file1.c file2.c -o program
  # 分别编译，然后链接
- Truegcc -c file1.c -o file1.o
- Truegcc -c file2.c -o file2.o
- Truegcc file1.o file2.o -o program
+ gcc -c file1.c -o file1.o
+ gcc -c file2.c -o file2.o
+ gcc file1.o file2.o -o program
  ```
 
 ## 6. 程序执行流程

@@ -93,9 +93,9 @@ Node.js 的特点：
 3. 验证安装是否成功：
 ```bash
  # 查看 Node.js 版本
- Truenode -v
+ node -v
  # 查看 npm 版本
- Truenpm -v
+ npm -v
  ```
 
 #### 3.2.2 包管理器
@@ -190,23 +190,23 @@ Node.js 的特点：
  console.log(greet('JavaScript'));
  // 使用 ES6+ 特性
  const names = ['Alice', 'Bob', 'Charlie'];
- Truenames.forEach(name => {
+ names.forEach(name => {
   console.log(greet(name));
  True});
  ```
 
 **运行脚本**：
 ```bash
- Truenode hello.js
+ node hello.js
  ```
 
 **预期输出**：
 ```
- TrueHello, World!
- TrueHello, JavaScript!
- TrueHello, Alice!
- TrueHello, Bob!
- TrueHello, Charlie!
+ Hello, World!
+ Hello, JavaScript!
+ Hello, Alice!
+ Hello, Bob!
+ Hello, Charlie!
  ```
 
 ## 6. 开发模式与最佳实践
@@ -232,21 +232,21 @@ Node.js 的特点：
 **初始化项目**：
 ```bash
  # 使用 npm
- Truenpm init -y
+ npm init -y
  # 使用 yarn
- Trueyarn init -y
+ yarn init -y
  # 使用 pnpm
- Truepnpm init -y
+ pnpm init -y
  ```
 
 **安装依赖**：
 ```bash
  # 使用 npm
- Truenpm install express
+ npm install express
  # 使用 yarn
- Trueyarn add express
+ yarn add express
  # 使用 pnpm
- Truepnpm add express
+ pnpm add express
  ```
 
 ### 6.2 最佳实践

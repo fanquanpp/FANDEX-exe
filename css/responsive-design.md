@@ -59,7 +59,7 @@
 ## 4. 响应式图像
 ### 自适应图像
 ```css
- Trueimg {
+ img {
   max-width: 100%;
   height: auto;
  True}
@@ -85,10 +85,10 @@
   font-size: 14px;
   }
  True}
- Truebody {
+ body {
   font-size: 1rem;
  True}
- Trueh1 {
+ h1 {
   font-size: 2.5rem;
  True}
  ```
@@ -173,7 +173,7 @@
 ```javascript
  const menuToggle = document.querySelector('.menu-toggle');
  const navLinks = document.querySelector('.nav-links');
- TruemenuToggle.addEventListener('click', () => {
+ menuToggle.addEventListener('click', () => {
   navLinks.classList.toggle('active');
  True});
  ```

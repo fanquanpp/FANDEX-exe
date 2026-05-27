@@ -53,38 +53,38 @@ TypeScript 适用于以下场景：
 #### 2.1.1 全局安装
 ```bash
  # 全局安装 TypeScript 编译器
- Truenpm install -g typescript
+ npm install -g typescript
  # 验证安装
- Truetsc --version
+ tsc --version
  ```
 
 #### 2.1.2 项目本地安装
 ```bash
  # 在项目中本地安装 TypeScript
- Truenpm install --save-dev typescript
+ npm install --save-dev typescript
  # 验证安装
- Truenpx tsc --version
+ npx tsc --version
  ```
 
 ### 2.2 初始化 TypeScript 项目
 #### 2.2.1 生成 tsconfig.json
 ```bash
  # 生成默认的 tsconfig.json 文件
- Truetsc --init
+ tsc --init
  # 或使用 npm init 初始化项目后添加 TypeScript
- Truenpm init -y
- Truenpm install --save-dev typescript
- Truenpx tsc --init
+ npm init -y
+ npm install --save-dev typescript
+ npx tsc --init
  ```
 
 #### 2.2.2 基本项目结构
 ```
- Truemy-project/
- True├── tsconfig.json # TypeScript 配置文件
- True├── package.json # 项目配置文件
- True├── src/ # 源码目录
- True│ └── index.ts # 主入口文件
- True└── dist/ # 编译输出目录
+ my-project/
+ ├── tsconfig.json # TypeScript 配置文件
+ ├── package.json # 项目配置文件
+ ├── src/ # 源码目录
+ │ └── index.ts # 主入口文件
+ └── dist/ # 编译输出目录
   └── index.js # 编译后的 JavaScript 文件
  ```
 
@@ -92,28 +92,28 @@ TypeScript 适用于以下场景：
 #### 2.3.1 基本编译
 ```bash
  # 编译单个文件
- Truetsc src/index.ts
+ tsc src/index.ts
  # 编译整个项目 (使用 tsconfig.json)
- Truetsc
+ tsc
  # 监视模式编译 (文件变化时自动重新编译)
- Truetsc --watch
+ tsc --watch
  ```
 
 #### 2.3.2 使用 ts-node 直接运行
 ```bash
  # 安装 ts-node
- Truenpm install --save-dev ts-node
+ npm install --save-dev ts-node
  # 直接运行 TypeScript 文件
- Truenpx ts-node src/index.ts
+ npx ts-node src/index.ts
  # 监视模式运行
- Truenpx ts-node --watch src/index.ts
+ npx ts-node --watch src/index.ts
  ```
 
 #### 2.3.3 使用构建工具
 ##### Webpack
 ```bash
  # 安装依赖
- Truenpm install --save-dev webpack webpack-cli ts-loader
+ npm install --save-dev webpack webpack-cli ts-loader
  # webpack.config.js
  module.exports = {
   entry: './src/index.ts',
@@ -139,9 +139,9 @@ TypeScript 适用于以下场景：
 ##### Vite
 ```bash
  # 创建 Vite + TypeScript 项目
- Truenpm create vite@latest my-project -- --template react-ts
+ npm create vite@latest my-project -- --template react-ts
  # 或使用 Vue + TypeScript
- Truenpm create vite@latest my-project -- --template vue-ts
+ npm create vite@latest my-project -- --template vue-ts
  ```
 
 ## 3. `tsconfig.json` 核心配置
@@ -287,19 +287,19 @@ TypeScript 适用于以下场景：
 ## 5. 最佳实践
 ### 5.1 项目结构
 ```
- Truemy-project/
- True├── tsconfig.json # TypeScript 配置
- True├── package.json # 项目配置
- True├── .eslintrc.json # ESLint 配置
- True├── .prettierrc # Prettier 配置
- True├── src/ # 源码目录
- True│ ├── index.ts # 主入口
- True│ ├── components/ # 组件
- True│ ├── utils/ # 工具函数
- True│ ├── types/ # 类型定义
- True│ └── interfaces/ # 接口定义
- True├── dist/ # 编译输出
- True└── tests/ # 测试文件
+ my-project/
+ ├── tsconfig.json # TypeScript 配置
+ ├── package.json # 项目配置
+ ├── .eslintrc.json # ESLint 配置
+ ├── .prettierrc # Prettier 配置
+ ├── src/ # 源码目录
+ │ ├── index.ts # 主入口
+ │ ├── components/ # 组件
+ │ ├── utils/ # 工具函数
+ │ ├── types/ # 类型定义
+ │ └── interfaces/ # 接口定义
+ ├── dist/ # 编译输出
+ └── tests/ # 测试文件
  ```
 
 ### 5.2 类型定义最佳实践
@@ -372,11 +372,11 @@ TypeScript 适用于以下场景：
 ### 6.2 编译与运行
 ```bash
  # 编译
- Truetsc
+ tsc
  # 运行
- Truenode dist/index.js
+ node dist/index.js
  # 或直接运行
- Truenpx ts-node src/index.ts
+ npx ts-node src/index.ts
  ```
 
 ### 6.3 与 JavaScript 集成

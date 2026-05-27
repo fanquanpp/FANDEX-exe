@@ -23,9 +23,9 @@
 - `demo-properties`：如何读取配置文件内容。
 ```yaml
  # application.yml
- Trueserver:
+ server:
   port: 8080
- Truespring:
+ spring:
   datasource:
   url: jdbc:mysql://localhost:3306/db
  ```

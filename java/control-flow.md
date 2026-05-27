@@ -91,7 +91,7 @@
 - 支持 `yield` 关键字返回复杂表达式
 ```java
  // 基本用法
- TrueString dayName = switch (day) {
+ String dayName = switch (day) {
   case 1 -> "Monday";
   case 2 -> "Tuesday";
   case 3, 4, 5 -> "Weekday";
@@ -116,8 +116,8 @@
 #### 1.2.3 Java 17+ `switch` 模式匹配
 ```java
  // 模式匹配示例
- TrueObject obj = "Hello";
- TrueString result = switch (obj) {
+ Object obj = "Hello";
+ String result = switch (obj) {
   case Integer i -> "Integer: " + i;
   case String s -> "String: " + s;
   case null -> "null";
@@ -143,7 +143,7 @@
   System.out.println(number);
  True}
  // 遍历集合
- TrueList<String> names = List.of("Alice", "Bob", "Charlie");
+ List<String> names = List.of("Alice", "Bob", "Charlie");
  for (String name : names) {
   System.out.println(name);
  True}
@@ -151,7 +151,7 @@
 
 #### 2.1.3 带标签的 `for` 循环
 ```java
- Trueouter: for (int i = 0; i < 3; i++) {
+ outer: for (int i = 0; i < 3; i++) {
   inner: for (int j = 0; j < 3; j++) {
   if (j == 1) {
   continue outer; // 跳过外层循环的当前迭代
@@ -228,7 +228,7 @@
 - 用于标识代码块
 - 配合 `break` 和 `continue` 使用可以控制多层循环
 ```java
- TrueouterLoop: for (int i = 0; i < 5; i++) {
+ outerLoop: for (int i = 0; i < 5; i++) {
   for (int j = 0; j < 5; j++) {
   if (i * j > 6) {
   System.out.println("Breaking outer loop");
@@ -242,11 +242,11 @@
 ## 4. 实际应用案例
 ### 4.1 菜单选择
 ```java
- TrueScanner scanner = new Scanner(System.in);
- TrueSystem.out.println("1. Add");
- TrueSystem.out.println("2. Subtract");
- TrueSystem.out.println("3. Exit");
- TrueSystem.out.print("Enter your choice: ");
+ Scanner scanner = new Scanner(System.in);
+ System.out.println("1. Add");
+ System.out.println("2. Subtract");
+ System.out.println("3. Exit");
+ System.out.print("Enter your choice: ");
  int choice = scanner.nextInt();
  switch (choice) {
   case 1 -> System.out.println("Add operation");
@@ -260,14 +260,14 @@
 ```java
  int[] numbers = {10, 20, 30, 40, 50};
  int target = 30;
- Trueb boolean found = false;
+ b boolean found = false;
  for (int number : numbers) {
   if (number == target) {
   found = true;
   break;
   }
  True}
- TrueSystem.out.println(found ? "Found" : "Not found");
+ System.out.println(found ? "Found" : "Not found");
  ```
 
 ### 4.3 计算阶乘

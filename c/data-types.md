@@ -121,7 +121,7 @@ C 语言的整型包括以下类型：
 - 对齐规则通常是类型大小的整数倍。
 #### 内存对齐示例
 ```c
- Truestruct Example {
+ struct Example {
   char c; // 1字节，但会对齐到4字节
   int i; // 4字节
   double d; // 8字节
@@ -151,7 +151,7 @@ C 语言的整型包括以下类型：
   {7, 8, 9}
  True};
  // 字符数组（字符串）
- Truechar message[] = "Hello, C!";
+ char message[] = "Hello, C!";
  ```
 
 ### 4.2 指针 (Pointers)
@@ -179,26 +179,26 @@ C 语言的整型包括以下类型：
   float salary;
  True} Employee;
  // 结构体使用
- TrueEmployee emp1;
- Trueemp1.id = 101;
- Truestrcpy(emp1.name, "John Doe");
- Trueemp1.salary = 5000.0;
+ Employee emp1;
+ emp1.id = 101;
+ strcpy(emp1.name, "John Doe");
+ emp1.salary = 5000.0;
  // 结构体初始化
- TrueEmployee emp2 = {102, "Jane Smith", 6000.0};
+ Employee emp2 = {102, "Jane Smith", 6000.0};
  ```
 
 ### 4.4 联合体 (Unions)
 - 共用同一块内存的不同类型组合。
 - 所有成员共享同一块内存，修改一个成员会影响其他成员。
 ```c
- Trueunion Data {
+ union Data {
   int i;
   float f;
   char str[20];
  True} data;
- Truedata.i = 10;
+ data.i = 10;
  printf("data.i: %d\n", data.i);
- Truedata.f = 3.14;
+ data.f = 3.14;
  printf("data.f: %f\n", data.f);
  printf("data.i: %d\n", data.i); // 值已被修改
  ```
@@ -284,7 +284,7 @@ C 语言的整型包括以下类型：
  printf("rounded_pi = %d\n", rounded_pi); // 输出 3
  // 注意：可能会导致数据丢失
  int large_num = 1000000;
- Truechar small_num = (char)large_num; // 可能溢出
+ char small_num = (char)large_num; // 可能溢出
  ```
 
 ### 6.3 类型转换的最佳实践
@@ -311,9 +311,9 @@ C 语言的整型包括以下类型：
   int y;
  True} Point;
  // 使用别名
- Trueuint count = 100;
+ uint count = 100;
  int64 large_number = 9999999999;
- TruePoint p = {10, 20};
+ Point p = {10, 20};
  ```
 
 ### 7.2 标准类型定义
@@ -321,13 +321,13 @@ C 语言的整型包括以下类型：
 ```c
  #include <stdint.h>
  int8_t s8; // 有符号 8 位整数
- Trueuint8_t u8; // 无符号 8 位整数
+ uint8_t u8; // 无符号 8 位整数
  int16_t s16; // 有符号 16 位整数
- Trueuint16_t u16; // 无符号 16 位整数
+ uint16_t u16; // 无符号 16 位整数
  int32_t s32; // 有符号 32 位整数
- Trueuint32_t u32; // 无符号 32 位整数
+ uint32_t u32; // 无符号 32 位整数
  int64_t s64; // 有符号 64 位整数
- Trueuint64_t u64; // 无符号 64 位整数
+ uint64_t u64; // 无符号 64 位整数
  ```
 
 ### 7.3 备考知识点

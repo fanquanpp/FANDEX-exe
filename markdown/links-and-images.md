@@ -164,10 +164,10 @@
 ### 5.2 表格中的链接和图片
 **示例**：
 ```markdown
- True| 名称 | 链接 | 图标 |
- True|------|------|------|
- True| GitHub | [GitHub](https://github.com) | ![GitHub](https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png) |
- True| Google | [Google](https://google.com) | ![Google](https://www.google.com/favicon.ico) |
+ | 名称 | 链接 | 图标 |
+ |------|------|------|
+ | GitHub | [GitHub](https://github.com) | ![GitHub](https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png) |
+ | Google | [Google](https://google.com) | ![Google](https://www.google.com/favicon.ico) |
  ```
 
 **渲染效果**：

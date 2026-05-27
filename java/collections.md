@@ -23,19 +23,19 @@
 Java 集合框架主要由以下接口和类组成：
 ```
  True┌─────────────────────────────────────────────────────────────────────┐
- True│ java.util.Collection │
- True├─────────────────────────────────────────────────────────────────────┤
- True│ List Set Queue │
- True├─────────┬─────────┬─────────├─────────┬─────────┬─────────├─────────┤
- True│ArrayList│LinkedList│Vector │HashSet │TreeSet │LinkedHashSet│PriorityQueue│
- True└─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
+ │ java.util.Collection │
+ ├─────────────────────────────────────────────────────────────────────┤
+ │ List Set Queue │
+ ├─────────┬─────────┬─────────├─────────┬─────────┬─────────├─────────┤
+ │ArrayList│LinkedList│Vector │HashSet │TreeSet │LinkedHashSet│PriorityQueue│
+ └─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
  True┌─────────────────────────────────────────────────────────────────────┐
- True│ java.util.Map │
- True├─────────────────────────────────────────────────────────────────────┤
- True│HashMap TreeMap LinkedHashMap │
- True├─────────────────────────────────────────────────────────────────────┤
- True│ConcurrentHashMap Hashtable Properties │
- True└─────────────────────────────────────────────────────────────────────┘
+ │ java.util.Map │
+ ├─────────────────────────────────────────────────────────────────────┤
+ │HashMap TreeMap LinkedHashMap │
+ ├─────────────────────────────────────────────────────────────────────┤
+ │ConcurrentHashMap Hashtable Properties │
+ └─────────────────────────────────────────────────────────────────────┘
  ```
 
 ### 1.2 核心接口
@@ -58,22 +58,22 @@ Java 集合框架主要由以下接口和类组成：
 - **初始容量**: 10，扩容因子 1.5
 #### 2.2.2 常用方法
 ```java
- TrueArrayList<String> list = new ArrayList<>();
+ ArrayList<String> list = new ArrayList<>();
  // 添加元素
- Truelist.add("Java");
- Truelist.add(0, "Python"); // 在指定位置添加
+ list.add("Java");
+ list.add(0, "Python"); // 在指定位置添加
  // 获取元素
- TrueString element = list.get(0);
+ String element = list.get(0);
  // 修改元素
- Truelist.set(1, "JavaScript");
+ list.set(1, "JavaScript");
  // 删除元素
- Truelist.remove(0);
- Truelist.remove("Java");
+ list.remove(0);
+ list.remove("Java");
  // 其他方法
  int size = list.size();
- Trueboolean contains = list.contains("Java");
- Truelist.clear();
- Trueboolean isEmpty = list.isEmpty();
+ boolean contains = list.contains("Java");
+ list.clear();
+ boolean isEmpty = list.isEmpty();
  ```
 
 ### 2.3 LinkedList
@@ -85,23 +85,23 @@ Java 集合框架主要由以下接口和类组成：
 - **实现了 List 和 Deque 接口**，可作为队列和栈使用
 #### 2.3.2 常用方法
 ```java
- TrueLinkedList<String> list = new LinkedList<>();
+ LinkedList<String> list = new LinkedList<>();
  // 添加元素
- Truelist.add("Java");
- Truelist.addFirst("Python");
- Truelist.addLast("JavaScript");
+ list.add("Java");
+ list.addFirst("Python");
+ list.addLast("JavaScript");
  // 获取元素
- TrueString first = list.getFirst();
- TrueString last = list.getLast();
+ String first = list.getFirst();
+ String last = list.getLast();
  // 删除元素
- Truelist.removeFirst();
- Truelist.removeLast();
+ list.removeFirst();
+ list.removeLast();
  // 作为队列使用
- Truelist.offer("C++"); // 入队
- TrueString element = list.poll(); // 出队
+ list.offer("C++"); // 入队
+ String element = list.poll(); // 出队
  // 作为栈使用
- Truelist.push("Go"); // 入栈
- TrueString top = list.pop(); // 出栈
+ list.push("Go"); // 入栈
+ String top = list.pop(); // 出栈
  ```
 
 ### 2.4 Vector
@@ -125,17 +125,17 @@ Java 集合框架主要由以下接口和类组成：
 - **时间复杂度**: 添加、删除、查找均为 O(1)
 #### 3.2.2 常用方法
 ```java
- TrueHashSet<String> set = new HashSet<>();
+ HashSet<String> set = new HashSet<>();
  // 添加元素
- Trueset.add("Java");
- Trueset.add("Python");
+ set.add("Java");
+ set.add("Python");
  // 删除元素
- Trueset.remove("Python");
+ set.remove("Python");
  // 其他方法
  int size = set.size();
- Trueboolean contains = set.contains("Java");
- Trueset.clear();
- Trueboolean isEmpty = set.isEmpty();
+ boolean contains = set.contains("Java");
+ set.clear();
+ boolean isEmpty = set.isEmpty();
  ```
 
 ### 3.3 TreeSet
@@ -148,13 +148,13 @@ Java 集合框架主要由以下接口和类组成：
 #### 3.3.2 常用方法
 ```java
  // 自然排序
- TrueTreeSet<Integer> set = new TreeSet<>();
+ TreeSet<Integer> set = new TreeSet<>();
  // 自定义比较器
- TrueTreeSet<String> set = new TreeSet<>((s1, s2) -> s2.compareTo(s1)); // 降序
+ TreeSet<String> set = new TreeSet<>((s1, s2) -> s2.compareTo(s1)); // 降序
  // 添加元素
- Trueset.add(10);
- Trueset.add(5);
- Trueset.add(15);
+ set.add(10);
+ set.add(5);
+ set.add(15);
  // 特殊方法
  integer first = set.first(); // 获取第一个元素
  integer last = set.last(); // 获取最后一个元素
@@ -185,25 +185,25 @@ Java 集合框架主要由以下接口和类组成：
 - **初始容量**: 16，负载因子 0.75
 #### 4.2.2 常用方法
 ```java
- TrueHashMap<String, Integer> map = new HashMap<>();
+ HashMap<String, Integer> map = new HashMap<>();
  // 添加键值对
- Truemap.put("Java", 100);
- Truemap.put("Python", 90);
+ map.put("Java", 100);
+ map.put("Python", 90);
  // 获取值
  integer value = map.get("Java");
  // 修改值
- Truemap.put("Java", 110); // 覆盖旧值
+ map.put("Java", 110); // 覆盖旧值
  // 删除键值对
- Truemap.remove("Python");
+ map.remove("Python");
  // 其他方法
  int size = map.size();
- Trueboolean containsKey = map.containsKey("Java");
- Trueboolean containsValue = map.containsValue(100);
- TrueSet<String> keys = map.keySet(); // 获取所有键
- TrueCollection<Integer> values = map.values(); // 获取所有值
- TrueSet<Map.Entry<String, Integer>> entries = map.entrySet(); // 获取所有键值对
- Truemap.clear();
- Trueboolean isEmpty = map.isEmpty();
+ boolean containsKey = map.containsKey("Java");
+ boolean containsValue = map.containsValue(100);
+ Set<String> keys = map.keySet(); // 获取所有键
+ Collection<Integer> values = map.values(); // 获取所有值
+ Set<Map.Entry<String, Integer>> entries = map.entrySet(); // 获取所有键值对
+ map.clear();
+ boolean isEmpty = map.isEmpty();
  ```
 
 ### 4.3 TreeMap
@@ -216,20 +216,20 @@ Java 集合框架主要由以下接口和类组成：
 #### 4.3.2 常用方法
 ```java
  // 自然排序
- TrueTreeMap<String, Integer> map = new TreeMap<>();
+ TreeMap<String, Integer> map = new TreeMap<>();
  // 自定义比较器
- TrueTreeMap<String, Integer> map = new TreeMap<>((s1, s2) -> s2.compareTo(s1)); // 降序
+ TreeMap<String, Integer> map = new TreeMap<>((s1, s2) -> s2.compareTo(s1)); // 降序
  // 添加键值对
- Truemap.put("Java", 100);
- Truemap.put("Python", 90);
- Truemap.put("JavaScript", 80);
+ map.put("Java", 100);
+ map.put("Python", 90);
+ map.put("JavaScript", 80);
  // 特殊方法
- TrueString firstKey = map.firstKey(); // 获取第一个键
- TrueString lastKey = map.lastKey(); // 获取最后一个键
- TrueMap.Entry<String, Integer> firstEntry = map.firstEntry(); // 获取第一个键值对
- TrueMap.Entry<String, Integer> lastEntry = map.lastEntry(); // 获取最后一个键值对
- TrueMap.Entry<String, Integer> higherEntry = map.higherEntry("Java"); // 获取大于Java的最小键值对
- TrueMap.Entry<String, Integer> lowerEntry = map.lowerEntry("Java"); // 获取小于Java的最大键值对
+ String firstKey = map.firstKey(); // 获取第一个键
+ String lastKey = map.lastKey(); // 获取最后一个键
+ Map.Entry<String, Integer> firstEntry = map.firstEntry(); // 获取第一个键值对
+ Map.Entry<String, Integer> lastEntry = map.lastEntry(); // 获取最后一个键值对
+ Map.Entry<String, Integer> higherEntry = map.higherEntry("Java"); // 获取大于Java的最小键值对
+ Map.Entry<String, Integer> lowerEntry = map.lowerEntry("Java"); // 获取小于Java的最大键值对
  ```
 
 ### 4.4 LinkedHashMap
@@ -241,12 +241,12 @@ Java 集合框架主要由以下接口和类组成：
 #### 4.4.2 访问顺序模式
 ```java
  // 构造函数第三个参数为  时，使用访问顺序
- TrueLinkedHashMap<String, Integer> map = new LinkedHashMap<>(16, 0.75f, true);
- Truemap.put("Java", 100);
- Truemap.put("Python", 90);
- Truemap.put("JavaScript", 80);
+ LinkedHashMap<String, Integer> map = new LinkedHashMap<>(16, 0.75f, true);
+ map.put("Java", 100);
+ map.put("Python", 90);
+ map.put("JavaScript", 80);
  // 访问元素，会将其移到链表尾部
- Truemap.get("Java");
+ map.get("Java");
  // 遍历顺序：Python, JavaScript, Java（最近访问的在最后）
  for (Map.Entry<String, Integer> entry : map.entrySet()) {
   System.out.println(entry.getKey() + ": " + entry.getValue());
@@ -291,12 +291,12 @@ Java 集合框架主要由以下接口和类组成：
 ## 6. 遍历方式
 ### 6.1 Iterator 迭代器
 ```java
- TrueList<String> list = new ArrayList<>();
- Truelist.add("Java");
- Truelist.add("Python");
- Truelist.add("JavaScript");
+ List<String> list = new ArrayList<>();
+ list.add("Java");
+ list.add("Python");
+ list.add("JavaScript");
  // 使用 Iterator 遍历
- TrueIterator<String> iterator = list.iterator();
+ Iterator<String> iterator = list.iterator();
  while (iterator.hasNext()) {
   String element = iterator.next();
   System.out.println(element);
@@ -330,17 +330,17 @@ Java 集合框架主要由以下接口和类组成：
 ### 6.3 Java 8+ forEach (Lambda 表达式)
 ```java
  // 遍历 List
- Truelist.forEach(element -> System.out.println(element));
+ list.forEach(element -> System.out.println(element));
  // 遍历 Set
- Trueset.forEach(element -> System.out.println(element));
+ set.forEach(element -> System.out.println(element));
  // 遍历 Map
- Truemap.forEach((key, value) -> System.out.println(key + ": " + value));
+ map.forEach((key, value) -> System.out.println(key + ": " + value));
  ```
 
 ### 6.4 Java 8+ Stream API
 ```java
  // 使用 Stream 遍历并处理
- Truelist.stream()
+ list.stream()
   .filter(element -> element.startsWith("J"))
   .map(String::toUpperCase)
   .forEach(System.out::println);
@@ -374,7 +374,7 @@ Java 集合框架主要由以下接口和类组成：
  - **终端操作**: forEach, collect, reduce, count, anyMatch, allMatch, noneMatch
 ```java
  // Stream 示例
- TrueList<String> result = list.stream()
+ List<String> result = list.stream()
   .filter(s -> s.length() > 5)
   .map(String::toUpperCase)
   .sorted()
@@ -394,11 +394,11 @@ Java 集合框架主要由以下接口和类组成：
 ### 9.1 列表去重
 ```java
  // 方法1：使用 HashSet
- TrueList<String> list = Arrays.asList("Java", "Python", "Java", "JavaScript");
- TrueSet<String> set = new HashSet<>(list);
- TrueList<String> uniqueList = new ArrayList<>(set);
+ List<String> list = Arrays.asList("Java", "Python", "Java", "JavaScript");
+ Set<String> set = new HashSet<>(list);
+ List<String> uniqueList = new ArrayList<>(set);
  // 方法2：使用 Stream
- TrueList<String> uniqueList = list.stream()
+ List<String> uniqueList = list.stream()
   .distinct()
   .collect(Collectors.toList());
  ```
@@ -406,13 +406,13 @@ Java 集合框架主要由以下接口和类组成：
 ### 9.2 列表排序
 ```java
  // 自然排序
- TrueList<Integer> numbers = Arrays.asList(3, 1, 4, 1, 5, 9, 2, 6);
- TrueCollections.sort(numbers);
+ List<Integer> numbers = Arrays.asList(3, 1, 4, 1, 5, 9, 2, 6);
+ Collections.sort(numbers);
  // 自定义排序
- TrueList<String> names = Arrays.asList("Alice", "Bob", "Charlie", "David");
- TrueCollections.sort(names, (s1, s2) -> s2.compareTo(s1)); // 降序
+ List<String> names = Arrays.asList("Alice", "Bob", "Charlie", "David");
+ Collections.sort(names, (s1, s2) -> s2.compareTo(s1)); // 降序
  // 使用 Stream 排序
- TrueList<String> sortedNames = names.stream()
+ List<String> sortedNames = names.stream()
   .sorted(Comparator.reverseOrder())
   .collect(Collectors.toList());
  ```
@@ -420,29 +420,29 @@ Java 集合框架主要由以下接口和类组成：
 ### 9.3 映射操作
 ```java
  // 统计单词出现次数
- TrueList<String> words = Arrays.asList("Java", "Python", "Java", "JavaScript", "Python", "Java");
- TrueMap<String, Integer> wordCount = new HashMap<>();
+ List<String> words = Arrays.asList("Java", "Python", "Java", "JavaScript", "Python", "Java");
+ Map<String, Integer> wordCount = new HashMap<>();
  for (String word : words) {
   wordCount.put(word, wordCount.getOrDefault(word, 0) + 1);
  True}
  // 使用 Stream
- TrueMap<String, Long> wordCount = words.stream()
+ Map<String, Long> wordCount = words.stream()
   .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
  ```
 
 ### 9.4 集合转换
 ```java
  // 数组转集合
- TrueString[] array = {"Java", "Python", "JavaScript"};
- TrueList<String> list = Arrays.asList(array);
- TrueSet<String> set = new HashSet<>(Arrays.asList(array));
+ String[] array = {"Java", "Python", "JavaScript"};
+ List<String> list = Arrays.asList(array);
+ Set<String> set = new HashSet<>(Arrays.asList(array));
  // 集合转数组
- TrueList<String> list = Arrays.asList("Java", "Python", "JavaScript");
- TrueString[] array = list.toArray(new String[0]);
+ List<String> list = Arrays.asList("Java", "Python", "JavaScript");
+ String[] array = list.toArray(new String[0]);
  // List 转 Set
- TrueSet<String> set = new HashSet<>(list);
+ Set<String> set = new HashSet<>(list);
  // Set 转 List
- TrueList<String> list = new ArrayList<>(set);
+ List<String> list = new ArrayList<>(set);
  ```
 
 ## 10. 性能分析
@@ -497,13 +497,13 @@ Java 集合框架主要由以下接口和类组成：
 - **返回的是固定大小的列表**，不支持 add 和 remove 操作
 - **修改原数组会影响列表**，因为列表直接引用数组
 ```java
- TrueString[] array = {"Java", "Python"};
- TrueList<String> list = Arrays.asList(array);
+ String[] array = {"Java", "Python"};
+ List<String> list = Arrays.asList(array);
  // 会抛出 UnsupportedOperationException
  // list.add("JavaScript");
  // 修改数组会影响列表
- Truearray[0] = "C++";
- TrueSystem.out.println(list.get(0)); // 输出: C++
+ array[0] = "C++";
+ System.out.println(list.get(0)); // 输出: C++
  ```
 
 ### 12.2 集合遍历中的修改
@@ -517,7 +517,7 @@ Java 集合框架主要由以下接口和类组成：
   }
  True}
  // 正确：使用 Iterator
- TrueIterator<String> iterator = list.iterator();
+ Iterator<String> iterator = list.iterator();
  while (iterator.hasNext()) {
   String element = iterator.next();
   if (element.equals("Python")) {

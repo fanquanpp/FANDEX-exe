@@ -116,7 +116,7 @@
   <li>冷却</li>
  </ol>
  <h3>倒序列表</h3>
- Trueol reversed>
+ ol reversed>
   <li>第四步</li>
   <li>第三步</li>
   <li>第二步</li>
@@ -135,14 +135,14 @@
 **示例**：
 ```html
  <h3>术语解释</h3>
- Truedl>
+ dl>
   <dt>HTML</dt>
   <dd>超文本标记语言，用于创建网页结构</dd>
   <dt>CSS</dt>
   <dd>层叠样式表，用于美化网页</dd>
   <dt>JavaScript</dt>
   <dd>脚本语言，用于实现网页交互</dd>
- Truedl>
+ dl>
  ```
 
 ### 2.4 嵌套列表
@@ -150,7 +150,7 @@
 **示例**：
 ```html
  <h3>课程大纲</h3>
- Trueul>
+ ul>
   <li>HTML 基础
   ul>
   <li>标签语法</li>
@@ -172,7 +172,7 @@
   <li>函数</li>
   </ul>
   </li>
- Trueul>
+ ul>
  ```
 
 ## 3. 超链接与多媒体
@@ -190,15 +190,15 @@
 **示例**：
 ```html
  <!-- 链接到外部网站 -->
- Truea href="https://www.example.com" target="_blank">访问示例网站</a>
+ a href="https://www.example.com" target="_blank">访问示例网站</a>
  <!-- 链接到同一网站的其他页面 -->
- Truea href="about.html">关于我们</a>
+ a href="about.html">关于我们</a>
  <!-- 链接到页面内的锚点 -->
- Truea href="#section1">跳转到第一部分</a>
+ a href="#section1">跳转到第一部分</a>
  <!-- 链接到电子邮件 -->
- Truea href="mailto:info@example.com">发送邮件</a>
+ a href="mailto:info@example.com">发送邮件</a>
  <!-- 链接到电话 -->
- Truea href="tel:+1234567890">拨打电话</a>
+ a href="tel:+1234567890">拨打电话</a>
  ```
 
 ### 3.2 图像
@@ -213,11 +213,11 @@
 **示例**：
 ```html
  <!-- 基本图像 -->
- Trueimg src="images/photo.jpg" alt="美丽的风景" width="400" height="300">
+ img src="images/photo.jpg" alt="美丽的风景" width="400" height="300">
  <!-- 带有标题的图像 -->
- Trueimg src="images/logo.png" alt="网站标志" title="网站标志">
+ img src="images/logo.png" alt="网站标志" title="网站标志">
  <!-- 延迟加载的图像 -->
- Trueimg src="images/large-image.jpg" alt="大型图像" loading="lazy">
+ img src="images/large-image.jpg" alt="大型图像" loading="lazy">
  ```
 
 ### 3.3 其他多媒体标签
@@ -229,15 +229,15 @@
 **示例**：
 ```html
  <!-- 音频播放器 -->
- Trueaudio controls>
+ audio controls>
   <source src="audio/song.mp3" type="audio/mpeg">
   您的浏览器不支持音频元素。
- Trueaudio>
+ audio>
  <!-- 视频播放器 -->
- Truevideo controls width="600">
+ video controls width="600">
   <source src="video/movie.mp4" type="video/mp4">
   您的浏览器不支持视频元素。
- Truevideo>
+ video>
  <!-- 嵌入网页 -->
  iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3022.1422937950146!2d-74.0061380845947!3d40.71277577933185!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x89c25a22a3bda30d%3A0xb89d1fe6bc499443!2sNew%20York%2C%20NY%2C%20USA!5e0!3m2!1sen!2sus!4v1620000000000!5m2!1sen!2sus" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy">
  iframe>
@@ -260,17 +260,17 @@
 **示例**：
 ```html
  <!-- 使用 id 和 class -->
- Truediv id="header" class="container">
+ div id="header" class="container">
   <h1>网站标题</h1>
  </div>
  <!-- 使用行内样式 -->
- Truep style="color: blue; font-weight: bold;">这是蓝色粗体文本</p>
+ p style="color: blue; font-weight: bold;">这是蓝色粗体文本</p>
  <!-- 使用 title 属性 -->
- Truea href="#" title="点击这里">链接</a>
+ a href="#" title="点击这里">链接</a>
  <!-- 使用 hidden 属性 -->
- Truediv hidden>这个元素是隐藏的</div>
+ div hidden>这个元素是隐藏的</div>
  <!-- 使用 contenteditable 属性 -->
- Truediv contenteditable="">点击此处编辑内容</div>
+ div contenteditable="">点击此处编辑内容</div>
  ```
 
 ### 4.2 自定义数据属性
@@ -279,7 +279,7 @@
 **示例**：
 ```html
  <!-- 存储产品信息 -->
- Truediv class="product" data-id="123" data-name="iPhone 13" data-price="799">
+ div class="product" data-id="123" data-name="iPhone 13" data-price="799">
   <h3>iPhone 13</h3>
   <p>价格: $799</p>
  </div>
@@ -304,14 +304,14 @@
 **示例**：
 ```html
  <!-- 指定语言 -->
- Truediv lang="en">This is English text</div>
- Truediv lang="zh-CN">这是中文文本</div>
+ div lang="en">This is English text</div>
+ div lang="zh-CN">这是中文文本</div>
  <!-- 指定文本方向 -->
- Truediv dir="rtl">مرحبا بالعالم</div> <!-- 阿拉伯语，从右到左 -->
+ div dir="rtl">مرحبا بالعالم</div> <!-- 阿拉伯语，从右到左 -->
  <!-- 指定不可翻译 -->
- Truediv translate="no">品牌名称: Apple</div>
+ div translate="no">品牌名称: Apple</div>
  <!-- 指定可拖动 -->
- Truediv draggable="">可拖动元素</div>
+ div draggable="">可拖动元素</div>
  ```
 
 ## 5. 语义化标签

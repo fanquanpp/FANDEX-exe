@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ref, watch, onMounted, computed } from 'vue'
 import MarkdownIt from 'markdown-it'
 import anchor from 'markdown-it-anchor'
@@ -8,6 +8,7 @@ const props = defineProps<{ content: string }>()
 
 const rendered = ref('')
 const highlighter = ref<Highlighter | null>(null)
+const tocExpanded = ref(false)
 
 const md = new MarkdownIt({
   html: true,
@@ -88,37 +89,130 @@ function handleClick(e: Event) {
     handleCopy(e)
   }
 }
+
+function toggleToc() {
+  tocExpanded.value = !tocExpanded.value
+}
 </script>
 
 <template>
   <div class="doc-renderer" @click="handleClick">
-    <aside v-if="toc.length > 3" class="doc-toc">
-      <h4 class="toc-title">目录</h4>
-      <ul class="toc-list">
-        <li v-for="h in toc" :key="h.id" class="toc-item" :class="'toc-h' + h.level">
-          <a :href="'#' + h.id" class="toc-link">{{ h.text }}</a>
-        </li>
-      </ul>
-    </aside>
-    <div class="markdown-body" v-html="rendered"></div>
+    <div class="doc-body">
+      <div v-if="toc.length > 2" class="toc-toggle-bar">
+        <button class="toc-toggle-btn" @click="toggleToc">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="3" y1="6" x2="21" y2="6" />
+            <line x1="3" y1="12" x2="15" y2="12" />
+            <line x1="3" y1="18" x2="18" y2="18" />
+          </svg>
+          <span>{{ tocExpanded ? '收起目录' : '展开目录' }}</span>
+          <svg class="toc-chevron" :class="{ expanded: tocExpanded }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+      </div>
+      <div v-if="toc.length > 2 && tocExpanded" class="toc-panel">
+        <ul class="toc-list">
+          <li v-for="h in toc" :key="h.id" class="toc-item" :class="'toc-h' + h.level">
+            <a :href="'#' + h.id" class="toc-link" @click="tocExpanded = false">{{ h.text }}</a>
+          </li>
+        </ul>
+      </div>
+      <div class="markdown-body" v-html="rendered"></div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.doc-renderer { display: flex; gap: var(--spacing-xl); position: relative; }
-.markdown-body { flex: 1; min-width: 0; }
-.doc-toc {
-  position: sticky; top: calc(var(--nav-height) + var(--spacing-lg));
-  width: 200px; max-height: calc(100vh - var(--nav-height) - var(--spacing-2xl));
-  overflow-y: auto; flex-shrink: 0; padding: var(--spacing-md);
-  border-left: 1px solid var(--color-border-light); font-size: 0.85em;
+.doc-renderer {
+  width: 100%;
 }
-.toc-title { font-size: 0.75em; font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 var(--spacing-sm) 0; }
-.toc-list { list-style: none; padding: 0; margin: 0; }
-.toc-item { margin-bottom: 2px; }
-.toc-link { display: block; padding: 3px 0; color: var(--color-text-secondary); font-size: 0.9em; line-height: 1.4; transition: color var(--transition-fast); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.toc-link:hover { color: var(--color-accent); }
-.toc-h2 { padding-left: var(--spacing-sm); }
-.toc-h3 { padding-left: var(--spacing-lg); }
-@media (max-width: 1024px) { .doc-toc { display: none; } .doc-renderer { display: block; } }
+
+.doc-body {
+  width: 100%;
+}
+
+.toc-toggle-bar {
+  margin-bottom: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border-light);
+  padding-bottom: var(--spacing-sm);
+}
+
+.toc-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border: 2px solid var(--color-border);
+  border-radius: 0;
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  font-size: 0.78em;
+  font-family: var(--font-display);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  letter-spacing: 0.03em;
+}
+
+.toc-toggle-btn:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.toc-chevron {
+  transition: transform var(--transition-fast);
+}
+
+.toc-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.toc-panel {
+  background: var(--color-bg-card);
+  border: 2px solid var(--color-border);
+  border-radius: 0;
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.toc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.toc-item {
+  margin-bottom: 1px;
+}
+
+.toc-link {
+  display: block;
+  padding: 2px 0;
+  color: var(--color-text-secondary);
+  font-size: 0.82em;
+  line-height: 1.4;
+  transition: color var(--transition-fast);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: none;
+}
+
+.toc-link:hover {
+  color: var(--color-accent);
+}
+
+.toc-h2 {
+  padding-left: var(--spacing-sm);
+}
+
+.toc-h3 {
+  padding-left: var(--spacing-lg);
+}
+
+.markdown-body {
+  width: 100%;
+}
 </style>

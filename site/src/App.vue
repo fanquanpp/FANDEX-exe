@@ -9,8 +9,7 @@ import { getModuleMeta } from '@/data/modules'
 const router = useRouter()
 const { theme, toggleTheme } = useTheme()
 const { isRead } = useProgress()
-const sidebarOpen = ref(true)
-const searchQuery = ref('')
+const sidebarOpen = ref(false)
 const currentModule = ref<Module | null>(null)
 const currentFiles = ref<ModuleFile[]>([])
 const currentDocPath = ref('')
@@ -28,6 +27,7 @@ watch(() => router.currentRoute.value, (to) => {
     currentFiles.value = []
     currentDocPath.value = ''
   }
+  sidebarOpen.value = false
 }, { immediate: true })
 
 async function fetchModuleData(moduleId: string) {
@@ -57,82 +57,84 @@ function goHome() {
 function toggleSidebar() {
   sidebarOpen.value = !sidebarOpen.value
 }
+
+function closeSidebar() {
+  sidebarOpen.value = false
+}
 </script>
 
 <template>
-  <div class="app-layout" :class="{ 'sidebar-collapsed': !sidebarOpen }">
+  <div class="app-layout">
     <header class="app-nav">
       <div class="nav-left">
-        <button class="sidebar-toggle" @click="toggleSidebar">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <button v-if="currentModule" class="sidebar-toggle" @click="toggleSidebar" :title="sidebarOpen ? '收起目录' : '展开目录'">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <line x1="3" y1="6" x2="21" y2="6" />
             <line x1="3" y1="12" x2="21" y2="12" />
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
         <div class="nav-logo" @click="goHome">
-          <span class="logo-block"></span>
-          <span class="logo-text">MN</span>
-        </div>
-      </div>
-      <div class="nav-center">
-        <div class="nav-search">
-          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <rect x="3" y="3" width="12" height="12" />
-            <line x1="15" y1="15" x2="21" y2="21" />
-          </svg>
-          <input v-model="searchQuery" type="text" placeholder="搜索模块..." class="search-input" />
+          <span class="logo-mark"></span>
+          <span class="logo-text">CODEX</span>
         </div>
       </div>
       <div class="nav-right">
-        <button class="theme-toggle" @click="toggleTheme" :title="theme === 'dark' ? '切换到亮色模式' : '切换到暗色模式'">
-          <svg v-if="theme === 'dark'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <rect x="2" y="2" width="8" height="8" />
-            <rect x="14" y="2" width="8" height="8" />
-            <rect x="2" y="14" width="8" height="8" />
-            <rect x="14" y="14" width="8" height="8" />
+        <button class="theme-toggle" @click="toggleTheme" :title="theme === 'dark' ? '亮色模式' : '暗色模式'">
+          <svg v-if="theme === 'dark'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
           </svg>
-          <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <rect x="3" y="3" width="18" height="18" />
-            <rect x="7" y="7" width="10" height="10" />
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
           </svg>
         </button>
       </div>
     </header>
 
-    <aside v-if="sidebarOpen && currentModule" class="app-sidebar">
-      <div class="sidebar-header" v-if="moduleMeta">
-        <div class="sidebar-color-bar" :style="{ background: moduleMeta.color }"></div>
-        <div class="sidebar-module-info">
-          <span class="module-icon-block" :style="{ background: moduleMeta.color }">{{ moduleMeta.icon }}</span>
-          <div class="module-info-text">
-            <h3 class="module-name">{{ moduleMeta.title }}</h3>
-            <span class="module-desc">{{ moduleMeta.description }}</span>
+    <Teleport to="body">
+      <div v-if="sidebarOpen" class="sidebar-backdrop" @click="closeSidebar"></div>
+      <aside class="app-sidebar" :class="{ open: sidebarOpen }">
+        <div class="sidebar-header" v-if="moduleMeta">
+          <div class="sidebar-color-bar" :style="{ background: moduleMeta.color }"></div>
+          <div class="sidebar-module-info">
+            <span class="module-icon-block" :style="{ background: moduleMeta.color }">{{ moduleMeta.icon }}</span>
+            <div class="module-info-text">
+              <h3 class="module-name">{{ moduleMeta.title }}</h3>
+              <span class="module-desc">{{ moduleMeta.description }}</span>
+            </div>
           </div>
         </div>
-      </div>
-      <nav class="sidebar-nav">
-        <button class="sidebar-back" @click="goHome">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
-            <polyline points="18 6 6 12 18 18" />
-          </svg>
-          <span>返回首页</span>
-        </button>
-        <ul class="file-list">
-          <li
-            v-for="file in currentFiles"
-            :key="file.slug"
-            class="file-item"
-            :class="{ active: currentDocPath === file.path, read: isRead(file.path) }"
-          >
-            <button @click="navigateToDoc(currentModule!.id, file.slug)" class="file-link">
-              <span class="file-status-block" :class="{ read: isRead(file.path) }"></span>
-              <span class="file-title">{{ file.title }}</span>
-            </button>
-          </li>
-        </ul>
-      </nav>
-    </aside>
+        <nav class="sidebar-nav">
+          <button class="sidebar-back" @click="goHome">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+              <polyline points="18 6 6 12 18 18" />
+            </svg>
+            <span>返回首页</span>
+          </button>
+          <ul class="file-list">
+            <li
+              v-for="file in currentFiles"
+              :key="file.slug"
+              class="file-item"
+              :class="{ active: currentDocPath === file.path, read: isRead(file.path) }"
+            >
+              <button @click="navigateToDoc(currentModule!.id, file.slug)" class="file-link">
+                <span class="file-status-block" :class="{ read: isRead(file.path) }"></span>
+                <span class="file-title">{{ file.title }}</span>
+              </button>
+            </li>
+          </ul>
+        </nav>
+      </aside>
+    </Teleport>
 
     <main class="app-main">
       <router-view />
@@ -142,24 +144,16 @@ function toggleSidebar() {
 
 <style scoped>
 .app-layout {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
-  grid-template-rows: var(--nav-height) 1fr;
-  grid-template-areas: "nav nav" "sidebar main";
   min-height: 100vh;
-  transition: grid-template-columns var(--transition-base);
-}
-
-.app-layout.sidebar-collapsed {
-  grid-template-columns: 0 1fr;
+  display: flex;
+  flex-direction: column;
 }
 
 .app-nav {
-  grid-area: nav;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--spacing-lg);
+  padding: 0 var(--spacing-md);
   background: var(--color-nav-bg);
   backdrop-filter: blur(12px);
   border-bottom: 2px solid var(--color-border);
@@ -167,20 +161,21 @@ function toggleSidebar() {
   top: 0;
   z-index: 100;
   height: var(--nav-height);
+  flex-shrink: 0;
 }
 
 .nav-left {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: var(--spacing-sm);
 }
 
 .sidebar-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: 2px solid var(--color-border);
   border-radius: 0;
   background: var(--color-bg-card);
@@ -207,10 +202,10 @@ function toggleSidebar() {
   opacity: 0.8;
 }
 
-.logo-block {
+.logo-mark {
   display: inline-block;
-  width: 12px;
-  height: 36px;
+  width: 8px;
+  height: 28px;
   background: var(--color-primary);
 }
 
@@ -218,71 +213,28 @@ function toggleSidebar() {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 36px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 8px;
   background: var(--color-text);
   color: var(--color-bg);
   font-weight: 700;
-  font-size: 1em;
+  font-size: 0.8em;
   font-family: var(--font-display);
-  letter-spacing: 0.05em;
-}
-
-.nav-center {
-  flex: 1;
-  max-width: 400px;
-  margin: 0 var(--spacing-xl);
-}
-
-.nav-search {
-  position: relative;
-  width: 100%;
-}
-
-.search-icon {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--color-text-tertiary);
-  pointer-events: none;
-}
-
-.search-input {
-  width: 100%;
-  padding: 8px 12px 8px 34px;
-  border: 2px solid var(--color-border);
-  border-radius: 0;
-  background: var(--color-bg-card);
-  color: var(--color-text);
-  font-size: 0.875em;
-  font-family: var(--font-body);
-  outline: none;
-  transition: all var(--transition-fast);
-}
-
-.search-input:focus {
-  border-color: var(--color-primary);
-  box-shadow: 4px 4px 0 var(--color-primary);
-  background: var(--color-bg);
-}
-
-.search-input::placeholder {
-  color: var(--color-text-tertiary);
+  letter-spacing: 0.1em;
 }
 
 .nav-right {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: var(--spacing-sm);
 }
 
 .theme-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border: 2px solid var(--color-border);
   border-radius: 0;
   background: var(--color-bg-card);
@@ -297,19 +249,41 @@ function toggleSidebar() {
   border-color: var(--color-primary);
 }
 
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--color-overlay);
+  z-index: 200;
+  animation: fadeIn var(--transition-fast) ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 .app-sidebar {
-  grid-area: sidebar;
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--sidebar-width);
   background: var(--color-sidebar-bg);
   border-right: 2px solid var(--color-border);
   overflow-y: auto;
-  height: calc(100vh - var(--nav-height));
-  position: sticky;
-  top: var(--nav-height);
+  z-index: 210;
+  transform: translateX(-100%);
+  transition: transform var(--transition-base) ease;
+}
+
+.app-sidebar.open {
+  transform: translateX(0);
 }
 
 .sidebar-header {
   position: relative;
-  padding: var(--spacing-lg);
+  padding: var(--spacing-md);
+  padding-top: calc(var(--nav-height) + var(--spacing-md));
   border-bottom: 2px solid var(--color-border);
 }
 
@@ -324,7 +298,7 @@ function toggleSidebar() {
 .sidebar-module-info {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
+  gap: var(--spacing-sm);
   padding-left: 10px;
 }
 
@@ -332,12 +306,12 @@ function toggleSidebar() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 0;
   color: #fff;
   font-weight: 700;
-  font-size: 0.85em;
+  font-size: 0.8em;
   font-family: var(--font-display);
   flex-shrink: 0;
 }
@@ -347,7 +321,7 @@ function toggleSidebar() {
 }
 
 .module-name {
-  font-size: 1em;
+  font-size: 0.95em;
   font-weight: 700;
   color: var(--color-text);
   margin: 0;
@@ -356,7 +330,7 @@ function toggleSidebar() {
 }
 
 .module-desc {
-  font-size: 0.75em;
+  font-size: 0.72em;
   color: var(--color-text-tertiary);
   display: block;
   white-space: nowrap;
@@ -378,7 +352,7 @@ function toggleSidebar() {
   border-radius: 0;
   background: transparent;
   color: var(--color-text-secondary);
-  font-size: 0.85em;
+  font-size: 0.8em;
   font-family: var(--font-body);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -412,7 +386,7 @@ function toggleSidebar() {
   border-radius: 0;
   background: transparent;
   color: var(--color-text-secondary);
-  font-size: 0.85em;
+  font-size: 0.8em;
   font-family: var(--font-body);
   text-align: left;
   cursor: pointer;
@@ -461,32 +435,8 @@ function toggleSidebar() {
 }
 
 .app-main {
-  grid-area: main;
-  overflow-y: auto;
+  flex: 1;
   min-height: calc(100vh - var(--nav-height));
-}
-
-@media (max-width: 768px) {
-  .app-layout {
-    grid-template-columns: 1fr;
-    grid-template-areas: "nav" "main";
-  }
-
-  .app-sidebar {
-    position: fixed;
-    left: 0;
-    top: var(--nav-height);
-    width: var(--sidebar-width);
-    z-index: 90;
-    box-shadow: 8px 0 0 var(--color-shadow);
-  }
-
-  .nav-center {
-    display: none;
-  }
-
-  .logo-text {
-    display: none;
-  }
+  width: 100%;
 }
 </style>

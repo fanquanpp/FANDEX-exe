@@ -33,21 +33,13 @@ const filteredMetas = computed(() => {
 
 const categoryOrder = ['basic-tools', 'programming', 'web-frontend', 'data', 'cs']
 
-const constructivistColors: Record<string, string> = {
-  'basic-tools': '#E53935',
-  'programming': '#1565C0',
-  'web-frontend': '#FDD835',
-  'data': '#E53935',
-  'cs': '#1565C0',
-}
-
 const groupedModules = computed(() => {
   return categoryOrder
     .filter(cat => getModulesByCategory(cat).some(m => filteredMetas.value.includes(m)))
     .map(cat => ({
       key: cat,
       label: moduleCategories[cat].label,
-      color: constructivistColors[cat],
+      color: moduleCategories[cat].color,
       modules: getModulesByCategory(cat).filter(m => filteredMetas.value.includes(m))
     }))
 })
@@ -78,34 +70,22 @@ const totalFiles = computed(() => modules.value.reduce((s, m) => s + m.files.len
 </script>
 
 <template>
-  <div class="construct-home">
-    <section class="hero">
-      <div class="hero-geo-left"></div>
-      <div class="hero-center">
-        <h1 class="hero-title">MYNOTEBOOK</h1>
-        <p class="hero-subtitle">综合技术自学资料库</p>
+  <div class="home-page">
+    <section class="home-header">
+      <div class="header-content">
+        <h1 class="site-title">CODEX</h1>
+        <p class="site-subtitle">开发者知识库</p>
         <div class="search-box">
-          <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square" stroke-linejoin="miter"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/></svg>
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16" y2="16"/></svg>
           <input v-model="searchQuery" type="text" placeholder="搜索模块..." class="search-input" />
         </div>
-      </div>
-      <div class="hero-geo-right"></div>
-    </section>
-
-    <section class="stats-bar">
-      <div class="stat-block">
-        <span class="stat-num">{{ modules.length }}</span>
-        <span class="stat-lbl">MODULES</span>
-      </div>
-      <div class="stat-divider"></div>
-      <div class="stat-block">
-        <span class="stat-num">{{ totalFiles }}+</span>
-        <span class="stat-lbl">DOCS</span>
-      </div>
-      <div class="stat-divider"></div>
-      <div class="stat-block">
-        <span class="stat-num">{{ totalProgress }}%</span>
-        <span class="stat-lbl">PROGRESS</span>
+        <div class="stats-row">
+          <span class="stat"><strong>{{ modules.length }}</strong> 模块</span>
+          <span class="stat-sep">|</span>
+          <span class="stat"><strong>{{ totalFiles }}</strong> 文档</span>
+          <span class="stat-sep">|</span>
+          <span class="stat"><strong>{{ totalProgress }}%</strong> 进度</span>
+        </div>
       </div>
     </section>
 
@@ -145,155 +125,98 @@ const totalFiles = computed(() => modules.value.reduce((s, m) => s + m.files.len
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Noto+Sans+SC:wght@300;400;700&display=swap');
-
-:root {
-  --c-red: #E53935;
-  --c-yellow: #FDD835;
-  --c-blue: #1565C0;
-  --c-black: #1a1a1a;
-  --c-white: #ffffff;
-  --c-gray: #f0f0f0;
-  --c-border: #1a1a1a;
-  --font-head: 'Space Mono', monospace;
-  --font-body: 'Noto Sans SC', sans-serif;
-}
-
-.construct-home {
-  max-width: 1200px;
+.home-page {
+  width: 100%;
+  max-width: 1100px;
   margin: 0 auto;
-  font-family: var(--font-body);
-  color: var(--c-black);
+  padding: 0 var(--spacing-lg) var(--spacing-3xl);
 }
 
-.hero {
-  display: grid;
-  grid-template-columns: 80px 1fr 80px;
-  background: var(--c-black);
-  padding: 64px 0;
-  position: relative;
+.home-header {
+  padding: var(--spacing-2xl) 0 var(--spacing-lg);
+  border-bottom: 2px solid var(--color-border);
+  margin-bottom: var(--spacing-lg);
 }
 
-.hero::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: var(--c-red);
-}
-
-.hero-geo-left {
-  background: var(--c-red);
-  border-right: 4px solid var(--c-black);
-}
-
-.hero-geo-right {
-  background: var(--c-blue);
-  border-left: 4px solid var(--c-black);
-}
-
-.hero-center {
+.header-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 0 40px;
+  gap: var(--spacing-sm);
 }
 
-.hero-title {
-  font-family: var(--font-head);
-  font-size: 3.2rem;
+.site-title {
+  font-family: var(--font-display);
+  font-size: 2.4rem;
   font-weight: 700;
-  color: var(--c-white);
-  letter-spacing: 0.25em;
-  margin: 0 0 8px 0;
+  color: var(--color-text);
+  letter-spacing: 0.2em;
+  margin: 0;
   line-height: 1;
-  text-align: center;
 }
 
-.hero-subtitle {
+.site-subtitle {
   font-family: var(--font-body);
-  font-size: 1rem;
-  font-weight: 300;
-  color: rgba(255, 255, 255, 0.6);
-  margin: 0 0 32px 0;
-  letter-spacing: 0.15em;
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+  margin: 0 0 var(--spacing-md) 0;
+  letter-spacing: 0.1em;
 }
 
 .search-box {
   position: relative;
   width: 100%;
-  max-width: 480px;
+  max-width: 420px;
+  margin-bottom: var(--spacing-md);
 }
 
 .search-icon {
   position: absolute;
-  left: 14px;
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--color-text-tertiary);
   pointer-events: none;
 }
 
 .search-input {
   width: 100%;
-  padding: 14px 20px 14px 46px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--c-white);
+  padding: 10px 16px 10px 38px;
+  border: 2px solid var(--color-border);
+  background: var(--color-bg-card);
+  color: var(--color-text);
   font-family: var(--font-body);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   outline: none;
   box-sizing: border-box;
-  transition: border-color 0.15s;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .search-input::placeholder {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--color-text-tertiary);
 }
 
 .search-input:focus {
-  border-color: var(--c-yellow);
+  border-color: var(--color-primary);
+  box-shadow: 4px 4px 0 var(--color-primary);
 }
 
-.stats-bar {
+.stats-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 20px 0;
-  border-bottom: 3px solid var(--c-black);
-  background: var(--c-gray);
+  gap: var(--spacing-sm);
+  font-size: 0.82rem;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-display);
 }
 
-.stat-block {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 0 40px;
+.stats-row strong {
+  color: var(--color-text);
 }
 
-.stat-num {
-  font-family: var(--font-head);
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: var(--c-black);
-  line-height: 1.2;
-}
-
-.stat-lbl {
-  font-family: var(--font-head);
-  font-size: 0.7rem;
-  font-weight: 400;
-  color: rgba(0, 0, 0, 0.5);
-  letter-spacing: 0.15em;
-}
-
-.stat-divider {
-  width: 3px;
-  height: 36px;
-  background: var(--c-black);
+.stat-sep {
+  opacity: 0.3;
 }
 
 .categories {
@@ -301,81 +224,74 @@ const totalFiles = computed(() => modules.value.reduce((s, m) => s + m.files.len
 }
 
 .category-section {
-  border-bottom: 3px solid var(--c-black);
-}
-
-.category-section:last-child {
-  border-bottom: none;
+  margin-bottom: var(--spacing-lg);
 }
 
 .category-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px 24px;
-  border-left: 6px solid var(--c-black);
-  background: var(--c-gray);
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-left: 4px solid var(--color-border);
+  background: var(--color-bg-card);
+  margin-bottom: var(--spacing-sm);
 }
 
 .category-tag {
-  font-family: var(--font-head);
-  font-size: 0.8rem;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
   font-weight: 700;
-  color: var(--c-white);
-  padding: 6px 16px;
-  letter-spacing: 0.1em;
+  color: #fff;
+  padding: 4px 12px;
+  letter-spacing: 0.08em;
 }
 
 .category-count {
-  font-family: var(--font-head);
-  font-size: 0.8rem;
+  font-family: var(--font-display);
+  font-size: 0.75rem;
   font-weight: 400;
-  color: rgba(0, 0, 0, 0.4);
+  color: var(--color-text-tertiary);
 }
 
 .module-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 0;
 }
 
 .module-card {
-  border: 2px solid var(--c-black);
+  border: 2px solid var(--color-border);
   border-top: none;
   border-left: none;
-  padding: 20px;
+  padding: var(--spacing-md);
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  background: var(--c-white);
-  transition: background 0.15s, border-color 0.15s;
+  gap: var(--spacing-sm);
+  background: var(--color-bg);
+  transition: background var(--transition-fast);
   position: relative;
 }
 
 .module-card:hover {
-  border-color: var(--cat-color);
+  background: var(--color-bg-hover);
   z-index: 1;
 }
 
-.module-card:hover .card-icon-block {
-  background: var(--cat-color) !important;
-}
-
 .card-icon-block {
-  width: 48px;
-  height: 48px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--c-black);
+  border: 2px solid var(--color-border);
 }
 
 .card-icon-text {
-  font-family: var(--font-head);
-  font-size: 0.85rem;
+  font-family: var(--font-display);
+  font-size: 0.8rem;
   font-weight: 700;
-  color: var(--c-white);
+  color: #fff;
   line-height: 1;
 }
 
@@ -384,19 +300,19 @@ const totalFiles = computed(() => modules.value.reduce((s, m) => s + m.files.len
 }
 
 .card-title {
-  font-family: var(--font-head);
-  font-size: 1rem;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
   font-weight: 700;
-  color: var(--c-black);
-  margin: 0 0 4px 0;
-  letter-spacing: 0.05em;
+  color: var(--color-text);
+  margin: 0 0 2px 0;
+  letter-spacing: 0.03em;
 }
 
 .card-desc {
   font-family: var(--font-body);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 400;
-  color: rgba(0, 0, 0, 0.55);
+  color: var(--color-text-secondary);
   margin: 0;
   line-height: 1.5;
 }
@@ -404,22 +320,22 @@ const totalFiles = computed(() => modules.value.reduce((s, m) => s + m.files.len
 .card-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .card-files {
-  font-family: var(--font-head);
-  font-size: 0.72rem;
+  font-family: var(--font-display);
+  font-size: 0.68rem;
   font-weight: 400;
-  color: rgba(0, 0, 0, 0.45);
+  color: var(--color-text-tertiary);
   white-space: nowrap;
 }
 
 .progress-track {
   flex: 1;
-  height: 10px;
-  border: 2px solid var(--c-black);
-  background: var(--c-gray);
+  height: 8px;
+  border: 2px solid var(--color-border);
+  background: var(--color-bg-card);
   overflow: hidden;
 }
 
@@ -429,32 +345,23 @@ const totalFiles = computed(() => modules.value.reduce((s, m) => s + m.files.len
 }
 
 .progress-pct {
-  font-family: var(--font-head);
-  font-size: 0.72rem;
+  font-family: var(--font-display);
+  font-size: 0.68rem;
   font-weight: 700;
-  color: var(--c-black);
+  color: var(--color-text);
   white-space: nowrap;
-  min-width: 32px;
+  min-width: 28px;
   text-align: right;
 }
 
 @media (max-width: 768px) {
-  .hero {
-    grid-template-columns: 40px 1fr 40px;
-    padding: 40px 0;
+  .home-page {
+    padding: 0 var(--spacing-md) var(--spacing-xl);
   }
 
-  .hero-title {
-    font-size: 1.8rem;
-    letter-spacing: 0.15em;
-  }
-
-  .hero-subtitle {
-    font-size: 0.85rem;
-  }
-
-  .hero-center {
-    padding: 0 16px;
+  .site-title {
+    font-size: 1.6rem;
+    letter-spacing: 0.12em;
   }
 
   .module-grid {
@@ -462,15 +369,7 @@ const totalFiles = computed(() => modules.value.reduce((s, m) => s + m.files.len
   }
 
   .module-card {
-    border-left: 2px solid var(--c-black);
-  }
-
-  .stat-block {
-    padding: 0 20px;
-  }
-
-  .stat-num {
-    font-size: 1.2rem;
+    border-left: 2px solid var(--color-border);
   }
 }
 </style>

@@ -47,26 +47,23 @@ const categoryInfo = computed(() => {
 
 <template>
   <div class="module-page" v-if="meta">
-    <div class="module-hero" :style="{ '--module-color': meta.color }">
-      <div class="hero-color-bar" :style="{ background: meta.color }"></div>
-      <div class="hero-content">
-        <div class="hero-top">
-          <span class="hero-icon-block" :style="{ background: meta.color }">{{ meta.icon }}</span>
-          <div class="hero-text">
-            <span v-if="categoryInfo" class="hero-tag" :style="{ background: categoryInfo.color }">{{ categoryInfo.label }}</span>
-            <h1 class="hero-title">{{ meta.title }}</h1>
-            <p class="hero-desc">{{ meta.description }}</p>
+    <div class="module-header">
+      <div class="header-color-bar" :style="{ background: meta.color }"></div>
+      <div class="header-content">
+        <div class="header-top">
+          <span class="header-icon" :style="{ background: meta.color }">{{ meta.icon }}</span>
+          <div class="header-text">
+            <span v-if="categoryInfo" class="header-tag" :style="{ background: categoryInfo.color }">{{ categoryInfo.label }}</span>
+            <h1 class="header-title">{{ meta.title }}</h1>
+            <p class="header-desc">{{ meta.description }}</p>
           </div>
         </div>
-        <div class="hero-progress">
-          <div class="progress-info">
-            <span class="progress-label">学习进度</span>
-            <span class="progress-value">{{ readCount }} / {{ files.length }} 篇已读</span>
-          </div>
+        <div class="header-progress">
+          <span class="progress-label">{{ readCount }} / {{ files.length }} 篇已读</span>
           <div class="progress-bar">
             <div class="progress-fill" :style="{ width: progress + '%', background: meta.color }"></div>
           </div>
-          <span class="progress-percent">{{ progress }}%</span>
+          <span class="progress-pct">{{ progress }}%</span>
         </div>
       </div>
     </div>
@@ -75,7 +72,7 @@ const categoryInfo = computed(() => {
       <table class="file-table">
         <thead>
           <tr>
-            <th class="col-status">状态</th>
+            <th class="col-status"></th>
             <th class="col-title">标题</th>
             <th class="col-size">大小</th>
           </tr>
@@ -106,62 +103,61 @@ const categoryInfo = computed(() => {
 
 <style scoped>
 .module-page {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: var(--spacing-xl) var(--spacing-lg);
+  padding: var(--spacing-md) var(--spacing-lg) var(--spacing-2xl);
+  max-width: 100%;
+  width: 100%;
 }
 
-.module-hero {
+.module-header {
   background: var(--color-bg-card);
   border: 2px solid var(--color-border);
   border-radius: 0;
-  margin-bottom: var(--spacing-xl);
-  position: relative;
-  overflow: hidden;
+  margin-bottom: var(--spacing-lg);
   display: flex;
+  overflow: hidden;
 }
 
-.hero-color-bar {
-  width: 8px;
+.header-color-bar {
+  width: 6px;
   flex-shrink: 0;
 }
 
-.hero-content {
+.header-content {
   flex: 1;
-  padding: var(--spacing-xl);
+  padding: var(--spacing-lg);
 }
 
-.hero-top {
+.header-top {
   display: flex;
   align-items: flex-start;
-  gap: var(--spacing-lg);
-  margin-bottom: var(--spacing-lg);
-  padding-bottom: var(--spacing-lg);
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  padding-bottom: var(--spacing-md);
   border-bottom: 2px solid var(--color-border);
 }
 
-.hero-icon-block {
+.header-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   border-radius: 0;
   color: #fff;
   font-weight: 700;
-  font-size: 1.2em;
+  font-size: 1.1em;
   font-family: var(--font-display);
   flex-shrink: 0;
 }
 
-.hero-text {
+.header-text {
   min-width: 0;
 }
 
-.hero-tag {
+.header-tag {
   display: inline-block;
-  padding: 2px 10px;
-  font-size: 0.7em;
+  padding: 2px 8px;
+  font-size: 0.65em;
   font-weight: 700;
   color: #fff;
   font-family: var(--font-display);
@@ -170,52 +166,36 @@ const categoryInfo = computed(() => {
   margin-bottom: var(--spacing-xs);
 }
 
-.hero-title {
-  font-size: 1.75em;
+.header-title {
+  font-size: 1.5em;
   font-weight: 700;
   color: var(--color-text);
   margin: 0 0 var(--spacing-xs) 0;
   font-family: var(--font-display);
 }
 
-.hero-desc {
-  font-size: 0.95em;
+.header-desc {
+  font-size: 0.9em;
   color: var(--color-text-secondary);
   margin: 0;
 }
 
-.hero-progress {
+.header-progress {
   display: flex;
   align-items: center;
-  gap: var(--spacing-md);
-}
-
-.progress-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 100px;
+  gap: var(--spacing-sm);
 }
 
 .progress-label {
-  font-size: 0.75em;
-  color: var(--color-text-tertiary);
-  font-weight: 500;
-  font-family: var(--font-display);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.progress-value {
-  font-size: 0.85em;
+  font-size: 0.8em;
   color: var(--color-text-secondary);
-  font-weight: 600;
   font-family: var(--font-display);
+  white-space: nowrap;
 }
 
 .progress-bar {
   flex: 1;
-  height: 12px;
+  height: 10px;
   border: 2px solid var(--color-border);
   border-radius: 0;
   background: var(--color-bg);
@@ -227,12 +207,12 @@ const categoryInfo = computed(() => {
   transition: width var(--transition-base);
 }
 
-.progress-percent {
-  font-size: 0.9em;
+.progress-pct {
+  font-size: 0.85em;
   font-weight: 700;
   color: var(--color-text);
   font-family: var(--font-display);
-  min-width: 48px;
+  min-width: 40px;
   text-align: right;
 }
 
@@ -248,9 +228,9 @@ const categoryInfo = computed(() => {
 }
 
 .file-table th {
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
   text-align: left;
-  font-size: 0.75em;
+  font-size: 0.72em;
   font-weight: 700;
   color: #fff;
   text-transform: uppercase;
@@ -261,7 +241,7 @@ const categoryInfo = computed(() => {
 }
 
 .file-table td {
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
   border-bottom: 1px solid var(--color-border-light);
 }
 
@@ -283,18 +263,21 @@ const categoryInfo = computed(() => {
 }
 
 .col-status {
-  width: 50px;
+  width: 40px;
 }
 
 .col-size {
-  width: 100px;
+  width: 90px;
   text-align: right;
+  font-size: 0.82em;
+  color: var(--color-text-tertiary);
+  font-family: var(--font-display);
 }
 
 .status-block {
   display: inline-block;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border: 2px solid var(--color-border-light);
   border-radius: 0;
   transition: all var(--transition-fast);
@@ -312,12 +295,6 @@ const categoryInfo = computed(() => {
 
 .file-row.read .col-title {
   color: var(--color-text-tertiary);
-}
-
-.col-size {
-  font-size: 0.85em;
-  color: var(--color-text-tertiary);
-  font-family: var(--font-display);
 }
 
 .module-not-found {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
 import { useProgress } from '@/composables/useProgress'
-import { getModuleMeta, moduleCategories } from '@/data/modules'
+import { getModuleMeta } from '@/data/modules'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import type { Module, ModuleFile } from '@/types'
@@ -78,11 +78,6 @@ watch([moduleId, slug], () => { loadDoc() })
       <span class="breadcrumb-current">{{ slug }}</span>
     </nav>
 
-    <div class="doc-title-bar">
-      <div class="title-color-bar"></div>
-      <h1 class="doc-title">{{ slug }}</h1>
-    </div>
-
     <div class="doc-content" v-if="!loading">
       <MarkdownRenderer :content="content" />
     </div>
@@ -93,7 +88,7 @@ watch([moduleId, slug], () => { loadDoc() })
       <span class="loading-text">加载中...</span>
     </div>
 
-    <div class="doc-actions">
+    <div class="doc-footer">
       <button
         class="read-toggle"
         :class="{ active: isRead(docPath) }"
@@ -106,7 +101,7 @@ watch([moduleId, slug], () => { loadDoc() })
 
     <nav class="doc-nav" v-if="prevDoc || nextDoc">
       <button v-if="prevDoc" class="nav-btn nav-prev" @click="navigateToDoc(prevDoc.slug)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
           <polyline points="18 6 6 12 18 18" />
         </svg>
         <div class="nav-btn-text">
@@ -120,7 +115,7 @@ watch([moduleId, slug], () => { loadDoc() })
           <span class="nav-btn-label">下一篇</span>
           <span class="nav-btn-title">{{ nextDoc.title }}</span>
         </div>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
           <polyline points="6 6 18 12 6 18" />
         </svg>
       </button>
@@ -130,20 +125,20 @@ watch([moduleId, slug], () => { loadDoc() })
 
 <style scoped>
 .doc-page {
-  max-width: 860px;
-  margin: 0 auto;
-  padding: var(--spacing-lg) var(--spacing-xl) var(--spacing-3xl);
+  padding: var(--spacing-md) var(--spacing-lg) var(--spacing-2xl);
+  max-width: 100%;
+  width: 100%;
 }
 
 .breadcrumb {
   display: flex;
   align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-md) 0;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) 0;
   margin-bottom: var(--spacing-md);
-  font-size: 0.85em;
+  font-size: 0.8em;
   color: var(--color-text-tertiary);
-  border-bottom: 2px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border-light);
 }
 
 .breadcrumb-link {
@@ -158,7 +153,7 @@ watch([moduleId, slug], () => { loadDoc() })
 
 .breadcrumb-sep {
   color: var(--color-text-tertiary);
-  opacity: 0.5;
+  opacity: 0.4;
   font-family: var(--font-display);
 }
 
@@ -166,29 +161,6 @@ watch([moduleId, slug], () => { loadDoc() })
   color: var(--color-text);
   font-weight: 500;
   font-family: var(--font-display);
-}
-
-.doc-title-bar {
-  display: flex;
-  align-items: stretch;
-  margin-bottom: var(--spacing-lg);
-}
-
-.title-color-bar {
-  width: 6px;
-  background: var(--color-primary);
-  flex-shrink: 0;
-  margin-right: var(--spacing-md);
-}
-
-.doc-title {
-  font-family: var(--font-display);
-  font-size: 1.75em;
-  font-weight: 700;
-  color: var(--color-text);
-  margin: 0;
-  line-height: 1.3;
-  padding: var(--spacing-xs) 0;
 }
 
 .doc-content {
@@ -204,7 +176,7 @@ watch([moduleId, slug], () => { loadDoc() })
 }
 
 .loading-block {
-  height: 16px;
+  height: 14px;
   background: var(--color-bg-card);
   border: 2px solid var(--color-border-light);
   width: 100%;
@@ -217,26 +189,26 @@ watch([moduleId, slug], () => { loadDoc() })
 .loading-text {
   margin-top: var(--spacing-md);
   font-family: var(--font-display);
-  font-size: 0.85em;
+  font-size: 0.8em;
   letter-spacing: 0.05em;
 }
 
-.doc-actions {
-  margin: var(--spacing-xl) 0;
-  padding-top: var(--spacing-lg);
-  border-top: 2px solid var(--color-border);
+.doc-footer {
+  margin: var(--spacing-lg) 0;
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--color-border-light);
 }
 
 .read-toggle {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-sm) var(--spacing-lg);
+  padding: var(--spacing-xs) var(--spacing-md);
   border: 2px solid var(--color-border);
   border-radius: 0;
   background: var(--color-bg-card);
   color: var(--color-text-secondary);
-  font-size: 0.85em;
+  font-size: 0.8em;
   font-family: var(--font-display);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -256,8 +228,8 @@ watch([moduleId, slug], () => { loadDoc() })
 
 .read-indicator {
   display: inline-block;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border: 2px solid var(--color-border-light);
   border-radius: 0;
   transition: all var(--transition-fast);
@@ -272,16 +244,16 @@ watch([moduleId, slug], () => { loadDoc() })
   display: flex;
   justify-content: space-between;
   gap: var(--spacing-md);
-  margin-top: var(--spacing-xl);
-  padding-top: var(--spacing-xl);
-  border-top: 2px solid var(--color-border);
+  margin-top: var(--spacing-lg);
+  padding-top: var(--spacing-lg);
+  border-top: 1px solid var(--color-border-light);
 }
 
 .nav-btn {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  padding: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-sm) var(--spacing-md);
   border: 2px solid var(--color-border);
   border-radius: 0;
   background: var(--color-bg-card);
@@ -310,7 +282,7 @@ watch([moduleId, slug], () => { loadDoc() })
 }
 
 .nav-btn-label {
-  font-size: 0.7em;
+  font-size: 0.65em;
   color: var(--color-text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -318,7 +290,7 @@ watch([moduleId, slug], () => { loadDoc() })
 }
 
 .nav-btn-title {
-  font-size: 0.85em;
+  font-size: 0.8em;
   font-weight: 500;
   color: var(--color-text);
   overflow: hidden;

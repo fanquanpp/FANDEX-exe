@@ -2,14 +2,11 @@
 order: 120
 tags:
   - 'vue3'
-  - 'memory'
-  - 'typescript'
-  - 'data-structure'
 difficulty: 'advanced'
 title: 'Vue3 高级组件特性'
 module: 'vue3'
 category: 'Vue3 Basics'
-description: 'Vue3 高级组件特性'
+description: '异步组件、动态组件、Teleport 与 Suspense。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

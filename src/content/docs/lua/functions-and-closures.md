@@ -2,9 +2,7 @@
 order: 40
 tags:
   - 'lua'
-  - 'async'
   - 'performance'
-  - 'functional'
 difficulty: 'intermediate'
 title: '函数与闭包'
 module: 'lua'

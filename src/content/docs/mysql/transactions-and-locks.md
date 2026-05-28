@@ -3,7 +3,6 @@ order: 110
 tags:
   - 'mysql'
   - 'database'
-  - 'concurrency'
 difficulty: 'intermediate'
 title: '事务与锁机制'
 module: 'mysql'

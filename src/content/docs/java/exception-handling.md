@@ -2,9 +2,6 @@
 order: 130
 tags:
   - 'java'
-  - 'oop'
-  - 'memory'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '异常处理机制'
 module: 'java'

@@ -2,14 +2,7 @@
 order: 10
 tags:
   - 'cs-fundamentals'
-  - 'oop'
-  - 'design-patterns'
-  - 'networking'
-  - 'memory'
-  - 'typescript'
-  - 'data-structure'
   - 'algorithm'
-  - 'devops'
 difficulty: 'beginner'
 title: '计算机科学概述'
 module: 'cs-fundamentals'

@@ -2,8 +2,6 @@
 order: 90
 tags:
   - 'markdown'
-  - 'async'
-  - 'networking'
 difficulty: 'intermediate'
 title: 'Markdown 语法速查'
 module: 'markdown'

@@ -3,15 +3,10 @@ order: 110
 tags:
   - 'typescript'
   - 'project'
-  - 'oop'
-  - 'async'
-  - 'security'
-  - 'networking'
-  - 'data-structure'
-  - 'web-api'
 difficulty: 'intermediate'
 title: 'TypeScript 项目示例：类型安全的 API 客户端'
 module: 'typescript'
+category: 'TS Practice'
 description: '综合运用泛型、装饰器与类型体操的类型安全 API 客户端。'
 ---
 

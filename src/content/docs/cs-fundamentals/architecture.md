@@ -8,10 +8,6 @@ order: 20
 tags:
   - 'cs-fundamentals'
   - 'computer-science---architecture'
-  - 'oop'
-  - 'database'
-  - 'networking'
-  - 'concurrency'
 difficulty: 'intermediate'
 ---
 

@@ -1,12 +1,12 @@
 ---
 title: 'MySQL 理论知识点'
 module: 'mysql'
+category: 'MySQL Theory'
 order: 200
 tags:
   - 'mysql'
   - 'theory'
   - 'database'
-  - 'data-structure'
 difficulty: 'intermediate'
 description: '存储引擎、事务模型、锁机制与日志体系。'
 ---

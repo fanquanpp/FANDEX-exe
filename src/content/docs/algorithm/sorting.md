@@ -2,8 +2,6 @@
 order: 20
 tags:
   - 'algorithm'
-  - 'git-workflow'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '排序算法'
 module: 'algorithm'

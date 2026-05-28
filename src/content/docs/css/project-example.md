@@ -3,18 +3,10 @@ order: 110
 tags:
   - 'css'
   - 'project'
-  - 'design-patterns'
-  - 'database'
-  - 'networking'
-  - 'memory'
-  - 'typescript'
-  - 'css-layout'
-  - 'data-structure'
-  - 'web-api'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'CSS 项目示例：响应式个人主页'
 module: 'css'
+category: 'CSS Practice'
 description: '综合运用 Flexbox、Grid 与媒体查询的响应式主页。'
 ---
 

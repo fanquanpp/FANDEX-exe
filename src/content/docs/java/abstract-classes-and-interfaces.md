@@ -2,7 +2,6 @@
 order: 120
 tags:
   - 'java'
-  - 'oop'
 difficulty: 'intermediate'
 title: '抽象类与接口'
 module: 'java'

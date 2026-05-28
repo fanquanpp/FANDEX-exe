@@ -3,7 +3,6 @@ order: 90
 tags:
   - 'c'
   - 'memory'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '指针深度解析'
 module: 'c'

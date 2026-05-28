@@ -2,9 +2,6 @@
 order: 90
 tags:
   - 'python'
-  - 'database'
-  - 'networking'
-  - 'functional'
 difficulty: 'intermediate'
 title: '推导式与生成器'
 module: 'python'

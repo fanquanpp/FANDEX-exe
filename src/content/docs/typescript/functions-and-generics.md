@@ -2,12 +2,6 @@
 order: 40
 tags:
   - 'typescript'
-  - 'oop'
-  - 'async'
-  - 'networking'
-  - 'functional'
-  - 'data-structure'
-  - 'devops'
 difficulty: 'intermediate'
 title: '函数与泛型'
 module: 'typescript'

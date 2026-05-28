@@ -2,9 +2,6 @@
 order: 10
 tags:
   - 'python'
-  - 'database'
-  - 'networking'
-  - 'devops'
 difficulty: 'beginner'
 title: 'Python 概述与环境配置'
 module: 'python'

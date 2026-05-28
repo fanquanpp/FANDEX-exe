@@ -2,9 +2,7 @@
 order: 70
 tags:
   - 'algorithm'
-  - 'memory'
   - 'data-structure'
-  - 'math'
 difficulty: 'intermediate'
 title: '图算法'
 module: 'algorithm'

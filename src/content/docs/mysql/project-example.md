@@ -1,13 +1,12 @@
 ---
 title: 'MySQL 项目示例：电商数据库设计'
 module: 'mysql'
+category: 'MySQL Practice'
 order: 180
 tags:
   - 'mysql'
   - 'project'
-  - 'async'
   - 'database'
-  - 'data-structure'
 difficulty: 'intermediate'
 description: '综合运用表设计、索引优化与事务的电商数据库项目。'
 ---

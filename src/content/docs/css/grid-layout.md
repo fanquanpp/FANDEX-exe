@@ -3,7 +3,6 @@ order: 60
 tags:
   - 'css'
   - 'css-layout'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'CSS3 Grid 网格布局'
 module: 'css'

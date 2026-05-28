@@ -3,7 +3,6 @@ order: 130
 tags:
   - 'mysql'
   - 'database'
-  - 'math'
 difficulty: 'intermediate'
 title: 'MySQL 快速查阅'
 module: 'mysql'

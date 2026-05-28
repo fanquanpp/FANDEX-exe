@@ -2,10 +2,6 @@
 order: 50
 tags:
   - 'vue3'
-  - 'typescript'
-  - 'reactive'
-  - 'css-layout'
-  - 'devops'
 difficulty: 'intermediate'
 title: '组合式 API'
 module: 'vue3'

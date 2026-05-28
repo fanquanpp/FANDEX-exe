@@ -2,7 +2,6 @@
 order: 80
 tags:
   - 'python'
-  - 'database'
 difficulty: 'intermediate'
 title: '内置数据结构'
 module: 'python'

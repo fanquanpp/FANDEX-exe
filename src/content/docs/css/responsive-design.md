@@ -2,9 +2,7 @@
 order: 70
 tags:
   - 'css'
-  - 'memory'
   - 'css-layout'
-  - 'devops'
 difficulty: 'intermediate'
 title: '响应式设计'
 module: 'css'

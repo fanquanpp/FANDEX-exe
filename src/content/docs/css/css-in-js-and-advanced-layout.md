@@ -2,11 +2,7 @@
 order: 90
 tags:
   - 'css'
-  - 'database'
-  - 'memory'
-  - 'typescript'
   - 'css-layout'
-  - 'devops'
 difficulty: 'advanced'
 title: 'CSS-in-JS 与高级布局技巧'
 module: 'css'

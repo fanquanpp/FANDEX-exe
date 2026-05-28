@@ -2,7 +2,6 @@
 order: 90
 tags:
   - 'java'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '数组详解'
 module: 'java'

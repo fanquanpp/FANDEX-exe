@@ -2,13 +2,11 @@
 order: 50
 tags:
   - 'github'
-  - 'networking'
-  - 'git-workflow'
 difficulty: 'intermediate'
 title: '分支模型与分支保护规则'
 module: 'github'
 category: 'GitHub Basics'
-description: '分支模型与分支保护规则'
+description: '分支模型设计、保护规则配置与强制策略。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

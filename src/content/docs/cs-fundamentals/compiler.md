@@ -9,8 +9,6 @@ tags:
   - 'cs-fundamentals'
   - 'computer-science---compiler'
   - 'performance'
-  - 'memory'
-  - 'data-structure'
 difficulty: 'intermediate'
 ---
 

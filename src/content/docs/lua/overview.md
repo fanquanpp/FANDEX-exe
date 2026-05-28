@@ -2,8 +2,6 @@
 order: 10
 tags:
   - 'lua'
-  - 'networking'
-  - 'memory'
 difficulty: 'beginner'
 title: 'Lua 概述与环境配置'
 module: 'lua'

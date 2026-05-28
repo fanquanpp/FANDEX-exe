@@ -2,7 +2,6 @@
 order: 50
 tags:
   - 'cpp'
-  - 'memory'
 difficulty: 'intermediate'
 title: 'C++ 指针'
 module: 'cpp'

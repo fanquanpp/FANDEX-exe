@@ -6,6 +6,7 @@ tags:
 difficulty: 'intermediate'
 title: 'JavaScript 项目示例：待办事项应用'
 module: 'javascript'
+category: 'JS Practice'
 description: '综合运用 DOM 操作、事件处理与本地存储的待办事项应用。'
 ---
 

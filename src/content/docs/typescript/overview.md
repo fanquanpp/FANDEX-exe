@@ -2,10 +2,6 @@
 order: 10
 tags:
   - 'typescript'
-  - 'oop'
-  - 'design-patterns'
-  - 'database'
-  - 'functional'
 difficulty: 'beginner'
 title: 'TypeScript 概述与环境配置'
 module: 'typescript'

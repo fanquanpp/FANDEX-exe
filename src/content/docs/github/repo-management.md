@@ -2,8 +2,6 @@
 order: 20
 tags:
   - 'github'
-  - 'networking'
-  - 'git-workflow'
 difficulty: 'intermediate'
 title: '仓库创建、克隆、归档、删除'
 module: 'github'

@@ -2,14 +2,11 @@
 order: 30
 tags:
   - 'vue3'
-  - 'database'
-  - 'reactive'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'Vue3 模板语法'
 module: 'vue3'
 category: 'Vue3 Basics'
-description: 'Vue3 模板语法'
+description: '插值、指令、修饰符与模板编译机制。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

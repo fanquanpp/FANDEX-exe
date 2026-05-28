@@ -2,11 +2,6 @@
 order: 10
 tags:
   - 'data-analysis'
-  - 'database'
-  - 'networking'
-  - 'css-layout'
-  - 'data-structure'
-  - 'math'
 difficulty: 'beginner'
 title: '数据分析概述'
 module: 'data-analysis'

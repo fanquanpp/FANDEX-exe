@@ -2,8 +2,6 @@
 order: 190
 tags:
   - 'java'
-  - 'networking'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'Spring Cloud 微服务开发'
 module: 'java'

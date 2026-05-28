@@ -1,12 +1,12 @@
 ---
 title: 'JavaScript 理论知识点'
 module: 'javascript'
+category: 'JS Theory'
 order: 170
 tags:
   - 'javascript'
   - 'theory'
   - 'performance'
-  - 'data-structure'
 difficulty: 'intermediate'
 description: '执行上下文、作用域链、事件循环与内存管理。'
 ---

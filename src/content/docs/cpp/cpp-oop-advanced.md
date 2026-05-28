@@ -2,7 +2,6 @@
 order: 70
 tags:
   - 'cpp'
-  - 'data-structure'
 difficulty: 'advanced'
 title: 'C++ 面向对象进阶'
 module: 'cpp'

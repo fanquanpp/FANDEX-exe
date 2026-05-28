@@ -3,11 +3,10 @@ order: 120
 tags:
   - 'c'
   - 'theory'
-  - 'memory'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: 'C 语言理论知识点'
 module: 'c'
+category: 'C Theory'
 description: '编译流程、内存模型、链接与加载等核心理论知识。'
 ---
 

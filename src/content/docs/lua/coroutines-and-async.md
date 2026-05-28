@@ -3,7 +3,6 @@ order: 70
 tags:
   - 'lua'
   - 'async'
-  - 'networking'
 difficulty: 'intermediate'
 title: '协程与异步'
 module: 'lua'

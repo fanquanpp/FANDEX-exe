@@ -2,7 +2,6 @@
 order: 90
 tags:
   - 'mysql'
-  - 'design-patterns'
   - 'database'
 difficulty: 'intermediate'
 title: 'MySQL 索引与执行计划'

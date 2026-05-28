@@ -2,13 +2,7 @@
 order: 70
 tags:
   - 'cs-fundamentals'
-  - 'oop'
   - 'design-patterns'
-  - 'networking'
-  - 'memory'
-  - 'concurrency'
-  - 'reactive'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '设计模式'
 module: 'cs-fundamentals'

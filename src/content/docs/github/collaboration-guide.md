@@ -2,10 +2,6 @@
 order: 40
 tags:
   - 'github'
-  - 'testing'
-  - 'database'
-  - 'networking'
-  - 'git-workflow'
 difficulty: 'intermediate'
 title: '协作开发规范'
 module: 'github'

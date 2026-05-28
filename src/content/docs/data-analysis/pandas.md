@@ -2,10 +2,6 @@
 order: 30
 tags:
   - 'data-analysis'
-  - 'database'
-  - 'networking'
-  - 'memory'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: 'Pandas -- DataFrame/Series、数据清洗、合并重塑'
 module: 'data-analysis'

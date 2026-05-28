@@ -2,14 +2,12 @@
 order: 40
 tags:
   - 'git'
-  - 'design-patterns'
-  - 'networking'
   - 'git-workflow'
 difficulty: 'intermediate'
 title: 'Git 分支管理'
 module: 'git'
 category: 'Git Basics'
-description: 'Git 分支管理'
+description: '分支创建、合并、变基与分支策略。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

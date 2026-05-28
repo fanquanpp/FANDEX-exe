@@ -2,7 +2,6 @@
 order: 60
 tags:
   - 'github'
-  - 'networking'
 difficulty: 'intermediate'
 title: 'Issues 模板、标签与里程碑'
 module: 'github'

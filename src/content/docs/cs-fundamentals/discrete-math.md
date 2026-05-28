@@ -8,7 +8,6 @@ order: 50
 tags:
   - 'cs-fundamentals'
   - 'computer-science---discrete-mathematics'
-  - 'data-structure'
   - 'algorithm'
   - 'math'
 difficulty: 'intermediate'

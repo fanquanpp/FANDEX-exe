@@ -2,11 +2,6 @@
 order: 70
 tags:
   - 'data-analysis'
-  - 'design-patterns'
-  - 'database'
-  - 'functional'
-  - 'devops'
-  - 'math'
 difficulty: 'intermediate'
 title: '数据清洗 -- 缺失值、异常值与数据类型转换'
 module: 'data-analysis'

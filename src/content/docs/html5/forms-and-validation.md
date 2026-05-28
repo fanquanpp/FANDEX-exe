@@ -2,13 +2,6 @@
 order: 30
 tags:
   - 'html5'
-  - 'security'
-  - 'database'
-  - 'networking'
-  - 'memory'
-  - 'css-layout'
-  - 'web-api'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'HTML5 表单与验证'
 module: 'html5'

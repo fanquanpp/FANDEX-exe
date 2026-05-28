@@ -3,11 +3,10 @@ order: 150
 tags:
   - 'vue3'
   - 'theory'
-  - 'reactive'
-  - 'web-api'
 difficulty: 'intermediate'
 title: 'Vue3 理论知识点'
 module: 'vue3'
+category: 'Vue3 Theory'
 description: '虚拟 DOM、响应式原理、编译策略与性能模型。'
 ---
 

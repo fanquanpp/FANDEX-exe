@@ -2,8 +2,6 @@
 order: 100
 tags:
   - 'markdown'
-  - 'networking'
-  - 'git-workflow'
 difficulty: 'advanced'
 title: 'Markdown 高级语法与文档自动化'
 module: 'markdown'

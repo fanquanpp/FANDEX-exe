@@ -2,13 +2,11 @@
 order: 100
 tags:
   - 'typescript'
-  - 'oop'
-  - 'database'
 difficulty: 'advanced'
 title: 'TypeScript 编译与性能优化'
 module: 'typescript'
 category: 'TypeScript Basics'
-description: 'TypeScript 编译与性能优化'
+description: 'TypeScript 编译流程、增量编译与输出优化策略。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

@@ -2,7 +2,6 @@
 order: 30
 tags:
   - 'github'
-  - 'security'
 difficulty: 'intermediate'
 title: 'SSH 与 HTTPS 远程配置'
 module: 'github'

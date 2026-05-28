@@ -2,9 +2,6 @@
 order: 10
 tags:
   - 'java'
-  - 'oop'
-  - 'memory'
-  - 'data-structure'
 difficulty: 'beginner'
 title: 'Java 概述与开发环境'
 module: 'java'

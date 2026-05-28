@@ -2,13 +2,11 @@
 order: 90
 tags:
   - 'typescript'
-  - 'oop'
-  - 'networking'
 difficulty: 'intermediate'
 title: 'TypeScript 迁移实战'
 module: 'typescript'
 category: 'TypeScript Basics'
-description: 'TypeScript 迁移实战'
+description: '渐进式迁移策略、类型覆盖提升与常见迁移陷阱。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

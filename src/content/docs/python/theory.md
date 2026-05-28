@@ -1,17 +1,11 @@
 ---
 title: 'Python 理论知识点'
 module: 'python'
+category: 'Python Theory'
 order: 160
 tags:
   - 'python'
   - 'theory'
-  - 'oop'
-  - 'async'
-  - 'design-patterns'
-  - 'database'
-  - 'functional'
-  - 'memory'
-  - 'concurrency'
 difficulty: 'intermediate'
 description: 'GIL 机制、内存管理、字节码与运行时模型。'
 ---

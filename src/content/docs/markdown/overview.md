@@ -2,7 +2,6 @@
 order: 10
 tags:
   - 'markdown'
-  - 'networking'
 difficulty: 'beginner'
 title: 'Markdown 语法指南'
 module: 'markdown'

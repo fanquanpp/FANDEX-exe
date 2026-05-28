@@ -2,7 +2,6 @@
 order: 70
 tags:
   - 'javascript'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '对象与数组'
 module: 'javascript'

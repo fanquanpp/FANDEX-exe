@@ -2,7 +2,6 @@
 order: 100
 tags:
   - 'python'
-  - 'networking'
 difficulty: 'intermediate'
 title: '模块、包与工程化'
 module: 'python'

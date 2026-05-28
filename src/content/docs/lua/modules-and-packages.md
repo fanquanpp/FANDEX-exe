@@ -2,7 +2,6 @@
 order: 60
 tags:
   - 'lua'
-  - 'async'
 difficulty: 'intermediate'
 title: '模块与包'
 module: 'lua'

@@ -6,6 +6,7 @@ tags:
 difficulty: 'intermediate'
 title: '计算机基础练习题'
 module: 'cs-fundamentals'
+category: 'CS Practice'
 description: '计算机基础核心知识点配套练习，涵盖体系结构、操作系统与网络。'
 ---
 

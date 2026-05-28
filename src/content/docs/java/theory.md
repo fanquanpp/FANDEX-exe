@@ -1,6 +1,7 @@
 ---
 title: 'Java 理论知识点'
 module: 'java'
+category: 'Java Theory'
 order: 220
 tags:
   - 'java'

@@ -2,7 +2,6 @@
 order: 70
 tags:
   - 'markdown'
-  - 'database'
 difficulty: 'intermediate'
 title: 'Markdown 代码块与语法高亮'
 module: 'markdown'

@@ -2,7 +2,6 @@
 order: 80
 tags:
   - 'javascript'
-  - 'web-api'
 difficulty: 'intermediate'
 title: 'DOM 操作与事件'
 module: 'javascript'

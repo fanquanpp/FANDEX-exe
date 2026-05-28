@@ -1,6 +1,7 @@
 ---
 title: 'JVM 内存模型'
 module: 'java'
+category: 'Java Advanced'
 order: 170
 tags:
   - 'java'

@@ -3,8 +3,6 @@ order: 80
 tags:
   - 'css'
   - 'performance'
-  - 'networking'
-  - 'web-api'
 difficulty: 'intermediate'
 title: 'CSS Canvas 绘图'
 module: 'css'

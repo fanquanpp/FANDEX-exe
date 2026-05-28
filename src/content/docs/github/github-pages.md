@@ -2,11 +2,6 @@
 order: 80
 tags:
   - 'github'
-  - 'database'
-  - 'networking'
-  - 'typescript'
-  - 'web-api'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'GitHub Pages 多站点方案'
 module: 'github'

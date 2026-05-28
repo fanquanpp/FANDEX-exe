@@ -2,8 +2,6 @@
 order: 110
 tags:
   - 'javascript'
-  - 'oop'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: 'JavaScript 原型与继承'
 module: 'javascript'

@@ -2,11 +2,7 @@
 order: 10
 tags:
   - 'mysql'
-  - 'security'
   - 'database'
-  - 'networking'
-  - 'memory'
-  - 'data-structure'
 difficulty: 'beginner'
 title: 'MySQL 概述与数据库设计'
 module: 'mysql'

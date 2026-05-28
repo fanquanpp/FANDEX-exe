@@ -2,11 +2,6 @@
 order: 10
 tags:
   - 'vue3'
-  - 'networking'
-  - 'memory'
-  - 'typescript'
-  - 'reactive'
-  - 'css-layout'
 difficulty: 'beginner'
 title: '概述与环境'
 module: 'vue3'

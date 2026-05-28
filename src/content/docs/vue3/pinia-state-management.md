@@ -2,18 +2,11 @@
 order: 90
 tags:
   - 'vue3'
-  - 'oop'
-  - 'async'
-  - 'networking'
-  - 'functional'
-  - 'typescript'
-  - 'reactive'
-  - 'web-api'
 difficulty: 'intermediate'
 title: 'Pinia 状态管理详解'
 module: 'vue3'
 category: 'Vue3 Basics'
-description: 'Pinia 状态管理详解'
+description: 'Store 定义、状态读写、异步操作与插件机制。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

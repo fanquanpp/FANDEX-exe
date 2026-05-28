@@ -2,8 +2,6 @@
 order: 10
 tags:
   - 'javascript'
-  - 'data-structure'
-  - 'web-api'
 difficulty: 'beginner'
 title: 'JavaScript 概述与运行环境'
 module: 'javascript'

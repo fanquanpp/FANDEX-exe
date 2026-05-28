@@ -2,7 +2,6 @@
 order: 140
 tags:
   - 'java'
-  - 'oop'
 difficulty: 'intermediate'
 title: '泛型详解'
 module: 'java'

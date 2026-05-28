@@ -2,14 +2,11 @@
 order: 100
 tags:
   - 'vue3'
-  - 'typescript'
-  - 'css-layout'
-  - 'web-api'
 difficulty: 'intermediate'
 title: 'Vue Router 详解'
 module: 'vue3'
 category: 'Vue3 Basics'
-description: 'Vue Router 详解'
+description: '路由配置、导航守卫、懒加载与路由元信息。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

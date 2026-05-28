@@ -2,8 +2,6 @@
 order: 100
 tags:
   - 'cpp'
-  - 'memory'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: 'C++ STL 算法与函数对象'
 module: 'cpp'

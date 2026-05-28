@@ -2,8 +2,6 @@
 order: 30
 tags:
   - 'lua'
-  - 'async'
-  - 'data-structure'
 difficulty: 'beginner'
 title: '数据类型与 Table 详解'
 module: 'lua'

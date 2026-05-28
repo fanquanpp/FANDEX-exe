@@ -3,8 +3,6 @@ order: 10
 tags:
   - 'github'
   - 'security'
-  - 'database'
-  - 'git-workflow'
 difficulty: 'intermediate'
 title: '账户注册与双因素认证（2FA）'
 module: 'github'

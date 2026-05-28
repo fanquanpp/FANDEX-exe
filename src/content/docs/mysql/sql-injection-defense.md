@@ -2,13 +2,8 @@
 order: 170
 tags:
   - 'mysql'
-  - 'oop'
-  - 'design-patterns'
-  - 'testing'
   - 'security'
   - 'database'
-  - 'networking'
-  - 'functional'
 difficulty: 'advanced'
 title: 'SQL 注入防御策略'
 module: 'mysql'

@@ -3,9 +3,6 @@ order: 80
 tags:
   - 'project'
   - 'data-analysis'
-  - 'database'
-  - 'functional'
-  - 'math'
 difficulty: 'intermediate'
 title: '实战案例 -- 电商用户行为分析'
 module: 'data-analysis'

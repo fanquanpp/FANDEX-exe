@@ -2,10 +2,7 @@
 order: 20
 tags:
   - 'css'
-  - 'database'
-  - 'reactive'
   - 'css-layout'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'CSS3 盒模型详解'
 module: 'css'

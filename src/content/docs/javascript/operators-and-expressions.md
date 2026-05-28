@@ -2,7 +2,6 @@
 order: 40
 tags:
   - 'javascript'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '数据类型与运算符'
 module: 'javascript'

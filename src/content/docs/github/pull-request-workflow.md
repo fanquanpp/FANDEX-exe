@@ -2,8 +2,6 @@
 order: 70
 tags:
   - 'github'
-  - 'networking'
-  - 'git-workflow'
 difficulty: 'intermediate'
 title: 'Pull Request 完整协作流程'
 module: 'github'

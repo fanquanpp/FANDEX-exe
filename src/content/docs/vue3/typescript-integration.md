@@ -2,12 +2,7 @@
 order: 80
 tags:
   - 'vue3'
-  - 'oop'
-  - 'functional'
-  - 'memory'
   - 'typescript'
-  - 'reactive'
-  - 'css-layout'
 difficulty: 'intermediate'
 title: 'TypeScript 集成'
 module: 'vue3'

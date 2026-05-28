@@ -2,15 +2,7 @@
 order: 50
 tags:
   - 'html5'
-  - 'async'
-  - 'design-patterns'
-  - 'security'
-  - 'database'
-  - 'networking'
-  - 'memory'
-  - 'css-layout'
   - 'web-api'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'HTML5 离线存储与 Web API'
 module: 'html5'

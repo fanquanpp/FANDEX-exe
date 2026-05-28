@@ -2,15 +2,11 @@
 order: 20
 tags:
   - 'vue3'
-  - 'networking'
-  - 'typescript'
-  - 'reactive'
-  - 'devops'
 difficulty: 'beginner'
 title: 'Vue3 快速入门指南'
 module: 'vue3'
 category: 'Vue3 Basics'
-description: 'Vue3 快速入门指南'
+description: '从零搭建 Vue3 项目、开发工具与核心概念速览。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

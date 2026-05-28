@@ -2,10 +2,6 @@
 order: 30
 tags:
   - 'typescript'
-  - 'oop'
-  - 'async'
-  - 'functional'
-  - 'css-layout'
 difficulty: 'intermediate'
 title: '接口与类型别名'
 module: 'typescript'

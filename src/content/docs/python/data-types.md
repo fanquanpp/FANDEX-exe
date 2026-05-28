@@ -2,7 +2,6 @@
 order: 40
 tags:
   - 'python'
-  - 'database'
 difficulty: 'beginner'
 title: '基础数据类型'
 module: 'python'

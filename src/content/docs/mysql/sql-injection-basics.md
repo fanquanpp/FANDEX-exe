@@ -5,8 +5,6 @@ tags:
   - 'security'
   - 'performance'
   - 'database'
-  - 'networking'
-  - 'functional'
 difficulty: 'intermediate'
 title: 'SQL 注入基础与检测'
 module: 'mysql'

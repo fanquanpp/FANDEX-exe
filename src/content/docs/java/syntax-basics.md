@@ -2,7 +2,6 @@
 order: 30
 tags:
   - 'java'
-  - 'oop'
 difficulty: 'beginner'
 title: '程序结构与基本语法'
 module: 'java'

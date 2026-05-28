@@ -6,6 +6,7 @@ tags:
 difficulty: 'intermediate'
 title: '数据分析练习题'
 module: 'data-analysis'
+category: 'Data Analysis Practice'
 description: '数据分析核心知识点配套练习，涵盖 NumPy、Pandas 与可视化。'
 ---
 

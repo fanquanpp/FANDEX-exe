@@ -2,7 +2,6 @@
 order: 30
 tags:
   - 'algorithm'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '搜索算法'
 module: 'algorithm'

@@ -2,10 +2,7 @@
 order: 120
 tags:
   - 'mysql'
-  - 'security'
   - 'database'
-  - 'memory'
-  - 'concurrency'
 difficulty: 'intermediate'
 title: 'MySQL 配置与运维'
 module: 'mysql'

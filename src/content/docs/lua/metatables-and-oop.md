@@ -2,9 +2,6 @@
 order: 50
 tags:
   - 'lua'
-  - 'async'
-  - 'database'
-  - 'typescript'
 difficulty: 'intermediate'
 title: '元表与面向对象编程'
 module: 'lua'

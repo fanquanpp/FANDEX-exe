@@ -3,9 +3,6 @@ order: 80
 tags:
   - 'algorithm'
   - 'performance'
-  - 'networking'
-  - 'data-structure'
-  - 'math'
 difficulty: 'intermediate'
 title: '贪心算法'
 module: 'algorithm'

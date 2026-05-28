@@ -2,7 +2,6 @@
 order: 70
 tags:
   - 'c'
-  - 'memory'
 difficulty: 'intermediate'
 title: '函数详解'
 module: 'c'

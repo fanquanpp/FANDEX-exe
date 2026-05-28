@@ -3,10 +3,10 @@ order: 120
 tags:
   - 'typescript'
   - 'exercises'
-  - 'oop'
 difficulty: 'intermediate'
 title: 'TypeScript 练习题'
 module: 'typescript'
+category: 'TS Practice'
 description: 'TypeScript 核心知识点配套练习，涵盖类型系统与泛型。'
 ---
 

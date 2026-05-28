@@ -3,7 +3,6 @@ order: 140
 tags:
   - 'javascript'
   - 'performance'
-  - 'data-structure'
 difficulty: 'advanced'
 title: 'Node.js 高级特性与性能优化'
 module: 'javascript'

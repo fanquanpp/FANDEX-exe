@@ -2,16 +2,7 @@
 order: 110
 tags:
   - 'vue3'
-  - 'async'
   - 'performance'
-  - 'database'
-  - 'networking'
-  - 'functional'
-  - 'typescript'
-  - 'reactive'
-  - 'data-structure'
-  - 'web-api'
-  - 'devops'
 difficulty: 'advanced'
 title: '性能优化'
 module: 'vue3'

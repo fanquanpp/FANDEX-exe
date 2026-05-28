@@ -2,9 +2,6 @@
 order: 30
 tags:
   - 'css'
-  - 'memory'
-  - 'css-layout'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'CSS3 选择器系统'
 module: 'css'

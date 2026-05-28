@@ -3,8 +3,6 @@ order: 110
 tags:
   - 'python'
   - 'oop'
-  - 'design-patterns'
-  - 'typescript'
 difficulty: 'intermediate'
 title: '面向对象编程'
 module: 'python'

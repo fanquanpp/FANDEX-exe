@@ -2,9 +2,6 @@
 order: 60
 tags:
   - 'typescript'
-  - 'oop'
-  - 'networking'
-  - 'data-structure'
 difficulty: 'advanced'
 title: '高级类型与类型演算'
 module: 'typescript'

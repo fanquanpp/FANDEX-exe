@@ -2,8 +2,6 @@
 order: 90
 tags:
   - 'github'
-  - 'design-patterns'
-  - 'networking'
   - 'devops'
 difficulty: 'intermediate'
 title: 'GitHub Actions 与 CI/CD'

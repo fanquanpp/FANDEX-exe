@@ -3,7 +3,6 @@ order: 80
 tags:
   - 'cpp'
   - 'memory'
-  - 'data-structure'
 difficulty: 'advanced'
 title: 'C++ 内存管理'
 module: 'cpp'

@@ -2,9 +2,6 @@
 order: 60
 tags:
   - 'vue3'
-  - 'oop'
-  - 'database'
-  - 'typescript'
   - 'reactive'
 difficulty: 'intermediate'
 title: '响应式系统'

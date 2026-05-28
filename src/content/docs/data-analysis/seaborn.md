@@ -2,8 +2,6 @@
 order: 50
 tags:
   - 'data-analysis'
-  - 'database'
-  - 'networking'
 difficulty: 'intermediate'
 title: 'Seaborn -- 统计可视化、热力图与分布图'
 module: 'data-analysis'

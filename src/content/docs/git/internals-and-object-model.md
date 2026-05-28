@@ -2,13 +2,12 @@
 order: 70
 tags:
   - 'git'
-  - 'networking'
   - 'git-workflow'
 difficulty: 'advanced'
 title: 'Git 原理与对象模型'
 module: 'git'
 category: 'Git Basics'
-description: 'Git 原理与对象模型'
+description: 'Git 底层对象模型、引用机制与存储原理。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

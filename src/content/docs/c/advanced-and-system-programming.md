@@ -3,9 +3,7 @@ order: 130
 tags:
   - 'c'
   - 'networking'
-  - 'memory'
   - 'concurrency'
-  - 'data-structure'
 difficulty: 'advanced'
 title: 'C 语言高级特性与系统编程'
 module: 'c'

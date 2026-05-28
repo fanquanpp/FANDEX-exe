@@ -2,10 +2,6 @@
 order: 20
 tags:
   - 'data-analysis'
-  - 'database'
-  - 'networking'
-  - 'data-structure'
-  - 'math'
 difficulty: 'intermediate'
 title: 'NumPy 数组操作、线性代数与随机数'
 module: 'data-analysis'

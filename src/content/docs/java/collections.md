@@ -2,7 +2,6 @@
 order: 100
 tags:
   - 'java'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '集合框架详解'
 module: 'java'

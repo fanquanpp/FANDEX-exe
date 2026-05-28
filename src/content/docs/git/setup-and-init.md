@@ -2,13 +2,12 @@
 order: 20
 tags:
   - 'git'
-  - 'database'
   - 'git-workflow'
 difficulty: 'beginner'
 title: 'Git 环境配置与初始化'
 module: 'git'
 category: 'Git Basics'
-description: 'Git 环境配置与初始化'
+description: 'Git 安装配置、用户信息设置与仓库初始化。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

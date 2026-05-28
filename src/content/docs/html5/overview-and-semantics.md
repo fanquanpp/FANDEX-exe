@@ -2,10 +2,6 @@
 order: 10
 tags:
   - 'html5'
-  - 'database'
-  - 'networking'
-  - 'css-layout'
-  - 'web-api'
 difficulty: 'beginner'
 title: 'HTML5 概述与核心特性'
 module: 'html5'

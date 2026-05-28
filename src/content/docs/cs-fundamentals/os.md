@@ -2,12 +2,6 @@
 order: 30
 tags:
   - 'cs-fundamentals'
-  - 'oop'
-  - 'design-patterns'
-  - 'networking'
-  - 'memory'
-  - 'concurrency'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '操作系统'
 module: 'cs-fundamentals'

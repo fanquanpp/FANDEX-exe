@@ -2,12 +2,6 @@
 order: 40
 tags:
   - 'html5'
-  - 'database'
-  - 'networking'
-  - 'memory'
-  - 'css-layout'
-  - 'web-api'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'HTML5 多媒体与 Canvas 绘图'
 module: 'html5'

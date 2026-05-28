@@ -3,8 +3,6 @@ order: 20
 tags:
   - 'mysql'
   - 'database'
-  - 'networking'
-  - 'devops'
 difficulty: 'beginner'
 title: 'MySQL 环境搭建'
 module: 'mysql'

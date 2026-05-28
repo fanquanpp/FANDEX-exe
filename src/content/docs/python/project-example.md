@@ -3,15 +3,10 @@ order: 140
 tags:
   - 'python'
   - 'project'
-  - 'async'
-  - 'database'
-  - 'networking'
-  - 'css-layout'
-  - 'devops'
-  - 'math'
 difficulty: 'intermediate'
 title: 'Python 项目示例：网页爬虫与数据分析'
 module: 'python'
+category: 'Python Practice'
 description: '综合运用 requests、BeautifulSoup 与 pandas 的爬虫项目。'
 ---
 

@@ -3,13 +3,10 @@ order: 140
 tags:
   - 'vue3'
   - 'exercises'
-  - 'async'
-  - 'functional'
-  - 'reactive'
-  - 'web-api'
 difficulty: 'intermediate'
 title: 'Vue3 练习题'
 module: 'vue3'
+category: 'Vue3 Practice'
 description: 'Vue3 核心知识点配套练习，涵盖响应式、组件与路由。'
 ---
 

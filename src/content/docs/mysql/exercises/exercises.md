@@ -7,6 +7,7 @@ tags:
 difficulty: 'intermediate'
 title: 'MySQL 练习题'
 module: 'mysql'
+category: 'MySQL Practice'
 description: 'MySQL 核心知识点配套练习，涵盖 SQL、索引与事务。'
 ---
 

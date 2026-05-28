@@ -2,7 +2,6 @@
 order: 80
 tags:
   - 'typescript'
-  - 'oop'
 difficulty: 'intermediate'
 title: 'TypeScript 工程化配置'
 module: 'typescript'

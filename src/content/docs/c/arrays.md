@@ -2,7 +2,6 @@
 order: 80
 tags:
   - 'c'
-  - 'memory'
 difficulty: 'intermediate'
 title: '数组详解'
 module: 'c'

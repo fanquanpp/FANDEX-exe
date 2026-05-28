@@ -2,8 +2,6 @@
 order: 60
 tags:
   - 'algorithm'
-  - 'networking'
-  - 'memory'
   - 'data-structure'
 difficulty: 'intermediate'
 title: '树'

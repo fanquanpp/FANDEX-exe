@@ -2,9 +2,6 @@
 order: 20
 tags:
   - 'python'
-  - 'async'
-  - 'testing'
-  - 'networking'
 difficulty: 'beginner'
 title: '程序结构与基本语法'
 module: 'python'

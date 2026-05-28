@@ -2,9 +2,6 @@
 order: 40
 tags:
   - 'data-analysis'
-  - 'database'
-  - 'css-layout'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: 'Matplotlib -- 折线图、柱状图、散点图与子图'
 module: 'data-analysis'

@@ -2,10 +2,7 @@
 order: 40
 tags:
   - 'css'
-  - 'database'
-  - 'memory'
   - 'css-layout'
-  - 'devops'
 difficulty: 'intermediate'
 title: '传统布局技术'
 module: 'css'

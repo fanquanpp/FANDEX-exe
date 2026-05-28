@@ -2,7 +2,6 @@
 order: 50
 tags:
   - 'c'
-  - 'memory'
 difficulty: 'intermediate'
 title: '运算符与表达式'
 module: 'c'

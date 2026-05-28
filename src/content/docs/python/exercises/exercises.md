@@ -6,6 +6,7 @@ tags:
 difficulty: 'intermediate'
 title: 'Python 练习题'
 module: 'python'
+category: 'Python Practice'
 description: 'Python 核心知识点配套练习，涵盖数据结构、OOP 与异常处理。'
 ---
 

@@ -2,9 +2,7 @@
 order: 50
 tags:
   - 'css'
-  - 'memory'
   - 'css-layout'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'CSS3 Flexbox 弹性布局'
 module: 'css'

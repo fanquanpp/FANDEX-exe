@@ -1,6 +1,7 @@
 ---
 title: '算法理论知识点'
 module: 'algorithm'
+category: 'Algorithm Theory'
 order: 110
 tags:
   - 'algorithm'

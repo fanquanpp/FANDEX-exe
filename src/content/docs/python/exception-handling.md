@@ -2,11 +2,6 @@
 order: 120
 tags:
   - 'python'
-  - 'oop'
-  - 'security'
-  - 'database'
-  - 'networking'
-  - 'memory'
 difficulty: 'intermediate'
 title: '异常处理'
 module: 'python'

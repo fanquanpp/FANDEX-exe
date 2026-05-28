@@ -2,12 +2,6 @@
 order: 70
 tags:
   - 'vue3'
-  - 'async'
-  - 'functional'
-  - 'memory'
-  - 'reactive'
-  - 'data-structure'
-  - 'web-api'
 difficulty: 'intermediate'
 title: '组件系统'
 module: 'vue3'

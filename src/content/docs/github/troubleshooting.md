@@ -2,10 +2,6 @@
 order: 100
 tags:
   - 'github'
-  - 'security'
-  - 'database'
-  - 'networking'
-  - 'git-workflow'
 difficulty: 'intermediate'
 title: '常见问题排查'
 module: 'github'

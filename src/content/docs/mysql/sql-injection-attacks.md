@@ -4,7 +4,6 @@ tags:
   - 'mysql'
   - 'performance'
   - 'database'
-  - 'networking'
 difficulty: 'advanced'
 title: 'SQL 注入攻击类型与实战'
 module: 'mysql'

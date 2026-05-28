@@ -5,9 +5,6 @@ order: 130
 tags:
   - 'typescript'
   - 'theory'
-  - 'oop'
-  - 'design-patterns'
-  - 'devops'
 difficulty: 'intermediate'
 description: '类型系统原理、编译流程与结构化类型机制。'
 ---

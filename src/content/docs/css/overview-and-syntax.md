@@ -2,10 +2,6 @@
 order: 10
 tags:
   - 'css'
-  - 'database'
-  - 'memory'
-  - 'css-layout'
-  - 'devops'
 difficulty: 'beginner'
 title: 'CSS3 概述与基本语法'
 module: 'css'

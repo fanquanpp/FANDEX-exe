@@ -4,8 +4,6 @@ tags:
   - 'mysql'
   - 'performance'
   - 'database'
-  - 'devops'
-  - 'math'
 difficulty: 'advanced'
 title: '索引原理与性能优化'
 module: 'mysql'

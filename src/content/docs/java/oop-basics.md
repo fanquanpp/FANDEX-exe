@@ -3,8 +3,6 @@ order: 110
 tags:
   - 'java'
   - 'oop'
-  - 'memory'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '面向对象编程'
 module: 'java'

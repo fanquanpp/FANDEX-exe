@@ -2,16 +2,11 @@
 order: 40
 tags:
   - 'vue3'
-  - 'typescript'
-  - 'reactive'
-  - 'css-layout'
-  - 'web-api'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'Vue3 指令系统'
 module: 'vue3'
 category: 'Vue3 Basics'
-description: 'Vue3 指令系统'
+description: '内置指令、自定义指令与指令钩子函数。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

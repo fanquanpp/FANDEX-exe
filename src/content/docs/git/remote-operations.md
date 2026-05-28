@@ -2,13 +2,12 @@
 order: 50
 tags:
   - 'git'
-  - 'networking'
   - 'git-workflow'
 difficulty: 'intermediate'
 title: 'Git 远程仓库操作'
 module: 'git'
 category: 'Git Basics'
-description: 'Git 远程仓库操作'
+description: '远程仓库关联、推送拉取与协作工作流。'
 author: 'fanquanpp'
 updated: 2026-05-03
 ---

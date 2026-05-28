@@ -2,7 +2,6 @@
 order: 60
 tags:
   - 'git'
-  - 'networking'
   - 'git-workflow'
 difficulty: 'advanced'
 title: 'Git 钩子与 Git LFS'

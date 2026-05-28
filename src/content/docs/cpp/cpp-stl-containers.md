@@ -2,7 +2,6 @@
 order: 90
 tags:
   - 'cpp'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: 'C++ STL 容器与迭代器'
 module: 'cpp'

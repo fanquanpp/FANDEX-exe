@@ -3,8 +3,6 @@ order: 10
 tags:
   - 'cpp'
   - 'performance'
-  - 'memory'
-  - 'devops'
 difficulty: 'beginner'
 title: 'C++ 概述与现代标准'
 module: 'cpp'

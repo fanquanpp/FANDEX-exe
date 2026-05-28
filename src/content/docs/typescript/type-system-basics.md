@@ -2,11 +2,6 @@
 order: 20
 tags:
   - 'typescript'
-  - 'oop'
-  - 'networking'
-  - 'data-structure'
-  - 'web-api'
-  - 'devops'
 difficulty: 'intermediate'
 title: '基础类型系统'
 module: 'typescript'

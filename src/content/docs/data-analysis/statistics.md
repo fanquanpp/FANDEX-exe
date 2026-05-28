@@ -2,8 +2,6 @@
 order: 60
 tags:
   - 'data-analysis'
-  - 'networking'
-  - 'math'
 difficulty: 'intermediate'
 title: '统计学 -- 描述统计、推断统计与假设检验'
 module: 'data-analysis'

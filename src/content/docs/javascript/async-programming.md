@@ -3,8 +3,6 @@ order: 100
 tags:
   - 'javascript'
   - 'async'
-  - 'data-structure'
-  - 'web-api'
 difficulty: 'intermediate'
 title: '异步编程'
 module: 'javascript'

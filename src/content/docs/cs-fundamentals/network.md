@@ -8,9 +8,7 @@ order: 40
 tags:
   - 'cs-fundamentals'
   - 'computer-science---networking'
-  - 'database'
   - 'networking'
-  - 'memory'
 difficulty: 'intermediate'
 ---
 

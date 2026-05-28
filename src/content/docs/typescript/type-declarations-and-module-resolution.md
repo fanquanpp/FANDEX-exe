@@ -2,7 +2,6 @@
 order: 70
 tags:
   - 'typescript'
-  - 'oop'
 difficulty: 'intermediate'
 title: 'TypeScript 类型声明与模块解析'
 module: 'typescript'

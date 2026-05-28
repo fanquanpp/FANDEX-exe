@@ -2,9 +2,6 @@
 order: 70
 tags:
   - 'python'
-  - 'design-patterns'
-  - 'functional'
-  - 'css-layout'
 difficulty: 'intermediate'
 title: '函数详解'
 module: 'python'

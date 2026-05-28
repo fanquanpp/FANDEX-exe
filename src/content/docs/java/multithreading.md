@@ -3,7 +3,6 @@ order: 160
 tags:
   - 'java'
   - 'concurrency'
-  - 'data-structure'
 difficulty: 'advanced'
 title: '多线程基础'
 module: 'java'

@@ -2,13 +2,6 @@
 order: 60
 tags:
   - 'html5'
-  - 'oop'
-  - 'async'
-  - 'database'
-  - 'networking'
-  - 'functional'
-  - 'web-api'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'Web Components 与 PWA 开发'
 module: 'html5'

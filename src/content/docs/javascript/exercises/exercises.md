@@ -6,6 +6,7 @@ tags:
 difficulty: 'intermediate'
 title: 'JavaScript 练习题'
 module: 'javascript'
+category: 'JS Practice'
 description: 'JavaScript 核心知识点配套练习，涵盖闭包、异步与 DOM。'
 ---
 

@@ -3,17 +3,10 @@ order: 130
 tags:
   - 'vue3'
   - 'project'
-  - 'async'
-  - 'database'
-  - 'functional'
-  - 'memory'
-  - 'typescript'
-  - 'reactive'
-  - 'css-layout'
-  - 'web-api'
 difficulty: 'intermediate'
 title: 'Vue3 项目示例：个人博客站点'
 module: 'vue3'
+category: 'Vue3 Practice'
 description: '综合运用组合式 API、Pinia 与 Vue Router 的个人博客项目。'
 ---
 

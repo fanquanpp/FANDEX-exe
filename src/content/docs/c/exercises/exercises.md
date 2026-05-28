@@ -3,10 +3,10 @@ order: 150
 tags:
   - 'c'
   - 'exercises'
-  - 'memory'
 difficulty: 'intermediate'
 title: 'C 语言练习题'
 module: 'c'
+category: 'C Practice'
 description: 'C 语言核心知识点配套练习，涵盖指针、内存、控制流等。'
 ---
 

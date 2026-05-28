@@ -3,10 +3,10 @@ order: 120
 tags:
   - 'algorithm'
   - 'exercises'
-  - 'git-workflow'
 difficulty: 'intermediate'
 title: '算法练习题'
 module: 'algorithm'
+category: 'Algorithm Practice'
 description: '算法核心知识点配套练习，涵盖排序、图论与动态规划。'
 ---
 

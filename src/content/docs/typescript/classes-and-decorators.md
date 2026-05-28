@@ -2,12 +2,6 @@
 order: 50
 tags:
   - 'typescript'
-  - 'oop'
-  - 'design-patterns'
-  - 'database'
-  - 'functional'
-  - 'css-layout'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: '类与装饰器'
 module: 'typescript'

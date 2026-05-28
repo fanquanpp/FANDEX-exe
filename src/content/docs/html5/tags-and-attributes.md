@@ -2,9 +2,6 @@
 order: 20
 tags:
   - 'html5'
-  - 'database'
-  - 'css-layout'
-  - 'devops'
 difficulty: 'intermediate'
 title: 'HTML5 基础标签与全局属性'
 module: 'html5'

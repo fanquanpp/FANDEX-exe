@@ -3,7 +3,6 @@ order: 90
 tags:
   - 'javascript'
   - 'performance'
-  - 'web-api'
 difficulty: 'intermediate'
 title: 'JavaScript 模块化'
 module: 'javascript'

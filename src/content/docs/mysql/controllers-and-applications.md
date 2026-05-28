@@ -2,11 +2,7 @@
 order: 140
 tags:
   - 'mysql'
-  - 'oop'
-  - 'design-patterns'
   - 'database'
-  - 'networking'
-  - 'data-structure'
 difficulty: 'intermediate'
 title: 'MySQL 控制器与应用'
 module: 'mysql'

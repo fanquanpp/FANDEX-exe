@@ -12,20 +12,6 @@ author: 'fanquanpp'
 updated: 2026-05-03
 ---
 
-## 目录
-
-1. [性能优化概述 | Performance Optimization Overview](#性能优化概述-|-performance-optimization-overview)
-2. [渲染性能优化 | Rendering Performance Optimization](#渲染性能优化-|-rendering-performance-optimization)
-3. [响应式性能优化 | Reactive Performance Optimization](#响应式性能优化-|-reactive-performance-optimization)
-4. [网络性能优化 | Network Performance Optimization](#网络性能优化-|-network-performance-optimization)
-5. [构建优化 | Build Optimization](#构建优化-|-build-optimization)
-6. [性能监控与分析 | Performance Monitoring and Analysis](#性能监控与分析-|-performance-monitoring-and-analysis)
-7. [最佳实践 | Best Practices](#最佳实践-|-best-practices)
-8. [示例 | Examples](#示例-|-examples)
-9. [小结 | Summary](#小结-|-summary)
-
----
-
 ## 1. 性能优化概述 | Performance Optimization Overview
 
 Vue3 应用的性能优化是开发过程中的重要环节，它直接影响用户体验和应用的可扩展性。Vue3 本身已经做了很多性能优化，但在实际开发中，我们仍然需要注意一些性能问题，以确保应用的流畅运行。

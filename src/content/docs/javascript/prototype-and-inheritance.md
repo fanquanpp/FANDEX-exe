@@ -10,20 +10,6 @@ description: '原型链、构造函数、class 语法与继承模式。'
 author: 'Anonymous'
 ---
 
-## 目录
-
-1. [原型与原型链](#原型与原型链)
-2. [构造函数与 `new`](#构造函数与-`new`)
-3. [`__proto__`、`prototype`、`constructor` 三角关系](#protoprototypeconstructor-三角关系)
-4. [`Object.create()` 与 `Object.setPrototypeOf()`](#objectcreate-与-objectsetprototypeof)
-5. [继承的常见实现](#继承的常见实现)
-6. [属性查找、遮蔽与删除](#属性查找遮蔽与删除)
-7. [原型链判断方法](#原型链判断方法)
-8. [工程实践与性能](#工程实践与性能)
-9. [安全注意：原型污染](#安全注意：原型污染)
-
----
-
 ## 1. 原型与原型链 (Prototype & Prototype Chain)
 
 ### 1.1 什么是原型

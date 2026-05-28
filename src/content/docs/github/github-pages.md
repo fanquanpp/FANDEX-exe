@@ -10,24 +10,6 @@ description: 'GitHub Pages 静态站点部署方案：Jekyll、VitePress、Hugo 
 author: 'Anonymous'
 ---
 
-## 目录
-
-1. [背景](#背景)
-2. [GitHub Pages 概述](#github-pages-概述)
-3. [静态站点生成器对比](#静态站点生成器对比)
-4. [部署方式](#部署方式)
-5. [方案 A：Jekyll](#方案-a：jekyll)
-6. [方案 B：VitePress](#方案-b：vitepress)
-7. [方案 C：Hugo](#方案-c：hugo)
-8. [自定义域名设置](#自定义域名设置)
-9. [常见问题与解决方案](#常见问题与解决方案)
-10. [最佳实践](#最佳实践)
-11. [实际应用案例](#实际应用案例)
-12. [与其他静态站点托管服务对比](#与其他静态站点托管服务对比)
-13. [延伸阅读](#延伸阅读)
-
----
-
 ## 1. 背景
 
 **GitHub Pages** 可从分支或 **GitHub Actions** 发布静态文件到 `*.github.io` 或自定义域名。常见生成器：**Jekyll（Ruby）**、**VitePress（Vite + Vue 文档框架）**、**Hugo（Go）**。三者均输出 HTML/CSS/JS，差异在 **模板语言**、**构建速度** 与 **生态**。

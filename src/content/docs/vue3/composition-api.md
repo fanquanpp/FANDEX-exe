@@ -11,22 +11,6 @@ author: 'fanquanpp'
 updated: 2026-05-03
 ---
 
-## 目录
-
-1. [组合式 API 概述 | Composition API Overview](#组合式-api-概述-|-composition-api-overview)
-2. [setup 函数 | Setup Function](#setup-函数-|-setup-function)
-3. [响应式 API | Reactive APIs](#响应式-api-|-reactive-apis)
-4. [生命周期钩子 | Lifecycle Hooks](#生命周期钩子-|-lifecycle-hooks)
-5. [组合函数 | Composables](#组合函数-|-composables)
-6. [依赖注入 | Dependency Injection](#依赖注入-|-dependency-injection)
-7. [模板引用 | Template Refs](#模板引用-|-template-refs)
-8. [响应式工具 | Reactive Utilities](#响应式工具-|-reactive-utilities)
-9. [最佳实践 | Best Practices](#最佳实践-|-best-practices)
-10. [示例 | Examples](#示例-|-examples)
-11. [小结 | Summary](#小结-|-summary)
-
----
-
 ## 1. 组合式 API 概述 | Composition API Overview
 
 组合式 API 是 Vue3 引入的新特性，它提供了一种新的方式来组织组件逻辑，使代码更易于维护和复用。与选项式 API（Options API）相比，组合式 API 具有以下优势：

@@ -11,22 +11,6 @@ description: 'GitHub Actions workflow 语法、市场使用、CI/CD 示例（Nod
 author: 'Anonymous'
 ---
 
-## 目录
-
-1. [背景](#背景)
-2. [GitHub Actions 核心概念](#github-actions-核心概念)
-3. [工作流配置详解](#工作流配置详解)
-4. [GitHub Marketplace 指南](#github-marketplace-指南)
-5. [完整 CI/CD 示例](#完整-ci/cd-示例)
-6. [环境变量与密钥管理](#环境变量与密钥管理)
-7. [常见问题与解决方案](#常见问题与解决方案)
-8. [最佳实践](#最佳实践)
-9. [实际应用案例](#实际应用案例)
-10. [与其他 CI/CD 工具对比](#与其他-ci/cd-工具对比)
-11. [延伸阅读](#延伸阅读)
-
----
-
 ## 1. 背景
 
 **GitHub Actions** 是内置于仓库的 **CI/CD（持续集成/持续交付）** 引擎：用 **YAML** 描述 **workflow（工作流）**，在 **runner（运行器）** 上执行 **job（任务）**。**GitHub Marketplace** 提供可复用的 **Action（动作）** 封装常见步骤。

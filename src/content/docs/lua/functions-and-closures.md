@@ -12,17 +12,6 @@ author: 'fanquanpp'
 updated: 2026-05-03
 ---
 
-## 目录
-
-1. [函数基础 | Function Basics](#函数基础-|-function-basics)
-2. [闭包 | Closures](#闭包-|-closures)
-3. [高阶函数 | Higher-Order Functions](#高阶函数-|-higher-order-functions)
-4. [尾调用优化 | Tail Call Optimization](#尾调用优化-|-tail-call-optimization)
-5. [实践案例 | Practical Examples](#实践案例-|-practical-examples)
-6. [总结 | Summary](#总结-|-summary)
-
----
-
 ## 1. 函数基础 | Function Basics
 
 ### 1.1 函数定义与调用

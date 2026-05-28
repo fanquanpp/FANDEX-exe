@@ -12,19 +12,6 @@ author: 'fanquanpp'
 updated: 2026-05-03
 ---
 
-## 目录
-
-1. [Canvas 概述 | Canvas Overview](#canvas-概述-|-canvas-overview)
-2. [Canvas 基础 | Canvas Basics](#canvas-基础-|-canvas-basics)
-3. [Canvas 进阶 | Canvas Advanced](#canvas-进阶-|-canvas-advanced)
-4. [Canvas 动画 | Canvas Animation](#canvas-动画-|-canvas-animation)
-5. [Canvas 实战示例 | Canvas Practical Examples](#canvas-实战示例-|-canvas-practical-examples)
-6. [Canvas 性能优化 | Canvas Performance Optimization](#canvas-性能优化-|-canvas-performance-optimization)
-7. [Canvas 最佳实践 | Canvas Best Practices](#canvas-最佳实践-|-canvas-best-practices)
-8. [总结 | Summary](#总结-|-summary)
-
----
-
 ## 1. Canvas 概述 | Canvas Overview
 
 Canvas 是 HTML5 提供的一个绘图 API，通过 JavaScript 可以在网页上绘制各种图形、动画和交互效果。Canvas 元素提供了一个矩形区域，我们可以使用各种绘图命令在这个区域内绘制内容。

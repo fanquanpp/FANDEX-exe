@@ -2,7 +2,11 @@
 import { getCollection } from 'astro:content'
 import { getModule } from '@/lib/modules'
 
-const { moduleId, currentSlug } = Astro.props as { moduleId: string; currentSlug?: string }
+const { moduleId, currentSlug, headings } = Astro.props as {
+  moduleId: string
+  currentSlug?: string
+  headings?: { depth: number; slug: string; text: string }[]
+}
 
 const docs = await getCollection('docs', ({ data }) => data.module === moduleId)
 const sorted = docs.sort((a, b) => (a.data.order || 0) - (b.data.order || 0))
@@ -12,6 +16,8 @@ function docSlug(id: string) { return (id.split('/').pop() || id).replace(/\.md$
 
 const currentPath = Astro.url.pathname
 const base = import.meta.env.BASE_URL
+const visibleHeadings = (headings || []).filter((h) => h.depth >= 2 && h.depth <= 3)
+const hasHeadings = visibleHeadings.length > 0
 ---
 
 <aside class="app-sidebar sidebar-component" id="module-sidebar">
@@ -28,6 +34,13 @@ const base = import.meta.env.BASE_URL
       <span class="sidebar-module-title">{meta?.title || moduleId}</span>
     </div>
 
+    {hasHeadings && (
+      <div class="sidebar-toggle-group" id="sidebar-toggle-group">
+        <button class="sidebar-toggle-btn active" id="sidebar-toggle-chapters" data-panel="chapters">章节</button>
+        <button class="sidebar-toggle-btn" id="sidebar-toggle-outline" data-panel="outline">资料</button>
+      </div>
+    )}
+
     <a href={base} class="sidebar-back">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
         <polyline points="18 6 6 12 18 18" />
@@ -35,20 +48,34 @@ const base = import.meta.env.BASE_URL
       <span>返回首页</span>
     </a>
 
-    <ul class="file-list">
-      {sorted.map(doc => {
-        const slug = docSlug(doc.id)
-        const href = `${base}${moduleId}/${slug}`
-        const isActive = currentPath === href || currentPath === href + '/' || (currentSlug && currentSlug === slug)
-        return (
-          <li>
-            <a href={href} class={`sidebar-file-link${isActive ? ' active' : ''}`}>
-              {doc.data.title}
-            </a>
-          </li>
-        )
-      })}
-    </ul>
+    <div class="sidebar-panel" id="sidebar-panel-chapters">
+      <ul class="file-list">
+        {sorted.map(doc => {
+          const slug = docSlug(doc.id)
+          const href = `${base}${moduleId}/${slug}`
+          const isActive = currentPath === href || currentPath === href + '/' || (currentSlug && currentSlug === slug)
+          return (
+            <li>
+              <a href={href} class={`sidebar-file-link${isActive ? ' active' : ''}`}>
+                {doc.data.title}
+              </a>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+
+    {hasHeadings && (
+      <div class="sidebar-panel" id="sidebar-panel-outline" style="display:none">
+        <ul class="outline-list">
+          {visibleHeadings.map((h) => (
+            <li style={`padding-left: ${(h.depth - 2) * 12}px`}>
+              <a href={`#${h.slug}`} class="outline-link" data-outline-slug={h.slug}>{h.text}</a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
 
     <div class="sidebar-glossary-link">
       <a href={`${base}${moduleId}/glossary`} class="sidebar-file-link">
@@ -107,6 +134,39 @@ const base = import.meta.env.BASE_URL
   color: var(--color-text);
 }
 
+.sidebar-toggle-group {
+  display: flex;
+  gap: 0;
+  padding: 0 var(--spacing-md);
+  margin-bottom: var(--spacing-xs);
+}
+
+.sidebar-toggle-btn {
+  flex: 1;
+  padding: 4px 0;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-family: var(--font-display);
+  font-size: 0.78em;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sidebar-toggle-btn:first-child {
+  border-right: none;
+}
+
+.sidebar-toggle-btn.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.sidebar-toggle-btn:not(.active):hover {
+  color: var(--color-primary);
+}
+
 .sidebar-back {
   display: flex;
   align-items: center;
@@ -120,6 +180,33 @@ const base = import.meta.env.BASE_URL
 
 .sidebar-back:hover {
   color: var(--color-primary);
+}
+
+.outline-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.outline-link {
+  display: block;
+  padding: 3px var(--spacing-md);
+  color: var(--color-text-secondary);
+  font-size: 0.82em;
+  line-height: 1.6;
+  transition: color var(--transition-fast);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outline-link:hover {
+  color: var(--color-primary);
+}
+
+.outline-link.active {
+  color: var(--color-primary);
+  font-weight: 500;
 }
 
 .sidebar-glossary-link {
@@ -141,5 +228,70 @@ const base = import.meta.env.BASE_URL
     closeBtn.addEventListener('click', () => {
       document.body.classList.remove('sidebar-open')
     })
+  }
+
+  const toggleGroup = document.getElementById('sidebar-toggle-group')
+  const chaptersBtn = document.getElementById('sidebar-toggle-chapters')
+  const outlineBtn = document.getElementById('sidebar-toggle-outline')
+  const chaptersPanel = document.getElementById('sidebar-panel-chapters')
+  const outlinePanel = document.getElementById('sidebar-panel-outline')
+
+  if (toggleGroup && chaptersBtn && outlineBtn && chaptersPanel && outlinePanel) {
+    function switchPanel(panel: string) {
+      if (panel === 'chapters') {
+        chaptersPanel.style.display = ''
+        outlinePanel.style.display = 'none'
+        chaptersBtn.classList.add('active')
+        outlineBtn.classList.remove('active')
+      } else {
+        chaptersPanel.style.display = 'none'
+        outlinePanel.style.display = ''
+        outlineBtn.classList.add('active')
+        chaptersBtn.classList.remove('active')
+      }
+    }
+
+    chaptersBtn.addEventListener('click', () => switchPanel('chapters'))
+    outlineBtn.addEventListener('click', () => switchPanel('outline'))
+  }
+
+  const outlineLinks = document.querySelectorAll('.outline-link[data-outline-slug]')
+  if (outlineLinks.length > 0) {
+    const headingElements: HTMLElement[] = []
+    outlineLinks.forEach(link => {
+      const slug = link.getAttribute('data-outline-slug')
+      if (slug) {
+        const el = document.getElementById(slug)
+        if (el) headingElements.push(el)
+      }
+    })
+
+    if (headingElements.length > 0) {
+      let activeSlug = ''
+      const mainEl = document.getElementById('app-main')
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              activeSlug = entry.target.id
+            }
+          })
+          outlineLinks.forEach(link => {
+            const slug = link.getAttribute('data-outline-slug')
+            if (slug === activeSlug) {
+              link.classList.add('active')
+            } else {
+              link.classList.remove('active')
+            }
+          })
+        },
+        {
+          root: mainEl || undefined,
+          rootMargin: '-80px 0px -60% 0px',
+          threshold: 0,
+        }
+      )
+      headingElements.forEach(el => observer.observe(el))
+    }
   }
 </script>

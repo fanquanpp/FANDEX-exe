@@ -12,27 +12,6 @@ author: 'fanquanpp'
 updated: 2026-05-03
 ---
 
-## 1 目录
-
-- [1. Git 概述](#1-git-概述)
-- [2. Git 核心特点](#2-git-核心特点)
-- [3. Git 基础概念](#3-git-基础概念)
-- [3.1 仓库（Repository）](#31-仓库 repository)
-- [3.2 工作区（Working Directory）](#32-工作区 working-directory)
-- [3.3 暂存区（Staging Area）](#33-暂存区 staging-area)
-- [3.4 版本库（Repository）](#34-版本库 repository)
-- [3.5 提交（Commit）](#35-提交 commit)
-- [3.6 分支（Branch）](#36-分支 branch)
-- [3.7 合并（Merge）](#37-合并 merge)
-- [3.8 远程（Remote）](#38-远程 remote)
-- [4. Git 安装与配置](#4-git-安装与配置)
-- [5. 基本 Git 命令](#5-基本-git-命令)
-- [6. 常见工作流程](#6-常见工作流程)
-- [7. 最佳实践](#7-最佳实践)
-- [8. 常见问题与解决方案](#8-常见问题与解决方案)
-- [9. 总结](#9-总结)
-  <a id="2"></a>
-
 ## 2 . Git 概述
 
 Git 是一个分布式版本控制系统，用于跟踪文件的变化，协调多人之间的工作。它是由 Linux 创始人 Linus Torvalds 于 2005 年创建的，现在被广泛用于软件开发和其他需要版本控制的场景。

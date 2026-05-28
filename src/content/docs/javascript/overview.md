@@ -10,21 +10,6 @@ description: 'JavaScript 发展历程、ECMAScript 标准与运行环境。'
 author: 'Anonymous'
 ---
 
-## 目录
-
-1. [JavaScript 概述](#javascript-概述)
-2. [运行环境](#运行环境)
-3. [环境配置](#环境配置)
-4. [ECMAScript 标准](#ecmascript-标准)
-5. [第一个 JavaScript 程序](#第一个-javascript-程序)
-6. [开发模式与最佳实践](#开发模式与最佳实践)
-7. [生态系统](#生态系统)
-8. [常见问题与解决方案](#常见问题与解决方案)
-9. [学习资源](#学习资源)
-10. [总结](#总结)
-
----
-
 ## 1. JavaScript 概述 (Overview)
 
 JavaScript 是一门具有函数优先特性的轻量级、解释型或即时编译型 (JIT) 的编程语言。最初由 **Brendan Eich** 在 1995 年为 Netscape 浏览器设计，最初名为 LiveScript，后因与 Sun Microsystems 的合作更名为 JavaScript。

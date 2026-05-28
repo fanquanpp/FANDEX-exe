@@ -10,16 +10,6 @@ description: 'audio/video 元素、Canvas API 与 SVG 基础。'
 author: 'Anonymous'
 ---
 
-## 目录
-
-1. [音视频支持](#音视频支持)
-2. [Canvas 绘图](#canvas-绘图)
-3. [SVG 绘图](#svg-绘图)
-4. [实际应用示例](#实际应用示例)
-5. [最佳实践](#最佳实践)
-
----
-
 ## 1. 音视频支持
 
 HTML5 提供了原生的音视频支持，不再需要依赖 Flash 插件，使网页能够直接播放音视频内容。

@@ -12,21 +12,6 @@ author: 'fanquanpp'
 updated: 2026-05-03
 ---
 
-## 目录
-
-1. [TypeScript 集成概述 | TypeScript Integration Overview](#typescript-集成概述-|-typescript-integration-overview)
-2. [环境设置 | Environment Setup](#环境设置-|-environment-setup)
-3. [基本类型使用 | Basic Type Usage](#基本类型使用-|-basic-type-usage)
-4. [Vue 组件中的 TypeScript | TypeScript in Vue Components](#vue-组件中的-typescript-|-typescript-in-vue-components)
-5. [组合式 API 与 TypeScript | Composition API with TypeScript](#组合式-api-与-typescript-|-composition-api-with-typescript)
-6. [路由与状态管理 | Routing and State Management](#路由与状态管理-|-routing-and-state-management)
-7. [工具类型 | Utility Types](#工具类型-|-utility-types)
-8. [最佳实践 | Best Practices](#最佳实践-|-best-practices)
-9. [示例 | Examples](#示例-|-examples)
-10. [小结 | Summary](#小结-|-summary)
-
----
-
 ## 1. TypeScript 集成概述 | TypeScript Integration Overview
 
 TypeScript 是 JavaScript 的超集，它添加了静态类型系统，提供了更好的代码提示、类型检查和代码重构能力。Vue3 对 TypeScript 提供了良好的支持，通过集成 TypeScript，可以提高代码的可维护性和类型安全性。

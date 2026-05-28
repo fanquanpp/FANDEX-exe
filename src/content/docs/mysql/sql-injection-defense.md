@@ -12,10 +12,6 @@ description: '参数化查询、ORM 防御、WAF 与安全编码实践。'
 author: 'Anonymous'
 ---
 
-4. [总结](#总结)
-
----
-
 ## 1. SQL 注入防御策略 (Defense Strategies)
 
 ### 1.1 核心防御：参数化查询（Prepared Statements）

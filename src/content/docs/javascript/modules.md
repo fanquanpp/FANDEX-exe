@@ -11,19 +11,6 @@ description: 'CommonJS、ES Modules 与模块打包工具。'
 author: 'Anonymous'
 ---
 
-## 目录
-
-1. [为什么需要模块化](#为什么需要模块化)
-2. [CommonJS（Node.js 传统模块）](#commonjsnodejs-传统模块)
-3. [ES Modules（ESM，浏览器与现代 Node）](#es-modulesesm浏览器与现代-node)
-4. [ESM vs CommonJS（关键差异）](#esm-vs-commonjs关键差异)
-5. [AMD 与 CMD（历史方案）](#amd-与-cmd历史方案)
-6. [模块打包工具](#模块打包工具)
-7. [Node.js 中的 ESM 实践](#nodejs-中的-esm-实践)
-8. [模块化最佳实践](#模块化最佳实践)
-
----
-
 ## 1. 为什么需要模块化 (Why Modules)
 
 ### 1.1 没有模块化的痛点

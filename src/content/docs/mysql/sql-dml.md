@@ -11,14 +11,6 @@ description: 'INSERT/UPDATE/DELETE、SELECT 基础与条件查询。'
 author: 'Anonymous'
 ---
 
-## 目录
-
-1. [SQL 概述](#sql-概述)
-2. [DML (数据操作语言)](#dml-数据操作语言)
-3. [DQL (数据查询语言)](#dql-数据查询语言)
-
----
-
 ## 1. SQL 概述
 
 ### 1.1 SQL 是什么

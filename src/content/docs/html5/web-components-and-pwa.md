@@ -11,28 +11,6 @@ author: 'fanquanpp'
 updated: 2026-05-03
 ---
 
-## 目录
-
-1. [Web Components 概述](#web-components-概述)
-2. [Custom Elements](#custom-elements)
-3. [Shadow DOM](#shadow-dom)
-4. [HTML Templates](#html-templates)
-5. [组件生命周期](#组件生命周期)
-6. [PWA (Progressive Web App) 概述](#pwa-progressive-web-app-概述)
-7. [PWA 配置](#pwa-配置)
-8. [Service Worker](#service-worker)
-9. [离线功能](#离线功能)
-10. [推送通知](#推送通知)
-11. [后台同步](#后台同步)
-12. [PWA 最佳实践](#pwa-最佳实践)
-13. [项目实战](#项目实战)
-14. [工具与库](#工具与库)
-15. [浏览器支持](#浏览器支持)
-16. [常见问题与解决方案](#常见问题与解决方案)
-17. [延伸阅读](#延伸阅读)
-
----
-
 ## 1. Web Components 概述
 
 Web Components 是一组 Web 平台 API，允许开发者创建可重用的自定义元素，这些元素可以在任何 HTML 页面中使用，无论使用什么框架。

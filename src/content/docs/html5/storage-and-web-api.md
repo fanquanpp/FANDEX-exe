@@ -11,19 +11,6 @@ description: 'localStorage、sessionStorage、IndexedDB 与 Web Workers。'
 author: 'Anonymous'
 ---
 
-## 目录
-
-1. [Web 存储](#web-存储)
-2. [地理定位](#地理定位)
-3. [Web Workers](#web-workers)
-4. [离线应用](#离线应用)
-5. [Fetch API](#fetch-api)
-6. [其他 Web API](#其他-web-api)
-7. [实际应用示例](#实际应用示例)
-8. [最佳实践](#最佳实践)
-
----
-
 ## 1. Web 存储 (Web Storage)
 
 Web Storage 提供了一种在浏览器中存储键值对数据的机制，相比 Cookie 具有更大的容量 (通常为 5MB+) 和更简单的 API。

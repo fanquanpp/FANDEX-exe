@@ -11,22 +11,6 @@ author: 'fanquanpp'
 updated: 2026-05-03
 ---
 
-## 目录
-
-1. [组件系统概述 | Component System Overview](#组件系统概述-|-component-system-overview)
-2. [单文件组件 | Single-File Components](#单文件组件-|-single-file-components)
-3. [组件的 props](#组件的-props)
-4. [组件的事件](#组件的事件)
-5. [组件的插槽](#组件的插槽)
-6. [组件的生命周期](#组件的生命周期)
-7. [组件的通信](#组件的通信)
-8. [组件的高级特性](#组件的高级特性)
-9. [组件的最佳实践](#组件的最佳实践)
-10. [示例 | Examples](#示例-|-examples)
-11. [小结 | Summary](#小结-|-summary)
-
----
-
 ## 1. 组件系统概述 | Component System Overview
 
 组件是 Vue3 应用的基本构建块，它允许我们将 UI 拆分为独立、可复用的部分。Vue3 的组件系统提供了一种清晰的方式来组织和管理应用的 UI 结构，使代码更加模块化、可维护。

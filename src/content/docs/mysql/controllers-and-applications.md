@@ -12,18 +12,6 @@ author: 'fanquanpp'
 updated: 2026-05-03
 ---
 
-## 目录
-
-1. [控制器概述 | Controller Overview](#控制器概述-|-controller-overview)
-2. [控制器实现方式 | Implementation Methods](#控制器实现方式-|-implementation-methods)
-3. [控制器设计模式 | Design Patterns](#控制器设计模式-|-design-patterns)
-4. [控制器与数据库交互 | Database Interaction](#控制器与数据库交互-|-database-interaction)
-5. [最佳实践 | Best Practices](#最佳实践-|-best-practices)
-6. [实例应用 | Practical Application](#实例应用-|-practical-application)
-7. [总结 | Summary](#总结-|-summary)
-
----
-
 ## 1. 控制器概述 | Controller Overview
 
 控制器是连接用户界面与数据库的中间层，负责处理用户请求、执行数据库操作、返回处理结果。在MySQL应用中，控制器扮演着重要的角色，确保数据操作的安全性、一致性和高效性。

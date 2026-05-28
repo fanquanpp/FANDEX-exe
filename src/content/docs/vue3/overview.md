@@ -11,18 +11,6 @@ author: 'fanquanpp'
 updated: 2026-05-03
 ---
 
-## 目录
-
-1. [Vue3 概述 | Vue3 Overview](#vue3-概述-|-vue3-overview)
-2. [环境搭建 | Environment Setup](#环境搭建-|-environment-setup)
-3. [第一个 Vue3 应用 | First Vue3 App](#第一个-vue3-应用-|-first-vue3-app)
-4. [开发工具推荐 | Recommended Tools](#开发工具推荐-|-recommended-tools)
-5. [学习资源 | Learning Resources](#学习资源-|-learning-resources)
-6. [常见问题 | Common Issues](#常见问题-|-common-issues)
-7. [小结 | Summary](#小结-|-summary)
-
----
-
 ## 1. Vue3 概述 | Vue3 Overview
 
 Vue3 是 Vue.js 框架的第三个主要版本，于 2020 年 9 月正式发布。它带来了许多重要的改进和新特性，包括：

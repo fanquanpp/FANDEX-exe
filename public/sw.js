@@ -1,5 +1,5 @@
-const CACHE_NAME = 'codex-v1';
-const BASE = '/MyNotebook/';
+const CACHE_NAME = 'fandex-v1';
+const BASE = '/FANDEX/';
 
 const PRECACHE_URLS = [BASE, BASE + 'data/glossary-index.json'];
 

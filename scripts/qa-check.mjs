@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 const DIST = 'dist';
 const SRC = 'src';
-const BASE = '/MyNotebook/';
+const BASE = '/FANDEX/';
 let errors = 0;
 let warnings = 0;
 
@@ -73,7 +73,7 @@ async function checkPagefindIndex() {
 
 async function checkBaseHref() {
   const indexHtml = await readFile(join(DIST, 'index.html'), 'utf-8');
-  const hasBase = indexHtml.includes(BASE) || indexHtml.includes('href="/MyNotebook/"');
+  const hasBase = indexHtml.includes(BASE) || indexHtml.includes('href="/FANDEX/"');
   if (hasBase) pass(`Base URL ${BASE} found in index.html`);
   else fail(`Base URL ${BASE} not found - links may be broken on GitHub Pages`);
 }
@@ -82,7 +82,7 @@ async function checkNoAbsoluteRootLinks() {
   let brokenCount = 0;
   await walkDir(DIST, '.html', async (full) => {
     const content = await readFile(full, 'utf-8');
-    const broken = content.match(/href="\/(?!MyNotebook)[^"]+"/g);
+    const broken = content.match(/href="\/(?!FANDEX)[^"]+"/g);
     if (broken) brokenCount += broken.length;
   });
   if (brokenCount === 0) pass('No absolute root links found');
@@ -120,7 +120,7 @@ async function checkDarkModeSupport() {
   await walkDir(DIST, '.html', async (full) => {
     const content = await readFile(full, 'utf-8');
     if (content.includes('data-theme')) hasDarkToggle = true;
-    if (content.includes('codex-theme')) hasFlashPrevention = true;
+    if (content.includes('fandex-theme')) hasFlashPrevention = true;
   });
   if (hasDarkToggle) pass('Dark mode toggle present');
   else fail('Dark mode toggle missing');
@@ -228,7 +228,7 @@ async function checkLazyLoading() {
 }
 
 console.log('\n+------------------------------------------+');
-console.log('|     CODEX PRE-LAUNCH QUALITY CHECK      |');
+console.log('|     FANDEX PRE-LAUNCH QUALITY CHECK      |');
 console.log('+------------------------------------------+\n');
 
 console.log('[Dimension 1: File Audit]');

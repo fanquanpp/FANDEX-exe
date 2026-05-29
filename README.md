@@ -1,8 +1,8 @@
-# CODEX 资料库
+# FANDEX
 
-综合技术自学资料库 -- 覆盖编程语言、Web 前端、数据库、数据分析、算法与计算机基础。
+综合技术自学资料库 (fanquanpp + memex) -- 覆盖编程语言、Web 前端、数据库、数据分析、算法与计算机基础。
 
-在线阅读: [fanquanpp.github.io/MyNotebook](https://fanquanpp.github.io/MyNotebook/)
+在线阅读: [fanquanpp.github.io/FANDEX](https://fanquanpp.github.io/FANDEX/)
 
 ---
 
@@ -120,16 +120,18 @@ npm run build
 ## 项目结构
 
 ```
-MyNotebook-main/
+FANDEX/
 ├── .github/workflows/deploy.yml   # GitHub Actions 自动部署
 ├── .husky/pre-commit               # Git pre-commit 钩子
 ├── public/                         # 静态资源
 │   ├── fonts/fonts.css             # 字体声明
 │   ├── data/glossary-index.json    # 术语索引
+│   ├── data/search-index.json      # 搜索索引
 │   ├── sw.js                       # Service Worker
 │   └── robots.txt                  # SEO
 ├── scripts/                        # 工具脚本
 │   ├── build-glossary-index.mjs    # 术语索引构建
+│   ├── build-search-index.mjs      # 搜索索引构建
 │   ├── clean-true-prefix.mjs       # Obsidian 导出残留清理
 │   ├── content-audit.mjs           # 内容质量审计
 │   └── qa-check.mjs                # 预发布质量检查

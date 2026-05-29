@@ -73,7 +73,7 @@ TypeScript 配置文件 `tsconfig.json`：
   },
   "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
   "references": [{ "path": "./tsconfig.node.json" }]
- True}
+ }
 ```
 
 ### 2.3 安装依赖
@@ -108,7 +108,7 @@ TypeScript 配置文件 `tsconfig.json`：
   Red,
   Green,
   Blue
- True}
+ }
  const color: Color = Color.Red
  // 任意类型
  const anything: any = 'anything'
@@ -119,66 +119,66 @@ TypeScript 配置文件 `tsconfig.json`：
  // 永不返回的函数
  function error(message: string): never {
   throw new Error(message)
- True}
+ }
 ```
 
 ### 3.2 接口
 
 ```typescript
- interface User {
-  id: number
-  name: string
-  email: string
-  age?: number // 可选属性
-  readonly createdAt: Date // 只读属性
- True}
- const user: User = {
+interface User {
+  id: number;
+  name: string;
+  email: string;
+  age?: number; // 可选属性
+  readonly createdAt: Date; // 只读属性
+}
+const user: User = {
   id: 1,
   name: 'John',
   email: 'john@example.com',
-  createdAt: new Date()
- True}
- // 函数接口
- interface GreetFunction {
-  (name: string): string
- True}
- const greet: GreetFunction = (name) => {
-  return `Hello, ${name}!`
- True}
+  createdAt: new Date(),
+};
+// 函数接口
+interface GreetFunction {
+  (name: string): string;
+}
+const greet: GreetFunction = (name) => {
+  return `Hello, ${name}!`;
+};
 ```
 
 ### 3.3 类型别名
 
 ```typescript
- type UserId = number
- type UserName = string
- type UserEmail = string
- type User = {
-  id: UserId
-  name: UserName
-  email: UserEmail
-  age?: number
-  readonly createdAt: Date
- True}
- // 联合类型
- type Status = 'active' | 'inactive' | 'pending'
- const userStatus: Status = 'active'
- // 交叉类型
- type Person = {
-  name: string
-  age: number
- True}
- type Employee = {
-  employeeId: number
-  department: string
- True}
- type EmployeePerson = Person & Employee
- const employee: EmployeePerson = {
+type UserId = number;
+type UserName = string;
+type UserEmail = string;
+type User = {
+  id: UserId;
+  name: UserName;
+  email: UserEmail;
+  age?: number;
+  readonly createdAt: Date;
+};
+// 联合类型
+type Status = 'active' | 'inactive' | 'pending';
+const userStatus: Status = 'active';
+// 交叉类型
+type Person = {
+  name: string;
+  age: number;
+};
+type Employee = {
+  employeeId: number;
+  department: string;
+};
+type EmployeePerson = Person & Employee;
+const employee: EmployeePerson = {
   name: 'John',
   age: 30,
   employeeId: 123,
-  department: 'Engineering'
- True}
+  department: 'Engineering',
+};
 ```
 
 ## 4. Vue 组件中的 TypeScript | TypeScript in Vue Components
@@ -203,15 +203,14 @@ const count: number = ref(0);
 const handleClick: () => void = () => {
   count.value++;
   console.log(`Count: ${count.value}`);
-  True;
 };
 </script>
 <style scoped>
 .component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
 </style>
 ```
 
@@ -230,7 +229,7 @@ defineProps<{
   title: string;
   message: string;
   count?: number;
-  True;
+  ;
 }>();
 </script>
 <!-- 或者使用接口 -->
@@ -239,7 +238,7 @@ interface Props {
   title: string;
   message: string;
   count?: number;
-  True;
+  ;
 }
 defineProps<Props>();
 </script>
@@ -257,12 +256,12 @@ defineProps<Props>();
 const emit = defineEmits<{
   (e: 'click', message: string): void;
   (e: 'custom', data: { id: number; name: string }): void;
-  True;
+  ;
 }>();
 const handleClick: () => void = () => {
   emit('click', 'Button clicked');
   emit('custom', { id: 1, name: 'Test' });
-  True;
+  ;
 };
 </script>
 ```
@@ -285,11 +284,11 @@ interface User {
  id: number
  name: string
  age?: number
-True}
+}
 const user = reactive<User>({
  id: 1,
  name: 'John'
-True})
+}
 </script>
 ```
 
@@ -308,7 +307,6 @@ const count = ref<number>(0);
 // 计算属性类型
 const doubleCount = computed<number>(() => {
   return count.value * 2;
-  True;
 });
 </script>
 ```
@@ -339,7 +337,6 @@ export function useCounter(initialValue: number = 0) {
     decrement,
     reset,
   };
-  True;
 }
 // 使用组合函数
 import { useCounter } from './composables/useCounter';
@@ -354,18 +351,18 @@ const { count, doubleCount, increment, decrement, reset } = useCounter(0);
  interface Theme {
   primary: string
   secondary: string
- True}
+ }
  const theme = ref<Theme>({
   primary: '#42b983',
   secondary: '#35495e'
- True})
+ }
  provide<Ref<Theme>>('theme', theme)
  // 子组件
  import { inject, Ref } from 'vue'
  interface Theme {
   primary: string
   secondary: string
- True}
+ }
  const theme = inject<Ref<Theme>>('theme')
 ```
 
@@ -393,11 +390,11 @@ const { count, doubleCount, increment, decrement, reset } = useCounter(0);
   component: () => import('../views/User.vue'),
   props:
   }
- True]
+ ]
  const router = createRouter({
   history: createWebHistory(),
   routes
- True})
+ }
  export default router
  // 组件中使用
  import { useRoute, useRouter } from 'vue-router'
@@ -419,7 +416,7 @@ const { count, doubleCount, increment, decrement, reset } = useCounter(0);
   id: number
   name: string
   email: string
- True}
+ }
  export const useUserStore = defineStore('user', () => {
   const user = ref<User | null>(null)
   const isLoggedIn = computed<boolean>(() => !!user.value)
@@ -435,7 +432,7 @@ const { count, doubleCount, increment, decrement, reset } = useCounter(0);
   login,
   logout
   }
- True})
+ }
  // 组件中使用
  import { useUserStore } from './stores/user'
  const userStore = useUserStore()
@@ -443,7 +440,7 @@ const { count, doubleCount, increment, decrement, reset } = useCounter(0);
   id: 1,
   name: 'John',
   email: 'john@example.com'
- True})
+ }
  console.log(userStore.isLoggedIn) //
 ```
 
@@ -452,42 +449,42 @@ const { count, doubleCount, increment, decrement, reset } = useCounter(0);
 ### 7.1 内置工具类型
 
 ```typescript
- // Partial<T> - 使所有属性可选
- interface User {
-  id: number
-  name: string
-  email: string
- True}
- const partialUser: Partial<User> = {
-  name: 'John'
- True}
- // Required<T> - 使所有属性必需
- const requiredUser: Required<User> = {
+// Partial<T> - 使所有属性可选
+interface User {
+  id: number;
+  name: string;
+  email: string;
+}
+const partialUser: Partial<User> = {
+  name: 'John',
+};
+// Required<T> - 使所有属性必需
+const requiredUser: Required<User> = {
   id: 1,
   name: 'John',
-  email: 'john@example.com'
- True}
- // Readonly<T> - 使所有属性只读
- const readonlyUser: Readonly<User> = {
+  email: 'john@example.com',
+};
+// Readonly<T> - 使所有属性只读
+const readonlyUser: Readonly<User> = {
   id: 1,
   name: 'John',
-  email: 'john@example.com'
- True}
- // Pick<T, K> - 从 T 中选取 K 个属性
- const pickedUser: Pick<User, 'name' | 'email'> = {
+  email: 'john@example.com',
+};
+// Pick<T, K> - 从 T 中选取 K 个属性
+const pickedUser: Pick<User, 'name' | 'email'> = {
   name: 'John',
-  email: 'john@example.com'
- True}
- // Omit<T, K> - 从 T 中排除 K 个属性
- const omittedUser: Omit<User, 'id'> = {
+  email: 'john@example.com',
+};
+// Omit<T, K> - 从 T 中排除 K 个属性
+const omittedUser: Omit<User, 'id'> = {
   name: 'John',
-  email: 'john@example.com'
- True}
- // Record<K, T> - 构建键为 K 类型，值为 T 类型的对象
- const userMap: Record<number, User> = {
+  email: 'john@example.com',
+};
+// Record<K, T> - 构建键为 K 类型，值为 T 类型的对象
+const userMap: Record<number, User> = {
   1: { id: 1, name: 'John', email: 'john@example.com' },
-  2: { id: 2, name: 'Jane', email: 'jane@example.com' }
- True}
+  2: { id: 2, name: 'Jane', email: 'jane@example.com' },
+};
 ```
 
 ### 7.2 自定义工具类型
@@ -567,41 +564,41 @@ type ReturnType<T extends (...args: any[]) => any> = T extends (...args: any[]) 
 defineProps<{
   variant: 'primary' | 'secondary' | 'success' | 'danger';
   disabled?: boolean;
-  True;
+  ;
 }>();
 defineEmits<{
   (e: 'click'): void;
-  True;
+  ;
 }>();
 </script>
 <style scoped>
 .btn {
- padding: 8px 16px;
- border: none;
- border-radius: 4px;
- cursor: pointer;
- font-size: 14px;
-True}
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
 .btn-primary {
- background-color: #42b983;
- color: white;
-True}
+  background-color: #42b983;
+  color: white;
+}
 .btn-secondary {
- background-color: #999;
- color: white;
-True}
+  background-color: #999;
+  color: white;
+}
 .btn-success {
- background-color: #28a745;
- color: white;
-True}
+  background-color: #28a745;
+  color: white;
+}
 .btn-danger {
- background-color: #dc3545;
- color: white;
-True}
+  background-color: #dc3545;
+  color: white;
+}
 .btn-disabled {
- opacity: 0.6;
- cursor: not-allowed;
-True}
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 </style>
 ```
 
@@ -635,19 +632,19 @@ interface Todo {
  id: number
  text: string
  completed: boolean
-True}
+}
 const todos = ref<Todo[]>([
  { id: 1, text: 'Learn Vue3', completed: false },
  { id: 2, text: 'Learn TypeScript', completed: false },
  { id: 3, text: 'Build a project', completed: false }
-True])
+]
 const newTodo = ref<string>('')
 const completedCount = computed<number>(() => {
  return todos.value.filter(todo => todo.completed).length
-True})
+}
 const remainingCount = computed<number>(() => {
  return todos.value.filter(todo => !todo.completed).length
-True})
+}
 const addTodo = (): void => {
  if (newTodo.value.trim()) {
  todos.value.push({
@@ -657,75 +654,75 @@ const addTodo = (): void => {
  })
  newTodo.value = ''
  }
-True}
+}
 const updateTodo = (todo: Todo): void => {
  console.log('Updated todo:', todo)
-True}
+}
 const deleteTodo = (id: number): void => {
  todos.value = todos.value.filter(todo => todo.id !== id)
-True}
+}
 </script>
 <style scoped>
 .todo-list {
- max-width: 400px;
- margin: 0 auto;
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
-True}
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
 .todo-input {
- display: flex;
- margin-bottom: 20px;
-True}
+  display: flex;
+  margin-bottom: 20px;
+}
 .todo-input input {
- flex: 1;
- padding: 8px;
- border: 1px solid #ddd;
- border-radius: 4px 0 0 4px;
-True}
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px 0 0 4px;
+}
 .todo-input button {
- padding: 8px 16px;
- background-color: #42b983;
- color: white;
- border: none;
- border-radius: 0 4px 4px 0;
- cursor: pointer;
-True}
+  padding: 8px 16px;
+  background-color: #42b983;
+  color: white;
+  border: none;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+}
 .todo-items {
- list-style-type: none;
- padding: 0;
- margin-bottom: 20px;
-True}
+  list-style-type: none;
+  padding: 0;
+  margin-bottom: 20px;
+}
 .todo-item {
- display: flex;
- align-items: center;
- padding: 10px;
- border-bottom: 1px solid #eee;
-True}
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+}
 .todo-item input {
- margin-right: 10px;
-True}
+  margin-right: 10px;
+}
 .todo-item span {
- flex: 1;
-True}
+  flex: 1;
+}
 .todo-item .completed {
- text-decoration: line-through;
- color: #999;
-True}
+  text-decoration: line-through;
+  color: #999;
+}
 .todo-item button {
- padding: 4px 8px;
- background-color: #dc3545;
- color: white;
- border: none;
- border-radius: 4px;
- cursor: pointer;
-True}
+  padding: 4px 8px;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
 .todo-stats {
- display: flex;
- justify-content: space-between;
- font-size: 14px;
- color: #666;
-True}
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #666;
+}
 </style>
 ```
 

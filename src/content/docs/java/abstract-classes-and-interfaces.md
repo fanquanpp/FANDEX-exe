@@ -30,7 +30,7 @@ author: 'Anonymous'
   public void eat() {
   System.out.println(name + " is eating.");
   }
- True}
+ }
 ```
 
 ### 1.2 抽象类的特点
@@ -53,7 +53,7 @@ author: 'Anonymous'
   public void makeSound() {
   System.out.println(name + " barks.");
   }
- True}
+ }
  public class Cat extends Animal {
   public Cat(String name) {
   super(name);
@@ -62,7 +62,7 @@ author: 'Anonymous'
   public void makeSound() {
   System.out.println(name + " meows.");
   }
- True}
+ }
 ```
 
 ### 1.4 抽象类的使用场景
@@ -84,7 +84,7 @@ author: 'Anonymous'
   // 抽象方法（默认 public abstract）
   double calculateArea();
   double calculatePerimeter();
- True}
+ }
 ```
 
 ### 2.2 接口的成员规则
@@ -109,7 +109,7 @@ author: 'Anonymous'
   default void honk() {
   System.out.println("Beep beep!");
   }
- True}
+ }
 ```
 
 #### 2.3.2 静态方法
@@ -125,7 +125,7 @@ author: 'Anonymous'
   static int subtract(int a, int b) {
   return a - b;
   }
- True}
+ }
 ```
 
 #### 2.3.3 私有方法
@@ -145,7 +145,7 @@ Java 9+ 支持私有方法，供接口内部使用。
   private String reverseImpl(String str) {
   return new StringBuilder(str).reverse().toString();
   }
- True}
+ }
 ```
 
 ### 2.4 接口的实现
@@ -164,7 +164,7 @@ Java 9+ 支持私有方法，供接口内部使用。
   public double calculatePerimeter() {
   return 2 * PI * radius;
   }
- True}
+ }
  public class Rectangle implements Shape {
   private double width;
   private double height;
@@ -180,7 +180,7 @@ Java 9+ 支持私有方法，供接口内部使用。
   public double calculatePerimeter() {
   return 2 * (width + height);
   }
- True}
+ }
 ```
 
 ### 2.5 接口的多继承
@@ -190,14 +190,14 @@ Java 9+ 支持私有方法，供接口内部使用。
 ```java
  public interface Movable {
   void move();
- True}
+ }
  public interface Flyable {
   void fly();
- True}
+ }
  // 多继承接口
  public interface Bird extends Movable, Flyable {
   void sing();
- True}
+ }
 ```
 
 ## 3. 实现与继承的规则
@@ -211,7 +211,7 @@ Java 9+ 支持私有方法，供接口内部使用。
  // 继承一个类，实现多个接口
  public class Eagle extends Animal implements Bird, Predator {
   // 实现所有抽象方法
- True}
+ }
 ```
 
 ### 3.2 接口的继承
@@ -255,13 +255,13 @@ Java 9+ 支持私有方法，供接口内部使用。
   protected void cleanup() {
   System.out.println("Cleaning up...");
   }
- True}
+ }
  public class FileProcessor extends AbstractProcessor {
   @Override
   protected void doProcess() {
   System.out.println("Processing file...");
   }
- True}
+ }
  public class DatabaseProcessor extends AbstractProcessor {
   @Override
   protected void doProcess() {
@@ -271,7 +271,7 @@ Java 9+ 支持私有方法，供接口内部使用。
   protected void initialize() {
   System.out.println("Connecting to database...");
   }
- True}
+ }
 ```
 
 ### 5.2 接口的应用 - 策略模式
@@ -279,7 +279,7 @@ Java 9+ 支持私有方法，供接口内部使用。
 ```java
  public interface PaymentStrategy {
   void pay(double amount);
- True}
+ }
  public class CreditCardPayment implements PaymentStrategy {
   private String cardNumber;
   public CreditCardPayment(String cardNumber) {
@@ -289,7 +289,7 @@ Java 9+ 支持私有方法，供接口内部使用。
   public void pay(double amount) {
   System.out.println("Paying " + amount + " with credit card: " + cardNumber);
   }
- True}
+ }
  public class PayPalPayment implements PaymentStrategy {
   private String email;
   public PayPalPayment(String email) {
@@ -299,7 +299,7 @@ Java 9+ 支持私有方法，供接口内部使用。
   public void pay(double amount) {
   System.out.println("Paying " + amount + " with PayPal: " + email);
   }
- True}
+ }
  public class ShoppingCart {
   private PaymentStrategy paymentStrategy;
   public void setPaymentStrategy(PaymentStrategy paymentStrategy) {
@@ -308,7 +308,7 @@ Java 9+ 支持私有方法，供接口内部使用。
   public void checkout(double amount) {
   paymentStrategy.pay(amount);
   }
- True}
+ }
 ```
 
 ### 5.3 接口默认方法的应用
@@ -324,7 +324,7 @@ Java 9+ 支持私有方法，供接口内部使用。
   default boolean isEmpty() {
   return size() == 0;
   }
- True}
+ }
 ```
 
 ## 6. 最佳实践
@@ -378,12 +378,12 @@ Java 9+ 支持私有方法，供接口内部使用。
   default void method() {
   System.out.println("A.method()");
   }
- True}
+ }
  public interface B {
   default void method() {
   System.out.println("B.method()");
   }
- True}
+ }
  // 解决冲突：重写默认方法
  public class C implements A, B {
   @Override
@@ -393,7 +393,7 @@ Java 9+ 支持私有方法，供接口内部使用。
   // 或提供自己的实现
   System.out.println("C.method()");
   }
- True}
+ }
 ```
 
 ## 8. 设计模式中的应用

@@ -99,20 +99,20 @@ updated: 2026-05-03
 **style.css**
 
 ```css
- .filter-btn {
+.filter-btn {
   border-bottom: 2px solid transparent;
- True}
- .filter-btn.active {
+}
+.filter-btn.active {
   border-bottom: 2px solid blue;
   font-weight: bold;
- True}
- .task-item {
+}
+.task-item {
   transition: all 0.3s ease;
- True}
- .task-item.completed {
+}
+.task-item.completed {
   text-decoration: line-through;
   opacity: 0.6;
- True}
+}
 ```
 
 **script.js**
@@ -267,7 +267,6 @@ class ToDoApp {
     document.getElementById('task-count').textContent =
       `${activeTasks} item${activeTasks !== 1 ? 's' : ''} left`;
   }
-  True;
 }
 // Initialize the app
 new ToDoApp();
@@ -371,20 +370,20 @@ new ToDoApp();
 **style.css**
 
 ```css
- body {
+body {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   min-height: 100vh;
- True}
- #weather-container {
+}
+#weather-container {
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
- True}
- .forecast-item {
+}
+.forecast-item {
   transition: transform 0.3s ease;
- True}
- .forecast-item:hover {
+}
+.forecast-item:hover {
   transform: translateY(-5px);
- True}
+}
 ```
 
 **script.js**
@@ -484,7 +483,6 @@ class WeatherApp {
   hideError() {
     document.getElementById('error-message').classList.add('hidden');
   }
-  True;
 }
 // Initialize the app
 new WeatherApp();
@@ -601,16 +599,20 @@ new WeatherApp();
 **style.css**
 
 ```css
- .product-card {
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
- True}
- .product-card:hover {
+.product-card {
+  transition:
+    transform 0.3s ease,
+    box-shadow 0.3s ease;
+}
+.product-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
- True}
- #cart-dropdown {
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+#cart-dropdown {
   z-index: 1000;
- True}
+}
 ```
 
 **script.js**
@@ -761,7 +763,6 @@ class ShoppingCart {
     const total = this.cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
     document.getElementById('cart-total').textContent = `$${total.toFixed(2)}`;
   }
-  True;
 }
 // Initialize the app
 new ShoppingCart();
@@ -799,28 +800,28 @@ new ShoppingCart();
 #### 2.2.1 package.json 示例
 
 ```json
- {
+{
   "name": "my-project",
   "version": "1.0.0",
   "description": "My JavaScript project",
   "main": "src/main.js",
   "scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "preview": "vite preview",
-  "test": "jest",
-  "lint": "eslint src"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "jest",
+    "lint": "eslint src"
   },
   "dependencies": {
-  "axios": "^0.27.2",
-  "tailwindcss": "^3.1.8"
+    "axios": "^0.27.2",
+    "tailwindcss": "^3.1.8"
   },
   "devDependencies": {
-  "vite": "^3.1.0",
-  "eslint": "^8.23.1",
-  "jest": "^28.1.3"
+    "vite": "^3.1.0",
+    "eslint": "^8.23.1",
+    "jest": "^28.1.3"
   }
- True}
+}
 ```
 
 ### 2.3 前端构建工具
@@ -844,12 +845,12 @@ new ShoppingCart();
 #### 3.1.1 Jest 配置
 
 ```json
- {
+{
   "testEnvironment": "jsdom",
   "transform": {
-  "^.+\.js$": "babel-jest"
+    "^.+\.js$": "babel-jest"
   }
- True}
+}
 ```
 
 #### 3.1.2 测试示例
@@ -859,11 +860,9 @@ new ShoppingCart();
 const { sum, multiply } = require('./utils');
 test('sum adds two numbers', () => {
   expect(sum(1, 2)).toBe(3);
-  True;
 });
 test('multiply multiplies two numbers', () => {
   expect(multiply(2, 3)).toBe(6);
-  True;
 });
 ```
 
@@ -872,11 +871,11 @@ test('multiply multiplies two numbers', () => {
 #### 3.2.1 Cypress 配置
 
 ```json
- {
+{
   "baseUrl": "http://localhost:3000",
   "viewportWidth": 1280,
   "viewportHeight": 720
- True}
+}
 ```
 
 #### 3.2.2 测试示例
@@ -892,7 +891,6 @@ describe('Home page', () => {
     cy.visit('/');
     cy.get('.product-card').should('have.length.greaterThan', 0);
   });
-  True;
 });
 ```
 
@@ -1097,7 +1095,6 @@ export function initApp() {
     .catch((error) => {
       console.error('Error fetching products:', error);
     });
-  True;
 }
 ```
 
@@ -1119,7 +1116,6 @@ export async function fetchProducts() {
       { id: 2, name: 'Product 2', price: 29.99, image: 'https://via.placeholder.com/300x200' },
     ];
   }
-  True;
 }
 ```
 
@@ -1140,7 +1136,6 @@ export function renderProducts(products) {
   `;
     container.appendChild(card);
   });
-  True;
 }
 ```
 

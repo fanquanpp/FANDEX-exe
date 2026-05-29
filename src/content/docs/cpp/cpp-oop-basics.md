@@ -36,7 +36,7 @@ author: 'Anonymous'
   void introduce() const {
   std::cout << "My name is " << name << " and I am " << age << " years old." << std::endl;
   }
- True};
+ }
 ```
 
 ### 1.2 对象的创建与使用
@@ -56,7 +56,7 @@ author: 'Anonymous'
   person3->introduce();
   delete person3; // 释放堆内存
   return 0;
- True}
+ }
 ```
 
 ### 1.3 类的成员
@@ -115,7 +115,7 @@ author: 'Anonymous'
   std::string getAccountNumber() const {
   return accountNumber;
   }
- True};
+ }
  // 使用示例
  int main() {
   BankAccount acc("123456", 1000.0);
@@ -123,7 +123,7 @@ author: 'Anonymous'
   acc.withdraw(200.0);
   std::cout << "Balance: $" << acc.getBalance() << std::endl;
   return 0;
- True}
+ }
 ```
 
 ## 3. 继承 (Inheritance)
@@ -143,7 +143,7 @@ author: 'Anonymous'
   std::cout << "Generic animal sound" << std::endl;
   }
   virtual ~Animal() {}
- True};
+ }
  // 派生类
  class Dog : public Animal {
  public:
@@ -152,7 +152,7 @@ author: 'Anonymous'
   void makeSound() override {
   std::cout << name << " barks: Woof! Woof!" << std::endl;
   }
- True};
+ }
  // 派生类
  class Cat : public Animal {
  public:
@@ -161,7 +161,7 @@ author: 'Anonymous'
   void makeSound() override {
   std::cout << name << " meows: Meow! Meow!" << std::endl;
   }
- True};
+ }
 ```
 
 ### 3.2 继承类型
@@ -181,12 +181,12 @@ C++ 支持多继承，一个类可以从多个基类继承。
  class Printable {
  public:
   virtual void print() const = 0; // 纯虚函数
- True};
+ }
  // 基类 2
  class Serializable {
  public:
   virtual std::string serialize() const = 0; // 纯虚函数
- True};
+ }
  // 派生类，多继承
  class Person : public Printable, public Serializable {
  private:
@@ -202,7 +202,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   std::string serialize() const override {
   return "{\"name\": \"" + name + "\", \"age\": " + std::to_string(age) + "}";
   }
- True};
+ }
 ```
 
 ### 3.4 菱形继承问题
@@ -215,25 +215,25 @@ C++ 支持多继承，一个类可以从多个基类继承。
  public:
   Animal() { std::cout << "Animal constructor" << std::endl; }
   ~Animal() { std::cout << "Animal destructor" << std::endl; }
- True};
+ }
  // 派生类 1
  class Mammal : public Animal {
  public:
   Mammal() { std::cout << "Mammal constructor" << std::endl; }
   ~Mammal() { std::cout << "Mammal destructor" << std::endl; }
- True};
+ }
  // 派生类 2
  class Bird : public Animal {
  public:
   Bird() { std::cout << "Bird constructor" << std::endl; }
   ~Bird() { std::cout << "Bird destructor" << std::endl; }
- True};
+ }
  // 派生类 3，多继承
  class Bat : public Mammal, public Bird {
  public:
   Bat() { std::cout << "Bat constructor" << std::endl; }
   ~Bat() { std::cout << "Bat destructor" << std::endl; }
- True};
+ }
  // 问题：Bat 会有两个 Animal 子对象
  // 解决方案：使用虚继承
 ```
@@ -248,25 +248,25 @@ C++ 支持多继承，一个类可以从多个基类继承。
  public:
   Animal() { std::cout << "Animal constructor" << std::endl; }
   ~Animal() { std::cout << "Animal destructor" << std::endl; }
- True};
+ }
  // 派生类 1，虚继承
  class Mammal : virtual public Animal {
  public:
   Mammal() { std::cout << "Mammal constructor" << std::endl; }
   ~Mammal() { std::cout << "Mammal destructor" << std::endl; }
- True};
+ }
  // 派生类 2，虚继承
  class Bird : virtual public Animal {
  public:
   Bird() { std::cout << "Bird constructor" << std::endl; }
   ~Bird() { std::cout << "Bird destructor" << std::endl; }
- True};
+ }
  // 派生类 3，多继承
  class Bat : public Mammal, public Bird {
  public:
   Bat() { std::cout << "Bat constructor" << std::endl; }
   ~Bat() { std::cout << "Bat destructor" << std::endl; }
- True};
+ }
  // 现在 Bat 只有一个 Animal 子对象
 ```
 
@@ -303,7 +303,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   void print(double a, int b) {
   std::cout << "double: " << a << ", int: " << b << std::endl;
   }
- True};
+ }
  // 使用示例
  int main() {
   Calculator calc;
@@ -313,7 +313,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   calc.print(1, 2.5);
   calc.print(1.5, 2);
   return 0;
- True}
+ }
 ```
 
 #### 4.1.2 模板
@@ -325,7 +325,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
  template <typename T>
  T add(T a, T b) {
   return a + b;
- True}
+ }
  // 类模板
  template <typename T>
  class Stack {
@@ -349,7 +349,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   size_t size() const {
   return elements.size();
   }
- True};
+ }
  // 使用示例
  int main() {
   // 使用函数模板
@@ -376,7 +376,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   }
   std::cout << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 4.2 动态多态
@@ -392,7 +392,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   }
   virtual double area() const = 0; // 纯虚函数
   virtual ~Shape() {}
- True};
+ }
  // 派生类
  class Circle : public Shape {
  private:
@@ -405,7 +405,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   double area() const override {
   return M_PI * radius * radius;
   }
- True};
+ }
  // 派生类
  class Rectangle : public Shape {
  private:
@@ -419,7 +419,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   double area() const override {
   return width * height;
   }
- True};
+ }
  // 派生类
  class Triangle : public Shape {
  private:
@@ -433,12 +433,12 @@ C++ 支持多继承，一个类可以从多个基类继承。
   double area() const override {
   return 0.5 * base * height;
   }
- True};
+ }
  // 使用多态
  void printShapeInfo(const Shape& shape) {
   shape.draw();
   std::cout << "Area: " << shape.area() << std::endl;
- True}
+ }
  int main() {
   Circle circle(5.0);
   Rectangle rectangle(4.0, 6.0);
@@ -456,7 +456,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   delete shapes[i];
   }
   return 0;
- True}
+ }
 ```
 
 ### 4.3 虚函数与纯虚函数
@@ -472,19 +472,19 @@ C++ 支持多继承，一个类可以从多个基类继承。
   std::cout << "Base::func()" << std::endl;
   }
   virtual ~Base() {}
- True};
+ }
  class Derived : public Base {
  public:
   void func() override {
   std::cout << "Derived::func()" << std::endl;
   }
- True};
+ }
  int main() {
   Base* b = new Derived();
   b->func(); // 调用 Derived::func()
   delete b;
   return 0;
- True}
+ }
 ```
 
 #### 4.3.2 纯虚函数
@@ -497,7 +497,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   virtual void draw() const = 0; // 纯虚函数
   virtual double area() const = 0; // 纯虚函数
   virtual ~AbstractShape() {}
- True};
+ }
  class Square : public AbstractShape {
  private:
   double side;
@@ -509,14 +509,14 @@ C++ 支持多继承，一个类可以从多个基类继承。
   double area() const override {
   return side * side;
   }
- True};
+ }
  int main() {
   // AbstractShape shape; // 错误：不能实例化抽象类
   Square square(5.0);
   square.draw();
   std::cout << "Area: " << square.area() << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 4.4 多态的实现原理
@@ -534,14 +534,14 @@ C++ 支持多继承，一个类可以从多个基类继承。
   virtual void func1() { std::cout << "Base::func1()" << std::endl; }
   virtual void func2() { std::cout << "Base::func2()" << std::endl; }
   void nonVirtual() { std::cout << "Base::nonVirtual()" << std::endl; }
- True};
+ }
  // 派生类
  class Derived : public Base {
  public:
   void func1() override { std::cout << "Derived::func1()" << std::endl; }
   // func2() 继承自 Base
   void nonVirtual() { std::cout << "Derived::nonVirtual()" << std::endl; }
- True};
+ }
  int main() {
   Base* b = new Derived();
   b->func1(); // 调用 Derived::func1()（多态，运行时绑定）
@@ -549,7 +549,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   b->nonVirtual(); // 调用 Base::nonVirtual()（非虚函数，编译时绑定）
   delete b;
   return 0;
- True}
+ }
 ```
 
 ## 5. 虚函数与虚函数表 (VTable)
@@ -568,14 +568,14 @@ C++ 支持多继承，一个类可以从多个基类继承。
   std::cout << "Base::anotherFunc()" << std::endl;
   }
   virtual ~Base() {}
- True};
+ }
  class Derived : public Base {
  public:
   void func() override {
   std::cout << "Derived::func()" << std::endl;
   }
   // anotherFunc() 继承自 Base
- True};
+ }
  class Derived2 : public Base {
  public:
   void func() override {
@@ -584,7 +584,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   void anotherFunc() override {
   std::cout << "Derived2::anotherFunc()" << std::endl;
   }
- True};
+ }
  // 使用示例
  int main() {
   Base* b1 = new Base();
@@ -600,7 +600,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   delete b2;
   delete b3;
   return 0;
- True}
+ }
 ```
 
 ### 5.2 虚函数表
@@ -620,14 +620,14 @@ C++ 支持多继承，一个类可以从多个基类继承。
   virtual void func1() { std::cout << "Base::func1()" << std::endl; }
   virtual void func2() { std::cout << "Base::func2()" << std::endl; }
   void nonVirtual() { std::cout << "Base::nonVirtual()" << std::endl; }
- True};
+ }
  // 派生类
  class Derived : public Base {
  public:
   void func1() override { std::cout << "Derived::func1()" << std::endl; }
   // func2() 继承自 Base
   void nonVirtual() { std::cout << "Derived::nonVirtual()" << std::endl; }
- True};
+ }
  int main() {
   Base* b = new Derived();
   b->func1(); // 调用 Derived::func1()（多态，运行时绑定）
@@ -635,7 +635,7 @@ C++ 支持多继承，一个类可以从多个基类继承。
   b->nonVirtual(); // 调用 Base::nonVirtual()（非虚函数，编译时绑定）
   delete b;
   return 0;
- True}
+ }
 ```
 
 ### 5.4 虚函数表的结构
@@ -675,19 +675,19 @@ C++ 支持多继承，一个类可以从多个基类继承。
   void publicFunc() {
   privateFunc(); // 可以调用私有虚函数
   }
- True};
+ }
  class Derived : public Base {
  private:
   void privateFunc() override {
   std::cout << "Derived::privateFunc()" << std::endl;
   }
- True};
+ }
  int main() {
   Base* b = new Derived();
   b->publicFunc(); // 调用 Derived::privateFunc()
   delete b;
   return 0;
- True}
+ }
 ```
 
 ---

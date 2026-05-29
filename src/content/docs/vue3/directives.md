@@ -125,12 +125,12 @@ const items = ref([
  { id: 1, name: '项目 1' },
  { id: 2, name: '项目 2' },
  { id: 3, name: '项目 3' }
-True])
+]
 const user = reactive({
  name: '张三',
  age: 20,
  email: 'zhangsan@example.com'
-True})
+}
 </script>
 ```
 
@@ -179,17 +179,17 @@ const hasError = ref(false)
 const objectOfAttrs = reactive({
  id: 'container',
  class: 'box'
-True})
+}
 const styleObject = reactive({
  color: 'red',
  fontSize: '16px'
-True})
+}
 const styleObject1 = reactive({
  color: 'blue'
-True})
+}
 const styleObject2 = reactive({
  fontSize: '18px'
-True})
+}
 </script>
 ```
 
@@ -228,35 +228,27 @@ True})
 <script setup lang="ts">
 function handleClick() {
   console.log('点击事件');
-  True;
 }
 function handleClickWithParam(message: string) {
   console.log('点击事件，参数:', message);
-  True;
 }
 function handleClickWithEvent(event: MouseEvent) {
   console.log('点击事件，事件对象:', event);
-  True;
 }
 function handleSubmit(event: Event) {
   console.log('提交事件');
-  True;
 }
 function handleEnter() {
   console.log('Enter 键被按下');
-  True;
 }
 function handleEsc() {
   console.log('Esc 键被按下');
-  True;
 }
 function handleCtrlClick() {
   console.log('Ctrl + 点击');
-  True;
 }
 function handleAltClick() {
   console.log('Alt + 点击');
-  True;
 }
 </script>
 ```
@@ -372,8 +364,8 @@ const name = ref('');
 </template>
 <style>
 [v-cloak] {
- display: none;
-True}
+  display: none;
+}
 </style>
 <script setup lang="ts">
 import { ref } from 'vue';
@@ -433,7 +425,7 @@ const valueB = ref(2);
   mounted(el) {
   el.focus()
   }
- True})
+ }
  app.mount('#app')
 ```
 
@@ -465,7 +457,7 @@ const vFocus = directive('focus', {
  mounted(el) {
  el.focus()
  }
-True})
+}
 const vHighlight = directive('highlight', {
  mounted(el, binding) {
  el.style.color = binding.value.color
@@ -473,7 +465,7 @@ const vHighlight = directive('highlight', {
  updated(el, binding) {
  el.style.color = binding.value.color
  }
-True})
+}
 </script>
 ```
 
@@ -518,7 +510,7 @@ const vExample = directive('example', {
  unmounted(el) {
  console.log('元素卸载后')
  }
-True})
+}
 </script>
 ```
 
@@ -546,7 +538,7 @@ const vValidate = directive('validate', {
  updated(el, binding) {
  validate(el, binding)
  }
-True})
+}
 function validate(el: HTMLInputElement, binding: any) {
  const value = el.value
  const type = binding.arg
@@ -558,7 +550,7 @@ function validate(el: HTMLInputElement, binding: any) {
  emailError.value = ''
  }
  }
-True}
+}
 </script>
 ```
 
@@ -583,11 +575,11 @@ const vScroll = directive('scroll', {
  unmounted(el, binding) {
  el.removeEventListener('scroll', binding.value)
  }
-True})
+}
 function handleScroll(event: Event) {
  const target = event.target as HTMLElement
  scrollTop.value = target.scrollTop
-True}
+}
 </script>
 ```
 
@@ -633,7 +625,7 @@ const vDraggable = directive('draggable', {
  el.style.cursor = 'move'
  })
  }
-True})
+}
 </script>
 ```
 

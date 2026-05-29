@@ -73,7 +73,7 @@ D. 装饰器不能修改类的行为
  interface MyEvents {
   click: { x: number; y: number };
   message: string;
- True}
+ }
  const emitter = new EventEmitter<MyEvents>();
  ```
 
@@ -98,7 +98,7 @@ D. 装饰器不能修改类的行为
   emit<K extends keyof Events>(event: K, payload: Events[K]): void {
   this.listeners.get(event)?.forEach((handler) => handler(payload));
   }
- True}
+ }
  ```
 </details>
 ### 2. 实现 DeepPartial
@@ -114,7 +114,7 @@ D. 装饰器不能修改类的行为
   ? T[P]
   : DeepPartial<T[P]>
   : T[P];
- True};
+ }
  ```
 </details>
 ### 3. 类型安全的状态机
@@ -134,7 +134,7 @@ D. 装饰器不能修改类的行为
   loading: 'succeed' | 'fail';
   success: 'reset';
   error: 'retry' | 'reset';
- True};
+ }
  class StateMachine {
   private state: State = { status: 'idle' };
   transition<S extends State['status']>(
@@ -162,6 +162,6 @@ D. 装饰器不能修改类的行为
   getState(): State {
   return this.state;
   }
- True}
+ }
  ```
 </details>

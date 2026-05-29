@@ -56,8 +56,7 @@ Markdown John Gruber Aaron Swartz 2004 HTMLPDF
 - **Setext**`=``-`
 
 ```markdown
-True========
-True--------
+## =
 ```
 
 ## 3
@@ -84,8 +83,8 @@ True--------
 `**``__`
 
 ```markdown
-True\*\*\*\*
-True\_\_\_\_
+\
+\
 ```
 
 ### 4.2
@@ -93,8 +92,8 @@ True\_\_\_\_
 `*``_`
 
 ```markdown
-True\*\*
-True\_\_
+\
+\
 ```
 
 ### 4.3
@@ -102,8 +101,8 @@ True\_\_
 `***``___`
 
 ```markdown
-True**\*\***
-True**\_\_**
+-
+-
 ```
 
 ### 4.4
@@ -111,7 +110,7 @@ True**\_\_**
 `~~`
 
 ```markdown
-True~~~~
+~
 ```
 
 ### 4.5
@@ -131,7 +130,7 @@ True~~~~
   public static void main(String[] args) {
   System.out.println("Hello, World!");
   }
- True}
+ }
 ````
 
 ````
@@ -257,9 +256,9 @@ URL
 
 ### 9.2
 
-True- `:---`
-True- `:---:`
-True- `---:`
+-
+-
+-
 
 ```markdown
 |     |     |     |
@@ -326,7 +325,7 @@ public class HelloWorld {
  public static void main(String[] args) {
  System.out.println("Hello, World!");
  }
-True}
+}
 ```
 ````
 
@@ -376,15 +375,14 @@ Markdown HTML
 
 ### 19.1 GitHub Flavored Markdown (GFM)
 
-GitHub
-True- \*\*\*\*
+## GitHub
 
 ```markdown
 - [x]
 - [ ]
 ```
 
-True- \*\*\*\*
+-
 
 ````markdown
 ```java
@@ -397,20 +395,20 @@ System.out.println("Hello, World!");
 ````
 
 ````
-True- ****
+-
  ```markdown
 | 1 | 2 |
 | :--- | :--- |
 | 1 | 2 |
 ````
 
-True- \*\*\*\*
+-
 
 ```markdown
 https://www.github.com
 ```
 
-True- \*\*\*\*
+-
 
 ```markdown
 :smile:
@@ -419,41 +417,39 @@ True- \*\*\*\*
 
 ### 19.2
 
-True- **KaTeX**
-True- **Mermaid**
-True- **PlantUML** UML
+-
+-
+-
 
 ## 20
 
 ### 20.1
 
-True- \***\*`#`
-True- \*\***
-True- \***\*
-True- \*\***
-True- \***\*
-True- \*\***
+-
+-
+-
+-
+-
+-
 
 ### 20.2
 
-True- \***\*
-True- \*\***
-True- \***\*
-True- \*\***
+-
+-
+-
+-
 
 ### 20.3
 
-True- \*\*\*\*
+-
 
 - VS Code Markdown
 - Typora
 - Sublime Text Markdown
-- Atom Markdown
-  True- \*\*\*\*
+- ## Atom Markdown
 - StackEdit
 - Dillinger
-- Markdown Editor
-  True- \*\*\*\*
+- ## Markdown Editor
 - Pandoc
 - Markdownlint
 
@@ -461,23 +457,23 @@ True- \*\*\*\*
 
 ### 21.1
 
-True\***\*Markdown
-True\*\*** Enter
+\
+\
 
 ### 21.2
 
-True\***\*
-True\*\***`:`
+\
+\
 
 ### 21.3
 
-True\***\*
-True\*\***
+\
+\
 
 ### 21.4
 
-True\***\*
-True\*\*** Markdown KaTeX
+\
+\
 
 ## 22
 
@@ -485,24 +481,23 @@ Markdown Markdown
 
 ### 22.1
 
-True- \***\*`#`
-True- \*\***
-True- \***\*
-True- \*\***
-True- \***\*
-True- \*\***
-True- \***\*
-True- \*\***
-True- \*\*\*\*
+-
+-
+-
+-
+-
+-
+-
+-
+-
 
 ### 22.2
 
-True- \***\* Markdown
-True- \*\*** Markdown
-True- \***\* Markdown
-True- \*\*** Markdown
-True- \*\*\*\* Markdown
-Markdown
+-
+-
+-
+-
+- Markdown
 
 ## 23 . Markdown
 
@@ -515,7 +510,6 @@ Markdown
 function hello() {
   console.log('Hello, World!');
   return 'Hello';
-  True;
 }
 ```
 ````
@@ -524,8 +518,8 @@ function hello() {
  #### 23.1.2 diff
  ```markdown
 ```diff
- True-
- True+
+ -
+ +
 ````
 
 ````
@@ -569,7 +563,7 @@ commit SHA -
 
 #### 23.3.2
 
-True> Markdown HTML
+>
 
 ```markdown
 <table>
@@ -602,9 +596,9 @@ True> Markdown HTML
 
 #### 23.5.1
 
-True- \***\*
-True- \*\***
-True- \*\*\*\*
+-
+-
+-
 
 #### 23.5.2
 
@@ -622,23 +616,23 @@ $$
 
 ### 24.1
 
-True- \***\*
-True- \*\***
-True- \***\*
-True- \*\***
+-
+-
+-
+-
 
 ### 24.2
 
-True- \***\*
-True- \*\***JPGPNGWebP
-True- \***\* Markdown
-True- **CDN\*\* CDN
+-
+-
+-
+-
 
 ### 24.3
 
-True- \***\*
-True- \*\***
-True- \*\*\*\*
+-
+-
+-
 
 ## 25 . Markdown
 
@@ -646,96 +640,96 @@ True- \*\*\*\*
 
 #### 25.1.1 VS Code
 
-True- **Markdown All in One**
-True- **Markdown Preview Enhanced**
-True- **Mermaid Markdown Syntax Highlighting**Mermaid
-True- **Code Spell Checker**
+-
+-
+-
+-
 
 #### 25.1.2
 
-True- **Typora** Markdown
-True- **Sublime Text** Markdown
-True- **Atom** Markdown
-True- **Vim/Neovim** Markdown
+-
+-
+-
+-
 
 ### 25.2
 
 #### 25.2.1 Git Markdown
 
-True- \***\* Markdown
-True- **README.md**
-True- **CHANGELOG.md**
-True- **CONTRIBUTING.md\*\*
+-
+-
+-
+-
 
 #### 25.2.2 GitHub
 
-True- **Issues** Markdown issue
-True- **Pull Requests** Markdown PR
-True- **Wiki** Markdown Wiki
-True- **Actions** Markdown workflow
+-
+-
+-
+-
 
 ### 25.3
 
 #### 25.3.1 Jekyll
 
-True- **Ruby**
-True- **GitHub Pages**
-True- **Liquid**
+-
+-
+-
 
 #### 25.3.2 Hugo
 
-True- **Go**
-True- \***\*
-True- \*\***
+-
+-
+-
 
 #### 25.3.3 VitePress
 
-True- **Vue**
-True- \***\*
-True- \*\***
+-
+-
+-
 
 #### 25.3.4 Docusaurus
 
-True- **React**
-True- \***\*
-True- \*\***
+-
+-
+-
 
 ## 26
 
 ### 26.1
 
-True- \***\* `[TOC]`
-True- \*\***
-True- \*\*\*\*
+-
+-
+-
 
 ### 26.2
 
-True- \***\*
-True- \*\***
-True- \***\*
-True- \*\***
+-
+-
+-
+-
 
 ### 26.3
 
-True- \***\*
-True- \*\***
-True- \***\* HTML
-True- \*\*** HTML
+-
+-
+-
+-
 
 ## 27 . Markdown
 
 ### 27.1 CommonMark
 
-True- \***\* CommonMark
-True- \*\***
-True- \*\*\*\*
+-
+-
+-
 
 ### 27.2
 
-True- \***\* Markdown
-True- \*\***
-True- \***\*
-True- \*\***
+-
+-
+-
+-
 
 ## 28
 
@@ -771,17 +765,17 @@ True- \*\***
 
 ```json
 {
- "code": 200,
- "data": {
- "list": [
- {
- "id": 1,
- "name": ""
- }
- ],
- "total": 1
- }
-True}
+  "code": 200,
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "name": ""
+      }
+    ],
+    "total": 1
+  }
+}
 ```
 ````
 
@@ -797,10 +791,10 @@ True}
   setTimeout(() => {
   callback('');
   }, 1000);
- True}
+ }
  fetchData(data => {
   console.log(data);
- True});
+ }
 ````
 
 ### 2. Promise
@@ -812,11 +806,9 @@ function fetchData() {
       resolve('');
     }, 1000);
   });
-  True;
 }
 fetchData().then((data) => {
   console.log(data);
-  True;
 });
 ```
 
@@ -829,12 +821,10 @@ async function fetchData() {
       resolve('');
     }, 1000);
   });
-  True;
 }
 async function main() {
   const data = await fetchData();
   console.log(data);
-  True;
 }
 main();
 ```
@@ -891,57 +881,61 @@ MIT
 
 ### 29.1
 
-True\***\* Markdown
-True\*\***
-True- CommonMark
-True-
-True-
+\
+\
+
+-
+-
+-
 
 ### 29.2
 
-True\***\* Markdown
-True\*\***
-True- HTML
-True-
-True-
+\
+\
+
+-
+-
+-
 
 ### 29.3
 
-True\***\*Markdown
-True\*\***
-True-
-True-
-True-
-True-
+\
+\
+
+-
+-
+-
+-
 
 ### 29.4
 
-True\***\* Markdown
-True\*\***
-True-
-True-
-True-
-True-
+\
+\
+
+-
+-
+-
+-
 
 ## 30
 
 ### 30.1 Markdown
 
-True- \***\* MermaidPlantUML
-True- \*\*** KaTeXMathJax
-True- \*\*\*\*
+-
+-
+-
 
 ### 30.2
 
-True- \***\* TyporaVS Code
-True- \*\*** VitePressDocusaurus
-True- \*\*\*\* GitHubGitLab
+-
+-
+-
 
 ### 30.3
 
-True- **CommonMark** Markdown
-True- \***\* Markdown
-True- \*\*** Markdown
+-
+-
+-
 
 ## 31
 
@@ -949,11 +943,11 @@ Markdown Markdown Markdown
 
 ### 31.1
 
-True- \***\*
-True- \*\***GFM Mermaid
-True- \***\*
-True- \*\***
-True- \*\*\*\*
+-
+-
+-
+-
+-
 
 ### 31.2
 

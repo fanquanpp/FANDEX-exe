@@ -265,7 +265,6 @@ img.onload = function () {
   ctx.drawImage(img, 300, 150);
   // 绘制部分图像
   ctx.drawImage(img, 100, 100, 50, 50, 300, 200, 50, 50);
-  True;
 };
 ```
 

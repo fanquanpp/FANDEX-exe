@@ -54,7 +54,6 @@ class Person {
   public getBirthYear(): number {
     return this.calculateBirthYear();
   }
-  True;
 }
 // 使用示例
 const person = new Person('Alice', 30, 'female', 12345);
@@ -84,7 +83,6 @@ class Employee extends Person {
   // public getAge(): number {
   // return this.age; // 编译错误
   // }
-  True;
 }
 const employee = new Employee('Bob', 25, 'male', 67890, 'Developer');
 console.log(employee.name); // 可以访问
@@ -116,7 +114,6 @@ class User {
     this.name = name;
     this.age = age;
   }
-  True;
 }
 // 构造函数简写
 class User {
@@ -124,7 +121,6 @@ class User {
     public name: string,
     private age: number
   ) {}
-  True;
 }
 // 使用示例
 const user = new User('Alice', 30);
@@ -149,7 +145,6 @@ class Product {
   public getStock(): number {
     return this.stock;
   }
-  True;
 }
 // 使用示例
 const product = new Product(1, 'Laptop', 999.99, 50, 'Electronics');
@@ -173,7 +168,7 @@ console.log(product.getStock()); // 输出: 50
   public getStatus(): string {
   return this.isActive ? "Active" : "Inactive";
   }
- True}
+ }
  // 使用示例
  const person1 = new Person("Alice", 30);
  console.log(person1.name); // 输出: Alice
@@ -208,7 +203,6 @@ abstract class Shape {
   public printInfo(): void {
     console.log(`Area: ${this.getArea()}, Perimeter: ${this.getPerimeter()}`);
   }
-  True;
 }
 // 实现抽象类
 class Circle extends Shape {
@@ -223,7 +217,6 @@ class Circle extends Shape {
   getPerimeter(): number {
     return 2 * Math.PI * this.radius;
   }
-  True;
 }
 class Rectangle extends Shape {
   constructor(
@@ -240,7 +233,6 @@ class Rectangle extends Shape {
   getPerimeter(): number {
     return 2 * (this.width + this.height);
   }
-  True;
 }
 // 使用示例
 const circle = new Circle(5);
@@ -293,7 +285,6 @@ class MathUtils {
   static calculateCircleArea(radius: number): number {
     return this.PI * radius * radius;
   }
-  True;
 }
 // 使用示例
 console.log(MathUtils.PI); // 输出: 3.14159
@@ -326,7 +317,6 @@ class Counter {
   static getTotalCount(): number {
     return Counter.count;
   }
-  True;
 }
 // 使用示例
 const counter1 = new Counter();
@@ -385,7 +375,6 @@ class Person {
       throw new Error('Age must be between 0 and 120');
     }
   }
-  True;
 }
 // 使用示例
 const person = new Person('Alice', 30);
@@ -432,7 +421,6 @@ class Product {
       throw new Error('Price must be positive');
     }
   }
-  True;
 }
 // 使用示例
 const product = new Product(1, 'Laptop', 999.99);
@@ -484,14 +472,12 @@ function sealed(constructor: Function) {
   Object.seal(constructor);
   Object.seal(constructor.prototype);
   console.log(`Class ${constructor.name} has been sealed`);
-  True;
 }
 // 带参数的类装饰器
 function logClass(prefix: string) {
   return function (constructor: Function) {
     console.log(`${prefix}: ${constructor.name} class defined`);
   };
-  True;
 }
 // 使用类装饰器
 @logClass('INFO')
@@ -504,7 +490,6 @@ class Person {
   public greet(): string {
     return `Hello, my name is ${this.name}`;
   }
-  True;
 }
 // 使用示例
 const person = new Person('Alice', 30);
@@ -532,7 +517,6 @@ function logMethod(target: any, key: string, descriptor: PropertyDescriptor) {
     return result;
   };
   return descriptor;
-  True;
 }
 // 带参数的方法装饰器
 function measureTime(unit: 'ms' | 's' = 'ms') {
@@ -549,7 +533,6 @@ function measureTime(unit: 'ms' | 's' = 'ms') {
     };
     return descriptor;
   };
-  True;
 }
 class Calculator {
   @logMethod
@@ -561,7 +544,6 @@ class Calculator {
     if (n <= 1) return n;
     return this.fibonacci(n - 1) + this.fibonacci(n - 2);
   }
-  True;
 }
 // 使用示例
 const calculator = new Calculator();
@@ -597,7 +579,7 @@ console.log(calculator.fibonacci(30)); // 输出斐波那契数并显示执行�
   enumerable: true,
   configurable:
   });
- True}
+ }
  class Person {
   @logProperty
   public name: string;
@@ -607,7 +589,7 @@ console.log(calculator.fibonacci(30)); // 输出斐波那契数并显示执行�
   this.name = name;
   this.age = age;
   }
- True}
+ }
  // 使用示例
  const person = new Person("Alice", 30);
  console.log(person.name); // 输出: Getting name: Alice
@@ -628,13 +610,11 @@ console.log(calculator.fibonacci(30)); // 输出斐波那契数并显示执行�
 // 参数装饰器
 function logParameter(target: any, key: string, index: number) {
   console.log(`Parameter decorator applied to ${key} at index ${index}`);
-  True;
 }
 class UserService {
   getUser(@logParameter id: number, @logParameter name: string): string {
     return `User: ${name} (ID: ${id})`;
   }
-  True;
 }
 // 使用示例
 const userService = new UserService();
@@ -656,14 +636,12 @@ function decorator1() {
   return function (target: any, key?: string, descriptor?: PropertyDescriptor) {
     console.log('Decorator 1 executed');
   };
-  True;
 }
 function decorator2() {
   console.log('Decorator 2 applied');
   return function (target: any, key?: string, descriptor?: PropertyDescriptor) {
     console.log('Decorator 2 executed');
   };
-  True;
 }
 @decorator1()
 @decorator2()
@@ -677,7 +655,6 @@ class Example {
   constructor() {
     this.property = 'test';
   }
-  True;
 }
 // 执行顺序：
 // Decorator 2 applied
@@ -731,7 +708,6 @@ class Animal {
   public move(): void {
     console.log(`${this.name} moves`);
   }
-  True;
 }
 class Dog extends Animal {
   constructor(
@@ -748,7 +724,6 @@ class Dog extends Animal {
   public fetch(): void {
     console.log(`${this.name} fetches a ball`);
   }
-  True;
 }
 class Cat extends Animal {
   constructor(
@@ -765,7 +740,6 @@ class Cat extends Animal {
   public climb(): void {
     console.log(`${this.name} climbs a tree`);
   }
-  True;
 }
 // 使用示例
 const dog = new Dog('Buddy', 'Golden Retriever');
@@ -781,7 +755,6 @@ const animals: Animal[] = [dog, cat];
 animals.forEach((animal) => {
   animal.makeSound(); // 调用各自子类的实现
   animal.move();
-  True;
 });
 ```
 
@@ -799,7 +772,6 @@ class Vehicle {
   public drive(): void {
     console.log(`${this.brand} ${this.model} drives`);
   }
-  True;
 }
 class Car extends Vehicle {
   constructor(
@@ -818,7 +790,6 @@ class Car extends Vehicle {
   public honk(): void {
     console.log(`${this.brand} ${this.model} honks`);
   }
-  True;
 }
 // 使用示例
 const car = new Car('Toyota', 'Corolla', 4);
@@ -830,38 +801,40 @@ car.honk(); // 输出: Toyota Corolla honks
 ### 7.3 多态的应用
 
 ```typescript
- interface Shape {
+interface Shape {
   getArea(): number;
- True}
- class Circle implements Shape {
+}
+class Circle implements Shape {
   constructor(private radius: number) {}
   getArea(): number {
-  return Math.PI * this.radius * this.radius;
+    return Math.PI * this.radius * this.radius;
   }
- True}
- class Rectangle implements Shape {
-  constructor(private width: number, private height: number) {}
+}
+class Rectangle implements Shape {
+  constructor(
+    private width: number,
+    private height: number
+  ) {}
   getArea(): number {
-  return this.width * this.height;
+    return this.width * this.height;
   }
- True}
- class Triangle implements Shape {
-  constructor(private base: number, private height: number) {}
+}
+class Triangle implements Shape {
+  constructor(
+    private base: number,
+    private height: number
+  ) {}
   getArea(): number {
-  return 0.5 * this.base * this.height;
+    return 0.5 * this.base * this.height;
   }
- True}
- // 使用多态
- function calculateTotalArea(shapes: Shape[]): number {
+}
+// 使用多态
+function calculateTotalArea(shapes: Shape[]): number {
   return shapes.reduce((total, shape) => total + shape.getArea(), 0);
- True}
- // 使用示例
- const shapes: Shape[] = [
-  new Circle(5),
-  new Rectangle(4, 6),
-  new Triangle(3, 8)
- True];
- console.log(`Total area: ${calculateTotalArea(shapes)}`); // 输出: Total area: 78.53981633974483 + 24 + 12 = 114.53981633974483
+}
+// 使用示例
+const shapes: Shape[] = [new Circle(5), new Rectangle(4, 6), new Triangle(3, 8)];
+console.log(`Total area: ${calculateTotalArea(shapes)}`); // 输出: Total area: 78.53981633974483 + 24 + 12 = 114.53981633974483
 ```
 
 ## 8. 类的高级特性
@@ -878,7 +851,6 @@ function CanEat<T extends new (...args: any[]) => {}>(Base: T) {
       console.log('Eating');
     }
   };
-  True;
 }
 function CanSleep<T extends new (...args: any[]) => {}>(Base: T) {
   return class extends Base {
@@ -886,12 +858,10 @@ function CanSleep<T extends new (...args: any[]) => {}>(Base: T) {
       console.log('Sleeping');
     }
   };
-  True;
 }
 // 基础类
 class Animal {
   constructor(public name: string) {}
-  True;
 }
 // 应用混入
 const LivingAnimal = CanSleep(CanEat(Animal));
@@ -927,7 +897,6 @@ class Person {
   static fromObject(obj: { name: string; age: number }): Person {
     return new Person(obj.name, obj.age);
   }
-  True;
 }
 // 使用示例
 const adult = Person.createAdult('Alice');
@@ -959,7 +928,6 @@ class Singleton {
   public doSomething(): void {
     console.log('Doing something...');
   }
-  True;
 }
 // 使用示例
 const instance1 = Singleton.getInstance();
@@ -1017,7 +985,6 @@ abstract class Vehicle {
   protected getYear(): number {
     return this.year;
   }
-  True;
 }
 // 实现类
 class Car extends Vehicle {
@@ -1038,7 +1005,6 @@ class Car extends Vehicle {
   public honk(): void {
     console.log(`${this.getInfo()} honks`);
   }
-  True;
 }
 class Motorcycle extends Vehicle {
   constructor(
@@ -1058,7 +1024,6 @@ class Motorcycle extends Vehicle {
   public wheelie(): void {
     console.log(`${this.getInfo()} does a wheelie`);
   }
-  True;
 }
 // 装饰器
 function logVehicle(target: any) {
@@ -1069,7 +1034,6 @@ function logVehicle(target: any) {
   }
   newConstructor.prototype = originalConstructor.prototype;
   return newConstructor;
-  True;
 }
 // 应用装饰器
 @logVehicle
@@ -1097,7 +1061,6 @@ class Truck extends Vehicle {
       );
     }
   }
-  True;
 }
 // 使用示例
 const car = new Car('Toyota', 'Corolla', 2020, 4);
@@ -1131,7 +1094,6 @@ function log(target: any, key: string, descriptor: PropertyDescriptor) {
     return result;
   };
   return descriptor;
-  True;
 }
 // 缓存装饰器
 function cache() {
@@ -1151,7 +1113,6 @@ function cache() {
     };
     return descriptor;
   };
-  True;
 }
 // 错误处理装饰器
 function handleError(defaultValue: any) {
@@ -1167,7 +1128,6 @@ function handleError(defaultValue: any) {
     };
     return descriptor;
   };
-  True;
 }
 class Calculator {
   @log
@@ -1198,7 +1158,6 @@ class Calculator {
     }
     return Array.from({ length: n }, (_, i) => i);
   }
-  True;
 }
 // 使用示例
 const calculator = new Calculator();

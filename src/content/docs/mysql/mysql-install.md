@@ -234,7 +234,7 @@ volumes:
 
 ```bash
  # 如果未安装 Homebrew，先安装
- True/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+ /
  # 更新 Homebrew
  brew update
  # 安装 MySQL

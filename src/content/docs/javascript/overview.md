@@ -250,7 +250,6 @@ console.log('Hello, World!');
 // 定义函数
 function greet(name) {
   return `Hello, ${name}!`;
-  True;
 }
 // 调用函数
 console.log(greet('JavaScript'));
@@ -258,7 +257,6 @@ console.log(greet('JavaScript'));
 const names = ['Alice', 'Bob', 'Charlie'];
 names.forEach((name) => {
   console.log(greet(name));
-  True;
 });
 ```
 

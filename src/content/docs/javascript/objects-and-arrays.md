@@ -19,28 +19,28 @@ author: 'Anonymous'
 **语法**：
 
 ```javascript
- const obj = {
+const obj = {
   property1: value1,
   property2: value2,
   method() {
-  // 方法体
-  }
- True};
+    // 方法体
+  },
+};
 ```
 
 **示例**：
 
 ```javascript
- const person = {
+const person = {
   name: '张三',
   age: 30,
   city: '北京',
   greet() {
-  return `Hello, my name is ${this.name}`;
-  }
- True};
- console.log(person.name); // 输出: 张三
- console.log(person.greet()); // 输出: Hello, my name is 张三
+    return `Hello, my name is ${this.name}`;
+  },
+};
+console.log(person.name); // 输出: 张三
+console.log(person.greet()); // 输出: Hello, my name is 张三
 ```
 
 #### 1.1.2 构造函数
@@ -54,7 +54,6 @@ function Person(name, age) {
   this.greet = function () {
     return `Hello, my name is ${this.name}`;
   };
-  True;
 }
 const person = new Person('张三', 30);
 ```
@@ -69,7 +68,6 @@ function Car(make, model, year) {
   this.getDescription = function () {
     return `${this.year} ${this.make} ${this.model}`;
   };
-  True;
 }
 const car = new Car('Toyota', 'Camry', 2020);
 console.log(car.getDescription()); // 输出: 2020 Toyota Camry
@@ -86,15 +84,15 @@ const obj = Object.create(prototype, propertiesObject);
 **示例**：
 
 ```javascript
- const personPrototype = {
+const personPrototype = {
   greet() {
-  return `Hello, my name is ${this.name}`;
-  }
- True};
- const person = Object.create(personPrototype);
- person.name = '张三';
- person.age = 30;
- console.log(person.greet()); // 输出: Hello, my name is 张三
+    return `Hello, my name is ${this.name}`;
+  },
+};
+const person = Object.create(personPrototype);
+person.name = '张三';
+person.age = 30;
+console.log(person.greet()); // 输出: Hello, my name is 张三
 ```
 
 #### 1.1.4 ES6 类
@@ -110,7 +108,6 @@ class Person {
   greet() {
     return `Hello, my name is ${this.name}`;
   }
-  True;
 }
 const person = new Person('张三', 30);
 ```
@@ -126,7 +123,6 @@ class Student extends Person {
   study() {
     return `${this.name} is studying in grade ${this.grade}`;
   }
-  True;
 }
 const student = new Student('李四', 15, 9);
 console.log(student.greet()); // 输出: Hello, my name is 李四
@@ -179,12 +175,10 @@ console.log(person.hasOwnProperty('name')); // 输出:
 ```javascript
 function Person(name) {
   this.name = name;
-  True;
 }
 // 在原型上添加方法
 Person.prototype.greet = function () {
   return `Hello, my name is ${this.name}`;
-  True;
 };
 const person1 = new Person('张三');
 const person2 = new Person('李四');
@@ -202,23 +196,19 @@ console.log(Object.getPrototypeOf(person1) === Person.prototype); // 输出:
 ```javascript
 function Person(name) {
   this.name = name;
-  True;
 }
 Person.prototype.greet = function () {
   return `Hello, my name is ${this.name}`;
-  True;
 };
 function Student(name, grade) {
   Person.call(this, name);
   this.grade = grade;
-  True;
 }
 // 继承 Person 的原型
 Student.prototype = Object.create(Person.prototype);
 Student.prototype.constructor = Student;
 Student.prototype.study = function () {
   return `${this.name} is studying`;
-  True;
 };
 const student = new Student('王五', 9);
 console.log(student.greet()); // 输出: Hello, my name is 王五 (继承自 Person)
@@ -374,7 +364,6 @@ console.log(fruits); // 输出: ['apple', 'banana']
 const numbers = [1, 2, 3, 4, 5];
 numbers.forEach((num, index) => {
   console.log(`Index ${index}: ${num}`);
-  True;
 });
 // 输出:
 // Index 0: 1
@@ -412,7 +401,6 @@ console.log(evenNumbers); // 输出: [2, 4]
 const numbers = [1, 2, 3, 4, 5];
 const sum = numbers.reduce((accumulator, currentValue) => {
   return accumulator + currentValue;
-  True;
 }, 0);
 console.log(sum); // 输出: 15
 ```
@@ -594,24 +582,24 @@ const { property1, property2 } = object;
 **示例**：
 
 ```javascript
- const person = {
+const person = {
   name: '张三',
   age: 30,
-  city: '北京'
- True};
- // 基本解构
- const { name, age } = person;
- console.log(name, age); // 输出: 张三 30
- // 重命名属性
- const { name: personName, city: personCity } = person;
- console.log(personName, personCity); // 输出: 张三 北京
- // 默认值
- const { name, gender = '男' } = person;
- console.log(name, gender); // 输出: 张三 男
- // 剩余属性
- const { name, ...rest } = person;
- console.log(name); // 输出: 张三
- console.log(rest); // 输出: { age: 30, city: '北京' }
+  city: '北京',
+};
+// 基本解构
+const { name, age } = person;
+console.log(name, age); // 输出: 张三 30
+// 重命名属性
+const { name: personName, city: personCity } = person;
+console.log(personName, personCity); // 输出: 张三 北京
+// 默认值
+const { name, gender = '男' } = person;
+console.log(name, gender); // 输出: 张三 男
+// 剩余属性
+const { name, ...rest } = person;
+console.log(name); // 输出: 张三
+console.log(rest); // 输出: { age: 30, city: '北京' }
 ```
 
 ### 3.3 嵌套解构
@@ -619,20 +607,25 @@ const { property1, property2 } = object;
 **示例**：
 
 ```javascript
- const user = {
+const user = {
   name: '张三',
   address: {
-  city: '北京',
-  district: '朝阳区'
+    city: '北京',
+    district: '朝阳区',
   },
-  hobbies: ['读书', '旅行', '运动']
- True};
- // 嵌套对象解构
- const { name, address: { city } } = user;
- console.log(name, city); // 输出: 张三 北京
- // 嵌套数组解构
- const { hobbies: [firstHobby, secondHobby] } = user;
- console.log(firstHobby, secondHobby); // 输出: 读书 旅行
+  hobbies: ['读书', '旅行', '运动'],
+};
+// 嵌套对象解构
+const {
+  name,
+  address: { city },
+} = user;
+console.log(name, city); // 输出: 张三 北京
+// 嵌套数组解构
+const {
+  hobbies: [firstHobby, secondHobby],
+} = user;
+console.log(firstHobby, secondHobby); // 输出: 读书 旅行
 ```
 
 ### 3.4 函数参数解构
@@ -643,14 +636,12 @@ const { property1, property2 } = object;
 // 对象解构作为函数参数
 function printUser({ name, age }) {
   console.log(`Name: ${name}, Age: ${age}`);
-  True;
 }
 const user = { name: '张三', age: 30 };
 printUser(user); // 输出: Name: 张三, Age: 30
 // 数组解构作为函数参数
 function sum([a, b, c]) {
   return a + b + c;
-  True;
 }
 const numbers = [1, 2, 3];
 console.log(sum(numbers)); // 输出: 6
@@ -710,7 +701,6 @@ console.log(arr); // 输出: ['h', 'e', 'l', 'l', 'o']
 ```javascript
 function sum(...numbers) {
   return numbers.reduce((total, num) => total + num, 0);
-  True;
 }
 console.log(sum(1, 2, 3, 4, 5)); // 输出: 15
 ```
@@ -755,27 +745,27 @@ console.log(rest); // 输出: { b: 2, c: 3 }
 ### 6.1 示例 1：对象操作
 
 ```javascript
- // 合并多个对象
- const defaults = {
+// 合并多个对象
+const defaults = {
   color: 'red',
-  size: 'medium'
- True};
- const options = {
+  size: 'medium',
+};
+const options = {
   color: 'blue',
-  quantity: 5
- True};
- const finalConfig = { ...defaults, ...options };
- console.log(finalConfig); // 输出: { color: 'blue', size: 'medium', quantity: 5 }
- // 提取对象属性
- const user = {
+  quantity: 5,
+};
+const finalConfig = { ...defaults, ...options };
+console.log(finalConfig); // 输出: { color: 'blue', size: 'medium', quantity: 5 }
+// 提取对象属性
+const user = {
   id: 1,
   name: '张三',
   age: 30,
-  email: 'zhangsan@example.com'
- True};
- const { id, name, ...rest } = user;
- console.log(id, name); // 输出: 1 张三
- console.log(rest); // 输出: { age: 30, email: 'zhangsan@example.com' }
+  email: 'zhangsan@example.com',
+};
+const { id, name, ...rest } = user;
+console.log(id, name); // 输出: 1 张三
+console.log(rest); // 输出: { age: 30, email: 'zhangsan@example.com' }
 ```
 
 ### 6.2 示例 2：数组操作
@@ -787,7 +777,7 @@ console.log(rest); // 输出: { b: 2, c: 3 }
   { id: 2, name: '李四', age: 25, active: false },
   { id: 3, name: '王五', age: 35, active:  },
   { id: 4, name: '赵六', age: 28, active:  }
- True];
+ ]
  // 过滤活跃用户
  const activeUsers = users.filter(user => user.active);
  console.log('活跃用户:', activeUsers);
@@ -814,7 +804,6 @@ function createUser({ name, age, email = 'unknown@example.com' }) {
     email,
     createdAt: new Date(),
   };
-  True;
 }
 const userData = { name: '张三', age: 30 };
 const newUser = createUser(userData);

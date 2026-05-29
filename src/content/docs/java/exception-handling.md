@@ -67,15 +67,15 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
 ```java
  try {
   // 可能抛出异常的代码
- True} catch (SpecificException e) {
+ }
   // 处理特定异常
- True} catch (AnotherException e) {
+ }
   // 处理另一种异常
- True} catch (Exception e) {
+ }
   // 捕获所有其他异常
- True} finally {
+ }
   // 无论是否发生异常，都会执行的代码
- True}
+ }
 ```
 
 ### 2.2 异常处理的执行流程
@@ -102,19 +102,19 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
  // 正确的顺序
  try {
   // 可能抛出异常的代码
- True} catch (ArithmeticException e) {
+ }
   // 处理算术异常
- True} catch (Exception e) {
+ }
   // 处理其他异常
- True}
+ }
  // 错误的顺序（ArithmeticException 捕获块永远不会执行）
  try {
   // 可能抛出异常的代码
- True} catch (Exception e) {
+ }
   // 处理所有异常
- True} catch (ArithmeticException e) {
+ }
   // 永远不会执行
- True}
+ }
 ```
 
 ## 3. 抛出异常 (Throw & Throws)
@@ -131,7 +131,7 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   if (age > 150) {
   throw new IllegalArgumentException("Age cannot be greater than 150");
   }
- True}
+ }
 ```
 
 ### 3.2 throws 关键字
@@ -144,7 +144,7 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   throw new NullPointerException("Path cannot be null");
   }
   // 可能抛出 IOException 的代码
- True}
+ }
 ```
 
 ### 3.3 throw 与 throws 的区别
@@ -183,7 +183,7 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   public int getErrorCode() {
   return errorCode;
   }
- True}
+ }
 ```
 
 #### 4.1.2 自定义运行时异常
@@ -201,7 +201,7 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   public String getFieldName() {
   return fieldName;
   }
- True}
+ }
 ```
 
 ### 4.2 自定义异常的使用
@@ -215,14 +215,14 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   throw new BusinessException("Password must be at least 6 characters", 400);
   }
   // 注册用户的逻辑
- True}
+ }
  // 使用自定义异常
  try {
   registerUser("", "123");
- True} catch (BusinessException e) {
+ }
   System.out.println("Error code: " + e.getErrorCode());
   System.out.println("Error message: " + e.getMessage());
- True}
+ }
 ```
 
 ## 5. Try-with-resources (Java 7+)
@@ -240,10 +240,10 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   bw.write(line);
   bw.newLine();
   }
- True} catch (IOException e) {
+ }
   // 处理异常
   e.printStackTrace();
- True} // 自动关闭资源
+ }
 ```
 
 ### 5.2 实现 AutoCloseable 接口
@@ -260,13 +260,13 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   public void close() throws Exception {
   System.out.println("Resource closed");
   }
- True}
+ }
  // 使用自定义资源
  try (CustomResource resource = new CustomResource()) {
   resource.use();
- True} catch (Exception e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ### 5.3 Try-with-resources 的优势
@@ -295,7 +295,7 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   }
   }
   }
- True}
+ }
 ```
 
 #### 6.1.2 业务逻辑层
@@ -314,7 +314,7 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   throw new BusinessException("Database error", 500, e);
   }
   }
- True}
+ }
 ```
 
 #### 6.1.3 表现层
@@ -331,7 +331,7 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   // 可以根据错误码进行不同的处理
   }
   }
- True}
+ }
 ```
 
 ### 6.2 异常链
@@ -341,10 +341,10 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
 ```java
  try {
   // 可能抛出 SQLException 的代码
- True} catch (SQLException e) {
+ }
   // 包装为业务异常，保留原始异常
   throw new BusinessException("Database operation failed", e);
- True}
+ }
 ```
 
 ## 7. 异常处理的最佳实践
@@ -384,11 +384,11 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
  // 错误的顺序
  try {
   // 代码
- True} catch (Exception e) {
+ }
   // 处理所有异常
- True} catch (ArithmeticException e) {
+ }
   // 永远不会执行
- True}
+ }
 ```
 
 ### 8.2 资源泄漏
@@ -399,15 +399,15 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
  try {
   br = new BufferedReader(new FileReader("file.txt"));
   // 使用 br
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True} // 没有关闭 br
+ }
  // 正确：使用 try-with-resources
  try (BufferedReader br = new BufferedReader(new FileReader("file.txt"))) {
   // 使用 br
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ### 8.3 异常信息不完整
@@ -416,11 +416,11 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
  // 错误：没有传递原始异常
  catch (SQLException e) {
   throw new BusinessException("Database error");
- True}
+ }
  // 正确：传递原始异常
  catch (SQLException e) {
   throw new BusinessException("Database error", e);
- True}
+ }
 ```
 
 ### 8.4 过度使用异常
@@ -433,14 +433,14 @@ Java 中的异常体系以 `Throwable` 为顶级父类，分为两大类：
   } catch (ArithmeticException e) {
   return 0;
   }
- True}
+ }
  // 正确：先检查
  public int divide(int a, int b) {
   if (b == 0) {
   return 0;
   }
   return a / b;
- True}
+ }
 ```
 
 ## 9. 异常处理的性能考虑

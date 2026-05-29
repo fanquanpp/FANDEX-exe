@@ -41,15 +41,15 @@ author: 'Anonymous'
 当子元素全部浮动时，父容器无法感知子元素高度，导致"高度塌陷"：
 
 ```css
- .parent {
+.parent {
   border: 2px solid #333;
   /* 没有设置 height，子元素浮动后父元素高度为 0 */
- True}
- .child {
+}
+.child {
   float: left;
   width: 100px;
   height: 100px;
- True}
+}
 ```
 
 ```html
@@ -81,9 +81,9 @@ author: 'Anonymous'
 #### 方案二：父元素设置 `overflow: hidden`（BFC 法）
 
 ```css
- .parent {
+.parent {
   overflow: hidden;
- True}
+}
 ```
 
 原理：触发 BFC，BFC 会包含浮动元素。但 `overflow: hidden` 会裁剪溢出内容，不适合需要溢出显示的场景。
@@ -91,14 +91,14 @@ author: 'Anonymous'
 #### 方案三：伪元素清除法（推荐 [完成]）
 
 ```css
- .clearfix::after {
-  content: "";
+.clearfix::after {
+  content: '';
   display: block;
   clear: both;
- True}
- .clearfix {
+}
+.clearfix {
   *zoom: 1;
- True}
+}
 ```
 
 `*zoom: 1` 是 IE6/7 的 hack，触发 hasLayout 以兼容老浏览器。
@@ -106,9 +106,9 @@ author: 'Anonymous'
 #### 方案四：现代 BFC 方案
 
 ```css
- .parent {
+.parent {
   display: flow-root;
- True}
+}
 ```
 
 `display: flow-root` 专门为创建 BFC 设计，无副作用。浏览器支持：Chrome 58+、Firefox 53+、Safari 13+。
@@ -142,11 +142,11 @@ CSS `position` 属性控制元素的定位方式，配合 `top`/`right`/`bottom`
 所有元素默认 `position: static`，遵循正常文档流。`top`/`left` 等偏移属性无效。
 
 ```css
- .box-static {
+.box-static {
   position: static;
   top: 50px;
   left: 100px;
- True}
+}
 ```
 
 > **效果图描述**：元素位置无任何变化，`top`/`left` 不生效。
@@ -156,11 +156,11 @@ CSS `position` 属性控制元素的定位方式，配合 `top`/`right`/`bottom`
 相对于**自身原位置**偏移，**不脱离文档流**，原位置仍保留空间。
 
 ```css
- .box-relative {
+.box-relative {
   position: relative;
   top: 20px;
   left: 30px;
- True}
+}
 ```
 
 ```html
@@ -182,20 +182,20 @@ CSS `position` 属性控制元素的定位方式，配合 `top`/`right`/`bottom`
 相对于**最近的非 static 祖先**偏移，**脱离文档流**，原位置不保留空间。
 
 ```css
- .parent-abs {
+.parent-abs {
   position: relative;
   width: 300px;
   height: 200px;
   background: #ecf0f1;
- True}
- .child-abs {
+}
+.child-abs {
   position: absolute;
   top: 20px;
   right: 20px;
   width: 80px;
   height: 80px;
   background: #e74c3c;
- True}
+}
 ```
 
 ```html
@@ -216,7 +216,7 @@ CSS `position` 属性控制元素的定位方式，配合 `top`/`right`/`bottom`
 相对于**浏览器视口**定位，**脱离文档流**，滚动页面时位置不变。
 
 ```css
- .nav-fixed {
+.nav-fixed {
   position: fixed;
   top: 0;
   left: 0;
@@ -225,8 +225,8 @@ CSS `position` 属性控制元素的定位方式，配合 `top`/`right`/`bottom`
   background: #2c3e50;
   color: #fff;
   z-index: 1000;
- True}
- .back-to-top {
+}
+.back-to-top {
   position: fixed;
   bottom: 30px;
   right: 30px;
@@ -235,7 +235,7 @@ CSS `position` 属性控制元素的定位方式，配合 `top`/`right`/`bottom`
   background: #3498db;
   border-radius: 50%;
   cursor: pointer;
- True}
+}
 ```
 
 > **效果图描述**：深色导航栏始终固定在页面顶部；蓝色圆形"回到顶部"按钮固定在右下角。
@@ -246,14 +246,14 @@ CSS `position` 属性控制元素的定位方式，配合 `top`/`right`/`bottom`
 在特定滚动阈值内表现为 `relative`，超出阈值后表现为 `fixed`。
 
 ```css
- .section-title {
+.section-title {
   position: sticky;
   top: 0;
   background: #fff;
   padding: 10px;
   border-bottom: 2px solid #3498db;
   z-index: 10;
- True}
+}
 ```
 
 ```html
@@ -336,9 +336,9 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 #### 应用一：清除浮动（解决高度塌陷）
 
 ```css
- .container {
+.container {
   display: flow-root;
- True}
+}
 ```
 
 #### 应用二：防止 margin 折叠
@@ -365,17 +365,17 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 浮动元素不会与 BFC 区域重叠，利用这一点实现右侧自适应：
 
 ```css
- .left {
+.left {
   float: left;
   width: 200px;
   height: 300px;
   background: #e74c3c;
- True}
- .right {
+}
+.right {
   overflow: hidden;
   height: 300px;
   background: #3498db;
- True}
+}
 ```
 
 ```html
@@ -394,16 +394,16 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 三栏布局：中间自适应，两侧固定宽度。DOM 顺序中间栏优先渲染。
 
 ```css
- .holy-grail {
+.holy-grail {
   padding: 0 200px 0 150px;
- True}
- .holy-grail .center {
+}
+.holy-grail .center {
   float: left;
   width: 100%;
   background: #ecf0f1;
   min-height: 300px;
- True}
- .holy-grail .left {
+}
+.holy-grail .left {
   float: left;
   width: 150px;
   margin-left: -100%;
@@ -411,8 +411,8 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
   left: -150px;
   background: #e74c3c;
   min-height: 300px;
- True}
- .holy-grail .right {
+}
+.holy-grail .right {
   float: left;
   width: 200px;
   margin-left: -200px;
@@ -420,7 +420,7 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
   right: -200px;
   background: #3498db;
   min-height: 300px;
- True}
+}
 ```
 
 ```html
@@ -444,29 +444,29 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 与圣杯布局目标相同，但实现方式不同：中间栏内部再包一层，用 `margin` 留空间而非父容器 `padding`。
 
 ```css
- .double-wing .center-wrap {
+.double-wing .center-wrap {
   float: left;
   width: 100%;
- True}
- .double-wing .center {
+}
+.double-wing .center {
   margin: 0 200px 0 150px;
   background: #ecf0f1;
   min-height: 300px;
- True}
- .double-wing .left {
+}
+.double-wing .left {
   float: left;
   width: 150px;
   margin-left: -100%;
   background: #e74c3c;
   min-height: 300px;
- True}
- .double-wing .right {
+}
+.double-wing .right {
   float: left;
   width: 200px;
   margin-left: -200px;
   background: #3498db;
   min-height: 300px;
- True}
+}
 ```
 
 ```html
@@ -493,18 +493,22 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 传统方式实现多列等高：
 
 ```css
- .equal-height {
+.equal-height {
   overflow: hidden;
- True}
- .equal-height .col {
+}
+.equal-height .col {
   float: left;
   width: 33.33%;
   padding-bottom: 9999px;
   margin-bottom: -9999px;
   background: #ecf0f1;
- True}
- .equal-height .col:nth-child(2) { background: #bdc3c7; }
- .equal-height .col:nth-child(3) { background: #95a5a6; }
+}
+.equal-height .col:nth-child(2) {
+  background: #bdc3c7;
+}
+.equal-height .col:nth-child(3) {
+  background: #95a5a6;
+}
 ```
 
 > **效果图描述**：三列高度一致，以内容最多的列为准。利用超大 `padding-bottom` + 负 `margin-bottom` 实现。
@@ -518,9 +522,9 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 #### 行内元素 / 行内块元素
 
 ```css
- .parent {
+.parent {
   text-align: center;
- True}
+}
 ```
 
 ```html
@@ -532,21 +536,21 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 #### 定宽块级元素
 
 ```css
- .child {
+.child {
   width: 200px;
   margin: 0 auto;
- True}
+}
 ```
 
 #### 不定宽块级元素
 
 ```css
- .parent {
+.parent {
   text-align: center;
- True}
- .child {
+}
+.child {
   display: inline-block;
- True}
+}
 ```
 
 ### 5.2 垂直居中
@@ -554,31 +558,34 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 #### 单行文本
 
 ```css
- .single-line {
+.single-line {
   height: 50px;
   line-height: 50px;
- True}
+}
 ```
 
 #### 多行文本（table-cell）
 
 ```css
- .parent {
+.parent {
   display: table-cell;
   vertical-align: middle;
   height: 200px;
- True}
+}
 ```
 
 #### 绝对定位 + transform
 
 ```css
- .parent { position: relative; height: 200px; }
- .child {
+.parent {
+  position: relative;
+  height: 200px;
+}
+.child {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
- True}
+}
 ```
 
 ### 5.3 水平垂直居中
@@ -586,13 +593,13 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 #### 方案一：绝对定位 + transform（最经典）
 
 ```css
- .parent {
+.parent {
   position: relative;
   width: 400px;
   height: 300px;
   background: #ecf0f1;
- True}
- .child {
+}
+.child {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -600,7 +607,7 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
   background: #e74c3c;
   padding: 20px;
   color: #fff;
- True}
+}
 ```
 
 > **效果图描述**：红色方块精确居中在灰色容器正中央。
@@ -609,7 +616,7 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 #### 方案二：绝对定位 + 负 margin（需已知尺寸）
 
 ```css
- .child {
+.child {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -617,7 +624,7 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
   height: 100px;
   margin-top: -50px;
   margin-left: -100px;
- True}
+}
 ```
 
 **优点**：兼容性极好。**缺点**：需要知道子元素宽高。
@@ -625,7 +632,7 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 #### 方案三：绝对定位 + margin: auto（需已知尺寸）
 
 ```css
- .child {
+.child {
   position: absolute;
   top: 0;
   right: 0;
@@ -634,7 +641,7 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
   margin: auto;
   width: 200px;
   height: 100px;
- True}
+}
 ```
 
 **原理**：绝对定位元素四边为 0 时，浏览器自动计算 `margin` 使其居中。
@@ -642,16 +649,16 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 #### 方案四：table-cell
 
 ```css
- .parent {
+.parent {
   display: table-cell;
   vertical-align: middle;
   text-align: center;
   width: 400px;
   height: 300px;
- True}
- .child {
+}
+.child {
   display: inline-block;
- True}
+}
 ```
 
 **优点**：兼容 IE8+。**缺点**：`display: table-cell` 对布局有限制。
@@ -659,12 +666,12 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 #### 方案五：Flexbox（现代推荐 [完成]）
 
 ```css
- .parent {
+.parent {
   display: flex;
   justify-content: center;
   align-items: center;
   height: 300px;
- True}
+}
 ```
 
 **优点**：最简洁，无需知道子元素尺寸。**缺点**：IE9 及以下不支持。
@@ -672,11 +679,11 @@ BFC（Block Formatting Context）是 CSS 中一个独立的渲染区域，内部
 #### 方案六：Grid（最现代）
 
 ```css
- .parent {
+.parent {
   display: grid;
   place-items: center;
   height: 300px;
- True}
+}
 ```
 
 **优点**：代码最少。**缺点**：IE 不支持。

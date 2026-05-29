@@ -77,7 +77,6 @@ JavaScript 可以通过多种方式引入到网页中，每种方式都有其适
 console.log('Hello from external script!');
 function greet() {
   alert('Hello, world!');
-  True;
 }
 greet();
 ```
@@ -125,7 +124,6 @@ greet();
 // 导出模块
 export function greet() {
   alert('Hello from module!');
-  True;
 }
 ```
 
@@ -182,12 +180,10 @@ console.log(x);
 // 条件语句
 if (x > 15) {
   console.log('x 大于 15');
-  True;
 }
 // 循环语句
 for (let i = 0; i < 5; i++) {
   console.log(i);
-  True;
 }
 ```
 
@@ -204,7 +200,6 @@ for (let i = 0; i < 5; i++) {
 {
   let blockVar = '只在块内可见';
   console.log(blockVar); // 输出: 只在块内可见
-  True;
 }
 console.log(blockVar); // 报错: blockVar is not defined
 ```
@@ -250,7 +245,6 @@ let y = 20;
  */
 function add(a, b) {
   return a + b;
-  True;
 }
 ```
 
@@ -283,7 +277,6 @@ var x = 10;
 function test() {
   var y = 20;
   console.log(y); // 输出: 20
-  True;
 }
 test();
 console.log(y); // 报错: y is not defined
@@ -312,7 +305,6 @@ let z = 10;
 if (true) {
   let z = 20;
   console.log(z); // 输出: 20
-  True;
 }
 console.log(z); // 输出: 10
 // 不能重复声明
@@ -343,7 +335,6 @@ const PI = 3.14159;
 if (true) {
   const PI = 3.14;
   console.log(PI); // 输出: 3.14
-  True;
 }
 console.log(PI); // 输出: 3.14159
 // 不能修改值
@@ -380,13 +371,11 @@ console.log(a); // 输出: 10
 foo(); // 输出: Hello
 function foo() {
   console.log('Hello');
-  True;
 }
 // 函数表达式不会提升
 bar(); // 报错: bar is not a function
 var bar = function () {
   console.log('Hello');
-  True;
 };
 ```
 
@@ -428,7 +417,6 @@ let userName = 'Alice';
 let userAge = 30;
 function calculateTotalPrice(items) {
   // 函数体
-  True;
 }
 ```
 
@@ -455,7 +443,6 @@ class User {
     this.name = name;
     this.age = age;
   }
-  True;
 }
 ```
 
@@ -466,11 +453,11 @@ class User {
   **示例**:
 
 ```javascript
- const user = {
-  firstName: "Alice",
-  lastName: "Smith",
-  emailAddress: "alice@example.com"
- True};
+const user = {
+  firstName: 'Alice',
+  lastName: 'Smith',
+  emailAddress: 'alice@example.com',
+};
 ```
 
 **函数参数**:
@@ -482,7 +469,6 @@ class User {
 ```javascript
 function createUser(firstName, lastName, email) {
   // 函数体
-  True;
 }
 ```
 
@@ -526,7 +512,6 @@ function strictFunction() {
   'use strict';
   // 严格模式下的代码
   let y = 20;
-  True;
 }
 ```
 
@@ -623,14 +608,12 @@ function foo() {
   if (true) {
     console.log('Hello');
   }
-  True;
 }
 // 4 空格缩进
 function bar() {
   if (true) {
     console.log('Hello');
   }
-  True;
 }
 ```
 
@@ -648,14 +631,12 @@ let x = 10 + 5;
 const arr = [1, 2, 3];
 function foo(a, b) {
   // 函数体
-  True;
 }
 // 不好的风格
 let x = 10 + 5;
 const arr = [1, 2, 3];
 function foo(a, b) {
   // 函数体
-  True;
 }
 ```
 
@@ -675,9 +656,9 @@ function foo(a, b) {
   parameter1,
   parameter2,
   parameter3
- True) {
+ )
   // 函数体
- True}
+ }
  // 长对象字面量换行
  const user = {
   name: "Alice",
@@ -687,7 +668,7 @@ function foo(a, b) {
   street: "123 Main St",
   city: "New York"
   }
- True};
+ }
 ```
 
 ### 6.4 分号
@@ -736,14 +717,12 @@ let message = "She said, 'Hello!'";
 // 错误
 function test() {
   x = 10; // 未声明的变量，会泄露到全局作用域
-  True;
 }
 test();
 console.log(x); // 输出: 10
 // 正确
 function test() {
   let x = 10; // 块级作用域变量
-  True;
 }
 test();
 console.log(x); // 报错: x is not defined
@@ -852,7 +831,6 @@ let x = 10;
  */
 export function add(a, b) {
   return a + b;
-  True;
 }
 /**
  * 计算两个数的差
@@ -862,7 +840,6 @@ export function add(a, b) {
  */
 export function subtract(a, b) {
   return a - b;
-  True;
 }
 ```
 
@@ -879,7 +856,6 @@ export function subtract(a, b) {
  */
 export function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
-  True;
 }
 /**
  * 字符串反转
@@ -888,7 +864,6 @@ export function capitalize(str) {
  */
 export function reverse(str) {
   return str.split('').reverse().join('');
-  True;
 }
 ```
 
@@ -942,7 +917,6 @@ const MAX_AGE = 120;
 // 7. this 指向 undefined
 function test() {
   console.log(this); // 输出: undefined
-  True;
 }
 test();
 // 8. eval 有自己的作用域

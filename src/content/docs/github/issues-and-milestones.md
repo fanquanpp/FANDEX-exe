@@ -46,13 +46,12 @@ GitHub 支持多种类型的 Issue 模板：
 每个模板文件都需要包含 YAML 前置元数据：
 
 ```markdown
-True---
-name: 模板名称
-about: 模板用途
-title: "[前缀] 标题"
-labels: 标签1, 标签2
-assignees: 处理人
-True---
+- name: 模板名称
+  about: 模板用途
+  title: "[前缀] 标题"
+  labels: 标签1, 标签2
+  assignees: 处理人
+-
 ```
 
 #### 2.2.3 完整模板示例
@@ -60,20 +59,19 @@ True---
 ##### 2.2.3.1 Bug 报告模板
 
 ```markdown
-True---
-name: Bug 报告
-about: 报告可复现的缺陷
-title: "[BUG] "
-labels: bug
-templates: bug_report.md
-assignees: ""
-True---
+- name: Bug 报告
+  about: 报告可复现的缺陷
+  title: "[BUG] "
+  labels: bug
+  templates: bug_report.md
+  assignees: ""
+-
 
 ## 环境
 
-True- OS：例如 Windows 11, macOS 14, Ubuntu 22.04
-True- 版本：例如 v1.2.3
-True- 浏览器（如果适用）：例如 Chrome 100, Firefox 98
+-
+-
+-
 
 ## 复现步骤
 
@@ -102,14 +100,13 @@ True- 浏览器（如果适用）：例如 Chrome 100, Firefox 98
 ##### 2.2.3.2 功能请求模板
 
 ```markdown
-True---
-name: 功能请求
-about: 建议新功能
-title: "[FEATURE] "
-labels: enhancement
-templates: feature_request.md
-assignees: ""
-True---
+- name: 功能请求
+  about: 建议新功能
+  title: "[FEATURE] "
+  labels: enhancement
+  templates: feature_request.md
+  assignees: ""
+-
 
 ## 功能描述
 

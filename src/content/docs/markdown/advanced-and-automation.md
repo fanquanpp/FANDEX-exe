@@ -54,7 +54,6 @@ updated: 2026-05-03
 ```javascript
 function hello() {
   console.log('Hello, Markdown!');
-  True;
 }
 ```
 
@@ -69,7 +68,7 @@ function hello() {
  function hello() {
   console.log('Hello, Markdown!');
   return true;
- True}
+ }
  hello();
 ```
 
@@ -83,20 +82,20 @@ function hello() {
 ### 1.4 任务列表
 
 ```markdown
-True- [x] 完成 Markdown 基础语法学习
-True- [x] 学习高级 Markdown 语法
-True- [ ] 实践文档自动化
-True- [ ] 构建个人知识库
+-
+-
+-
+-
 ```
 
 ### 1.5 定义列表
 
 ```markdown
 术语 1
-True: 术语 1 的定义
+:
 术语 2
-True: 术语 2 的定义
-True: 术语 2 的另一个定义
+:
+:
 ```
 
 ### 1.6 数学公式
@@ -111,22 +110,22 @@ True: 术语 2 的另一个定义
 
 ```markdown
 $$
-True\int_0^1 x^2 dx = \frac{1}{3}
+\
 $$
 ```
 
 ### 1.7 admonition
 
 ```markdown
-True::: tip
+:
 这是一个提示
-True:::
-True::: warning
+:
+:
 这是一个警告
-True:::
-True::: danger
+:
+:
 这是一个危险警告
-True:::
+:
 ```
 
 ### 1.8 目录
@@ -149,19 +148,19 @@ True:::
 #### 1.10.1 基本图片
 
 ```markdown
-True![Alt text](image.jpg)
+!
 ```
 
 #### 1.10.2 带标题的图片
 
 ```markdown
-True![Alt text](image.jpg '图片标题')
+!
 ```
 
 #### 1.10.3 带尺寸的图片
 
 ```markdown
-True![Alt text](image.jpg =300x200)
+!
 ```
 
 ## 2. 文档自动化
@@ -231,26 +230,22 @@ True![Alt text](image.jpg =300x200)
 **配置文件**
 
 ```javascript
- // .vuepress/config.js
- module.exports = {
+// .vuepress/config.js
+module.exports = {
   title: 'My Documentation',
   description: 'This is my documentation site',
   themeConfig: {
-  nav: [
-  { text: 'Home', link: '/' },
-  { text: 'Guide', link: '/guide/' },
-  { text: 'API', link: '/api/' }
-  ],
-  sidebar: {
-  '/guide/': [
-  { text: 'Getting Started', link: '/guide/' }
-  ],
-  '/api/': [
-  { text: 'API Reference', link: '/api/' }
-  ]
-  }
-  }
- True}
+    nav: [
+      { text: 'Home', link: '/' },
+      { text: 'Guide', link: '/guide/' },
+      { text: 'API', link: '/api/' },
+    ],
+    sidebar: {
+      '/guide/': [{ text: 'Getting Started', link: '/guide/' }],
+      '/api/': [{ text: 'API Reference', link: '/api/' }],
+    },
+  },
+};
 ```
 
 **构建站点**
@@ -346,17 +341,17 @@ nav:
 **配置多版本**
 
 ```javascript
- // .vuepress/config.js
- module.exports = {
+// .vuepress/config.js
+module.exports = {
   // ...
   themeConfig: {
-  // ...
-  versions: {
-  '1.0': '/1.0/',
-  '2.0': '/2.0/'
-  }
-  }
- True}
+    // ...
+    versions: {
+      '1.0': '/1.0/',
+      '2.0': '/2.0/',
+    },
+  },
+};
 ```
 
 **目录结构**
@@ -388,7 +383,7 @@ nav:
 # 页面 1
 
 [页面 2](页面 2)
-True![图片.png](图片.png)
+!
 ```
 
 #### 3.1.2 使用 Notion
@@ -403,11 +398,10 @@ True![图片.png](图片.png)
 ````markdown
 # 标题
 
-True**粗体** _斜体_
-True- 列表项 1
-True- 列表项 2
-True> 引用
-`代码`
+-
+
+*
+* > `代码`
 
 ```javascript
 // 代码块
@@ -469,7 +463,7 @@ function hello() {
 
 #### 3.3.1 从代码生成文档
 
-True**使用 JSDoc**
+-
 
 ```javascript
 /**
@@ -483,7 +477,7 @@ function sum(a, b) {
 }
 ```
 
-True**生成文档**
+-
 
 ```bash
 # 安装 JSDoc
@@ -505,31 +499,31 @@ typedoc --out docs src
 
 ### 4.1 编辑器
 
-True- **VS Code**：支持 Markdown 预览和插件
-True- **Typora**：所见即所得的 Markdown 编辑器
-True- **Vim**：支持 Markdown 语法高亮
-True- **Emacs**：支持 Markdown 模式
+-
+-
+-
+-
 
 ### 4.2 插件
 
-True- **Markdown All in One**：VS Code 插件，提供 Markdown 工具集
-True- **Prettier**：代码格式化工具，支持 Markdown
-True- **Code Spell Checker**：拼写检查工具
-True- **Markdown Preview Enhanced**：增强的 Markdown 预览
+-
+-
+-
+-
 
 ### 4.3 在线工具
 
-True- **Dillinger**：在线 Markdown 编辑器
-True- **StackEdit**：在线 Markdown 编辑器，支持云存储
-True- **Markdown Table Generator**：在线表格生成器
-True- **MathJax**：数学公式渲染
+-
+-
+-
+-
 
 ### 4.4 模板
 
-True- **GitHub README 模板**
-True- **技术文档模板**
-True- **API 文档模板**
-True- **项目计划模板**
+-
+-
+-
+-
 
 ## 5. 最佳实践
 
@@ -567,7 +561,7 @@ True- **项目计划模板**
 
 ### 6.1 构建个人知识库
 
-True**目录结构**
+-
 
 ```
 knowledge-base/
@@ -584,7 +578,7 @@ knowledge-base/
 └── images/
 ```
 
-True**README.md**
+-
 
 ```markdown
 # 个人知识库
@@ -609,7 +603,7 @@ True**README.md**
 
 ### 6.2 构建项目文档
 
-True**使用 VuePress**
+-
 
 ```bash
 # 初始化项目
@@ -633,42 +627,45 @@ npm run dev
 
 ### 7.1 图片路径问题
 
-True**问题**：图片显示不出来
-True**解决方案**：
-True- 使用相对路径
-True- 使用绝对路径
-True- 使用在线图片链接
-True- 确保图片文件存在
+-
+-
+
+*
+*
+*
+*
 
 ### 7.2 表格格式问题
 
-True**问题**：表格显示不正确
-True**解决方案**：
-True- 确保表格格式正确
-True- 使用等宽字体编辑表格
-True- 使用表格生成工具
+-
+-
+
+*
+*
+*
 
 ### 7.3 数学公式渲染问题
 
-True**问题**：数学公式不渲染
-True**解决方案**：
-True- 使用支持数学公式的渲染器
-True- 安装相应的插件
-True- 确保公式语法正确
+-
+-
+
+*
+*
+*
 
 ### 7.4 文档构建问题
 
-True**问题**：构建失败
-True**解决方案**：
-True- 检查配置文件
-True- 检查文件路径
-True- 检查依赖安装
+-
+-
+
+*
+*
+*
 
 ## 8. 延伸阅读
 
-True- [Markdown 官方文档](https://daringfireball.net/projects/markdown/)
-True- [GitHub Flavored Markdown 指南](https://docs.github.com/en/get-started/writing-on-github)
-True- [VuePress 文档](https://vuepress.vuejs.org/)
-True- [MkDocs 文档](https://www.mkdocs.org/)
-True- [Obsidian 文档](https://help.obsidian.md/)
-通过本教程，你已经了解了 Markdown 的高级语法和文档自动化工具。在实际项目中，你可以使用这些技术来创建高质量的文档，提高工作效率，构建个人知识库或项目文档。
+-
+-
+-
+-
+- 通过本教程，你已经了解了 Markdown 的高级语法和文档自动化工具。在实际项目中，你可以使用这些技术来创建高质量的文档，提高工作效率，构建个人知识库或项目文档。

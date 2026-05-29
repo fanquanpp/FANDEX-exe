@@ -72,7 +72,7 @@ spring:
   public void run() {
   System.out.println("定时任务执行中...");
   }
- True}
+ }
 ```
 
 ## 4. 最佳实践

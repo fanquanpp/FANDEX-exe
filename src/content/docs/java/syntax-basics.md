@@ -48,7 +48,7 @@ author: 'Anonymous'
   Date now = new Date();
   System.out.println("当前时间: " + now);
   }
- True}
+ }
 ```
 
 ### 1.2 类的结构
@@ -94,7 +94,7 @@ author: 'Anonymous'
   public void study() {
   System.out.println(getName() + " is studying " + major);
   }
- True}
+ }
 ```
 
 ### 1.3 主方法
@@ -114,7 +114,7 @@ author: 'Anonymous'
   for (int i = 0; i < args.length; i++) {
   System.out.println("Argument " + i + ": " + args[i]);
   }
- True}
+ }
 ```
 
 ## 2. 注释规范
@@ -142,7 +142,7 @@ author: 'Anonymous'
  int sum = 0;
  for (int i = 1; i <= 100; i++) {
   sum += i; // 累加
- True}
+ }
 ```
 
 ### 2.3 文档注释
@@ -159,7 +159,7 @@ author: 'Anonymous'
   */
  public int add(int a, int b) {
   return a + b;
- True}
+ }
 ```
 
 **常用的 Javadoc 标签**：
@@ -319,7 +319,7 @@ Java 有 50 多个关键字，以下是一些常用的关键字：
   // 4. 关闭 Scanner
   sc.close();
   }
- True}
+ }
 ```
 
 ### 5.2 Scanner 类的常用方法
@@ -366,7 +366,7 @@ Java 有 50 多个关键字，以下是一些常用的关键字：
   System.out.println("输入的整数是: " + num);
   sc.close();
   }
- True}
+ }
 ```
 
 ## 6. 代码风格与最佳实践
@@ -389,18 +389,18 @@ Java 有 50 多个关键字，以下是一些常用的关键字：
  // 好的风格
  if (condition) {
   // 代码块
- True} else {
+ }
   // 代码块
- True}
+ }
  // 不好的风格
  if (condition)
  {
   // 代码块
- True}
+ }
  else
  {
   // 代码块
- True}
+ }
 ```
 
 ### 6.3 行长度
@@ -445,16 +445,16 @@ Java 有 50 多个关键字，以下是一些常用的关键字：
  // 不好的风格
  for (int i = 0; i < 10; i++) {
   // 代码
- True}
+ }
  // 好的风格
  private static final int MAX_ITERATIONS = 10;
  for (int i = 0; i < MAX_ITERATIONS; i++) {
   // 代码
- True}
+ }
  // 使用 try-with-resources
  try (Scanner sc = new Scanner(System.in)) {
   // 使用 sc
- True} // 自动关闭 sc
+ }
 ```
 
 ## 7. 实际应用示例
@@ -501,7 +501,7 @@ Java 有 50 多个关键字，以下是一些常用的关键字：
   }
   sc.close();
   }
- True}
+ }
 ```
 
 ### 7.2 示例 2：学生信息管理
@@ -541,7 +541,7 @@ Java 有 50 多个关键字，以下是一些常用的关键字：
   System.out.println("\n平均成绩: " + average);
   sc.close();
   }
- True}
+ }
 ```
 
 ---

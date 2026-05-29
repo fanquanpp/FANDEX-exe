@@ -49,7 +49,7 @@ author: 'Anonymous'
   public void setData(T data) {
   this.data = data;
   }
- True}
+ }
 ```
 
 ### 2.2 泛型类的使用
@@ -83,7 +83,7 @@ author: 'Anonymous'
   public V getValue() {
   return value;
   }
- True}
+ }
 ```
 
 ### 2.4 类型参数的命名约定
@@ -106,7 +106,7 @@ author: 'Anonymous'
   for (T element : array) {
   System.out.println(element);
   }
- True}
+ }
 ```
 
 ### 3.2 泛型方法的使用
@@ -132,7 +132,7 @@ author: 'Anonymous'
  // 静态泛型方法
  public static <T> void staticGenericMethod(T value) {
   System.out.println("Value: " + value);
- True}
+ }
 ```
 
 ### 3.5 泛型方法的类型推断
@@ -143,7 +143,7 @@ Java 编译器可以根据方法参数自动推断泛型类型。
  // 类型推断
  public <T> T getFirstElement(List<T> list) {
   return list.isEmpty() ? null : list.get(0);
- True}
+ }
  // 使用
  List<String> strings = Arrays.asList("a", "b", "c");
  String first = getFirstElement(strings); // 自动推断 T 为 String
@@ -168,22 +168,22 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
  public class Box<T> {
   private T data;
   // ...
- True}
+ }
  // 擦除后
  public class Box {
   private Object data;
   // ...
- True}
+ }
  // 有边界的泛型
  public class NumberBox<T extends Number> {
   private T data;
   // ...
- True}
+ }
  // 擦除后
  public class NumberBox {
   private Number data;
   // ...
- True}
+ }
 ```
 
 ### 4.4 类型擦除的影响
@@ -198,7 +198,7 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
  // 以下代码无法编译
  if (list instanceof List<String>) { // 错误: 泛型类型不能用于 instanceof
   // ...
- True}
+ }
  // 以下代码可以编译，但运行时会有警告
  List<String> list = new ArrayList<>();
  List rawList = list;
@@ -218,7 +218,7 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   for (Object item : list) {
   System.out.println(item);
   }
- True}
+ }
 ```
 
 ### 5.2 上界通配符
@@ -233,7 +233,7 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   sum += number.doubleValue();
   }
   return sum;
- True}
+ }
 ```
 
 ### 5.3 下界通配符
@@ -246,7 +246,7 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   for (int i = 1; i <= 10; i++) {
   list.add(i);
   }
- True}
+ }
 ```
 
 ### 5.4 PECS 原则
@@ -272,10 +272,10 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
  // 泛型类的继承
  public class Box<T> {
   // ...
- True}
+ }
  public class StringBox extends Box<String> {
   // ...
- True}
+ }
  // 类型参数的继承
  List<String> strings = new ArrayList<>();
  List<Object> objects = strings; // 错误: 类型不兼容
@@ -289,14 +289,14 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
  // 泛型接口
  public interface Generator<T> {
   T generate();
- True}
+ }
  // 实现泛型接口
  public class StringGenerator implements Generator<String> {
   @Override
   public String generate() {
   return "Generated string";
   }
- True}
+ }
 ```
 
 ### 6.3 泛型与反射
@@ -319,10 +319,10 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   public Class<T> getType() {
   return type;
   }
- True}
+ }
  // 使用
  public class StringType extends GenericType<String> {
- True}
+ }
  StringType stringType = new StringType();
  class<String> type = stringType.getType();
  System.out.println(type.getName()); // 输出: java.lang.String
@@ -359,13 +359,13 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   for (Number number : list) {
   System.out.println(number);
   }
- True}
+ }
  // 写入集合元素
  public void addIntegers(List<? super Integer> list) {
   list.add(1);
   list.add(2);
   list.add(3);
- True}
+ }
 ```
 
 ### 7.3 集合的类型安全
@@ -410,7 +410,7 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   array[i] = array[j];
   array[j] = temp;
   }
- True}
+ }
 ```
 
 ### 8.2 自定义泛型集合
@@ -454,7 +454,7 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   public int size() {
   return size;
   }
- True}
+ }
 ```
 
 ### 8.3 泛型与工厂模式
@@ -463,19 +463,19 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
  // 泛型工厂
  public interface Product {
   void use();
- True}
+ }
  public class ConcreteProductA implements Product {
   @Override
   public void use() {
   System.out.println("Using Product A");
   }
- True}
+ }
  public class ConcreteProductB implements Product {
   @Override
   public void use() {
   System.out.println("Using Product B");
   }
- True}
+ }
  public class ProductFactory {
   public static <T extends Product> T createProduct(Class<T> productClass) {
   try {
@@ -484,7 +484,7 @@ Java 泛型是通过类型擦除实现的，即在编译时检查类型，在运
   throw new RuntimeException("Failed to create product", e);
   }
   }
- True}
+ }
  // 使用
  Product productA = ProductFactory.createProduct(ConcreteProductA.class);
  productA.use(); // 输出: Using Product A

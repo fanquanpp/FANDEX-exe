@@ -62,7 +62,7 @@ D. 众数只适用于数值型数据
  df = pd.DataFrame({
   'age': [25, 30, None, 25, 200, 28],
   'city': ['Beijing', 'Shanghai', 'Beijing', None, 'Beijing', 'Beijing']
- True})
+ }
  ```
 
 **输出**: 清洗后的 DataFrame
@@ -96,7 +96,7 @@ D. 众数只适用于数值型数据
   'date': pd.to_datetime(['2024-01-05','2024-01-15','2024-02-03','2024-02-20','2024-01-25']),
   'category': ['A','B','A','B','A'],
   'amount': [100, 200, 150, 300, 120]
- True})
+ }
  ```
 
 **输出**: 透视表（行=月份，列=类别，值=销售额总和）

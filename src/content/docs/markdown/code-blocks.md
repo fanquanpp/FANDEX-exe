@@ -43,7 +43,7 @@ hello();
 ```
  function hello() {
   console.log('Hello, World!');
- True}
+ }
  hello();
 ```
 
@@ -131,7 +131,6 @@ url: jdbc:mysql://localhost:3306/db
 ```javascript
 function hello() {
   console.log('Hello, World!');
-  True;
 }
 hello();
 ```
@@ -147,7 +146,7 @@ hello();
   public static void main(String[] args) {
   System.out.println("Hello, World!");
   }
- True}
+ }
 ```
 
 ```c
@@ -155,17 +154,17 @@ hello();
  int main() {
   printf("Hello, World!\n");
   return 0;
- True}
+ }
 ```
 
 ```css
- body {
+body {
   font-family: Arial, sans-serif;
   background-color: #f0f0f0;
- True}
- h1 {
+}
+h1 {
   color: #333;
- True}
+}
 ```
 
 ```html
@@ -186,11 +185,11 @@ hello();
 ```
 
 ```json
- {
+{
   "name": "John",
   "age": 30,
   "city": "New York"
- True}
+}
 ```
 
 ```yaml
@@ -226,7 +225,6 @@ function formatText(text) {
     .split(' ')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-  True;
 }
 ```
 
@@ -251,7 +249,6 @@ hello();
 ```javascript {linenos}
 function hello() {
   console.log('Hello, World!');
-  True;
 }
 hello();
 ```
@@ -275,7 +272,6 @@ hello();
 ```javascript {hl_lines=[2,4]}
 function hello() {
   console.log('Hello, World!');
-  True;
 }
 hello();
 ```
@@ -303,7 +299,6 @@ hello();
 ```javascript
 function hello() {
   console.log('Hello, World!');
-  True;
 }
 hello();
 ```
@@ -401,7 +396,6 @@ function githubExample() {
 // GitHub Flavored Markdown 支持语法高亮
 function githubExample() {
   console.log('Hello, GitHub!');
-  True;
 }
 ```
 

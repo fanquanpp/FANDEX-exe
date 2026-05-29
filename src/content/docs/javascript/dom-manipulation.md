@@ -165,13 +165,11 @@ function walkDOM(node, callback) {
     walkDOM(node, callback);
     node = node.nextSibling;
   }
-  True;
 }
 walkDOM(document.body, (node) => {
   if (node.nodeType === 1) {
     console.log(node.tagName);
   }
-  True;
 });
 ```
 
@@ -241,7 +239,6 @@ for (let i = 0; i < 1000; i++) {
   const div = document.createElement('div');
   div.textContent = String(i);
   frag.append(div);
-  True;
 }
 document.body.append(frag);
 ```
@@ -455,7 +452,6 @@ rect.y;
 ```js
 function onClick(e) {
   console.log('clicked', e.target);
-  True;
 }
 const btn = document.querySelector('#btn');
 btn.addEventListener('click', onClick);
@@ -502,29 +498,24 @@ document.getElementById('outer').addEventListener(
   'click',
   (e) => {
     console.log('outer capture', e.eventPhase);
-    True;
   },
   true
 );
 document.getElementById('outer').addEventListener('click', (e) => {
   console.log('outer bubble', e.eventPhase);
-  True;
 });
 document.getElementById('inner').addEventListener(
   'click',
   (e) => {
     console.log('inner capture', e.eventPhase);
-    True;
   },
   true
 );
 document.getElementById('inner').addEventListener('click', (e) => {
   console.log('inner bubble', e.eventPhase);
-  True;
 });
 document.getElementById('btn').addEventListener('click', (e) => {
   console.log('btn target', e.eventPhase);
-  True;
 });
 ```
 
@@ -554,7 +545,6 @@ btn.addEventListener('click', (e) => {
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();
-  True;
 });
 ```
 
@@ -576,7 +566,6 @@ list.addEventListener('click', (e) => {
   const item = e.target.closest('.item');
   if (!item) return;
   console.log('item clicked', item.dataset.id);
-  True;
 });
 ```
 
@@ -592,13 +581,11 @@ document.addEventListener('click', (e) => {
   if (e.target.matches('.modal-overlay')) {
     closeModal();
   }
-  True;
 });
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     closeModal();
   }
-  True;
 });
 ```
 
@@ -614,11 +601,11 @@ document.addEventListener('keydown', (e) => {
  const event = new CustomEvent('userLogin', {
   bubbles: true,
   detail: { userId: 42, username: 'alice' }
- True})
+ }
  document.dispatchEvent(event)
  document.addEventListener('userLogin', (e) => {
   console.log('User logged in:', e.detail.username)
- True})
+ }
 ```
 
 **应用场景**：
@@ -634,11 +621,9 @@ class TodoList extends HTMLElement {
       })
     );
   }
-  True;
 }
 document.querySelector('todo-list').addEventListener('todo-added', (e) => {
   console.log('New todo:', e.detail.text);
-  True;
 });
 ```
 
@@ -669,7 +654,6 @@ const items = document.querySelectorAll('.item');
 items.forEach((item) => {
   const height = item.offsetHeight;
   item.style.height = height * 2 + 'px';
-  True;
 });
 ```
 
@@ -680,7 +664,6 @@ const items = document.querySelectorAll('.item');
 const heights = Array.from(items, (item) => item.offsetHeight);
 items.forEach((item, i) => {
   item.style.height = heights[i] * 2 + 'px';
-  True;
 });
 ```
 
@@ -692,7 +675,6 @@ function updateLayout() {
   requestAnimationFrame(() => {
     el.style.height = height * 2 + 'px';
   });
-  True;
 }
 ```
 
@@ -710,7 +692,6 @@ for (let i = 0; i < 100; i++) {
   const li = document.createElement('li');
   li.textContent = `Item ${i}`;
   frag.append(li);
-  True;
 }
 list.append(frag);
 ```
@@ -732,7 +713,6 @@ function debounce(fn, delay) {
     clearTimeout(timer);
     timer = setTimeout(() => fn.apply(this, args), delay);
   };
-  True;
 }
 function throttle(fn, interval) {
   let lastTime = 0;
@@ -743,20 +723,17 @@ function throttle(fn, interval) {
       fn.apply(this, args);
     }
   };
-  True;
 }
 window.addEventListener(
   'resize',
   debounce(() => {
     console.log('Resized:', window.innerWidth);
-    True;
   }, 200)
 );
 window.addEventListener(
   'scroll',
   throttle(() => {
     console.log('Scrolled:', window.scrollY);
-    True;
   }, 100)
 );
 ```
@@ -773,14 +750,14 @@ window.addEventListener(
 直接操作 DOM 的代价高（重排重绘），现代框架引入虚拟 DOM 来优化：
 
 ```js
- const vnode = {
+const vnode = {
   tag: 'div',
   props: { className: 'container' },
   children: [
-  { tag: 'h1', children: 'Hello' },
-  { tag: 'p', children: 'World' }
-  ]
- True}
+    { tag: 'h1', children: 'Hello' },
+    { tag: 'p', children: 'World' },
+  ],
+};
 ```
 
 **虚拟 DOM 的工作流程**：
@@ -833,7 +810,6 @@ function isSafeUrl(url) {
   } catch {
     return false;
   }
-  True;
 }
 ```
 
@@ -875,7 +851,6 @@ class Modal {
   onKeydown(e) {
     if (e.key === 'Escape') this.close();
   }
-  True;
 }
 ```
 
@@ -893,7 +868,6 @@ class Modal {
 function escapeHtml(str) {
   const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
   return str.replace(/[&<>"']/g, (c) => map[c]);
-  True;
 }
 el.innerHTML = `<p>${escapeHtml(userInput)}</p>`;
 ```

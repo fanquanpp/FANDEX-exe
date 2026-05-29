@@ -24,7 +24,7 @@ updated: 2026-05-03
  typedef struct Node {
   int data;
   struct Node *next;
- True} Node;
+ }
  // 创建新节点
  Node* createNode(int data) {
   Node* newNode = (Node*)malloc(sizeof(Node));
@@ -35,13 +35,13 @@ updated: 2026-05-03
   newNode->data = data;
   newNode->next = NULL;
   return newNode;
- True}
+ }
  // 插入节点到链表头部
  Node* insertAtHead(Node* head, int data) {
   Node* newNode = createNode(data);
   newNode->next = head;
   return newNode;
- True}
+ }
  // 插入节点到链表尾部
  Node* insertAtTail(Node* head, int data) {
   Node* newNode = createNode(data);
@@ -54,7 +54,7 @@ updated: 2026-05-03
   }
   temp->next = newNode;
   return head;
- True}
+ }
  // 打印链表
  void printList(Node* head) {
   Node* temp = head;
@@ -63,7 +63,7 @@ updated: 2026-05-03
   temp = temp->next;
   }
   printf("NULL\n");
- True}
+ }
  // 释放链表内存
  void freeList(Node* head) {
   Node* temp;
@@ -72,7 +72,7 @@ updated: 2026-05-03
   head = head->next;
   free(temp);
   }
- True}
+ }
  int main() {
   Node* head = NULL;
   head = insertAtHead(head, 3);
@@ -83,7 +83,7 @@ updated: 2026-05-03
   printList(head);
   freeList(head);
   return 0;
- True}
+ }
 ```
 
 ### 1.2 二叉树
@@ -96,7 +96,7 @@ updated: 2026-05-03
   int data;
   struct TreeNode *left;
   struct TreeNode *right;
- True} TreeNode;
+ }
  // 创建新节点
  TreeNode* createTreeNode(int data) {
   TreeNode* newNode = (TreeNode*)malloc(sizeof(TreeNode));
@@ -108,7 +108,7 @@ updated: 2026-05-03
   newNode->left = NULL;
   newNode->right = NULL;
   return newNode;
- True}
+ }
  // 插入节点到二叉搜索树
  TreeNode* insertBST(TreeNode* root, int data) {
   if (root == NULL) {
@@ -120,7 +120,7 @@ updated: 2026-05-03
   root->right = insertBST(root->right, data);
   }
   return root;
- True}
+ }
  // 中序遍历
  void inorderTraversal(TreeNode* root) {
   if (root != NULL) {
@@ -128,7 +128,7 @@ updated: 2026-05-03
   printf("%d ", root->data);
   inorderTraversal(root->right);
   }
- True}
+ }
  // 前序遍历
  void preorderTraversal(TreeNode* root) {
   if (root != NULL) {
@@ -136,7 +136,7 @@ updated: 2026-05-03
   preorderTraversal(root->left);
   preorderTraversal(root->right);
   }
- True}
+ }
  // 后序遍历
  void postorderTraversal(TreeNode* root) {
   if (root != NULL) {
@@ -144,7 +144,7 @@ updated: 2026-05-03
   postorderTraversal(root->right);
   printf("%d ", root->data);
   }
- True}
+ }
  // 释放二叉树内存
  void freeTree(TreeNode* root) {
   if (root != NULL) {
@@ -152,7 +152,7 @@ updated: 2026-05-03
   freeTree(root->right);
   free(root);
   }
- True}
+ }
  int main() {
   TreeNode* root = NULL;
   root = insertBST(root, 50);
@@ -173,7 +173,7 @@ updated: 2026-05-03
   printf("\n");
   freeTree(root);
   return 0;
- True}
+ }
 ```
 
 ## 2. 内存管理
@@ -226,7 +226,7 @@ updated: 2026-05-03
   }
   free(arr);
   return 0;
- True}
+ }
 ```
 
 ### 2.2 内存泄漏检测
@@ -241,7 +241,7 @@ updated: 2026-05-03
   // 没有释放内存，导致内存泄漏
   printf("Value: %d\n", *ptr);
   // free(ptr); // 注释掉这行，造成内存泄漏
- True}
+ }
  int main() {
   // 多次调用，造成多次内存泄漏
   for (int i = 0; i < 1000; i++) {
@@ -249,7 +249,7 @@ updated: 2026-05-03
   }
   printf("Memory leak demonstration complete\n");
   return 0;
- True}
+ }
 ```
 
 ## 3. 系统编程
@@ -286,7 +286,7 @@ updated: 2026-05-03
   // 关闭文件
   fclose(fp);
   return 0;
- True}
+ }
 ```
 
 ### 3.2 进程管理
@@ -322,7 +322,7 @@ updated: 2026-05-03
   printf("Child process completed\n");
   }
   return 0;
- True}
+ }
 ```
 
 ### 3.3 线程管理
@@ -345,7 +345,7 @@ updated: 2026-05-03
   pthread_mutex_unlock(&mutex);
   }
   return NULL;
- True}
+ }
  int main() {
   pthread_t thread1, thread2;
   // 初始化互斥锁
@@ -360,7 +360,7 @@ updated: 2026-05-03
   pthread_mutex_destroy(&mutex);
   printf("Final counter value: %d\n", counter);
   return 0;
- True}
+ }
 ```
 
 ## 4. 网络编程
@@ -422,7 +422,7 @@ updated: 2026-05-03
   close(new_socket);
   close(server_fd);
   return 0;
- True}
+ }
 ```
 
 ### 4.2 TCP 客户端
@@ -468,7 +468,7 @@ updated: 2026-05-03
   // 关闭连接
   close(sock);
   return 0;
- True}
+ }
 ```
 
 ## 5. 高级特性
@@ -510,7 +510,7 @@ updated: 2026-05-03
   printf("Debug mode is disabled\n");
  #endif
   return 0;
- True}
+ }
 ```
 
 ### 5.2 函数指针
@@ -520,19 +520,19 @@ updated: 2026-05-03
  // 函数定义
  int add(int a, int b) {
   return a + b;
- True}
+ }
  int subtract(int a, int b) {
   return a - b;
- True}
+ }
  int multiply(int a, int b) {
   return a * b;
- True}
+ }
  int divide(int a, int b) {
   if (b != 0) {
   return a / b;
   }
   return 0;
- True}
+ }
  int main() {
   // 函数指针声明
   int (*operation)(int, int);
@@ -550,7 +550,7 @@ updated: 2026-05-03
   operation = divide;
   printf("%d / %d = %d\n", a, b, operation(a, b));
   return 0;
- True}
+ }
 ```
 
 ### 5.3 位操作
@@ -564,7 +564,7 @@ updated: 2026-05-03
   if (i % 4 == 0) printf(" ");
   }
   printf("\n");
- True}
+ }
  int main() {
   unsigned int a = 0b10101010;
   unsigned int b = 0b11001100;
@@ -591,7 +591,7 @@ updated: 2026-05-03
   printf("a >> 2: ");
   printBinary(a >> 2);
   return 0;
- True}
+ }
 ```
 
 ## 6. 最佳实践
@@ -684,20 +684,20 @@ updated: 2026-05-03
   }
   printf("Result: %d\n", result);
   return 0;
- True}
+ }
  // 函数定义
  int add(int a, int b) {
   return a + b;
- True}
+ }
  int subtract(int a, int b) {
   return a - b;
- True}
+ }
  int multiply(int a, int b) {
   return a * b;
- True}
+ }
  int divide(int a, int b) {
   return a / b;
- True}
+ }
 ```
 
 ### 7.2 简单的文件复制程序
@@ -734,7 +734,7 @@ updated: 2026-05-03
   fclose(destination);
   printf("File copied successfully\n");
   return 0;
- True}
+ }
 ```
 
 ## 8. 常见问题与解决方案

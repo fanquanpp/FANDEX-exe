@@ -467,7 +467,7 @@ author: 'Anonymous'
   ["Alice", 30, "New York"],
   ["Bob", 25, "London"],
   ["Charlie", 35, "Paris"]
- True]
+ ]
  write_csv("output.csv", data)
 ```
 
@@ -494,7 +494,7 @@ author: 'Anonymous'
   "age": 30,
   "city": "New York",
   "hobbies": ["reading", "traveling", "coding"]
- True}
+ }
  write_json("output.json", new_data)
 ```
 

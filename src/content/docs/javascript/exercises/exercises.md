@@ -89,7 +89,7 @@ D. `element.getAttribute('data-id')`
   fn.apply(this, args);
   }, delay);
   };
- True}
+ }
  ```
 </details>
 ### 2. 深拷贝
@@ -110,7 +110,7 @@ D. `element.getAttribute('data-id')`
   clone[key] = deepClone(obj[key], cache);
   }
   return clone;
- True}
+ }
  ```
 </details>
 ### 3. Promise 并发控制
@@ -132,6 +132,6 @@ D. `element.getAttribute('data-id')`
   const workers = Array.from({ length: Math.min(limit, tasks.length) }, () => worker());
   await Promise.all(workers);
   return results;
- True}
+ }
  ```
 </details>

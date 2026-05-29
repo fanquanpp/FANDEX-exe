@@ -333,25 +333,25 @@ Python 允许在需要时将长语句分成多行，提高代码可读性。
  long_string = (
   "This is a very long string that "
   "spans multiple lines using parentheses"
- True)
+ )
  # 列表换行
  numbers = [
   1, 2, 3,
   4, 5, 6,
   7, 8, 9
- True]
+ ]
  # 函数调用换行
  result = calculate(
   param1=value1,
   param2=value2,
   param3=value3
- True)
+ )
  # 条件语句换行
  if (
   condition1 and
   condition2 or
   condition3
- True):
+ )
   do_something()
 ```
 
@@ -412,7 +412,7 @@ Python 使用缩进来定义代码块，以下结构会创建代码块：
   'name': 'John',
   'age': 30,
   'city': 'New York'
- True}
+ }
 ```
 
 ## 7. 代码风格指南

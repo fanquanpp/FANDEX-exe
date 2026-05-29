@@ -18,7 +18,7 @@ author: 'Anonymous'
 多表联查是指通过一定的条件将两个或多个表的数据关联在一起，从而获取更丰富的信息。
 
 ```sql
- True-- 基本联查结构
+ -
  SELECT 列列表
  from 表1
  JOIN 表2 ON 连接条件
@@ -51,7 +51,7 @@ author: 'Anonymous'
 
 ```
  表A 表B INNER JOIN
- True┌───────┐ ┌───────┐ ┌───────┐
+ ┌
  │ 1 │ │ A │ │ 1, A │
  │ 2 │────│ B │ │ 2, B │
  │ 3 │────│ C │ │ 3, C │
@@ -65,7 +65,7 @@ author: 'Anonymous'
  SELECT *
  from table1
  inNER JOIN table2 ON table1.id = table2.id;
- True-- 简写形式
+ -
  SELECT *
  from table1
  JOIN table2 ON table1.id = table2.id;
@@ -74,7 +74,7 @@ author: 'Anonymous'
 **示例**：
 
 ```sql
- True-- 查询员工及其所属部门
+ -
  SELECT e.emp_name, d.dept_name
  from employees e
  inNER JOIN departments d ON e.dept_id = d.dept_id;
@@ -87,7 +87,7 @@ author: 'Anonymous'
 
 ```
  表A 表B LEFT JOIN
- True┌───────┐ ┌───────┐ ┌───────┬─────┐
+ ┌
  │ 1 │────│ A │ │ 1 │ A │
  │ 2 │────│ B │ │ 2 │ B │
  │ 3 │────│ C │ │ 3 │ C │
@@ -106,7 +106,7 @@ author: 'Anonymous'
 **示例**：
 
 ```sql
- True-- 查询所有部门及其员工（包括没有员工的部门）
+ -
  SELECT d.dept_name, e.emp_name
  from departments d
  LEFT JOIN employees e ON d.dept_id = e.dept_id;
@@ -119,7 +119,7 @@ author: 'Anonymous'
 
 ```
  表A 表B RIGHT JOIN
- True┌───────┐ ┌───────┐ ┌─────┬───────┐
+ ┌
  │ 1 │────│ A │ │ 1 │ A │
  │ 2 │────│ B │ │ 2 │ B │
  │ │ │ C │ │NULL │ C │
@@ -138,7 +138,7 @@ author: 'Anonymous'
 **示例**：
 
 ```sql
- True-- 查询所有订单及其用户（包括没有关联用户的订单）
+ -
  SELECT o.order_id, u.username
  from users u
  RIGHT JOIN orders o ON u.id = o.user_id;
@@ -152,7 +152,7 @@ author: 'Anonymous'
 
 ```
  表A 表B FULL JOIN
- True┌───────┐ ┌───────┐ ┌─────┬─────┐
+ ┌
  │ 1 │────│ A │ │ 1 │ A │
  │ 2 │────│ B │ │ 2 │ B │
  │ 3 │ │ C │ │ 3 │NULL │
@@ -164,7 +164,7 @@ author: 'Anonymous'
 **语法**：
 
 ```sql
- True-- 模拟 FULL JOIN
+ -
  SELECT *
  from table1
  LEFT JOIN table2 ON table1.id = table2.id
@@ -181,18 +181,18 @@ author: 'Anonymous'
 **语法**：
 
 ```sql
- True-- 显式交叉连接
+ -
  SELECT * FROM table1 CROSS JOIN table2;
- True-- 隐式交叉连接
+ -
  SELECT * FROM table1, table2;
- True-- 带条件的交叉连接
+ -
  SELECT * FROM table1 CROSS JOIN table2 WHERE condition;
 ```
 
 **示例**：
 
 ```sql
- True-- 生成部门和员工的所有组合
+ -
  SELECT d.dept_name, e.emp_name
  from departments d
  CROSS JOIN employees e;
@@ -205,11 +205,11 @@ author: 'Anonymous'
 **语法**：
 
 ```sql
- True-- 自然内连接
+ -
  SELECT * FROM employees NATURAL JOIN departments;
- True-- 自然左连接
+ -
  SELECT * FROM employees NATURAL LEFT JOIN departments;
- True-- 自然右连接
+ -
  SELECT * FROM employees NATURAL RIGHT JOIN departments;
 ```
 
@@ -258,7 +258,7 @@ author: 'Anonymous'
 **适用场景**：小表驱动大表
 
 ```sql
- True-- 执行计划示例
+ -
  EXPLAIN
  SELECT e.emp_name, d.dept_name
  from employees e
@@ -277,7 +277,7 @@ author: 'Anonymous'
 **适用场景**：大表之间的连接，MySQL 8.0+ 支持
 
 ```sql
- True-- 强制使用哈希连接（MySQL 8.0+）
+ -
  SELECT /*+ HASH_JOIN(d) */
   e.emp_name, d.dept_name
  from employees e
@@ -309,7 +309,7 @@ author: 'Anonymous'
 3. 查看执行计划中的 `type` 和 `rows` 字段判断
 
 ```sql
- True-- 查看执行计划
+ -
  EXPLAIN ANALYZE
  SELECT e.emp_name, d.dept_name
  from employees e
@@ -323,7 +323,7 @@ author: 'Anonymous'
 ### 4.1 一对多关系联查
 
 ```sql
- True-- 订单与订单项（一对多）
+ -
  SELECT
   o.order_id,
   o.order_date,
@@ -338,7 +338,7 @@ author: 'Anonymous'
 ### 4.2 多对多关系联查
 
 ```sql
- True-- 学生与课程（多对多，需中间表）
+ -
  SELECT
   s.student_name,
   c.course_name
@@ -351,13 +351,13 @@ author: 'Anonymous'
 ### 4.3 自连接
 
 ```sql
- True-- 查询员工及其上级
+ -
  SELECT
   e.emp_name AS 员工,
   m.emp_name AS 上级
  from employees e
  LEFT JOIN employees m ON e.manager_id = m.emp_id;
- True-- 查询层级关系
+ -
  with RECURSIVE emp_hierarchy AS (
   SELECT emp_id, emp_name, manager_id, 1 AS level
   FROM employees
@@ -366,14 +366,14 @@ author: 'Anonymous'
   SELECT e.emp_id, e.emp_name, e.manager_id, eh.level + 1
   FROM employees e
   JOIN emp_hierarchy eh ON e.manager_id = eh.emp_id
- True)
+ )
  SELECT * FROM emp_hierarchy ORDER BY level, emp_id;
 ```
 
 ### 4.4 三表及以上联查
 
 ```sql
- True-- 查询订单完整信息（用户、订单、商品）
+ -
  SELECT
   u.username,
   o.order_id,
@@ -391,7 +391,7 @@ author: 'Anonymous'
 ### 4.5 条件联查
 
 ```sql
- True-- 查询特定条件的联查
+ -
  SELECT
   e.emp_name,
   d.dept_name,
@@ -414,12 +414,12 @@ author: 'Anonymous'
 **原则**：确保连接列和 WHERE 条件列有索引
 
 ```sql
- True-- 创建连接列索引
+ -
  CREATE INDEX idx_employees_dept_id ON employees(dept_id);
  CREATE INDEX idx_orders_user_id ON orders(user_id);
- True-- 创建复合索引（覆盖查询）
+ -
  CREATE INDEX idx_orders_user_date ON orders(user_id, order_date);
- True-- 创建唯一索引
+ -
  CREATE UNIQUE INDEX idx_users_email ON users(email);
 ```
 
@@ -432,9 +432,9 @@ author: 'Anonymous'
 3. 使用 LIMIT 限制结果集
 
 ```sql
- True-- 低效
+ -
  SELECT * FROM employees JOIN departments ON ...;
- True-- 高效
+ -
  SELECT e.emp_name, d.dept_name
  from employees e
  JOIN departments d ON e.dept_id = d.dept_id
@@ -447,7 +447,7 @@ author: 'Anonymous'
 **原则**：小表驱动大表
 
 ```sql
- True-- 执行计划分析
+ -
  EXPLAIN
  SELECT e.emp_name, o.order_id
  from employees e
@@ -457,17 +457,17 @@ author: 'Anonymous'
 ### 5.4 使用提示优化器
 
 ```sql
- True-- 强制使用特定索引
+ -
  SELECT /*+ INDEX(e idx_employees_dept_id) */
   e.emp_name, d.dept_name
  from employees e
  JOIN departments d ON e.dept_id = d.dept_id;
- True-- 强制哈希连接
+ -
  SELECT /*+ HASH_JOIN(d) */
   e.emp_name, d.dept_name
  from employees e
  JOIN departments d ON e.dept_id = d.dept_id;
- True-- 强制排序合并连接
+ -
  SELECT /*+ MERGE_JOIN(d) */
   e.emp_name, d.dept_name
  from employees e
@@ -504,11 +504,11 @@ author: 'Anonymous'
 **解决方案**：
 
 ```sql
- True-- 使用 DISTINCT 去重
+ -
  SELECT DISTINCT e.emp_name
  from employees e
  JOIN orders o ON e.emp_id = o.emp_id;
- True-- 使用 GROUP BY 去重
+ -
  SELECT e.emp_name
  from employees e
  JOIN orders o ON e.emp_id = o.emp_id
@@ -521,13 +521,13 @@ author: 'Anonymous'
 **解决方案**：
 
 ```sql
- True-- 使用 COALESCE 替换 NULL
+ -
  SELECT
   e.emp_name,
   COALESCE(d.dept_name, '无部门') AS dept_name
  from employees e
  LEFT JOIN departments d ON e.dept_id = d.dept_id;
- True-- 使用 IFNULL 替换 NULL
+ -
  SELECT
   e.emp_name,
   IFNULL(d.dept_name, '无部门') AS dept_name
@@ -546,12 +546,12 @@ author: 'Anonymous'
 4. 减少返回数据量
 
 ```sql
- True-- 分析执行计划
+ -
  EXPLAIN ANALYZE
  SELECT ...
- True-- 查看索引使用情况
+ -
  SHOW INDEX FROM employees;
- True-- 查看慢查询日志
+ -
  SHOW VARIABLES LIKE 'slow_query_log';
 ```
 
@@ -566,13 +566,13 @@ author: 'Anonymous'
   **解决方案**：
 
 ```sql
- True-- 错误：缺少连接条件
+ -
  SELECT * FROM employees, departments; -- 笛卡尔积
- True-- 正确：添加连接条件
+ -
  SELECT * FROM employees e JOIN departments d ON e.dept_id = d.dept_id;
- True-- 错误：错误的连接条件
+ -
  SELECT * FROM employees e JOIN departments d ON e.emp_id = d.dept_id;
- True-- 正确：使用正确的连接条件
+ -
  SELECT * FROM employees e JOIN departments d ON e.dept_id = d.dept_id;
 ```
 

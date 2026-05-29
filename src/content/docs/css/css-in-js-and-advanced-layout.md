@@ -96,28 +96,28 @@ const Title = styled.h2`
 **基本使用**
 
 ```javascript
- import jss from 'jss';
- import preset from 'jss-preset-default';
- // 初始化 JSS
- jss.setup(preset());
- // 创建样式
- const styles = {
+import jss from 'jss';
+import preset from 'jss-preset-default';
+// 初始化 JSS
+jss.setup(preset());
+// 创建样式
+const styles = {
   button: {
-  background: 'blue',
-  color: 'white',
-  padding: '8px 16px',
-  border: 'none',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  '&:hover': {
-  background: 'darkblue'
-  }
-  }
- True};
- // 应用样式
- const { classes } = jss.createStyleSheet(styles).attach();
- // 使用样式
- document.body.innerHTML = `<button class="${classes.button}">Click me</button>`;
+    background: 'blue',
+    color: 'white',
+    padding: '8px 16px',
+    border: 'none',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    '&:hover': {
+      background: 'darkblue',
+    },
+  },
+};
+// 应用样式
+const { classes } = jss.createStyleSheet(styles).attach();
+// 使用样式
+document.body.innerHTML = `<button class="${classes.button}">Click me</button>`;
 ```
 
 ## 3. 高级 Grid 布局技巧
@@ -125,89 +125,89 @@ const Title = styled.h2`
 ### 3.1 网格模板区域
 
 ```css
- .grid-container {
+.grid-container {
   display: grid;
   grid-template-areas:
-  "header header header"
-  "sidebar main main"
-  "footer footer footer";
+    'header header header'
+    'sidebar main main'
+    'footer footer footer';
   grid-template-columns: 200px 1fr 1fr;
   grid-template-rows: auto 1fr auto;
   gap: 16px;
   height: 100vh;
- True}
- .header {
+}
+.header {
   grid-area: header;
   background: #f0f0f0;
   padding: 16px;
- True}
- .sidebar {
+}
+.sidebar {
   grid-area: sidebar;
   background: #e0e0e0;
   padding: 16px;
- True}
- .main {
+}
+.main {
   grid-area: main;
   background: #ffffff;
   padding: 16px;
- True}
- .footer {
+}
+.footer {
   grid-area: footer;
   background: #f0f0f0;
   padding: 16px;
- True}
+}
 ```
 
 ### 3.2 响应式 Grid
 
 ```css
- .responsive-grid {
+.responsive-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 16px;
- True}
- /* 不同屏幕尺寸的调整 */
- @media (max-width: 768px) {
+}
+/* 不同屏幕尺寸的调整 */
+@media (max-width: 768px) {
   .responsive-grid {
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
- True}
- @media (max-width: 480px) {
+}
+@media (max-width: 480px) {
   .responsive-grid {
-  grid-template-columns: 1fr;
+    grid-template-columns: 1fr;
   }
- True}
+}
 ```
 
 ### 3.3 网格项定位
 
 ```css
- .grid-container {
+.grid-container {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   grid-template-rows: repeat(5, 100px);
   gap: 10px;
- True}
- .item-1 {
+}
+.item-1 {
   grid-column: 1 / 3;
   grid-row: 1 / 3;
   background: red;
- True}
- .item-2 {
+}
+.item-2 {
   grid-column: 3 / 6;
   grid-row: 1 / 2;
   background: blue;
- True}
- .item-3 {
+}
+.item-3 {
   grid-column: 1 / 2;
   grid-row: 3 / 6;
   background: green;
- True}
- .item-4 {
+}
+.item-4 {
   grid-column: 2 / 6;
   grid-row: 2 / 6;
   background: yellow;
- True}
+}
 ```
 
 ## 4. Flexbox 高级技巧
@@ -215,56 +215,56 @@ const Title = styled.h2`
 ### 4.1 复杂 Flex 布局
 
 ```css
- .complex-flex {
+.complex-flex {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
   justify-content: space-between;
   align-items: center;
- True}
- .item {
+}
+.item {
   flex: 1 1 300px; /* 增长因子 1, 收缩因子 1, 基础宽度 300px */
   min-width: 200px;
   background: #f0f0f0;
   padding: 16px;
   border-radius: 8px;
- True}
- /* 特殊项目 */
- .item.special {
+}
+/* 特殊项目 */
+.item.special {
   flex: 2 1 400px; /* 占据更多空间 */
   background: #e0e0e0;
- True}
+}
 ```
 
 ### 4.2 Flexbox 居中技巧
 
 ```css
- /* 水平居中 */
- .horizontal-center {
+/* 水平居中 */
+.horizontal-center {
   display: flex;
   justify-content: center;
- True}
- /* 垂直居中 */
- .vertical-center {
+}
+/* 垂直居中 */
+.vertical-center {
   display: flex;
   align-items: center;
   height: 200px;
- True}
- /* 水平垂直居中 */
- .center {
+}
+/* 水平垂直居中 */
+.center {
   display: flex;
   justify-content: center;
   align-items: center;
   height: 200px;
- True}
- /* 多项目居中 */
- .multi-center {
+}
+/* 多项目居中 */
+.multi-center {
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   height: 300px;
- True}
+}
 ```
 
 ## 5. 自定义属性 (CSS Variables)
@@ -272,13 +272,13 @@ const Title = styled.h2`
 ### 5.1 基本使用
 
 ```css
- True:root {
+ :
   --primary-color: #3498db;
   --secondary-color: #2ecc71;
   --text-color: #333333;
   --border-radius: 8px;
   --spacing: 16px;
- True}
+ }
  .button {
   background: var(--primary-color);
   color: white;
@@ -286,40 +286,40 @@ const Title = styled.h2`
   border-radius: var(--border-radius);
   border: none;
   cursor: pointer;
- True}
+ }
  .card {
   background: white;
   border: 1px solid #e0e0e0;
   border-radius: var(--border-radius);
   padding: var(--spacing);
   margin-bottom: var(--spacing);
- True}
+ }
 ```
 
 ### 5.2 主题切换
 
 ```css
- True:root {
+ :
   /* 浅色主题 */
   --bg-color: #ffffff;
   --text-color: #333333;
   --card-bg: #f0f0f0;
- True}
+ }
  .dark-theme {
   /* 深色主题 */
   --bg-color: #121212;
   --text-color: #e0e0e0;
   --card-bg: #1e1e1e;
- True}
+ }
  body {
   background: var(--bg-color);
   color: var(--text-color);
   transition: background 0.3s, color 0.3s;
- True}
+ }
  .card {
   background: var(--card-bg);
   transition: background 0.3s;
- True}
+ }
 ```
 
 ## 6. 动画与过渡
@@ -327,69 +327,69 @@ const Title = styled.h2`
 ### 6.1 CSS 动画
 
 ```css
- /* 定义动画 */
- @keyframes fadeIn {
+/* 定义动画 */
+@keyframes fadeIn {
   from {
-  opacity: 0;
-  transform: translateY(20px);
+    opacity: 0;
+    transform: translateY(20px);
   }
   to {
-  opacity: 1;
-  transform: translateY(0);
+    opacity: 1;
+    transform: translateY(0);
   }
- True}
- /* 使用动画 */
- .fade-in {
+}
+/* 使用动画 */
+.fade-in {
   animation: fadeIn 0.5s ease-out forwards;
- True}
- /* 复杂动画 */
- @keyframes pulse {
+}
+/* 复杂动画 */
+@keyframes pulse {
   0% {
-  transform: scale(1);
+    transform: scale(1);
   }
   50% {
-  transform: scale(1.05);
+    transform: scale(1.05);
   }
   100% {
-  transform: scale(1);
+    transform: scale(1);
   }
- True}
- .pulse {
+}
+.pulse {
   animation: pulse 2s infinite;
- True}
+}
 ```
 
 ### 6.2 过渡效果
 
 ```css
- .transition-example {
+.transition-example {
   background: blue;
   color: white;
   padding: 16px;
   border-radius: 8px;
   transition: all 0.3s ease;
- True}
- .transition-example:hover {
+}
+.transition-example:hover {
   background: darkblue;
   transform: translateY(-5px);
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
- True}
- /* 多重过渡 */
- .multiple-transitions {
+}
+/* 多重过渡 */
+.multiple-transitions {
   background: blue;
   color: white;
   padding: 16px;
   border-radius: 8px;
   transition:
-  background 0.3s ease,
-  transform 0.5s ease,
-  box-shadow 0.3s ease;
- True}
- .multiple-transitions:hover {
+    background 0.3s ease,
+    transform 0.5s ease,
+    box-shadow 0.3s ease;
+}
+.multiple-transitions:hover {
   background: darkblue;
   transform: translateY(-5px) scale(1.02);
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
- True}
+}
 ```
 
 ## 7. 性能优化
@@ -411,15 +411,15 @@ const Title = styled.h2`
 4. **避免布局抖动**：批量 DOM 操作
 
 ```css
- /* 提示浏览器优化 */
- .optimized {
+/* 提示浏览器优化 */
+.optimized {
   will-change: transform;
   transition: transform 0.3s;
- True}
- /* GPU 加速 */
- .gpu-accelerated {
+}
+/* GPU 加速 */
+.gpu-accelerated {
   transform: translateZ(0); /* 触发 GPU 加速 */
- True}
+}
 ```
 
 ## 8. 响应式设计高级技巧
@@ -427,32 +427,32 @@ const Title = styled.h2`
 ### 8.1 移动优先设计
 
 ```css
- /* 移动优先基础样式 */
- .container {
+/* 移动优先基础样式 */
+.container {
   width: 100%;
   padding: 16px;
- True}
- /* 平板设备 */
- @media (min-width: 768px) {
+}
+/* 平板设备 */
+@media (min-width: 768px) {
   .container {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 24px;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 24px;
   }
- True}
- /* 桌面设备 */
- @media (min-width: 1024px) {
+}
+/* 桌面设备 */
+@media (min-width: 1024px) {
   .container {
-  max-width: 960px;
-  padding: 32px;
+    max-width: 960px;
+    padding: 32px;
   }
- True}
- /* 大屏幕设备 */
- @media (min-width: 1280px) {
+}
+/* 大屏幕设备 */
+@media (min-width: 1280px) {
   .container {
-  max-width: 1140px;
+    max-width: 1140px;
   }
- True}
+}
 ```
 
 ### 8.2 响应式断点策略

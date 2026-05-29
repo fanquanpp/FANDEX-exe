@@ -17,7 +17,7 @@ author: 'Anonymous'
 ```cpp
  int x = 10; // 声明一个整数变量
  int* p = &x; // 声明一个指向整数的指针，指向 x 的地址
- True*p = 20; // 通过指针修改 x 的值
+ *
  std::cout << x; // 输出 20
 ```
 
@@ -56,11 +56,11 @@ author: 'Anonymous'
  int* p2 = NULL; // 传统方式
  // 野指针（危险！）
  int* p3; // 未初始化的指针，指向随机内存
- True*p3 = 10; // 未定义行为
+ *
  // 检查指针是否为空
  if (p1 != nullptr) {
   *p1 = 10;
- True}
+ }
 ```
 
 ## 5. 指针与函数
@@ -69,17 +69,17 @@ author: 'Anonymous'
  // 指针作为函数参数（传地址）
  void increment(int* p) {
   (*p)++;
- True}
+ }
  int main() {
   int x = 10;
   increment(&x);
   std::cout << x; // 输出 11
   return 0;
- True}
+ }
  // 指针作为函数返回值
  int* create_array(int size) {
   return new int[size];
- True}
+ }
 ```
 
 ## 6. 指针数组和数组指针

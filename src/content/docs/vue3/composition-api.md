@@ -34,26 +34,26 @@ updated: 2026-05-03
   </div>
 </template>
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted } from 'vue';
 export default {
- setup() {
- // 创建响应式数据
- const count = ref(0)
- // 定义方法
- const increment = () => {
- count.value++
- }
- // 生命周期钩子
- onMounted(() => {
- console.log('Component mounted')
- })
- // 返回暴露给模板的内容
- return {
- count,
- increment
- }
- }
-True}
+  setup() {
+    // 创建响应式数据
+    const count = ref(0);
+    // 定义方法
+    const increment = () => {
+      count.value++;
+    };
+    // 生命周期钩子
+    onMounted(() => {
+      console.log('Component mounted');
+    });
+    // 返回暴露给模板的内容
+    return {
+      count,
+      increment,
+    };
+  },
+};
 </script>
 ```
 
@@ -75,12 +75,10 @@ const count = ref(0);
 // 直接定义方法
 const increment = () => {
   count.value++;
-  True;
 };
 // 直接使用生命周期钩子
 onMounted(() => {
   console.log('Component mounted');
-  True;
 });
 </script>
 ```
@@ -108,7 +106,7 @@ console.log(count.value); // 1
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  console.log(state.count) // 0
  state.count++
  console.log(state.count) // 1
@@ -136,7 +134,6 @@ import { ref, watch } from 'vue';
 const count = ref(0);
 watch(count, (newValue, oldValue) => {
   console.log(`Count changed from ${oldValue} to ${newValue}`);
-  True;
 });
 count.value++; // 输出: Count changed from 0 to 1
 ```
@@ -150,7 +147,6 @@ import { ref, watchEffect } from 'vue';
 const count = ref(0);
 watchEffect(() => {
   console.log(`Count is ${count.value}`);
-  True;
 });
 count.value++; // 输出: Count is 1
 ```
@@ -173,15 +169,12 @@ count.value++; // 输出: Count is 1
 import { onMounted, onUpdated, onUnmounted } from 'vue';
 onMounted(() => {
   console.log('Component mounted');
-  True;
 });
 onUpdated(() => {
   console.log('Component updated');
-  True;
 });
 onUnmounted(() => {
   console.log('Component unmounted');
-  True;
 });
 ```
 
@@ -207,7 +200,6 @@ export function useCounter(initialValue = 0) {
     increment,
     decrement,
   };
-  True;
 }
 ```
 
@@ -275,7 +267,6 @@ const myComponent = ref(null);
 onMounted(() => {
   console.log(container.value); // DOM元素
   console.log(myComponent.value); // 组件实例
-  True;
 });
 </script>
 ```
@@ -291,7 +282,7 @@ onMounted(() => {
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  const refs = toRefs(state)
  console.log(refs.count.value) // 0
  console.log(refs.message.value) // Hello
@@ -306,7 +297,7 @@ onMounted(() => {
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  const countRef = toRef(state, 'count')
  console.log(countRef.value) // 0
 ```
@@ -371,18 +362,18 @@ const reset = () => (count.value = 0);
 </script>
 <style scoped>
 .counter {
- text-align: center;
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- max-width: 300px;
- margin: 0 auto;
-True}
+  text-align: center;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  max-width: 300px;
+  margin: 0 auto;
+}
 button {
- margin: 0 5px;
- padding: 5px 10px;
- font-size: 16px;
-True}
+  margin: 0 5px;
+  padding: 5px 10px;
+  font-size: 16px;
+}
 </style>
 ```
 
@@ -417,36 +408,37 @@ const form = reactive({
  name: '',
  email: '',
  message: ''
-True})
+}
 const submitted = ref(false)
 const submitForm = () => {
  console.log('Form submitted:', form)
  submitted.value =
-True}
+}
 </script>
 <style scoped>
 .form {
- max-width: 400px;
- margin: 0 auto;
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
-True}
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
 div {
- margin-bottom: 10px;
-True}
+  margin-bottom: 10px;
+}
 label {
- display: inline-block;
- width: 80px;
-True}
-input, textarea {
- width: 300px;
- padding: 5px;
-True}
+  display: inline-block;
+  width: 80px;
+}
+input,
+textarea {
+  width: 300px;
+  padding: 5px;
+}
 button {
- margin-top: 10px;
- padding: 5px 10px;
-True}
+  margin-top: 10px;
+  padding: 5px 10px;
+}
 </style>
 ```
 

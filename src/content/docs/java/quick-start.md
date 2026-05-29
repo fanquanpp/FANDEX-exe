@@ -38,7 +38,7 @@ Java 是一种面向对象的编程语言，具有跨平台、分布式、多线
   public static void main(String[] args) {
   System.out.println("Hello, Java!");
   }
- True}
+ }
 ```
 
 **编译与运行**:

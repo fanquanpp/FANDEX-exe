@@ -369,9 +369,9 @@ author: 'Anonymous'
  // 使用 Math.addExact()
  try {
   int result2 = Math.addExact(Integer.MAX_VALUE, 1);
- True} catch (ArithmeticException e) {
+ }
   System.out.println("发生溢出: " + e.getMessage());
- True}
+ }
 ```
 
 ### 4.3 字符串拼接的性能问题
@@ -388,12 +388,12 @@ author: 'Anonymous'
  String result = "";
  for (int i = 0; i < 1000; i++) {
   result += " " + i;
- True}
+ }
  // 性能较好的方式
  StringBuilder sb = new StringBuilder();
  for (int i = 0; i < 1000; i++) {
   sb.append(" ").append(i);
- True}
+ }
  String result = sb.toString();
 ```
 
@@ -411,14 +411,14 @@ author: 'Anonymous'
  if (str != null && str.length() > 0) {
   // 只有当 str 不为 null 时，才会计算 str.length()
   System.out.println("String length: " + str.length());
- True}
+ }
  // 确保两个条件都被检查
  boolean condition1 = checkCondition1();
  boolean condition2 = checkCondition2();
  if (condition1 & condition2) {
   // 无论 condition1 是什么，都会执行 checkCondition2()
   System.out.println("Both conditions are ");
- True}
+ }
 ```
 
 ### 4.5 位运算符的应用
@@ -439,7 +439,7 @@ author: 'Anonymous'
  // 检查权限
  if ((permissions & FLAG_READ) != 0) {
   System.out.println("Read permission granted");
- True}
+ }
  // 高效的乘除运算
  int a = 10;
  int multiplyBy2 = a << 1; // 等价于 a * 2
@@ -478,7 +478,7 @@ author: 'Anonymous'
   System.out.println("体重等级: " + level);
   sc.close();
   }
- True}
+ }
 ```
 
 ### 5.2 示例 2：判断闰年
@@ -499,7 +499,7 @@ author: 'Anonymous'
   }
   sc.close();
   }
- True}
+ }
 ```
 
 ### 5.3 示例 3：使用位运算实现权限管理
@@ -531,7 +531,7 @@ author: 'Anonymous'
   public static boolean hasPermission(int permissions, int permission) {
   return (permissions & permission) != 0;
   }
- True}
+ }
 ```
 
 ---

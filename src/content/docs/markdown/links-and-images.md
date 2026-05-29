@@ -86,7 +86,7 @@ author: 'Anonymous'
 **示例**：
 
 ```markdown
-True![GitHub Logo](https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png 'GitHub Logo')
+!
 ```
 
 **渲染效果**：
@@ -97,14 +97,14 @@ True![GitHub Logo](https://github.githubassets.com/images/modules/logos_page/Git
 **语法**：
 
 ```markdown
-True![替代文本][图片引用标识符]
+!
 [图片引用标识符]: 图片URL "可选的标题"
 ```
 
 **示例**：
 
 ```markdown
-True![GitHub Logo][github-logo]
+!
 [github-logo]: https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png "GitHub Logo"
 ```
 
@@ -118,7 +118,7 @@ True![GitHub Logo][github-logo]
 **示例**：
 
 ```markdown
-True![本地图片](./assets/image.png)
+!
 ```
 
 ### 2.4 图片链接
@@ -198,9 +198,9 @@ True![本地图片](./assets/image.png)
 **任务列表**：
 
 ```markdown
-True- [x] 完成任务 1
-True- [ ] 完成任务 2
-True- [ ] 完成任务 3
+-
+-
+-
 ```
 
 **渲染效果**：

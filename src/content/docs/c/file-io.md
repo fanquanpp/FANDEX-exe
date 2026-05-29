@@ -102,7 +102,7 @@ author: 'Anonymous'
   return 1;
   }
   return 0;
- True}
+ }
 ```
 
 ## 4. 文件读写操作
@@ -143,7 +143,7 @@ author: 'Anonymous'
   fprintf(fp, "Age: %d\n", 25);
   fprintf(fp, "Score: %.2f\n", 95.5);
   fclose(fp);
- True}
+ }
  // 读取数据
  char name[50];
  int age;
@@ -155,7 +155,7 @@ author: 'Anonymous'
   fscanf(fp, "Score: %f", &score);
   printf("Name: %s, Age: %d, Score: %.2f\n", name, age, score);
   fclose(fp);
- True}
+ }
 ```
 
 ### 4.2 字符读写
@@ -192,7 +192,7 @@ author: 'Anonymous'
   fputc(str[i], fp);
   }
   fclose(fp);
- True}
+ }
  // 读取字符
  fp = fopen("chars.txt", "r");
  if (fp != NULL) {
@@ -201,7 +201,7 @@ author: 'Anonymous'
   putchar(c);
   }
   fclose(fp);
- True}
+ }
 ```
 
 ### 4.3 字符串读写
@@ -239,7 +239,7 @@ author: 'Anonymous'
   fputs("Second line\n", fp);
   fputs("Third line\n", fp);
   fclose(fp);
- True}
+ }
  // 读取字符串
  fp = fopen("lines.txt", "r");
  if (fp != NULL) {
@@ -248,7 +248,7 @@ author: 'Anonymous'
   printf("%s", buffer);
   }
   fclose(fp);
- True}
+ }
 ```
 
 ### 4.4 二进制读写
@@ -287,14 +287,14 @@ author: 'Anonymous'
   char name[50];
   int age;
   float salary;
- True} Employee;
+ }
  // 写入结构体
  Employee emp = {"Alice", 25, 5000.0};
  FILE *fp = fopen("employee.dat", "wb");
  if (fp != NULL) {
   fwrite(&emp, sizeof(Employee), 1, fp);
   fclose(fp);
- True}
+ }
  // 读取结构体
  Employee read_emp;
  fp = fopen("employee.dat", "rb");
@@ -303,7 +303,7 @@ author: 'Anonymous'
   printf("Name: %s, Age: %d, Salary: %.2f\n",
   read_emp.name, read_emp.age, read_emp.salary);
   fclose(fp);
- True}
+ }
 ```
 
 ## 5. 文件位置指针
@@ -366,7 +366,7 @@ author: 'Anonymous'
   pos = ftell(fp);
   printf("Position at end: %ld\n", pos);
   fclose(fp);
- True}
+ }
 ```
 
 ## 6. 错误处理
@@ -418,16 +418,16 @@ author: 'Anonymous'
  if (fp == NULL) {
   perror("Error opening file");
   return 1;
- True}
+ }
  char buffer[100];
  while (fgets(buffer, sizeof(buffer), fp) != NULL) {
   // 处理数据
- True}
+ }
  if (ferror(fp)) {
   perror("Error reading file");
- True} else if (feof(fp)) {
+ }
   printf("End of file reached\n");
- True}
+ }
  fclose(fp);
 ```
 
@@ -501,7 +501,7 @@ author: 'Anonymous'
   fclose(source);
   fclose(dest);
   return 0;
- True}
+ }
 ```
 
 ### 8.2 学生信息管理系统
@@ -515,7 +515,7 @@ author: 'Anonymous'
   int id;
   char name[50];
   float score;
- True} Student;
+ }
  // 保存学生信息到文件
  void save_students(Student students[], int count, const char *filename) {
   FILE *fp = fopen(filename, "wb");
@@ -527,7 +527,7 @@ author: 'Anonymous'
   } else {
   perror("Error saving students");
   }
- True}
+ }
  // 从文件加载学生信息
  int load_students(Student students[], const char *filename) {
   FILE *fp = fopen(filename, "rb");
@@ -544,7 +544,7 @@ author: 'Anonymous'
   perror("Error loading students");
   }
   return count;
- True}
+ }
  // 添加学生
  int add_student(Student students[], int count) {
   if (count >= MAX_STUDENTS) {
@@ -560,7 +560,7 @@ author: 'Anonymous'
   scanf("%f", &s.score);
   students[count] = s;
   return count + 1;
- True}
+ }
  // 显示学生信息
  void display_students(Student students[], int count) {
   printf("\nStudent List:\n");
@@ -571,7 +571,7 @@ author: 'Anonymous'
   students[i].id, students[i].name, students[i].score);
   }
   printf("\n");
- True}
+ }
  int main() {
   Student students[MAX_STUDENTS];
   int count = 0;
@@ -601,7 +601,7 @@ author: 'Anonymous'
   }
   } while (choice != 3);
   return 0;
- True}
+ }
 ```
 
 ## 9. 最佳实践

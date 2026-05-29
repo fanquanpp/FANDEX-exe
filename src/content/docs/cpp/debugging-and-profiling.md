@@ -195,12 +195,12 @@ updated: 2026-05-03
 ```cpp
  // 不好的做法
  int* ptr = nullptr;
- True*ptr = 10; // 崩溃
+ *
  // 好的做法
  int* ptr = nullptr;
  if (ptr) {
   *ptr = 10;
- True}
+ }
 ```
 
 #### 4.1.2 数组越界
@@ -217,7 +217,7 @@ updated: 2026-05-03
  std::vector<int> vec(5);
  if (index < vec.size()) {
   vec[index] = 10;
- True}
+ }
 ```
 
 #### 4.1.3 内存泄漏
@@ -231,17 +231,17 @@ updated: 2026-05-03
  void func() {
   int* ptr = new int[100];
   // 忘记delete
- True}
+ }
  // 好的做法
  void func() {
   std::unique_ptr<int[]> ptr(new int[100]);
   // 自动释放
- True}
+ }
  // 更好的做法
  void func() {
   std::vector<int> vec(100);
   // 自动管理内存
- True}
+ }
 ```
 
 ### 4.2 逻辑错误
@@ -289,19 +289,19 @@ updated: 2026-05-03
  int counter = 0;
  void increment() {
   counter++; // 非原子操作
- True}
+ }
  // 好的做法
  std::mutex mtx;
  int counter = 0;
  void increment() {
   std::lock_guard<std::mutex> lock(mtx);
   counter++;
- True}
+ }
  // 更好的做法
  std::atomic<int> counter = 0;
  void increment() {
   counter++;
- True}
+ }
 ```
 
 ## 5. 性能优化策略
@@ -391,13 +391,13 @@ updated: 2026-05-03
   char* buffer = new char[1024];
   // 使用buffer
   // 忘记delete
- True}
+ }
  // 修复后
  void process() {
   std::unique_ptr<char[]> buffer(new char[1024]);
   // 使用buffer
   // 自动释放
- True}
+ }
 ```
 
 ### 6.2 性能瓶颈分析
@@ -422,7 +422,7 @@ updated: 2026-05-03
   for (int i = 0; i < 1000000; i++) {
   // 复杂计算
   }
- True}
+ }
  // 优化后
  void fastFunction() {
   // 使用更高效的算法
@@ -431,7 +431,7 @@ updated: 2026-05-03
   for (int i = 0; i < 1000000; i++) {
   // 优化后的计算
   }
- True}
+ }
 ```
 
 ## 7. 最佳实践

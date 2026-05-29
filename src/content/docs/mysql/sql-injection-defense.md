@@ -104,7 +104,7 @@ author: 'Anonymous'
   $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ? AND password = ?");
   $stmt->execute([$username, $password]);
   return $stmt->fetch();
- True}
+ }
  // 命名参数方式
  function safe_login2($username, $password) {
   $pdo = new PDO('mysql:host=localhost;dbname=test', 'root', 'password');
@@ -114,7 +114,7 @@ author: 'Anonymous'
   ':password' => $password
   ]);
   return $stmt->fetch();
- True}
+ }
  // 绑定参数类型
  function safe_insert($username, $email) {
   $pdo = new PDO('mysql:host=localhost;dbname=test', 'root', 'password');
@@ -123,8 +123,8 @@ author: 'Anonymous'
   $stmt->bindParam(':email', $email, PDO::PARAM_STR);
   $stmt->execute();
   return $stmt->rowCount();
- True}
- True?>
+ }
+ ?
 ```
 
 #### 1.1.5 Java (JDBC)
@@ -170,7 +170,7 @@ author: 'Anonymous'
   pstmt.close();
   conn.close();
   }
- True}
+ }
 ```
 
 #### 1.1.6 Java (MyBatis)
@@ -184,7 +184,7 @@ author: 'Anonymous'
  <!-- 注意：
   #{param} 使用参数化查询（安全）
   ${param} 直接拼接字符串（危险）
- True-->
+ -
  <!-- 危险示例 -->
  <select id="getUserDangerous" resultType="User">
   SELECT * FROM users
@@ -197,15 +197,15 @@ author: 'Anonymous'
  public interface UserMapper {
   User getUser(@Param("username") String username, @Param("password") String password);
   List<User> getUsersByIds(@Param("ids") List<Integer> ids);
- True}
+ }
  // 使用示例
  SqlSession session = sqlSessionFactory.openSession();
  try {
   UserMapper mapper = session.getMapper(UserMapper.class);
   User user = mapper.getUser("admin", "password");
- True} finally {
+ }
   session.close();
- True}
+ }
 ```
 
 ### 1.2 使用 ORM 框架
@@ -258,7 +258,7 @@ author: 'Anonymous'
  user = session.query(User).filter(
   User.username == username,
   User.password == password
- True).first()
+ )
  # 使用 filter_by
  user = session.query(User).filter_by(username=username).first()
  # 使用 get
@@ -270,7 +270,7 @@ author: 'Anonymous'
   User.username.like('%admin%'),
   or_(User.email.is_(None), User.email != '')
   )
- True).all()
+ )
 ```
 
 #### 1.2.3 Java (JPA/Hibernate)
@@ -307,7 +307,7 @@ author: 'Anonymous'
   .setParameter("id", userId)
   .executeUpdate();
   }
- True}
+ }
 ```
 
 ### 1.3 输入验证与过滤
@@ -404,14 +404,14 @@ author: 'Anonymous'
   SELECT * FROM users WHERE username = p_username AND password = p_password;
  END //
  DELIMITER ;
- True-- 调用存储过程
+ -
  CALL GetUser('admin', '123456');
 ```
 
 #### 1.4.2 危险的存储过程
 
 ```sql
- True-- 危险：使用动态 SQL 拼接
+ -
  DELIMITER //
  CREATE PROCEDURE DangerousGetUser(IN p_username VARCHAR(50))
  BEGIN
@@ -421,7 +421,7 @@ author: 'Anonymous'
   DEALLOCATE PREPARE stmt;
  END //
  DELIMITER ;
- True-- 即使使用参数化，也不要在存储过程中动态拼接 SQL
+ -
 ```
 
 ### 1.5 权限控制
@@ -429,13 +429,13 @@ author: 'Anonymous'
 #### 1.5.1 最小权限原则
 
 ```sql
- True-- 创建应用程序专用用户
+ -
  CREATE USER 'app_user'@'localhost' IDENTIFIED BY 'strong_password';
- True-- 只授予必要的权限
+ -
  GRANT SELECT, INSERT, UPDATE, DELETE ON test_db.* TO 'app_user'@'localhost';
- True-- 撤销危险权限
+ -
  REVOKE FILE, SUPER, PROCESS ON *.* FROM 'app_user'@'localhost';
- True-- 刷新权限
+ -
  FLUSH PRIVILEGES;
 ```
 
@@ -473,20 +473,20 @@ author: 'Anonymous'
  // 安全：记录错误，返回通用信息
  try {
   mysqli_query($conn, $sql);
- True} catch (Exception $e) {
+ }
   // 记录错误到日志文件
   error_log($e->getMessage());
   // 关闭错误显示
   ini_set('display_errors', 0);
   // 返回通用错误信息
   echo "系统错误，请稍后重试";
- True}
+ }
  // 生产环境应该这样设置
  ini_set('display_errors', 0);
  error_reporting(E_ALL);
  log_errors = On
  error_log = /var/log/php_errors.log
- True?>
+ ?
 ```
 
 #### 1.6.2 Python 错误处理
@@ -498,7 +498,7 @@ author: 'Anonymous'
   filename='app.log',
   level=logging.ERROR,
   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
- True)
+ )
  def safe_query(sql, params):
   try:
   cursor.execute(sql, params)
@@ -544,7 +544,7 @@ author: 'Anonymous'
   throw new DataAccessException("Database error occurred");
   }
   }
- True}
+ }
 ```
 
 ### 1.7 Web 应用防火墙（WAF）
@@ -586,9 +586,9 @@ author: 'Anonymous'
 #### 1.7.4 Cloudflare WAF 规则
 
 ```sql
- True-- 阻止 SQL 注入
+ -
  (http.request.uri.path contains "login" and cf.threat_score > 15)
- True-- 阻止常见攻击模式
+ -
  (cf.threat_score > 50 and not cf.client.bot)
 ```
 
@@ -597,17 +597,17 @@ author: 'Anonymous'
 #### 1.8.1 启用 SQL 日志
 
 ```sql
- True-- MySQL 启用查询日志
+ -
  SET GLOBAL general_log = 'ON';
  SET GLOBAL general_log_file = '/var/log/mysql/query.log';
- True-- 设置日志格式
+ -
  SET GLOBAL log_output = 'TABLE';
  SET GLOBAL general_log = 'ON';
- True-- 启用慢查询日志
+ -
  SET GLOBAL slow_query_log = 'ON';
  SET GLOBAL long_query_time = 1;
  SET GLOBAL slow_query_log_file = '/var/log/mysql/slow.log';
- True-- 查看日志
+ -
  SELECT * FROM mysql.general_log;
  SELECT * FROM mysql.slow_log;
 ```

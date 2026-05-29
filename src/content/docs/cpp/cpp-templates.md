@@ -19,14 +19,14 @@ author: 'Anonymous'
  template <typename T>
  T max(T a, T b) {
   return a > b ? a : b;
- True}
+ }
  // 使用示例
  int main() {
   int i = max(10, 20); // T = int
   double d = max(3.14, 2.71); // T = double
   std::string s = max(std::string("hello"), std::string("world")); // T = std::string
   return 0;
- True}
+ }
 ```
 
 ### 1.1 模板参数推导
@@ -37,13 +37,13 @@ author: 'Anonymous'
  template <typename T>
  void print(T value) {
   std::cout << value << std::endl;
- True}
+ }
  int main() {
   print(42); // T = int
   print(3.14); // T = double
   print("Hello"); // T = const char*
   return 0;
- True}
+ }
 ```
 
 ### 1.2 显式模板参数
@@ -54,7 +54,7 @@ author: 'Anonymous'
  template <typename T>
  T add(T a, T b) {
   return a + b;
- True}
+ }
  int main() {
   // 显式指定模板参数
   int result = add<int>(10, 20);
@@ -62,7 +62,7 @@ author: 'Anonymous'
   // 类型转换
   double result3 = add<double>(10, 20.5); // 显式指定为 double
   return 0;
- True}
+ }
 ```
 
 ### 1.3 模板重载
@@ -75,25 +75,25 @@ author: 'Anonymous'
  T max(T a, T b) {
   std::cout << "Template version" << std::endl;
   return a > b ? a : b;
- True}
+ }
  // 针对 const char* 的重载
  const char* max(const char* a, const char* b) {
   std::cout << "Overload version" << std::endl;
   return strcmp(a, b) > 0 ? a : b;
- True}
+ }
  // 特化版本
  template <>
  int max<int>(int a, int b) {
   std::cout << "Specialized version" << std::endl;
   return a > b ? a : b;
- True}
+ }
  // 使用示例
  int main() {
   max(10, 20); // 特化版本
   max(3.14, 2.71); // 模板版本
   max("hello", "world"); // 重载版本
   return 0;
- True}
+ }
 ```
 
 ### 1.4 多个模板参数
@@ -105,13 +105,13 @@ author: 'Anonymous'
  template <typename T1, typename T2, typename T3>
  typename std::common_type<T1, T2, T3>::type max(T1 a, T2 b, T3 c) {
   return max(max(a, b), c);
- True}
+ }
  // 使用示例
  int main() {
   auto result = max(10, 20.5, 15); // 返回 double 类型
   std::cout << "Max: " << result << std::endl;
   return 0;
- True}
+ }
 ```
 
 ## 2. 类模板
@@ -157,7 +157,7 @@ author: 'Anonymous'
   }
   return elements.back();
   }
- True};
+ }
  // 使用示例
  int main() {
   Stack<int> intStack;
@@ -169,7 +169,7 @@ author: 'Anonymous'
   stringStack.push("world");
   std::cout << stringStack.pop() << std::endl; // 输出 world
   return 0;
- True}
+ }
 ```
 
 ### 2.1 模板参数默认值
@@ -200,7 +200,7 @@ author: 'Anonymous'
   size_t size() const {
   return data.size();
   }
- True};
+ }
  // 使用默认分配器
  MyVector<int> v1;
  // 使用自定义分配器
@@ -219,7 +219,7 @@ author: 'Anonymous'
   static void print() {
   std::cout << "General template" << std::endl;
   }
- True};
+ }
  // 特化版本
  template <>
  class MyType<int> {
@@ -227,7 +227,7 @@ author: 'Anonymous'
   static void print() {
   std::cout << "Specialized for int" << std::endl;
   }
- True};
+ }
  // 部分特化
  template <typename T>
  class MyType<T*> {
@@ -235,14 +235,14 @@ author: 'Anonymous'
   static void print() {
   std::cout << "Specialized for pointer" << std::endl;
   }
- True};
+ }
  // 使用示例
  int main() {
   MyType<double>::print(); // 输出 General template
   MyType<int>::print(); // 输出 Specialized for int
   MyType<int*>::print(); // 输出 Specialized for pointer
   return 0;
- True}
+ }
 ```
 
 ## 3. 可变参数模板 (C++11)
@@ -253,18 +253,18 @@ author: 'Anonymous'
  // 递归终止条件
  void print() {
   std::cout << std::endl;
- True}
+ }
  // 可变参数模板
  template <typename T, typename... Args>
  void print(T first, Args... rest) {
   std::cout << first << " ";
   print(rest...); // 递归调用
- True}
+ }
  // 使用示例
  int main() {
   print(1, 2.5, "hello", true); // 输出 1 2.5 hello 1
   return 0;
- True}
+ }
 ```
 
 ### 3.1 折叠表达式 (C++17)
@@ -276,18 +276,18 @@ author: 'Anonymous'
  template <typename... Args>
  auto sum(Args... args) {
   return (args + ...);
- True}
+ }
  // 使用折叠表达式打印
  template <typename... Args>
  void print_fold(Args... args) {
   (std::cout << ... << args) << std::endl;
- True}
+ }
  // 使用示例
  int main() {
   std::cout << "Sum: " << sum(1, 2, 3, 4, 5) << std::endl; // 15
   print_fold(1, " ", 2.5, " ", "hello"); // 1 2.5 hello
   return 0;
- True}
+ }
 ```
 
 ### 3.2 转发引用与完美转发
@@ -299,13 +299,13 @@ author: 'Anonymous'
  template <typename... Args>
  void forward_args(Args&&... args) {
   print(std::forward<Args>(args)...);
- True}
+ }
  // 使用示例
  int main() {
   int x = 10;
   forward_args(1, "hello", std::move(x));
   return 0;
- True}
+ }
 ```
 
 ## 4. 模板元编程
@@ -317,26 +317,26 @@ author: 'Anonymous'
  template <int N>
  struct Factorial {
   static constexpr int value = N * Factorial<N-1>::value;
- True};
+ }
  // 特化版本作为递归终止条件
  template <>
  struct Factorial<0> {
   static constexpr int value = 1;
- True};
+ }
  // 编译期计算斐波那契数列
  template <int N>
  struct Fibonacci {
   static constexpr int value = Fibonacci<N-1>::value + Fibonacci<N-2>::value;
- True};
+ }
  // 特化版本
  template <>
  struct Fibonacci<0> {
   static constexpr int value = 0;
- True};
+ }
  template <>
  struct Fibonacci<1> {
   static constexpr int value = 1;
- True};
+ }
  // 使用示例
  int main() {
   constexpr int fact5 = Factorial<5>::value; // 编译期计算 120
@@ -344,7 +344,7 @@ author: 'Anonymous'
   constexpr int fib10 = Fibonacci<10>::value; // 编译期计算 55
   std::cout << "Fibonacci(10) = " << fib10 << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 4.1 类型 traits
@@ -356,16 +356,16 @@ author: 'Anonymous'
  template <typename T>
  struct IsIntegral {
   static constexpr bool value = false;
- True};
+ }
  // 特化
  template <>
  struct IsIntegral<int> {
   static constexpr bool value = true;
- True};
+ }
  template <>
  struct IsIntegral<long> {
   static constexpr bool value = true;
- True};
+ }
  // 使用示例
  template <typename T>
  void process(T value) {
@@ -374,12 +374,12 @@ author: 'Anonymous'
   } else {
   std::cout << "Processing non-integral type" << std::endl;
   }
- True}
+ }
  int main() {
   process(42); // 处理整型
   process(3.14); // 处理非整型
   return 0;
- True}
+ }
 ```
 
 ## 5. 模板的最佳实践

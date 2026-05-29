@@ -52,11 +52,11 @@ author: 'Anonymous'
  // 函数定义
  int add(int a, int b) {
   return a + b;
- True}
+ }
  void print_message(void) {
   printf("Hello, Function!\n");
   // 无 return 语句
- True}
+ }
 ```
 
 ### 2.3 函数声明与定义的关系
@@ -77,13 +77,13 @@ author: 'Anonymous'
  void increment(int x) {
   x++; // 只修改形参
   printf("Inside function: %d\n", x); // 输出 11
- True}
+ }
  int main() {
   int a = 10;
   increment(a);
   printf("Outside function: %d\n", a); // 输出 10，实参未被修改
   return 0;
- True}
+ }
 ```
 
 ### 3.2 传址调用 (Pass by Address)
@@ -96,13 +96,13 @@ author: 'Anonymous'
  void increment_by_address(int *x) {
   (*x)++; // 通过指针修改实参
   printf("Inside function: %d\n", *x); // 输出 11
- True}
+ }
  int main() {
   int a = 10;
   increment_by_address(&a);
   printf("Outside function: %d\n", a); // 输出 11，实参被修改
   return 0;
- True}
+ }
 ```
 
 ### 3.3 数组作为参数
@@ -116,13 +116,13 @@ author: 'Anonymous'
   printf("%d ", arr[i]);
   }
   printf("\n");
- True}
+ }
  int main() {
   int numbers[] = {1, 2, 3, 4, 5};
   int size = sizeof(numbers) / sizeof(numbers[0]);
   print_array(numbers, size); // 传递数组首地址和大小
   return 0;
- True}
+ }
 ```
 
 ## 4. 函数的返回值
@@ -139,7 +139,7 @@ author: 'Anonymous'
   } else {
   return b;
   }
- True}
+ }
 ```
 
 ### 4.2 返回指针
@@ -151,12 +151,12 @@ author: 'Anonymous'
  int *create_array() {
   int arr[5]; // 局部变量
   return arr; // 危险：返回局部变量的地址
- True}
+ }
  // 正确：返回动态分配的内存
  int *create_dynamic_array(int size) {
   int *arr = (int *)malloc(size * sizeof(int));
   return arr; // 安全：返回动态分配的内存
- True}
+ }
 ```
 
 ### 4.3 无返回值 (void)
@@ -168,14 +168,14 @@ author: 'Anonymous'
  void print_hello() {
   printf("Hello!\n");
   // 无 return 语句
- True}
+ }
  void check_number(int n) {
   if (n < 0) {
   printf("Negative number!\n");
   return; // 提前返回
   }
   printf("Non-negative number: %d\n", n);
- True}
+ }
 ```
 
 ## 5. 递归
@@ -195,7 +195,7 @@ author: 'Anonymous'
  long factorial(int n) {
   if (n <= 1) return 1; // 基准情况
   return n * factorial(n - 1); // 递归调用
- True}
+ }
 ```
 
 #### 5.2.2 斐波那契数列
@@ -204,7 +204,7 @@ author: 'Anonymous'
  int fibonacci(int n) {
   if (n <= 1) return n; // 基准情况
   return fibonacci(n - 1) + fibonacci(n - 2); // 递归调用
- True}
+ }
 ```
 
 #### 5.2.3 二分查找
@@ -216,7 +216,7 @@ author: 'Anonymous'
   if (arr[mid] == target) return mid; // 基准情况：找到
   else if (arr[mid] > target) return binary_search(arr, low, mid - 1, target);
   else return binary_search(arr, mid + 1, high, target);
- True}
+ }
 ```
 
 ### 5.3 递归的优缺点
@@ -237,13 +237,13 @@ author: 'Anonymous'
  void function() {
   int local_var = 50; // 局部变量
   printf("Global: %d, Local: %d\n", global_var, local_var);
- True}
+ }
  int main() {
   function();
   printf("Global: %d\n", global_var);
   // printf("Local: %d\n", local_var); // 错误：local_var 未定义
   return 0;
- True}
+ }
 ```
 
 ### 6.2 存储类说明符
@@ -265,13 +265,13 @@ author: 'Anonymous'
   static int count = 0; // 静态局部变量
   count++;
   printf("Count: %d\n", count);
- True}
+ }
  int main() {
   counter(); // 输出 1
   counter(); // 输出 2
   counter(); // 输出 3
   return 0;
- True}
+ }
 ```
 
 - **静态全局变量**：
@@ -289,7 +289,7 @@ author: 'Anonymous'
  extern int global_var; // 声明外部变量
  void function() {
   printf("Global var: %d\n", global_var);
- True}
+ }
  // file2.c
  int global_var = 100; // 定义全局变量
 ```
@@ -334,14 +334,14 @@ author: 'Anonymous'
   for (int i = 0; i < size; i++) {
   callback(arr[i]);
   }
- True}
+ }
  // 具体的回调函数
  void print_number(int num) {
   printf("%d ", num);
- True}
+ }
  void square_number(int num) {
   printf("%d ", num * num);
- True}
+ }
  int main() {
   int numbers[] = {1, 2, 3, 4, 5};
   int size = sizeof(numbers) / sizeof(numbers[0]);
@@ -352,7 +352,7 @@ author: 'Anonymous'
   process_array(numbers, size, square_number);
   printf("\n");
   return 0;
- True}
+ }
 ```
 
 #### 7.3.2 函数指针数组
@@ -370,7 +370,7 @@ author: 'Anonymous'
   printf("Result: %d\n", operations[i](a, b));
   }
   return 0;
- True}
+ }
 ```
 
 ## 8. 可变参数函数
@@ -407,13 +407,13 @@ author: 'Anonymous'
   // 结束参数处理
   va_end(valist);
   return sum;
- True}
+ }
  // 格式化输出
  typedef enum {
   INT, // 整数
   DOUBLE, // 双精度浮点数
   STRING // 字符串
- True} Type;
+ }
  void print_values(int count, ...) {
   va_list valist;
   va_start(valist, count);
@@ -436,7 +436,7 @@ author: 'Anonymous'
   }
   va_end(valist);
   printf("\n");
- True}
+ }
  int main() {
   printf("Sum: %.2f\n", sum(5, 1, 2, 3, 4, 5));
   print_values(4,
@@ -445,7 +445,7 @@ author: 'Anonymous'
   STRING, "Hello",
   INT, 20);
   return 0;
- True}
+ }
 ```
 
 ### 8.4 注意事项
@@ -472,13 +472,13 @@ author: 'Anonymous'
 ```c
  inline int max(int a, int b) {
   return a > b ? a : b;
- True}
+ }
  int main() {
   int x = 10, y = 20;
   int result = max(x, y); // 可能被内联为：int result = x > y ? x : y;
   printf("Max: %d\n", result);
   return 0;
- True}
+ }
 ```
 
 ### 9.4 注意事项
@@ -562,24 +562,24 @@ author: 'Anonymous'
   // 释放内存
   free_array(arr);
   return 0;
- True}
+ }
  // 创建动态数组
  int *create_array(int size) {
   return (int *)malloc(size * sizeof(int));
- True}
+ }
  // 初始化数组为随机值
  void initialize_array(int *arr, int size) {
   for (int i = 0; i < size; i++) {
   arr[i] = rand() % 100; // 0-99 的随机数
   }
- True}
+ }
  // 打印数组
  void print_array(int *arr, int size) {
   for (int i = 0; i < size; i++) {
   printf("%d ", arr[i]);
   }
   printf("\n");
- True}
+ }
  // 查找数组最大值
  int find_max(int *arr, int size) {
   int max = arr[0];
@@ -589,11 +589,11 @@ author: 'Anonymous'
   }
   }
   return max;
- True}
+ }
  // 释放数组内存
  void free_array(int *arr) {
   free(arr);
- True}
+ }
 ```
 
 ---

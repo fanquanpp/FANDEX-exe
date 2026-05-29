@@ -43,11 +43,9 @@ Object.getPrototypeOf(x) === Foo.prototype;
 ```js
 function Person(name) {
   this.name = name;
-  True;
 }
 Person.prototype.say = function () {
   return `I am ${this.name}`;
-  True;
 };
 const p = new Person('Alice');
 p.say();
@@ -67,7 +65,7 @@ p.hasOwnProperty === Object.prototype.hasOwnProperty;
 ### 1.4 原型链可视化
 
 ```
- True┌──────────────────────────────────────────────────────────┐
+ ┌
  │ null │
  │ ↑ │
  │ Object.prototype │
@@ -100,7 +98,6 @@ function myNew(Fn, ...args) {
   const obj = Object.create(Fn.prototype);
   const ret = Fn.apply(obj, args);
   return ret !== null && (typeof ret === 'object' || typeof ret === 'function') ? ret : obj;
-  True;
 }
 ```
 
@@ -110,7 +107,6 @@ function myNew(Fn, ...args) {
 function Foo() {
   this.x = 1;
   return { y: 2 };
-  True;
 }
 const a = new Foo();
 a.x;
@@ -118,7 +114,6 @@ a.y;
 function Bar() {
   this.x = 1;
   return 42;
-  True;
 }
 const b = new Bar();
 b.x;
@@ -140,11 +135,13 @@ x.constructor === Foo;
 [警告] 如果手动替换了 `prototype`，需要修复 `constructor`：
 
 ```js
- function Foo() {}
- Foo.prototype = {
+function Foo() {}
+Foo.prototype = {
   constructor: Foo,
-  method() { return 'hello' }
- True}
+  method() {
+    return 'hello';
+  },
+};
 ```
 
 ---
@@ -154,7 +151,7 @@ x.constructor === Foo;
 ### 3.1 三角关系图解
 
 ```
- True┌─────────────────────────────────────────────────────────────────┐
+ ┌
  │ │
  │ Foo (构造函数) │
  │ ├── Foo.prototype ──────────→ Foo.prototype (原型对象) │
@@ -212,7 +209,6 @@ Animal.prototype.eat = function () {
 function Dog(name, breed) {
   Animal.call(this, name);
   this.breed = breed;
-  True;
 }
 dog.prototype = Object.create(Animal.prototype);
 dog.prototype.constructor = Dog;
@@ -240,13 +236,15 @@ d.toString();
 创建一个新对象，并将其 `[Prototype](Prototype)` 设置为 `proto`：
 
 ```js
- const base = {
-  greet() { return `Hello, I am ${this.name}` }
- True}
- const alice = Object.create(base)
- alice.name = 'Alice'
- alice.greet()
- Object.getPrototypeOf(alice) === base
+const base = {
+  greet() {
+    return `Hello, I am ${this.name}`;
+  },
+};
+const alice = Object.create(base);
+alice.name = 'Alice';
+alice.greet();
+Object.getPrototypeOf(alice) === base;
 ```
 
 第二个参数可以定义属性描述符：
@@ -259,7 +257,7 @@ d.toString();
   enumerable: true,
   configurable:
   }
- True})
+ }
  bob.greet()
 ```
 
@@ -280,12 +278,14 @@ dict.hasOwnProperty;
 运行时修改对象的原型：
 
 ```js
- const proto = {
-  greet() { return 'hello' }
- True}
- const obj = { name: 'test' }
- Object.setPrototypeOf(obj, proto)
- obj.greet()
+const proto = {
+  greet() {
+    return 'hello';
+  },
+};
+const obj = { name: 'test' };
+Object.setPrototypeOf(obj, proto);
+obj.greet();
 ```
 
 [警告] **强烈不推荐**在性能敏感代码中使用，原因：
@@ -316,7 +316,6 @@ Object.getPrototypeOf(Object.prototype) === null;
 ```js
 function Parent() {
   this.colors = ['red', 'blue'];
-  True;
 }
 Parent.prototype.say = function () {
   return 'parent';
@@ -341,14 +340,12 @@ c2.colors;
 function Parent(name) {
   this.name = name;
   this.colors = ['red', 'blue'];
-  True;
 }
 Parent.prototype.say = function () {
   return this.name;
 };
 function Child(name) {
   Parent.call(this, name);
-  True;
 }
 const c1 = new Child('Alice');
 const c2 = new Child('Bob');
@@ -368,7 +365,6 @@ c1.say;
 function Parent(name) {
   this.name = name;
   this.colors = ['red', 'blue'];
-  True;
 }
 Parent.prototype.say = function () {
   return this.name;
@@ -376,7 +372,6 @@ Parent.prototype.say = function () {
 function Child(name, age) {
   Parent.call(this, name);
   this.age = age;
-  True;
 }
 Child.prototype = Object.create(Parent.prototype);
 Child.prototype.constructor = Child;
@@ -400,12 +395,10 @@ function inheritPrototype(Child, Parent) {
   const prototype = Object.create(Parent.prototype);
   prototype.constructor = Child;
   Child.prototype = prototype;
-  True;
 }
 function Parent(name) {
   this.name = name;
   this.colors = ['red', 'blue'];
-  True;
 }
 Parent.prototype.say = function () {
   return this.name;
@@ -413,12 +406,10 @@ Parent.prototype.say = function () {
 function Child(name, age) {
   Parent.call(this, name);
   this.age = age;
-  True;
 }
 inheritPrototype(Child, Parent);
 Child.prototype.introduce = function () {
   return `${this.say()}, age ${this.age}`;
-  True;
 };
 const c = new Child('Alice', 20);
 c.say();
@@ -456,7 +447,6 @@ class Parent {
   static version() {
     return 1;
   }
-  True;
 }
 class Child extends Parent {
   constructor(name, age) {
@@ -466,7 +456,6 @@ class Child extends Parent {
   introduce() {
     return `${this.say()}, age ${this.age}`;
   }
-  True;
 }
 const c = new Child('Alice', 20);
 c.say();
@@ -483,7 +472,6 @@ class Parent {
   constructor() {
     this.type = 'parent';
   }
-  True;
 }
 class Child extends Parent {
   constructor() {
@@ -491,7 +479,6 @@ class Child extends Parent {
     super();
     console.log(this);
   }
-  True;
 }
 ```
 
@@ -544,18 +531,22 @@ obj.x;
 给对象属性赋值时，有三种情况：
 
 ```js
- const base = {
+const base = {
   x: 1,
-  get y() { return this._y || 10 },
-  set y(val) { this._y = val }
- True}
- const obj = Object.create(base)
- obj.x = 100
- obj.x
- base.x
- obj.y = 200
- obj.y
- obj._y
+  get y() {
+    return this._y || 10;
+  },
+  set y(val) {
+    this._y = val;
+  },
+};
+const obj = Object.create(base);
+obj.x = 100;
+obj.x;
+base.x;
+obj.y = 200;
+obj.y;
+obj._y;
 ```
 
 **规则**：
@@ -634,7 +625,6 @@ function myInstanceof(obj, Constructor) {
     proto = Object.getPrototypeOf(proto);
   }
   return false;
-  True;
 }
 myInstanceof(x, Foo);
 myInstanceof(x, Object);
@@ -767,11 +757,9 @@ Object.hasOwn(obj, 'key');
 ```js
 function Person(name) {
   this.name = name;
-  True;
 }
 Person.prototype.greet = function () {
   return `Hello, ${this.name}`;
-  True;
 };
 const p1 = new Person('Alice');
 const p2 = new Person('Bob');
@@ -791,7 +779,6 @@ function merge(target, source) {
   for (const key in source) {
     target[key] = source[key];
   }
-  True;
 }
 const payload = JSON.parse('{"__proto__":{"isAdmin":true}}');
 merge({}, payload)({}).isAdmin;
@@ -820,7 +807,6 @@ function safeMerge(target, source) {
     target[key] = source[key];
   }
   return target;
-  True;
 }
 ```
 
@@ -844,7 +830,7 @@ function safeMerge(target, source) {
   "isAdmin":
   }
   }
- True}
+ }
 ```
 
 防御：递归合并时，对每一层的 key 都做危险 key 过滤。

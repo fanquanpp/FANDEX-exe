@@ -17,7 +17,7 @@ author: 'Anonymous'
 元表允许我们改变 Table 的行为，通过定义元方法来重载运算符、控制访问等。
 
 ```lua
- True-- 创建元表
+ -
  local meta = {
   -- 重载加法运算符
   __add = function(a, b)
@@ -31,13 +31,13 @@ author: 'Anonymous'
   __tostring = function(self)
   return "Value: " .. self.value
   end
- True}
- True-- 创建表并设置元表
+ }
+ -
  local t1 = { value = 10 }
  local t2 = { value = 20 }
  setmetatable(t1, meta)
  setmetatable(t2, meta)
- True-- 使用重载的运算符
+ -
  print(t1 + t2) -- 30
  print(t1 * t2) -- 200
  print(t1) -- Value: 10
@@ -81,7 +81,7 @@ author: 'Anonymous'
  local original = { value = 10 }
  local readonly_table = readonly(original)
  print(readonly_table.value) -- 10
- True-- readonly_table.value = 20 -- 会报错
+ -
 ```
 
 #### 1.3.2 自动创建表
@@ -106,10 +106,10 @@ author: 'Anonymous'
 ### 2.1 基础类实现
 
 ```lua
- True-- 定义类
+ -
  local Person = {}
  Person.__index = Person
- True-- 构造函数
+ -
  function Person:new(name, age)
   local o = {}
   setmetatable(o, self)
@@ -117,11 +117,11 @@ author: 'Anonymous'
   o.age = age
   return o
  end
- True-- 方法
+ -
  function Person:greet()
   return "Hello, my name is " .. self.name .. " and I'm " .. self.age .. " years old"
  end
- True-- 创建实例
+ -
  local alice = Person:new("Alice", 30)
  print(alice:greet()) -- Hello, my name is Alice and I'm 30 years old
 ```
@@ -129,7 +129,7 @@ author: 'Anonymous'
 ### 2.2 继承
 
 ```lua
- True-- 基类
+ -
  local Animal = {}
  Animal.__index = Animal
  function Animal:new(name)
@@ -141,7 +141,7 @@ author: 'Anonymous'
  function Animal:speak()
   return "Some generic sound"
  end
- True-- 派生类
+ -
  local Dog = {}
  setmetatable(Dog, { __index = Animal })
  dog.__index = Dog
@@ -154,7 +154,7 @@ author: 'Anonymous'
  function Dog:speak()
   return "Woof!"
  end
- True-- 创建实例
+ -
  local rover = Dog:new("Rover", "Labrador")
  print(rover:speak()) -- Woof!
  print(rover.name) -- Rover
@@ -186,16 +186,16 @@ author: 'Anonymous'
   end
   return class
  end
- True-- 定义父类
+ -
  local A = {}
  A.__index = A
  function A:methodA() return "Method A" end
  local B = {}
  B.__index = B
  function B:methodB() return "Method B" end
- True-- 创建子类
+ -
  local C = createClass(A, B)
- True-- 创建实例
+ -
  local c = C:new()
  print(c:methodA()) -- Method A
  print(c:methodB()) -- Method B
@@ -226,7 +226,7 @@ author: 'Anonymous'
  function Account:getBalance()
   return self._balance
  end
- True-- 创建实例
+ -
  local account = Account:new(1000)
  account:deposit(500)
  print(account:getBalance()) -- 1500
@@ -238,20 +238,20 @@ author: 'Anonymous'
 ### 3.1 基础使用
 
 ```lua
- True-- 创建协程
+ -
  local co = coroutine.create(function(name)
   print("Hello, " .. name)
   local value = coroutine.yield("Yielding...")
   print("Received: " .. value)
   return "Done"
  end)
- True-- 启动协程
+ -
  local status, result = coroutine.resume(co, "Alice")
  print(status, result) --  Yielding...
- True-- 继续协程
+ -
  status, result = coroutine.resume(co, "World")
  print(status, result) --  Done
- True-- 再次启动协程（已经结束）
+ -
  status, result = coroutine.resume(co)
  print(status, result) -- false cannot resume dead coroutine
 ```
@@ -315,11 +315,11 @@ author: 'Anonymous'
   end
  end
  local pool = createCoroutinePool(3, worker)
- True-- 分配任务
+ -
  for i, co in ipairs(pool) do
   coroutine.resume(co, "Task " .. i)
  end
- True-- 再次分配任务
+ -
  for i, co in ipairs(pool) do
   coroutine.resume(co, "Task " .. (i + 3))
  end
@@ -346,7 +346,7 @@ author: 'Anonymous'
 ### 4.2 模块系统
 
 ```lua
- True-- mymodule.lua
+ -
  local M = {}
  function M.add(a, b)
   return a + b
@@ -355,7 +355,7 @@ author: 'Anonymous'
   return a - b
  end
  return M
- True-- 使用模块
+ -
  local math = require("mymodule")
  print(math.add(10, 5)) -- 15
  print(math.sub(10, 5)) -- 5
@@ -384,7 +384,7 @@ author: 'Anonymous'
 ### 4.4 垃圾回收
 
 ```lua
- True-- 弱表
+ -
  local weakTable = setmetatable({}, { __mode = "k" })
  local key = {}
  weakTable[key] = "value"
@@ -430,16 +430,16 @@ author: 'Anonymous'
   end
   end
  end
- True-- 使用事件系统
+ -
  local events = EventSystem:new()
- True-- 注册事件
+ -
  local function onUserLoggedIn(username)
   print("User logged in: " .. username)
  end
  events:on("userLoggedIn", onUserLoggedIn)
- True-- 触发事件
+ -
  events:emit("userLoggedIn", "Alice") -- User logged in: Alice
- True-- 移除事件
+ -
  events:off("userLoggedIn", onUserLoggedIn)
  events:emit("userLoggedIn", "Bob") -- 无输出
 ```
@@ -447,7 +447,7 @@ author: 'Anonymous'
 ### 5.2 简单的类库
 
 ```lua
- True-- 定义类
+ -
  local Vector2 = {}
  Vector2.__index = Vector2
  function Vector2:new(x, y)
@@ -472,11 +472,11 @@ author: 'Anonymous'
  function Vector2:__tostring()
   return "Vector2(" .. self.x .. ", " .. self.y .. ")"
  end
- True-- 重载运算符
+ -
  Vector2.__add = Vector2.add
  Vector2.__sub = Vector2.sub
  Vector2.__mul = Vector2.mul
- True-- 使用向量
+ -
  local v1 = Vector2:new(1, 2)
  local v2 = Vector2:new(3, 4)
  local v3 = v1 + v2

@@ -36,7 +36,7 @@ D. `arr` 可以重新赋值指向其他地址
   char c;
   int i;
   double d;
- True};
+ }
  ```
 
 A. 13 字节
@@ -96,7 +96,7 @@ D. 内存泄漏
   left++;
   right--;
   }
- True}
+ }
  ```
 </details>
 ### 2. 动态数组实现
@@ -113,25 +113,25 @@ D. 内存泄漏
   int *data;
   size_t size;
   size_t capacity;
- True} DynArray;
+ }
  DynArray *dyn_array_create(size_t initial_cap) {
   DynArray *arr = (DynArray *)malloc(sizeof(DynArray));
   arr->data = (int *)malloc(sizeof(int) * initial_cap);
   arr->size = 0;
   arr->capacity = initial_cap;
   return arr;
- True}
+ }
  void dyn_array_push(DynArray *arr, int value) {
   if (arr->size == arr->capacity) {
   arr->capacity *= 2;
   arr->data = (int *)realloc(arr->data, sizeof(int) * arr->capacity);
   }
   arr->data[arr->size++] = value;
- True}
+ }
  void dyn_array_free(DynArray *arr) {
   free(arr->data);
   free(arr);
- True}
+ }
  int main(void) {
   DynArray *arr = dyn_array_create(2);
   for (int i = 1; i <= 5; i++) {
@@ -142,7 +142,7 @@ D. 内存泄漏
   }
   dyn_array_free(arr);
   return 0;
- True}
+ }
  ```
 </details>
 ### 3. 文件行计数器
@@ -159,14 +159,14 @@ D. 内存泄漏
   int total;
   int non_empty;
   int keyword_matches;
- True} LineCount;
+ }
  int is_empty_line(const char *line) {
   while (*line) {
   if (!isspace((unsigned char)*line)) return 0;
   line++;
   }
   return 1;
- True}
+ }
  LineCount count_lines(const char *filepath, const char *keyword) {
   LineCount cnt = {0, 0, 0};
   FILE *fp = fopen(filepath, "r");
@@ -186,7 +186,7 @@ D. 内存泄漏
   }
   fclose(fp);
   return cnt;
- True}
+ }
  int main(int argc, char *argv[]) {
   if (argc < 2) {
   fprintf(stderr, "Usage: %s <file> [keyword]\n", argv[0]);
@@ -197,6 +197,6 @@ D. 内存泄漏
   printf("Total: %d\nNon-empty: %d\nKeyword matches: %d\n",
   c.total, c.non_empty, c.keyword_matches);
   return 0;
- True}
+ }
  ```
 </details>

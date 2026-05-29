@@ -31,7 +31,7 @@ updated: 2026-05-03
   public void introduce() {
   System.out.println("I'm " + name + ", " + age + " years old, major in " + major);
   }
- True}
+ }
 ```
 
 ### 1.2 类的结构
@@ -66,7 +66,7 @@ updated: 2026-05-03
 
 ```
  栈 堆
- True┌──────────┐ ┌────────────┐
+ ┌
  │ student │─────→│ name: null │
  └──────────┘ │ age: 0 │
   │ major: null│
@@ -86,7 +86,7 @@ updated: 2026-05-03
   // 默认构造器（由编译器生成）
   public Student() {
   }
- True}
+ }
 ```
 
 #### 1.4.2 自定义构造器
@@ -112,7 +112,7 @@ updated: 2026-05-03
   this.age = age;
   this.major = major;
   }
- True}
+ }
 ```
 
 #### 1.4.3 构造器的调用
@@ -175,7 +175,7 @@ updated: 2026-05-03
   public void setMajor(String major) {
   this.major = major;
   }
- True}
+ }
 ```
 
 ### 2.4 封装的优点
@@ -205,13 +205,13 @@ updated: 2026-05-03
   public void sleep() {
   System.out.println(name + " is sleeping.");
   }
- True}
+ }
  // 子类
  public class Dog extends Animal {
   public void bark() {
   System.out.println(name + " is barking.");
   }
- True}
+ }
 ```
 
 ### 3.3 继承的特性
@@ -232,7 +232,7 @@ updated: 2026-05-03
   super.name = name; // 访问父类的成员变量
   this.breed = breed;
   }
- True}
+ }
 ```
 
 #### 3.4.2 调用父类的方法
@@ -244,7 +244,7 @@ updated: 2026-05-03
   super.eat(); // 调用父类的 eat 方法
   System.out.println("Dog eats bones.");
   }
- True}
+ }
 ```
 
 #### 3.4.3 调用父类的构造器
@@ -255,14 +255,14 @@ updated: 2026-05-03
   public Animal(String name) {
   this.name = name;
   }
- True}
+ }
  public class Dog extends Animal {
   private String breed;
   public Dog(String name, String breed) {
   super(name); // 调用父类的构造器
   this.breed = breed;
   }
- True}
+ }
 ```
 
 ### 3.5 方法重写 (Override)
@@ -282,19 +282,19 @@ updated: 2026-05-03
   public void makeSound() {
   System.out.println("Animal makes sound.");
   }
- True}
+ }
  public class Cat extends Animal {
   @Override
   public void makeSound() {
   System.out.println("Cat meows.");
   }
- True}
+ }
  public class Dog extends Animal {
   @Override
   public void makeSound() {
   System.out.println("Dog barks.");
   }
- True}
+ }
 ```
 
 ## 4. 多态 (Polymorphism)
@@ -350,7 +350,7 @@ updated: 2026-05-03
   public void setName(String name) {
   this.name = name; // this.name 指成员变量，name 指局部变量
   }
- True}
+ }
 ```
 
 #### 5.2.2 调用本类的其他构造器
@@ -369,7 +369,7 @@ updated: 2026-05-03
   this.name = name;
   this.age = age;
   }
- True}
+ }
 ```
 
 #### 5.2.3 返回当前对象
@@ -386,7 +386,7 @@ updated: 2026-05-03
   this.age = age;
   return this; // 返回当前对象，支持链式调用
   }
- True}
+ }
  // 链式调用
  Student student = new Student().setName("Alice").setAge(20);
 ```
@@ -423,7 +423,7 @@ updated: 2026-05-03
   private String name;
   private int age;
   // 构造器、getter/setter 方法
- True}
+ }
  // 子类
  public class Student extends Person {
   private String studentId;
@@ -432,7 +432,7 @@ updated: 2026-05-03
   public void study() {
   System.out.println(getName() + " is studying " + major);
   }
- True}
+ }
  // 子类
  public class Teacher extends Person {
   private String teacherId;
@@ -441,7 +441,7 @@ updated: 2026-05-03
   public void teach() {
   System.out.println(getName() + " is teaching " + subject);
   }
- True}
+ }
  // 测试
  public class Test {
   public static void main(String[] args) {
@@ -458,7 +458,7 @@ updated: 2026-05-03
   teacher.setSubject("Java Programming");
   teacher.teach();
   }
- True}
+ }
 ```
 
 ### 7.2 形状类的多态示例
@@ -468,7 +468,7 @@ updated: 2026-05-03
  public abstract class Shape {
   public abstract double calculateArea();
   public abstract double calculatePerimeter();
- True}
+ }
  // 子类
  public class Circle extends Shape {
   private double radius;
@@ -483,7 +483,7 @@ updated: 2026-05-03
   public double calculatePerimeter() {
   return 2 * Math.PI * radius;
   }
- True}
+ }
  // 子类
  public class Rectangle extends Shape {
   private double width;
@@ -500,7 +500,7 @@ updated: 2026-05-03
   public double calculatePerimeter() {
   return 2 * (width + height);
   }
- True}
+ }
  // 测试
  public class Test {
   public static void main(String[] args) {
@@ -513,7 +513,7 @@ updated: 2026-05-03
   System.out.println();
   }
   }
- True}
+ }
 ```
 
 ## 8. 常见陷阱

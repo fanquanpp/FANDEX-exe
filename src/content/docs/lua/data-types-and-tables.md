@@ -45,15 +45,15 @@ Line 2)` |
 #### 1.2.1 数值与字符串转换
 
 ```lua
- True-- 数值转字符串
+ -
  local num = 10
  local str = tostring(num) -- "10"
- True-- 字符串转数值
+ -
  local str = "123"
  local num1 = tonumber(str) -- 123
  local num2 = tonumber("3.14") -- 3.14
  local num3 = tonumber("abc") -- nil
- True-- 自动转换
+ -
  print("10" + 5) -- 15 (字符串转数值)
  print(10 .. "5") -- "105" (数值转字符串)
 ```
@@ -61,8 +61,8 @@ Line 2)` |
 #### 1.2.2 布尔值转换
 
 ```lua
- True-- 其他类型转布尔值
- True-- 只有 false 和 nil 为假，其他都为真
+ -
+ -
  print(Boolean(0)) --
  print(Boolean("")) --
  print(Boolean({})) --
@@ -77,25 +77,25 @@ Table 是 Lua 唯一的容器类型，可以表示数组、字典、对象等各
 ### 2.1 Table 的创建
 
 ```lua
- True-- 空表
+ -
  local t1 = {}
- True-- 数组式表
+ -
  local t2 = {1, 2, 3, 4, 5}
- True-- 字典式表
+ -
  local t3 = {name = "Lua", version = 5.4}
- True-- 混合式表
+ -
  local t4 = {
   "apple",
   "banana",
   name = "fruit",
   count = 2
- True}
- True-- 计算式键
+ }
+ -
  local t5 = {
   ["name"] = "Lua",
   [10] = "ten",
   [{}] = "table"
- True}
+ }
 ```
 
 ### 2.2 Table 作为数组
@@ -104,16 +104,16 @@ Table 是 Lua 唯一的容器类型，可以表示数组、字典、对象等各
 
 ```lua
  local arr = {10, 20, 30, 40, 50}
- True-- 访问元素
+ -
  print(arr[1]) -- 10
  print(arr[3]) -- 30
- True-- 修改元素
+ -
  arr[2] = 25
  print(arr[2]) -- 25
- True-- 添加元素
+ -
  arr[6] = 60
  print(arr[6]) -- 60
- True-- 获取长度
+ -
  print(#arr) -- 6
 ```
 
@@ -124,18 +124,18 @@ Table 是 Lua 唯一的容器类型，可以表示数组、字典、对象等各
   name = "John",
   age = 30,
   city = "New York"
- True}
- True-- 访问元素（点语法）
+ }
+ -
  print(dict.name) -- John
- True-- 访问元素（方括号语法）
+ -
  print(dict["age"]) -- 30
- True-- 使用变量作为键
+ -
  local key = "city"
  print(dict[key]) -- New York
- True-- 添加新键值对
+ -
  dict.email = "john@example.com"
  print(dict.email) -- john@example.com
- True-- 删除键值对
+ -
  dict.age = nil
  print(dict.age) -- nil
 ```
@@ -145,16 +145,16 @@ Table 是 Lua 唯一的容器类型，可以表示数组、字典、对象等各
 #### 2.4.1 表的遍历
 
 ```lua
- True-- 遍历数组部分
+ -
  local arr = {1, 2, 3, 4, 5}
  for i = 1, #arr do
   print(i, arr[i])
  end
- True-- 使用 ipairs 遍历数组
+ -
  for index, value in ipairs(arr) do
   print(index, value)
  end
- True-- 使用 pairs 遍历所有键值对
+ -
  local dict = {name = "John", age = 30, city = "New York"}
  for key, value in pairs(dict) do
   print(key, value)
@@ -172,21 +172,21 @@ Table 是 Lua 唯一的容器类型，可以表示数组、字典、对象等各
 | `table.unpack(t, i, j)`       | 解压表为多个值       | `local a, b, c = table.unpack({1, 2, 3})` |
 
 ```lua
- True-- 示例
+ -
  local arr = {10, 30, 20, 50, 40}
- True-- 排序
+ -
  table.sort(arr)
  print(table.concat(arr, ", ")) -- 10, 20, 30, 40, 50
- True-- 插入元素
+ -
  table.insert(arr, 3, 25)
  print(table.concat(arr, ", ")) -- 10, 20, 25, 30, 40, 50
- True-- 删除元素
+ -
  table.remove(arr, 3)
  print(table.concat(arr, ", ")) -- 10, 20, 30, 40, 50
- True-- 连接字符串
+ -
  local strs = {"Hello", "Lua", "World"}
  print(table.concat(strs, " ")) -- Hello Lua World
- True-- 解压表
+ -
  local values = {10, 20, 30}
  local a, b, c = table.unpack(values)
  print(a, b, c) -- 10 20 30
@@ -206,11 +206,11 @@ Table 是 Lua 唯一的容器类型，可以表示数组、字典、对象等各
   zipcode = 10001
   },
   hobbies = {"reading", "coding", "gaming"}
- True}
- True-- 访问嵌套表
+ }
+ -
  print(person.address.city) -- New York
  print(person.hobbies[2]) -- coding
- True-- 修改嵌套表
+ -
  person.address.street = "Broadway"
  print(person.address.street) -- Broadway
 ```
@@ -222,7 +222,7 @@ Table 是 Lua 唯一的容器类型，可以表示数组、字典、对象等各
  local t2 = t1 -- t2 引用 t1
  t2[1] = 10
  print(t1[1]) -- 10 (t1 和 t2 指向同一个表)
- True-- 复制表（浅拷贝）
+ -
  local function shallow_copy(t)
   local copy = {}
   for k, v in pairs(t) do
@@ -234,7 +234,7 @@ Table 是 Lua 唯一的容器类型，可以表示数组、字典、对象等各
  t3[1] = 20
  print(t1[1]) -- 10 (t1 不受影响)
  print(t3[1]) -- 20
- True-- 深拷贝
+ -
  local function deep_copy(t)
   if type(t) ~= "table" then
   return t
@@ -252,7 +252,7 @@ Table 是 Lua 唯一的容器类型，可以表示数组、字典、对象等各
 元表允许我们修改表的行为，例如定义表的加法、比较等操作。
 
 ```lua
- True-- 创建元表
+ -
  local mt = {
   -- __add 元方法：定义加法操作
   __add = function(a, b)
@@ -269,16 +269,16 @@ Table 是 Lua 唯一的容器类型，可以表示数组、字典、对象等各
   __tostring = function(t)
   return "[" .. table.concat(t, ", ") .. "]"
   end
- True}
- True-- 设置元表
+ }
+ -
  local t1 = {1, 2, 3}
  local t2 = {4, 5, 6}
  setmetatable(t1, mt)
  setmetatable(t2, mt)
- True-- 使用加法操作
+ -
  local t3 = t1 + t2
  print(t3) -- [1, 2, 3, 4, 5, 6]
- True-- 使用字符串表示
+ -
  print(t1) -- [1, 2, 3]
 ```
 
@@ -289,24 +289,24 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
 #### 2.6.1 类的定义
 
 ```lua
- True-- 定义类
+ -
  local Person = {}
  Person.__index = Person
- True-- 构造函数
+ -
  function Person:new(name, age)
   local self = setmetatable({}, self)
   self.name = name
   self.age = age
   return self
  end
- True-- 方法
+ -
  function Person:greet()
   print("Hello, my name is " .. self.name)
  end
  function Person:get_age()
   return self.age
  end
- True-- 使用类
+ -
  local john = Person:new("John", 30)
  john:greet() -- Hello, my name is John
  print(john:get_age()) -- 30
@@ -315,25 +315,25 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
 #### 2.6.2 继承
 
 ```lua
- True-- 定义子类
+ -
  local Student = setmetatable({}, Person)
  Student.__index = Student
- True-- 构造函数
+ -
  function Student:new(name, age, grade)
   local self = Person:new(name, age)
   setmetatable(self, Student)
   self.grade = grade
   return self
  end
- True-- 重写方法
+ -
  function Student:greet()
   print("Hello, my name is " .. self.name .. " and I'm in grade " .. self.grade)
  end
- True-- 新方法
+ -
  function Student:study()
   print(self.name .. " is studying")
  end
- True-- 使用子类
+ -
  local alice = Student:new("Alice", 15, 9)
  alice:greet() -- Hello, my name is Alice and I'm in grade 9
  alice:study() -- Alice is studying
@@ -387,7 +387,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
 - 支持可变参数
 
 ```lua
- True-- 可变参数
+ -
  function sum(...)
   local total = 0
   for _, v in ipairs({...}) do
@@ -396,7 +396,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
   return total
  end
  print(sum(1, 2, 3, 4, 5)) -- 15
- True-- 函数作为参数
+ -
  function map(t, f)
   local result = {}
   for i, v in ipairs(t) do
@@ -416,7 +416,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
 - 常用函数：`coroutine.create`, `coroutine.resume`, `coroutine.yield`
 
 ```lua
- True-- 协程示例
+ -
  local co = coroutine.create(function()
   print("协程开始")
   local value = coroutine.yield(10)
@@ -443,13 +443,13 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
 #### 4.1.1 表的初始化
 
 ```lua
- True-- 预分配表大小（提高性能）
+ -
  local t = {}
  for i = 1, 1000 do
   t[i] = 0
  end
- True-- 或者使用 table.new (需要 luajit)
- True-- local t = table.new(1000, 0)
+ -
+ -
 ```
 
 #### 4.1.2 表的遍历
@@ -459,7 +459,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
 - 遍历有序字典：需要手动排序键
 
 ```lua
- True-- 有序遍历字典
+ -
  local dict = {b = 2, a = 1, c = 3}
  local keys = {}
  for k in pairs(dict) do
@@ -493,7 +493,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
 ### 5.1 实现栈数据结构
 
 ```lua
- True-- stack.lua
+ -
  local Stack = {}
  Stack.__index = Stack
  function Stack:new()
@@ -514,7 +514,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
  function Stack:size()
   return #self.items
  end
- True-- 测试
+ -
  local stack = Stack:new()
  stack:push(1)
  stack:push(2)
@@ -531,7 +531,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
 ### 5.2 实现队列数据结构
 
 ```lua
- True-- queue.lua
+ -
  local Queue = {}
  Queue.__index = Queue
  function Queue:new()
@@ -552,7 +552,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
  function Queue:size()
   return #self.items
  end
- True-- 测试
+ -
  local queue = Queue:new()
  queue:enqueue(1)
  queue:enqueue(2)
@@ -569,7 +569,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
 ### 5.3 实现集合数据结构
 
 ```lua
- True-- set.lua
+ -
  local Set = {}
  Set.__index = Set
  function Set:new(values)
@@ -607,7 +607,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
   end
   return result
  end
- True-- 测试
+ -
  local set = Set:new({1, 2, 3})
  set:add(4)
  print(set:contains(3)) --
@@ -620,7 +620,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
 ### 5.4 实现链表数据结构
 
 ```lua
- True-- linked_list.lua
+ -
  local Node = {}
  Node.__index = Node
  function Node:new(value)
@@ -689,7 +689,7 @@ Lua 可以使用 Table 和元表来模拟面向对象编程。
   end
   return result
  end
- True-- 测试
+ -
  local list = LinkedList:new()
  list:add(1)
  list:add(2)

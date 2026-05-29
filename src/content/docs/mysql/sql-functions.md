@@ -42,7 +42,7 @@ author: 'Anonymous'
   UPPER(username) AS name_upper,
   SUBSTRING(phone, 1, 3) AS phone_prefix
  from users;
- True-- 拼接地址
+ -
  SELECT CONCAT_WS('', province, city, district, detail_address) AS full_address FROM addresses;
 ```
 
@@ -67,20 +67,20 @@ author: 'Anonymous'
 **日期函数示例**：
 
 ```sql
- True-- 日期计算
+ -
  SELECT
   NOW() AS now,
   CURDATE() AS today,
   DATE_ADD(NOW(), INTERVAL 7 DAY) AS next_week,
   DATE_SUB(NOW(), INTERVAL 1 MONTH) AS last_month,
   DATE_FORMAT(NOW(), '%Y年%m月%d日 %H:%i:%s') AS formatted;
- True-- 日期差计算
+ -
  SELECT
   username,
   DATEDIFF(NOW(), created_at) AS days_since_join,
   TIMESTAMPDIFF(YEAR, created_at, NOW()) AS years_since_join
  from users;
- True-- 格式化生日
+ -
  SELECT
   username,
   DATE_FORMAT(birthday, '%Y年%m月%d日') AS birthday_formatted,
@@ -106,7 +106,7 @@ author: 'Anonymous'
 **数值函数示例**：
 
 ```sql
- True-- 基本计算
+ -
  SELECT
   price,
   ROUND(price, 2) AS rounded,
@@ -114,7 +114,7 @@ author: 'Anonymous'
   FLOOR(price) AS floor_price,
   ABS(price - 100) AS price_diff
  from products;
- True-- 随机数据
+ -
  SELECT * FROM users ORDER BY RAND() LIMIT 5; -- 随机取5条
  UPDATE users SET verification_code = FLOOR(RAND() * 900000 + 100000) WHERE status = 0;
 ```
@@ -131,20 +131,20 @@ author: 'Anonymous'
 **条件函数示例**：
 
 ```sql
- True-- IF 函数
+ -
  SELECT
   username,
   age,
   IF(age >= 18, '成人', '未成年') AS age_desc,
   IF(status = 1, '正常', '禁用') AS status_desc
  from users;
- True-- IFNULL 函数
+ -
  SELECT
   username,
   IFNULL(email, '未填写') AS email,
   IFNULL(phone, IFNULL(telephone, '无')) AS contact
  from users;
- True-- CASE WHEN 函数
+ -
  SELECT
   username,
   age,
@@ -161,7 +161,7 @@ author: 'Anonymous'
   ELSE '未知'
   END AS status_desc
  from users;
- True-- 复杂 CASE
+ -
  SELECT
   SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS active_count,
   SUM(CASE WHEN status = 0 THEN 1 ELSE 0 END) AS inactive_count,
@@ -173,21 +173,21 @@ author: 'Anonymous'
 ### 1.5 其他常用函数
 
 ```sql
- True-- 格式化和类型转换
+ -
  SELECT
   CAST(price AS CHAR) AS price_str,
   CONVERT(price, DECIMAL(10,2)) AS price_dec,
   FORMAT(price, 2) AS price_formatted -- 千位分隔符
  from products;
- True-- 加密函数（单向）
+ -
  SELECT
   MD5('password') AS md5_hash,
   SHA1('password') AS sha1_hash,
   SHA2('password', 256) AS sha256_hash
  from users;
- True-- UUID
+ -
  SELECT UUID() AS uuid;
- True-- 用户变量
+ -
  SET @total = 0;
  SELECT @total := @total + price FROM products;
 ```
@@ -218,39 +218,39 @@ author: 'Anonymous'
 ### 2.2 标量子查询
 
 ```sql
- True-- 查询年龄最大的用户
+ -
  SELECT * FROM users WHERE age = (SELECT MAX(age) FROM users);
- True-- 查询高于平均年龄的用户
+ -
  SELECT * FROM users WHERE age > (SELECT AVG(age) FROM users);
- True-- 查询最新注册的用户
+ -
  SELECT * FROM users WHERE created_at = (SELECT MAX(created_at) FROM users);
- True-- 更新语句中使用子查询
+ -
  UPDATE users SET age = (SELECT MAX(age) FROM users) + 1 WHERE id = 1;
 ```
 
 ### 2.3 列子查询 (IN/ANY/ALL)
 
 ```sql
- True-- IN 子查询
+ -
  SELECT * FROM users WHERE id IN (SELECT user_id FROM vip_users);
- True-- NOT IN 子查询
+ -
  SELECT * FROM users WHERE id NOT IN (SELECT user_id FROM blocked_users);
- True-- ANY 子查询（满足任一即可）
+ -
  SELECT * FROM products WHERE price > ANY (SELECT price FROM products WHERE category_id = 1);
- True-- ALL 子查询（需满足所有）
+ -
  SELECT * FROM products WHERE price > ALL (SELECT price FROM products WHERE status = 0);
- True-- EXISTS 子查询
+ -
  SELECT * FROM users u WHERE EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id);
- True-- NOT EXISTS 子查询
+ -
  SELECT * FROM users u WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.user_id = u.id);
 ```
 
 ### 2.4 FROM 子句子查询
 
 ```sql
- True-- 作为临时表
+ -
  SELECT * FROM (SELECT * FROM users WHERE status = 1) AS active_users;
- True-- 带聚合的子查询
+ -
  SELECT * FROM (
   SELECT
   status,
@@ -258,32 +258,32 @@ author: 'Anonymous'
   AVG(age) AS avg_age
   FROM users
   GROUP BY status
- True) AS stats WHERE avg_age > 25;
- True-- 多表连接子查询
+ )
+ -
  SELECT * FROM (
   SELECT u.*, COUNT(o.id) AS order_count
   FROM users u
   LEFT JOIN orders o ON u.id = o.user_id
   GROUP BY u.id
- True) AS user_orders WHERE order_count > 0;
+ )
 ```
 
 ### 2.5 SELECT 子句子查询
 
 ```sql
- True-- 查询每个用户的订单数量
+ -
  SELECT
   u.id,
   u.username,
   (SELECT COUNT(*) FROM orders WHERE user_id = u.id) AS order_count
  from users u;
- True-- 查询每个用户的最新订单时间
+ -
  SELECT
   u.id,
   u.username,
   (SELECT MAX(created_at) FROM orders WHERE user_id = u.id) AS last_order_time
  from users u;
- True-- 相关子查询
+ -
  SELECT
   u.username,
   (SELECT COUNT(*) FROM orders WHERE user_id = u.id AND status = 1) AS active_orders
@@ -293,21 +293,21 @@ author: 'Anonymous'
 ### 2.6 子查询实战
 
 ```sql
- True-- 查询购买过商品A和商品B的用户
+ -
  SELECT DISTINCT user_id FROM order_items WHERE product_id = 'A'
  AND user_id IN (SELECT user_id FROM order_items WHERE product_id = 'B');
- True-- 查询销售额高于平均销售额的商品
+ -
  SELECT * FROM products
  WHERE id IN (
   SELECT product_id FROM order_items
   GROUP BY product_id
   HAVING SUM(price * quantity) > (SELECT AVG(total) FROM (SELECT SUM(price * quantity) AS total FROM order_items GROUP BY product_id) AS avg_total)
- True);
- True-- 查询各部门工资最高的员工
+ )
+ -
  SELECT * FROM employees e
  WHERE (dept_id, salary) IN (
   SELECT dept_id, MAX(salary) FROM employees GROUP BY dept_id
- True);
+ )
 ```
 
 ## 3. 多表查询详解
@@ -316,7 +316,7 @@ author: 'Anonymous'
 
 ```
  表A 表B
- True┌───┐ ┌───┐
+ ┌
  │ 1 │ ──┐─── │ A │
  │ 2 │ ──┼─── │ B │
  │ 3 │ ──┼─── │ C │
@@ -331,17 +331,17 @@ author: 'Anonymous'
 ### 3.2 内连接 (INNER JOIN)
 
 ```sql
- True-- 基本语法
+ -
  SELECT u.username, o.order_no, o.total_amount
  from users u
  inNER JOIN orders o ON u.id = o.user_id;
- True-- 多个表连接
+ -
  SELECT u.username, o.order_no, p.product_name, oi.quantity
  from users u
  inNER JOIN orders o ON u.id = o.user_id
  inNER JOIN order_items oi ON o.id = oi.order_id
  inNER JOIN products p ON oi.product_id = p.id;
- True-- USING 简化（列名相同时）
+ -
  SELECT u.username, o.order_no
  from users u
  inNER JOIN orders o USING (user_id);
@@ -350,27 +350,27 @@ author: 'Anonymous'
 ### 3.3 外连接 (LEFT/RIGHT JOIN)
 
 ```sql
- True-- 左连接：返回左表所有记录
+ -
  SELECT u.username, o.order_no, o.total_amount
  from users u
  LEFT JOIN orders o ON u.id = o.user_id;
- True-- 结果：所有用户，即使没有订单的用户也会显示
- True-- 右连接：返回右表所有记录
+ -
+ -
  SELECT u.username, o.order_no
  from users u
  RIGHT JOIN orders o ON u.id = o.user_id;
- True-- 结果：所有订单，即使没有对应用户的订单也会显示
- True-- 左连接实战：统计每个用户的订单数量
+ -
+ -
  SELECT u.username, COUNT(o.id) AS order_count
  from users u
  LEFT JOIN orders o ON u.id = o.user_id
  GROUP BY u.id, u.username;
- True-- 左连接实战：查询未购买过商品的用户
+ -
  SELECT u.*
  from users u
  LEFT JOIN orders o ON u.id = o.user_id
  WHERE o.id IS NULL;
- True-- 右连接实战：查询没有被分配的员工
+ -
  SELECT e.*
  from employees e
  RIGHT JOIN departments d ON e.dept_id = d.id
@@ -380,18 +380,18 @@ author: 'Anonymous'
 ### 3.4 自连接 (SELF JOIN)
 
 ```sql
- True-- 查询与某员工在同一部门的其他员工
+ -
  SELECT e1.name AS employee, e2.name AS colleague, d.name AS dept
  from employees e1
  JOIN employees e2 ON e1.dept_id = e2.dept_id AND e1.id != e2.id
  JOIN departments d ON e1.dept_id = d.id
  WHERE e1.name = '张三';
- True-- 自连接实战：与翔云公司在同一城市的供应商
+ -
  SELECT s1.Supplier_name, s1.Address, s2.Supplier_name AS 同城市供应商
  from supplier_info s1
  inNER JOIN supplier_info s2 ON s1.Address = s2.Address
  WHERE s1.Supplier_name = '翔云公司' AND s1.Supplier_id <> s2.Supplier_id;
- True-- 自连接实战：查询所有上级领导
+ -
  SELECT e.name AS employee, m.name AS manager
  from employees e
  LEFT JOIN employees m ON e.manager_id = m.id;
@@ -402,7 +402,7 @@ author: 'Anonymous'
 MySQL 不直接支持 FULL OUTER JOIN，可使用 UNION 实现：
 
 ```sql
- True-- 使用 UNION 实现全连接
+ -
  SELECT u.username, o.order_no
  from users u
  LEFT JOIN orders o ON u.id = o.user_id
@@ -415,12 +415,12 @@ MySQL 不直接支持 FULL OUTER JOIN，可使用 UNION 实现：
 ### 3.6 交叉连接 (CROSS JOIN)
 
 ```sql
- True-- 交叉连接（笛卡尔积）
+ -
  SELECT u.username, p.product_name
  from users u
  CROSS JOIN products p;
- True-- 结果：每个用户与每个商品的组合
- True-- 实际应用场景：生成时间表、组合枚举值等
+ -
+ -
  SELECT
   DATE_ADD('2024-01-01', INTERVAL n DAY) AS date
  from (SELECT 0 AS n UNION SELECT 1 UNION SELECT 2...) AS numbers;
@@ -429,12 +429,12 @@ MySQL 不直接支持 FULL OUTER JOIN，可使用 UNION 实现：
 ### 3.7 多表连接实战
 
 ```sql
- True-- 列出员工姓名、销售订单编号、客户名称
+ -
  SELECT e.Employees_name, s.Sales_id, c.Customer_name
  from employees_info e
  inNER JOIN sales_info s ON e.Employees_id = s.Employees_id
  inNER JOIN customer_info c ON s.Customer_id = c.Customer_id;
- True-- 统计各销售员ID的销售业绩
+ -
  SELECT e.Employees_id, e.Employees_name,
   SUM(sl.Sales_price * sl.Sales_Number) AS 销售总业绩
  from employees_info e
@@ -442,14 +442,14 @@ MySQL 不直接支持 FULL OUTER JOIN，可使用 UNION 实现：
  inNER JOIN sales_list sl ON s.Sales_id = sl.Sales_id
  GROUP BY e.Employees_id, e.Employees_name
  ORDER BY 销售总业绩 DESC;
- True-- 查询客户购买的商品名称和购买数量
+ -
  SELECT c.Customer_name, m.Commodity_name, SUM(sl.Sales_Number) AS 购买数量
  from customer_info c
  inNER JOIN sales_info s ON c.Customer_id = s.Customer_id
  inNER JOIN sales_list sl ON s.Sales_id = sl.Sales_id
  inNER JOIN commodity_info m ON sl.Commodity_id = m.Commodity_id
  GROUP BY c.Customer_name, m.Commodity_name;
- True-- 完整订单信息查询
+ -
  SELECT e.Employees_name, s.Sales_id, c.Customer_name,
   m.Commodity_name, s.Sales_time, sl.Sales_Number
  from employees_info e

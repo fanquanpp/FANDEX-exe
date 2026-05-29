@@ -17,14 +17,14 @@ author: 'Anonymous'
 Java 集合框架主要由以下接口和类组成：
 
 ```
- True┌─────────────────────────────────────────────────────────────────────┐
+ ┌
  │ java.util.Collection │
  ├─────────────────────────────────────────────────────────────────────┤
  │ List Set Queue │
  ├─────────┬─────────┬─────────├─────────┬─────────┬─────────├─────────┤
  │ArrayList│LinkedList│Vector │HashSet │TreeSet │LinkedHashSet│PriorityQueue│
  └─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
- True┌─────────────────────────────────────────────────────────────────────┐
+ ┌
  │ java.util.Map │
  ├─────────────────────────────────────────────────────────────────────┤
  │HashMap TreeMap LinkedHashMap │
@@ -290,7 +290,7 @@ Java 集合框架主要由以下接口和类组成：
  // 遍历顺序：Python, JavaScript, Java（最近访问的在最后）
  for (Map.Entry<String, Integer> entry : map.entrySet()) {
   System.out.println(entry.getKey() + ": " + entry.getValue());
- True}
+ }
 ```
 
 ### 4.5 ConcurrentHashMap
@@ -355,7 +355,7 @@ Java 集合框架主要由以下接口和类组成：
   if (element.equals("Python")) {
   iterator.remove();
   }
- True}
+ }
 ```
 
 ### 6.2 增强型 for 循环 (for-each)
@@ -364,19 +364,19 @@ Java 集合框架主要由以下接口和类组成：
  // 遍历 List
  for (String element : list) {
   System.out.println(element);
- True}
+ }
  // 遍历 Set
  for (String element : set) {
   System.out.println(element);
- True}
+ }
  // 遍历 Map 的键
  for (String key : map.keySet()) {
   System.out.println(key + ": " + map.get(key));
- True}
+ }
  // 遍历 Map 的键值对
  for (Map.Entry<String, Integer> entry : map.entrySet()) {
   System.out.println(entry.getKey() + ": " + entry.getValue());
- True}
+ }
 ```
 
 ### 6.3 Java 8+ forEach (Lambda 表达式)
@@ -494,7 +494,7 @@ Java 集合框架主要由以下接口和类组成：
  Map<String, Integer> wordCount = new HashMap<>();
  for (String word : words) {
   wordCount.put(word, wordCount.getOrDefault(word, 0) + 1);
- True}
+ }
  // 使用 Stream
  Map<String, Long> wordCount = words.stream()
   .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
@@ -605,7 +605,7 @@ Java 集合框架主要由以下接口和类组成：
   if (element.equals("Python")) {
   list.remove(element);
   }
- True}
+ }
  // 正确：使用 Iterator
  Iterator<String> iterator = list.iterator();
  while (iterator.hasNext()) {
@@ -613,7 +613,7 @@ Java 集合框架主要由以下接口和类组成：
   if (element.equals("Python")) {
   iterator.remove();
   }
- True}
+ }
 ```
 
 ### 12.3 哈希集合的 equals 和 hashCode
@@ -637,7 +637,7 @@ Java 集合框架主要由以下接口和类组成：
   public int hashCode() {
   return Objects.hash(name, age);
   }
- True}
+ }
 ```
 
 ---

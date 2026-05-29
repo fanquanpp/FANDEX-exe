@@ -46,7 +46,7 @@ updated: 2026-05-03
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "build"]
- True}
+ }
 ```
 
 ### 1.2 性能相关配置
@@ -66,7 +66,7 @@ updated: 2026-05-03
   "skipDefaultLibCheck": true,
   "preserveWatchOutput":
   }
- True}
+ }
 ```
 
 ## 2. 增量编译
@@ -74,12 +74,12 @@ updated: 2026-05-03
 ### 2.1 配置增量编译
 
 ```json
- {
+{
   "compilerOptions": {
-  "incremental": true,
-  "tsBuildInfoFile": "./.tsbuildinfo"
+    "incremental": true,
+    "tsBuildInfoFile": "./.tsbuildinfo"
   }
- True}
+}
 ```
 
 ### 2.2 验证增量编译效果
@@ -108,16 +108,14 @@ updated: 2026-05-03
 ### 3.2 优化类型定义
 
 ```typescript
- // 不好的做法：深度嵌套的类型
- type DeepNested<T> = {
-  [K in keyof T]: T[K] extends object
-  ? DeepNested<T[K]>
-  : T[K]
- True};
- // 好的做法：限制递归深度或使用更简单的类型
- type ShallowNested<T> = {
-  [K in keyof T]: T[K]
- True};
+// 不好的做法：深度嵌套的类型
+type DeepNested<T> = {
+  [K in keyof T]: T[K] extends object ? DeepNested<T[K]> : T[K];
+};
+// 好的做法：限制递归深度或使用更简单的类型
+type ShallowNested<T> = {
+  [K in keyof T]: T[K];
+};
 ```
 
 ## 4. 工程化优化
@@ -144,7 +142,7 @@ updated: 2026-05-03
   minify: 'terser',
   sourcemap: false
   }
- True});
+ }
 ```
 
 #### 4.2.2 Webpack 集成
@@ -179,7 +177,7 @@ updated: 2026-05-03
   plugins: [
   new ForkTsCheckerWebpackPlugin() // 单独进程进行类型检查
   ]
- True} as Configuration;
+ }
 ```
 
 ## 5. CI/CD 优化

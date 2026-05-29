@@ -36,7 +36,7 @@ author: 'Anonymous'
  typedef struct {
   int x;
   int y;
- True} Point;
+ }
  /*
   * 全局变量声明
   * Global Variables
@@ -64,17 +64,17 @@ author: 'Anonymous'
   printf("Area of circle: %.2f\n", area);
   // 返回值 | Return value (0 means success)
   return 0;
- True}
+ }
  /*
   * 函数实现
   * Function Implementation
   */
  void print_hello() {
   printf("Hello from function!\n");
- True}
+ }
  double calculate_area(double radius) {
   return PI * radius * radius;
- True}
+ }
 ```
 
 ### 1.2 头文件结构
@@ -105,7 +105,7 @@ author: 'Anonymous'
  typedef struct {
   int id;
   char name[50];
- True} Student;
+ }
  /*
   * 函数原型
   * Function prototypes

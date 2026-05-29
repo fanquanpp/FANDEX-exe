@@ -152,7 +152,7 @@ TypeScript 适用于以下场景：
   filename: 'bundle.js',
   path: path.resolve(__dirname, 'dist')
   }
- True};
+ }
 ```
 
 ##### Vite
@@ -191,7 +191,7 @@ TypeScript 适用于以下场景：
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
- True}
+ }
 ```
 
 ### 3.2 核心配置选项
@@ -245,24 +245,24 @@ TypeScript 适用于以下场景：
 #### 3.5.1 浏览器项目配置
 
 ```json
- {
+{
   "compilerOptions": {
-  "target": "ES2020",
-  "module": "esnext",
-  "moduleResolution": "node",
-  "lib": ["ES2020", "DOM", "DOM.Iterable"],
-  "strict": true,
-  "esModuleInterop": true,
-  "skipLibCheck": true,
-  "forceConsistentCasingInFileNames": true,
-  "outDir": "./dist",
-  "rootDir": "./src",
-  "sourceMap": true,
-  "jsx": "react-jsx"
+    "target": "ES2020",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "sourceMap": true,
+    "jsx": "react-jsx"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
- True}
+}
 ```
 
 #### 3.5.2 Node.js 项目配置
@@ -285,7 +285,7 @@ TypeScript 适用于以下场景：
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
- True}
+ }
 ```
 
 ## 4. 工具链与生态系统
@@ -380,11 +380,11 @@ TypeScript 适用于以下场景：
   name: string;
   email: string;
   age?: number; // 可选属性
- True}
+ }
  // 函数定义
  function greet(user: User): string {
   return `Hello, ${user.name}!`;
- True}
+ }
  // 类定义
  class UserService {
   private users: User[] = [];
@@ -397,7 +397,7 @@ TypeScript 适用于以下场景：
   getAllUsers(): User[] {
   return this.users;
   }
- True}
+ }
  // 使用示例
  const userService = new UserService();
  userService.addUser({
@@ -405,16 +405,16 @@ TypeScript 适用于以下场景：
   name: "John Doe",
   email: "john@example.com",
   age: 30
- True});
+ }
  userService.addUser({
   id: 2,
   name: "Jane Smith",
   email: "jane@example.com"
- True});
+ }
  const user = userService.getUserById(1);
  if (user) {
   console.log(greet(user));
- True}
+ }
  console.log(userService.getAllUsers());
 ```
 
@@ -432,28 +432,28 @@ TypeScript 适用于以下场景：
 ### 6.3 与 JavaScript 集成
 
 ```typescript
- // src/index.ts
- // 导入 JavaScript 模块
- import { calculateTotal } from './utils.js';
- // 类型定义
- interface Order {
+// src/index.ts
+// 导入 JavaScript 模块
+import { calculateTotal } from './utils.js';
+// 类型定义
+interface Order {
   id: number;
   items: {
-  name: string;
-  price: number;
-  quantity: number;
+    name: string;
+    price: number;
+    quantity: number;
   }[];
- True}
- // 使用 JavaScript 函数
- const order: Order = {
+}
+// 使用 JavaScript 函数
+const order: Order = {
   id: 1,
   items: [
-  { name: "Item 1", price: 10, quantity: 2 },
-  { name: "Item 2", price: 15, quantity: 1 }
-  ]
- True};
- const total = calculateTotal(order.items);
- console.log(`Order total: $${total}`);
+    { name: 'Item 1', price: 10, quantity: 2 },
+    { name: 'Item 2', price: 15, quantity: 1 },
+  ],
+};
+const total = calculateTotal(order.items);
+console.log(`Order total: $${total}`);
 ```
 
 ```javascript
@@ -463,7 +463,6 @@ export function calculateTotal(items) {
   return items.reduce((total, item) => {
     return total + item.price * item.quantity;
   }, 0);
-  True;
 }
 ```
 

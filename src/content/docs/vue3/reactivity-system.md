@@ -53,7 +53,7 @@ console.log(count.value); // 1
  const user = ref({
   name: 'John',
   age: 30
- True})
+ }
  console.log(user.value.name) // John
  user.value.age = 31
  console.log(user.value.age) // 31
@@ -68,7 +68,7 @@ console.log(count.value); // 1
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  console.log(state.count) // 0
  state.count++
  console.log(state.count) // 1
@@ -96,7 +96,6 @@ import { ref, watch } from 'vue';
 const count = ref(0);
 watch(count, (newValue, oldValue) => {
   console.log(`Count changed from ${oldValue} to ${newValue}`);
-  True;
 });
 count.value++; // 输出: Count changed from 0 to 1
 ```
@@ -110,7 +109,6 @@ const message = ref('Hello');
 watch([count, message], ([newCount, newMessage], [oldCount, oldMessage]) => {
   console.log(`Count changed from ${oldCount} to ${newCount}`);
   console.log(`Message changed from ${oldMessage} to ${newMessage}`);
-  True;
 });
 count.value++; // 输出: Count changed from 0 to 1
 message.value = 'Hi'; // 输出: Message changed from Hello to Hi
@@ -125,7 +123,6 @@ import { ref, watchEffect } from 'vue';
 const count = ref(0);
 const stop = watchEffect(() => {
   console.log(`Count is ${count.value}`);
-  True;
 });
 count.value++; // 输出: Count is 1
 // 停止监听
@@ -144,7 +141,7 @@ count.value++; // 不会输出
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  const refs = toRefs(state)
  console.log(refs.count.value) // 0
  console.log(refs.message.value) // Hello
@@ -162,7 +159,7 @@ count.value++; // 不会输出
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  const countRef = toRef(state, 'count')
  console.log(countRef.value) // 0
  // 修改 ref 会影响原对象
@@ -203,14 +200,14 @@ console.log(isRef(message)); // false
  const user = shallowRef({
   name: 'John',
   age: 30
- True})
+ }
  // 修改内部属性不会触发更新
  user.value.age = 31
  // 修改 .value 会触发更新
  user.value = {
   name: 'John',
   age: 31
- True}
+ }
 ```
 
 ### 3.6 shallowReactive
@@ -224,14 +221,14 @@ console.log(isRef(message)); // false
   name: 'John',
   age: 30
   }
- True})
+ }
  // 修改嵌套属性不会触发更新
  state.user.age = 31
  // 修改顶层属性会触发更新
  state.user = {
   name: 'John',
   age: 31
- True}
+ }
 ```
 
 ### 3.7 triggerRef
@@ -243,7 +240,7 @@ console.log(isRef(message)); // false
  const user = shallowRef({
   name: 'John',
   age: 30
- True})
+ }
  // 修改内部属性
  user.value.age = 31
  // 手动触发更新
@@ -273,7 +270,6 @@ function useDebouncedRef(value, delay = 300) {
       },
     };
   });
-  True;
 }
 // 使用自定义 ref
 const searchQuery = useDebouncedRef('');
@@ -290,7 +286,7 @@ const searchQuery = useDebouncedRef('');
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  // 解构会失去响应性
  const { count, message } = state
  console.log(count) // 0
@@ -306,7 +302,7 @@ const searchQuery = useDebouncedRef('');
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  // 使用 toRefs 解构
  const { count, message } = toRefs(state)
  console.log(count.value) // 0
@@ -324,12 +320,12 @@ const searchQuery = useDebouncedRef('');
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  // 替换整个对象会失去响应性
  state = {
   count: 1,
   message: 'Hi'
- True} // 错误：不能直接替换响应式对象
+ }
 ```
 
 解决方法是修改对象的属性，而不是替换整个对象：
@@ -339,7 +335,7 @@ const searchQuery = useDebouncedRef('');
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  // 修改对象的属性
  state.count = 1
  state.message = 'Hi'
@@ -353,7 +349,7 @@ const searchQuery = useDebouncedRef('');
  import { reactive } from 'vue'
  const state = reactive({
   count: 0
- True})
+ }
  // 添加新属性
  state.message = 'Hello' // 新属性是响应式的
 ```
@@ -369,7 +365,7 @@ const searchQuery = useDebouncedRef('');
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  // 删除属性
  delete state.message // 不会触发更新
 ```
@@ -381,7 +377,7 @@ const searchQuery = useDebouncedRef('');
  const state = reactive({
   count: 0,
   message: 'Hello'
- True})
+ }
  // 使用 Reflect.deleteProperty
  reflect.deleteProperty(state, 'message') // 会触发更新
 ```
@@ -441,17 +437,17 @@ const changeMessage = () => (message.value = 'Hi');
 </script>
 <style scoped>
 .reactive-example {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- max-width: 400px;
- margin: 0 auto;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  max-width: 400px;
+  margin: 0 auto;
+}
 button {
- margin: 0 5px;
- padding: 5px 10px;
- font-size: 16px;
-True}
+  margin: 0 5px;
+  padding: 5px 10px;
+  font-size: 16px;
+}
 </style>
 ```
 
@@ -483,7 +479,6 @@ const logs = ref([]);
 // 使用 watch 监听单个数据
 watch(count, (newValue, oldValue) => {
   logs.value.push(`Count changed from ${oldValue} to ${newValue}`);
-  True;
 });
 // 使用 watch 监听多个数据
 watch([count, message], ([newCount, newMessage], [oldCount, oldMessage]) => {
@@ -493,37 +488,35 @@ watch([count, message], ([newCount, newMessage], [oldCount, oldMessage]) => {
   if (newMessage !== oldMessage) {
     logs.value.push(`Message changed from ${oldMessage} to ${newMessage}`);
   }
-  True;
 });
 // 使用 watchEffect 自动追踪依赖
 watchEffect(() => {
   logs.value.push(`Current count: ${count.value}, current message: ${message.value}`);
-  True;
 });
 const increment = () => count.value++;
 const changeMessage = () => (message.value = `Hi ${Math.random()}`);
 </script>
 <style scoped>
 .watch-example {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- max-width: 400px;
- margin: 0 auto;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  max-width: 400px;
+  margin: 0 auto;
+}
 button {
- margin: 0 5px;
- padding: 5px 10px;
- font-size: 16px;
-True}
+  margin: 0 5px;
+  padding: 5px 10px;
+  font-size: 16px;
+}
 ul {
- list-style-type: none;
- padding: 0;
-True}
+  list-style-type: none;
+  padding: 0;
+}
 li {
- padding: 5px 0;
- border-bottom: 1px solid #eee;
-True}
+  padding: 5px 0;
+  border-bottom: 1px solid #eee;
+}
 </style>
 ```
 
@@ -552,16 +545,16 @@ const fullNameLength = computed(() => fullName.value.length);
 </script>
 <style scoped>
 .computed-example {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- max-width: 400px;
- margin: 0 auto;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  max-width: 400px;
+  margin: 0 auto;
+}
 input {
- width: 200px;
- padding: 5px;
-True}
+  width: 200px;
+  padding: 5px;
+}
 </style>
 ```
 

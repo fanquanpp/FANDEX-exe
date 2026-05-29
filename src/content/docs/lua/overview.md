@@ -143,7 +143,7 @@ Lua 的设计哲学可以概括为以下几点：
  # 进入 Lua 交互式环境
  lua
  # 退出 Lua 交互式环境
- True> exit()
+ >
  # 或按 Ctrl+D
 ```
 
@@ -208,22 +208,22 @@ Lua 的设计哲学可以概括为以下几点：
 ### 4.1 Hello World
 
 ```lua
- True-- hello.lua
+ -
  print("Hello, Lua!")
 ```
 
 ### 4.2 变量与数据类型
 
 ```lua
- True-- variables.lua
- True-- 全局变量
+ -
+ -
  name = "Lua"
  version = 5.4
  is_great =
- True-- 局部变量
+ -
  local count = 10
  local message = "Hello"
- True-- 打印变量
+ -
  print(name, version, is_great)
  print(count, message)
 ```
@@ -231,8 +231,8 @@ Lua 的设计哲学可以概括为以下几点：
 ### 4.3 控制流
 
 ```lua
- True-- control_flow.lua
- True-- if 语句
+ -
+ -
  local score = 85
  if score >= 90 then
   print("优秀")
@@ -241,12 +241,12 @@ Lua 的设计哲学可以概括为以下几点：
  else
   print("需要努力")
  end
- True-- for 循环
+ -
  print("数字 1-5:")
  for i = 1, 5 do
   print(i)
  end
- True-- while 循环
+ -
  local i = 1
  print("数字 1-3:")
  while i <= 3 do
@@ -258,20 +258,20 @@ Lua 的设计哲学可以概括为以下几点：
 ### 4.4 函数
 
 ```lua
- True-- functions.lua
- True-- 基本函数
+ -
+ -
  function add(a, b)
   return a + b
  end
- True-- 调用函数
+ -
  local result = add(5, 3)
  print("5 + 3 = " .. result)
- True-- 匿名函数
+ -
  local multiply = function(a, b)
   return a * b
  end
  print("4 * 6 = " .. multiply(4, 6))
- True-- 闭包
+ -
  function create_counter()
   local count = 0
   return function()
@@ -288,25 +288,25 @@ Lua 的设计哲学可以概括为以下几点：
 ### 4.5 Table 数据结构
 
 ```lua
- True-- tables.lua
- True-- 数组
+ -
+ -
  local fruits = {"apple", "banana", "orange"}
  print("第一个水果:", fruits[1])
- True-- 哈希表
+ -
  local person = {
   name = "John",
   age = 30,
   email = "john@example.com"
- True}
+ }
  print("姓名:", person.name)
  print("年龄:", person["age"])
- True-- 混合表
+ -
  local mixed = {
   "hello",
   name = "Lua",
   123,
   ["key"] = "value"
- True}
+ }
  print(mixed[1]) -- hello
  print(mixed.name) -- Lua
  print(mixed[2]) -- 123

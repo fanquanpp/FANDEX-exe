@@ -67,7 +67,7 @@ author: 'Anonymous'
   "declaration":
   },
   "include": ["src"]
- True}
+ }
 ```
 
 ## 4. 增量编译与项目引用 (Incremental & Project References)
@@ -85,14 +85,14 @@ author: 'Anonymous'
 `baseUrl` + `paths` 可以让导入更清晰：
 
 ```json
- {
+{
   "compilerOptions": {
-  "baseUrl": ".",
-  "paths": {
-  "@/*": ["src/*"]
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
   }
-  }
- True}
+}
 ```
 
 注意：

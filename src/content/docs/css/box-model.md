@@ -26,7 +26,7 @@ author: 'Anonymous'
 ### 1.2 盒模型示意图
 
 ```
- True+---------------------------------------------+
+ +
  | Margin |
  | +---------------------------------------+ |
  | | Border | |
@@ -37,7 +37,7 @@ author: 'Anonymous'
  | | | +-----------------------+ | | |
  | | +-------------------------------+ | |
  | +---------------------------------------+ |
- True+---------------------------------------------+
+ +
 ```
 
 ### 1.3 代码示例
@@ -75,13 +75,13 @@ author: 'Anonymous'
   **代码示例**:
 
 ```css
- .standard-box {
+.standard-box {
   box-sizing: content-box;
   width: 200px;
   padding: 20px;
   border: 5px solid #333;
   /* 实际宽度: 200 + 20*2 + 5*2 = 250px */
- True}
+}
 ```
 
 ### 2.2 怪异/IE 盒模型 (`border-box`)
@@ -94,13 +94,13 @@ author: 'Anonymous'
   **代码示例**:
 
 ```css
- .border-box {
+.border-box {
   box-sizing: border-box;
   width: 200px;
   padding: 20px;
   border: 5px solid #333;
   /* 实际宽度: 200px (内容宽度被压缩为 150px) */
- True}
+}
 ```
 
 ### 2.3 全局盒模型设置
@@ -109,20 +109,20 @@ author: 'Anonymous'
 
 ```css
  /* 方法 1: 全局设置 */
- True* {
+ *
   box-sizing: border-box;
- True}
+ }
  /* 方法 2: 更精确的设置，包括伪元素 */
- True*, *::before, *::after {
+ *
   box-sizing: border-box;
- True}
+ }
  /* 方法 3: 继承方式，更灵活 */
  html {
   box-sizing: border-box;
- True}
- True*, *::before, *::after {
+ }
+ *
   box-sizing: inherit;
- True}
+ }
 ```
 
 ### 2.4 盒模型类型的应用场景
@@ -156,10 +156,10 @@ margin-left: 40px;
 使用 `margin: 0 auto;` 可以实现块级元素的水平居中：
 
 ```css
- .centered {
+.centered {
   width: 50%; /* 必须指定宽度 */
   margin: 0 auto; /* 上下外边距为 0，左右自动 */
- True}
+}
 ```
 
 **代码示例**:
@@ -387,25 +387,25 @@ margin-left: 40px;
 
 ```css
  /* 全局盒模型设置 */
- True*, *::before, *::after {
+ *
   box-sizing: border-box;
- True}
+ }
  /* 响应式网格 */
  .row {
   display: flex;
   flex-wrap: wrap;
   margin: 0 -15px;
- True}
+ }
  .col {
   flex: 1;
   padding: 0 15px;
- True}
+ }
  /* 媒体查询 */
  @media (max-width: 768px) {
   .col {
   flex: 0 0 100%;
   }
- True}
+ }
 ```
 
 ### 5.2 卡片式布局
@@ -454,22 +454,24 @@ margin-left: 40px;
 ### 5.3 表单元素的盒模型
 
 ```css
- /* 表单元素的盒模型设置 */
- input, textarea, select {
+/* 表单元素的盒模型设置 */
+input,
+textarea,
+select {
   box-sizing: border-box;
   width: 100%;
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 4px;
- True}
- /* 按钮的盒模型设置 */
- button {
+}
+/* 按钮的盒模型设置 */
+button {
   box-sizing: border-box;
   padding: 10px 20px;
   border: 1px solid #333;
   border-radius: 4px;
   background-color: #f0f0f0;
- True}
+}
 ```
 
 ## 6. 盒模型的最佳实践
@@ -523,16 +525,16 @@ console.log('实际宽度:', actualWidth);
 ### 7.2 使用 CSS 变量控制盒模型
 
 ```css
- True:root {
+ :
   --box-padding: 20px;
   --box-border: 5px;
   --box-margin: 15px;
- True}
+ }
  .box {
   padding: var(--box-padding);
   border: var(--box-border) solid #333;
   margin: var(--box-margin);
- True}
+ }
  /* 响应式调整 */
  @media (max-width: 768px) {
   :root {
@@ -540,7 +542,7 @@ console.log('实际宽度:', actualWidth);
   --box-border: 3px;
   --box-margin: 10px;
   }
- True}
+ }
 ```
 
 ### 7.3 盒模型与 Flexbox/Grid 的结合
@@ -548,26 +550,26 @@ console.log('实际宽度:', actualWidth);
 盒模型与现代布局技术（如 Flexbox 和 Grid）结合使用，可以创建更灵活的布局：
 
 ```css
- /* Flexbox 布局 */
- .flex-container {
+/* Flexbox 布局 */
+.flex-container {
   display: flex;
   gap: 20px; /* 替代 margin */
- True}
- .flex-item {
+}
+.flex-item {
   flex: 1;
   padding: 20px;
   border: 1px solid #ddd;
- True}
- /* Grid 布局 */
- .grid-container {
+}
+/* Grid 布局 */
+.grid-container {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 20px; /* 替代 margin */
- True}
- .grid-item {
+}
+.grid-item {
   padding: 20px;
   border: 1px solid #ddd;
- True}
+}
 ```
 
 ---

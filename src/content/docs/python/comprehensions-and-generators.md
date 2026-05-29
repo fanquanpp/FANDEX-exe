@@ -403,7 +403,7 @@ Python 标准库提供了一些实用的迭代工具：
   {'name': 'Bob', 'age': 30},
   {'name': 'Charlie', 'age': 25},
   {'name': 'David', 'age': 30}
- True]
+ ]
  # 按年龄分组
  data.sort(key=itemgetter('age'))
  for age, group in itertools.groupby(data, key=itemgetter('age')):

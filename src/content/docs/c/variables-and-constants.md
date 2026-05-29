@@ -61,7 +61,7 @@ author: 'Anonymous'
   // 可以访问全局变量
   printf("Global var: %d\n", global_var);
   printf("Local var: %d\n", local_var);
- True}
+ }
  void function2(int param) {
   // 形式参数
   printf("Parameter: %d\n", param);
@@ -69,12 +69,12 @@ author: 'Anonymous'
   printf("Global var: %d\n", global_var);
   // 不能访问 function1 中的局部变量
   // printf("Local var from function1: %d\n", local_var); // 错误！
- True}
+ }
  int main() {
   function1();
   function2(200);
   return 0;
- True}
+ }
 ```
 
 #### 1.2.3 作用域嵌套
@@ -93,7 +93,7 @@ author: 'Anonymous'
   // printf("Inner: %d\n", inner); // 错误！
   printf("Outer: %d\n", outer); // 访问外部的 outer
   return 0;
- True}
+ }
 ```
 
 ### 1.3 存储类 (Storage Classes)
@@ -114,7 +114,7 @@ author: 'Anonymous'
   auto int x = 10; // 显式声明为 auto
   int y = 20; // 隐式为 auto
   // 函数结束后，x 和 y 被销毁
- True}
+ }
 ```
 
 #### 1.3.3 `static` 存储类
@@ -127,13 +127,13 @@ author: 'Anonymous'
   static int count = 0;
   count++;
   printf("Count: %d\n", count);
- True}
+ }
  int main() {
   counter(); // 输出: Count: 1
   counter(); // 输出: Count: 2
   counter(); // 输出: Count: 3
   return 0;
- True}
+ }
 ```
 
 #### 1.3.4 `extern` 存储类
@@ -143,13 +143,13 @@ author: 'Anonymous'
  extern int global_var; // 声明外部变量
  void print_global() {
   printf("Global var: %d\n", global_var);
- True}
+ }
  // file2.c
  int global_var = 50; // 定义全局变量
  int main() {
   print_global(); // 输出: Global var: 50
   return 0;
- True}
+ }
 ```
 
 #### 1.3.5 `register` 存储类
@@ -160,7 +160,7 @@ author: 'Anonymous'
   for (i = 0; i < 1000000; i++) {
   // 大量计算，使用 register 可能提高速度
   }
- True}
+ }
 ```
 
 ## 2. 常量 (Constants)
@@ -293,7 +293,7 @@ author: 'Anonymous'
   THU, // 默认为 4
   FRI, // 默认为 5
   SAT // 默认为 6
- True};
+ }
  // 使用枚举
  enum Days today = WED;
  printf("Today is day %d\n", today); // 输出: Today is day 3
@@ -316,13 +316,13 @@ author: 'Anonymous'
   OCT, // 10
   NOV, // 11
   DEC // 12
- True};
+ }
  // 不连续的枚举值
  enum Status {
   SUCCESS = 0,
   WARNING = 100,
   ERROR = 200
- True};
+ }
 ```
 
 #### 2.4.3 枚举的优势
@@ -380,7 +380,7 @@ author: 'Anonymous'
   const double PI = 3.14159;
   double area = PI * radius * radius;
   printf("Area: %.2f\n", area);
- True}
+ }
  // 良好的常量使用示例
  #define MAX_USERS 100
  const int DEFAULT_TIMEOUT = 30;
@@ -389,7 +389,7 @@ author: 'Anonymous'
   LOG_WARNING,
   LOG_INFO,
   LOG_DEBUG
- True};
+ }
  void log_message(enum LogLevel level, const char* message) {
   switch (level) {
   case LOG_ERROR:
@@ -400,7 +400,7 @@ author: 'Anonymous'
   break;
   // 其他 case...
   }
- True}
+ }
 ```
 
 ## 5. 常见问题与解决方案
@@ -451,7 +451,7 @@ author: 'Anonymous'
  // 改进：使用函数
  int square(int x) {
   return x * x;
- True}
+ }
  int i = 5;
  int result = square(i++); // 结果: 5 * 5 = 25，且 i 变为 6
 ```

@@ -32,7 +32,7 @@ author: 'Anonymous'
   const int& ref = x;
   // ref = 30; // 错误：不能修改 const 引用
   return 0;
- True}
+ }
 ```
 
 ### 1.2 constexpr 常量 (C++11)
@@ -41,12 +41,12 @@ author: 'Anonymous'
  // 编译期常量
  constexpr int factorial(int n) {
   return n <= 1 ? 1 : n * factorial(n - 1);
- True}
+ }
  int main() {
   constexpr int fact5 = factorial(5); // 编译期计算
   std::cout << "5! = " << fact5 << std::endl;
   return 0;
- True}
+ }
 ```
 
 ## 2. 类型推导
@@ -69,7 +69,7 @@ author: 'Anonymous'
   auto add = [](int a, int b) { return a + b; }; // lambda 表达式
   std::cout << "add(5, 3) = " << add(5, 3) << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 2.2 decltype 类型推导 (C++11)
@@ -83,7 +83,7 @@ author: 'Anonymous'
   decltype(x + z) w = x + z; // w 的类型是 double
   std::cout << "y = " << y << ", w = " << w << std::endl;
   return 0;
- True}
+ }
 ```
 
 ## 3. 类型别名
@@ -104,7 +104,7 @@ author: 'Anonymous'
   }
   std::cout << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 3.2 using 别名 (C++11)
@@ -124,7 +124,7 @@ author: 'Anonymous'
   }
   std::cout << std::endl;
   return 0;
- True}
+ }
 ```
 
 ## 4. 最佳实践
@@ -327,11 +327,11 @@ author: 'Anonymous'
  // 摄氏度转华氏度
  double celsius_to_fahrenheit(double celsius) {
   return (celsius * 9.0 / 5.0) + 32.0;
- True}
+ }
  // 华氏度转摄氏度
  double fahrenheit_to_celsius(double fahrenheit) {
   return (fahrenheit - 32.0) * 5.0 / 9.0;
- True}
+ }
  // 温度单位转换类
  class TemperatureConverter {
  public:
@@ -347,7 +347,7 @@ author: 'Anonymous'
   static double kelvin_to_celsius(double kelvin) {
   return kelvin - 273.15;
   }
- True};
+ }
  int main() {
   double c, f, k;
   std::cout << "输入摄氏度: ";
@@ -362,7 +362,7 @@ author: 'Anonymous'
   k = TemperatureConverter::celsius_to_kelvin(c);
   std::cout << f << "°F = " << c << "°C = " << k << "K" << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 5.2 素数判断
@@ -381,7 +381,7 @@ author: 'Anonymous'
   if (n % i == 0) return false;
   }
   return true;
- True}
+ }
  // 埃拉托斯特尼筛法生成素数列表
  std::vector<int> sieve_of_eratosthenes(int max) {
   std::vector<bool> is_prime(max + 1, true);
@@ -396,7 +396,7 @@ author: 'Anonymous'
   }
   }
   return primes;
- True}
+ }
  // 素数工具类
  class PrimeUtils {
  public:
@@ -428,7 +428,7 @@ author: 'Anonymous'
   auto primes = sieve_of_eratosthenes(max);
   return primes.size();
   }
- True};
+ }
  int main() {
   int n;
   std::cout << "输入一个整数: ";
@@ -448,7 +448,7 @@ author: 'Anonymous'
   }
   std::cout << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 5.3 数组操作
@@ -465,11 +465,11 @@ author: 'Anonymous'
   sum += num;
   }
   return sum;
- True}
+ }
  // 使用标准库计算数组和
  int sum_array_std(const std::vector<int>& arr) {
   return std::accumulate(arr.begin(), arr.end(), 0);
- True}
+ }
  // 查找最大值
  int find_max(const std::vector<int>& arr) {
   if (arr.empty()) {
@@ -482,18 +482,18 @@ author: 'Anonymous'
   }
   }
   return max;
- True}
+ }
  // 使用标准库查找最大值
  int find_max_std(const std::vector<int>& arr) {
   if (arr.empty()) {
   throw std::runtime_error("Array is empty");
   }
   return *std::max_element(arr.begin(), arr.end());
- True}
+ }
  // 数组排序
  void sort_array(std::vector<int>& arr) {
   std::sort(arr.begin(), arr.end());
- True}
+ }
  // 数组去重
  std::vector<int> remove_duplicates(const std::vector<int>& arr) {
   std::vector<int> result = arr;
@@ -501,7 +501,7 @@ author: 'Anonymous'
   auto last = std::unique(result.begin(), result.end());
   result.erase(last, result.end());
   return result;
- True}
+ }
  // 数组工具类
  class ArrayUtils {
  public:
@@ -539,7 +539,7 @@ author: 'Anonymous'
   std::reverse(result.begin(), result.end());
   return result;
   }
- True};
+ }
  int main() {
   std::vector<int> numbers = {1, 5, 3, 9, 2, 5, 8, 3};
   std::cout << "原始数组: ";
@@ -573,7 +573,7 @@ author: 'Anonymous'
   }
   std::cout << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 5.4 字符串操作
@@ -639,7 +639,7 @@ author: 'Anonymous'
   }
   return count;
   }
- True};
+ }
  int main() {
   std::string text = " Hello, World! ";
   std::cout << "原始字符串: '" << text << "'" << std::endl;
@@ -654,7 +654,7 @@ author: 'Anonymous'
   std::cout << "单词数量: '" << sentence << "' -> "
   << StringUtils::count_words(sentence) << std::endl;
   return 0;
- True}
+ }
 ```
 
 ---

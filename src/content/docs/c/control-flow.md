@@ -32,7 +32,7 @@ author: 'Anonymous'
   printf("Fail\n");
   }
   return 0;
- True}
+ }
 ```
 
 #### 1.1.2 嵌套 `if-else`
@@ -52,7 +52,7 @@ author: 'Anonymous'
   printf("You are too young to drive\n");
   }
   return 0;
- True}
+ }
 ```
 
 #### 1.1.3 条件表达式的简写
@@ -67,7 +67,7 @@ author: 'Anonymous'
   // 条件表达式作为函数参数
   printf("Result: %s\n", (a > b) ? "a is larger" : "b is larger");
   return 0;
- True}
+ }
 ```
 
 ### 1.2 `switch-case` 结构
@@ -100,7 +100,7 @@ author: 'Anonymous'
   printf("Unknown grade\n");
   }
   return 0;
- True}
+ }
 ```
 
 #### 1.2.2 整数类型的 `switch`
@@ -133,7 +133,7 @@ author: 'Anonymous'
   printf("Invalid day\n");
   }
   return 0;
- True}
+ }
 ```
 
 #### 1.2.3 `switch` 中的穿透现象
@@ -172,7 +172,7 @@ author: 'Anonymous'
   printf("Month %d has %d days\n", month, days);
   }
   return 0;
- True}
+ }
 ```
 
 ## 2. 循环结构 (Iteration)
@@ -199,7 +199,7 @@ author: 'Anonymous'
   }
   printf("\n");
   return 0;
- True}
+ }
 ```
 
 #### 2.1.2 嵌套 `for` 循环
@@ -215,7 +215,7 @@ author: 'Anonymous'
   printf("\n");
   }
   return 0;
- True}
+ }
 ```
 
 #### 2.1.3 特殊的 `for` 循环用法
@@ -232,7 +232,7 @@ author: 'Anonymous'
   // // 循环体
   // }
   return 0;
- True}
+ }
 ```
 
 ### 2.2 `while` 循环
@@ -251,7 +251,7 @@ author: 'Anonymous'
   }
   printf("\n");
   return 0;
- True}
+ }
 ```
 
 #### 2.2.2 输入验证
@@ -271,7 +271,7 @@ author: 'Anonymous'
   }
   printf("Your age is %d\n", age);
   return 0;
- True}
+ }
 ```
 
 #### 2.2.3 无限循环
@@ -289,7 +289,7 @@ author: 'Anonymous'
   }
   }
   return 0;
- True}
+ }
 ```
 
 ### 2.3 `do-while` 循环
@@ -307,7 +307,7 @@ author: 'Anonymous'
   i--;
   } while (i < 5);
   return 0;
- True}
+ }
 ```
 
 #### 2.3.2 菜单驱动程序
@@ -338,7 +338,7 @@ author: 'Anonymous'
   }
   } while (choice != 3);
   return 0;
- True}
+ }
 ```
 
 ## 3. 循环控制语句 (Control Statements)
@@ -360,7 +360,7 @@ author: 'Anonymous'
   }
   printf("\nLoop exited\n");
   return 0;
- True}
+ }
 ```
 
 #### 3.1.2 跳出嵌套循环
@@ -379,7 +379,7 @@ author: 'Anonymous'
   exit_loop:
   printf("Exited nested loops\n");
   return 0;
- True}
+ }
 ```
 
 ### 3.2 `continue` 语句
@@ -399,7 +399,7 @@ author: 'Anonymous'
   }
   printf("\n");
   return 0;
- True}
+ }
 ```
 
 #### 3.2.2 跳过特定条件
@@ -417,7 +417,7 @@ author: 'Anonymous'
   printf("Number: %d\n", numbers[i]);
   }
   return 0;
- True}
+ }
 ```
 
 ### 3.3 `goto` 语句
@@ -438,7 +438,7 @@ author: 'Anonymous'
   }
   printf("Loop completed\n");
   return 0;
- True}
+ }
 ```
 
 #### 3.3.2 跳过多层循环
@@ -459,7 +459,7 @@ author: 'Anonymous'
   end_of_loops:
   printf("Exited all loops\n");
   return 0;
- True}
+ }
 ```
 
 #### 3.3.3 错误处理
@@ -479,7 +479,7 @@ author: 'Anonymous'
   cleanup:
   printf("Program completed\n");
   return 0;
- True}
+ }
 ```
 
 ## 4. 控制流的最佳实践
@@ -527,7 +527,7 @@ author: 'Anonymous'
   b = next;
   }
   printf("\n");
- True}
+ }
  // 查找数组中的元素
  int find_element(int arr[], int size, int target) {
   for (int i = 0; i < size; i++) {
@@ -536,7 +536,7 @@ author: 'Anonymous'
   }
   }
   return -1; // 未找到元素
- True}
+ }
  int main() {
   // 调用斐波那契函数
   fibonacci(10);
@@ -551,7 +551,7 @@ author: 'Anonymous'
   printf("Element %d not found\n", target);
   }
   return 0;
- True}
+ }
 ```
 
 ## 5. 常见问题与解决方案
@@ -565,7 +565,7 @@ author: 'Anonymous'
  // 错误示例
  while (1) {
   printf("This will run forever\n");
- True}
+ }
  // 正确示例
  int count = 0;
  while (1) {
@@ -574,7 +574,7 @@ author: 'Anonymous'
   if (count >= 10) {
   break;
   }
- True}
+ }
 ```
 
 ### 5.2 循环条件错误
@@ -586,11 +586,11 @@ author: 'Anonymous'
  // 错误示例：应该是 i < 10，而不是 i <= 10
  for (int i = 0; i <= 10; i++) {
   printf("%d ", i); // 会打印 0-10，共 11 个数
- True}
+ }
  // 正确示例
  for (int i = 0; i < 10; i++) {
   printf("%d ", i); // 打印 0-9，共 10 个数
- True}
+ }
 ```
 
 ### 5.3 边界条件处理
@@ -603,12 +603,12 @@ author: 'Anonymous'
  int arr[5] = {1, 2, 3, 4, 5};
  for (int i = 0; i <= 5; i++) {
   printf("%d ", arr[i]); // 访问 arr[5] 越界
- True}
+ }
  // 正确示例
  int arr[5] = {1, 2, 3, 4, 5};
  for (int i = 0; i < 5; i++) {
   printf("%d ", arr[i]);
- True}
+ }
 ```
 
 ### 5.4 `switch` 语句缺少 `break`
@@ -624,7 +624,7 @@ author: 'Anonymous'
   case 'B':
   printf("Good!\n"); // 当 grade 为 'A' 时也会执行
   break;
- True}
+ }
  // 正确示例
  switch (grade) {
   case 'A':
@@ -633,7 +633,7 @@ author: 'Anonymous'
   case 'B':
   printf("Good!\n");
   break;
- True}
+ }
 ```
 
 ### 5.5 嵌套过深
@@ -651,7 +651,7 @@ author: 'Anonymous'
   }
   }
   }
- True}
+ }
  // 重构为函数
  void process_even(int i) {
   for (int j = 0; j < 5; j++) {
@@ -659,13 +659,13 @@ author: 'Anonymous'
   // 处理逻辑
   }
   }
- True}
+ }
  // 主函数
  for (int i = 0; i < 10; i++) {
   if (i % 2 == 0) {
   process_even(i);
   }
- True}
+ }
 ```
 
 ## 6. 控制流的高级应用
@@ -686,7 +686,7 @@ author: 'Anonymous'
   }
   printf("\n");
   return 0;
- True}
+ }
 ```
 
 #### 6.1.2 使用递归代替循环
@@ -699,12 +699,12 @@ author: 'Anonymous'
   }
   print_numbers(n - 1);
   printf("%d ", n);
- True}
+ }
  int main() {
   print_numbers(9);
   printf("\n");
   return 0;
- True}
+ }
 ```
 
 ### 6.2 复杂条件的处理
@@ -728,7 +728,7 @@ author: 'Anonymous'
   printf("You are too young to drive\n");
   }
   return 0;
- True}
+ }
 ```
 
 #### 6.2.2 使用布尔函数简化条件
@@ -737,17 +737,17 @@ author: 'Anonymous'
  #include <stdio.h>
  int is_even(int n) {
   return n % 2 == 0;
- True}
+ }
  int is_positive(int n) {
   return n > 0;
- True}
+ }
  int main() {
   int number = 4;
   if (is_even(number) && is_positive(number)) {
   printf("%d is a positive even number\n", number);
   }
   return 0;
- True}
+ }
 ```
 
 ### 6.3 状态机的实现
@@ -789,7 +789,7 @@ author: 'Anonymous'
   }
   }
   return 0;
- True}
+ }
 ```
 
 ## 7. 代码优化技巧
@@ -802,12 +802,12 @@ author: 'Anonymous'
  // 优化前
  for (int i = 0; i < strlen(s); i++) {
   // 每次循环都计算 strlen(s)
- True}
+ }
  // 优化后
  int len = strlen(s);
  for (int i = 0; i < len; i++) {
   // 只计算一次 strlen(s)
- True}
+ }
 ```
 
 #### 7.1.2 使用递增而非递减
@@ -816,11 +816,11 @@ author: 'Anonymous'
  // 优化前
  for (int i = n; i >= 0; i--) {
   // 循环体
- True}
+ }
  // 优化后（某些架构上更高效）
  for (int i = 0; i <= n; i++) {
   // 循环体
- True}
+ }
 ```
 
 #### 7.1.3 展开循环
@@ -829,7 +829,7 @@ author: 'Anonymous'
  // 优化前
  for (int i = 0; i < 4; i++) {
   process(i);
- True}
+ }
  // 优化后（展开循环）
  process(0);
  process(1);
@@ -847,11 +847,11 @@ author: 'Anonymous'
   if (ptr->value == 5) {
   // 处理逻辑
   }
- True}
+ }
  // 优化后
  if (ptr != NULL && ptr->value == 5) {
   // 处理逻辑
- True}
+ }
 ```
 
 #### 7.2.2 条件顺序优化
@@ -860,11 +860,11 @@ author: 'Anonymous'
  // 优化前（假设 ptr == NULL 的概率较高）
  if (ptr->value == 5 && ptr != NULL) {
   // 可能会崩溃
- True}
+ }
  // 优化后
  if (ptr != NULL && ptr->value == 5) {
   // 更安全，利用短路求值
- True}
+ }
 ```
 
 ### 7.3 控制流优化示例
@@ -884,7 +884,7 @@ author: 'Anonymous'
   } else {
   return 0;
   }
- True}
+ }
  // 优化后：使用 switch 语句
  int get_grade_point_optimized(char grade) {
   switch (grade) {
@@ -894,13 +894,13 @@ author: 'Anonymous'
   case 'D': return 1;
   default: return 0;
   }
- True}
+ }
  int main() {
   char grade = 'B';
   printf("Grade point: %d\n", get_grade_point(grade));
   printf("Grade point (optimized): %d\n", get_grade_point_optimized(grade));
   return 0;
- True}
+ }
 ```
 
 ---

@@ -25,7 +25,6 @@ function add(a: string, b: number): string;
 // 函数实现
 function add(a: any, b: any): any {
   return a + b;
-  True;
 }
 // 使用示例
 const sum1 = add(1, 2); // 类型为 number，值为 3
@@ -47,7 +46,6 @@ function greet(name: string, age?: number): string {
     return `Hello, ${name}! You are ${age} years old.`;
   }
   return `Hello, ${name}!`;
-  True;
 }
 // 使用示例
 const greeting1 = greet('Alice'); // 类型为 string，值为 "Hello, Alice!"
@@ -70,7 +68,6 @@ function process(value: string | number | boolean): string | number | boolean {
   } else {
     return !value;
   }
-  True;
 }
 // 使用示例
 const result1 = process('hello'); // 类型为 string，值为 "HELLO"
@@ -95,7 +92,6 @@ const result3 = process(true); // 类型为 boolean，值为 false
 // 基本泛型函数
 function identity<T>(arg: T): T {
   return arg;
-  True;
 }
 // 使用示例
 const stringOutput = identity<string>('myString'); // 类型为 string
@@ -112,7 +108,6 @@ const inferredNumber = identity(123); // 类型自动推断为 number
 // 多个泛型参数
 function pair<T, U>(first: T, second: U): [T, U] {
   return [first, second];
-  True;
 }
 // 使用示例
 const stringNumberPair = pair('hello', 42); // 类型为 [string, number]
@@ -128,7 +123,7 @@ interface Container<T> {
   value: T;
   getValue(): T;
   setValue(value: T): void;
-  True;
+  ;
 }
 // 实现泛型接口
 class NumberContainer implements Container<number> {
@@ -142,7 +137,7 @@ class NumberContainer implements Container<number> {
   setValue(value: number): void {
     this.value = value;
   }
-  True;
+  ;
 }
 class StringContainer implements Container<string> {
   value: string;
@@ -155,7 +150,7 @@ class StringContainer implements Container<string> {
   setValue(value: string): void {
     this.value = value;
   }
-  True;
+  ;
 }
 // 使用示例
 const numberContainer = new NumberContainer(42);
@@ -193,13 +188,13 @@ console.log(stringToNumber('123')); // 输出: 123
 // 定义约束接口
 interface Lengthwise {
   length: number;
-  True;
+  ;
 }
 // 使用约束
 function logLength<T extends Lengthwise>(arg: T): T {
   console.log(`Length: ${arg.length}`);
   return arg;
-  True;
+  ;
 }
 // 使用示例
 logLength('Hello'); // 输出: Length: 5
@@ -212,45 +207,45 @@ logLength({ length: 10, value: 'test' }); // 输出: Length: 10
 ### 3.2 多个泛型约束
 
 ```typescript
- // 定义多个约束接口
- interface Lengthwise {
+// 定义多个约束接口
+interface Lengthwise {
   length: number;
- True}
- interface HasName {
+}
+interface HasName {
   name: string;
- True}
- // 多个约束
- function processItem<T extends Lengthwise & HasName>(item: T): T {
+}
+// 多个约束
+function processItem<T extends Lengthwise & HasName>(item: T): T {
   console.log(`Name: ${item.name}, Length: ${item.length}`);
   return item;
- True}
- // 使用示例
- const item = {
-  name: "Test",
+}
+// 使用示例
+const item = {
+  name: 'Test',
   length: 5,
-  value: 42
- True};
- processItem(item); // 输出: Name: Test, Length: 5
+  value: 42,
+};
+processItem(item); // 输出: Name: Test, Length: 5
 ```
 
 ### 3.3 泛型约束与 keyof
 
 ```typescript
- // 使用 keyof 约束
- function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
+// 使用 keyof 约束
+function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
   return obj[key];
- True}
- // 使用示例
- const person = {
-  name: "Alice",
+}
+// 使用示例
+const person = {
+  name: 'Alice',
   age: 30,
-  email: "alice@example.com"
- True};
- const name = getProperty(person, "name"); // 类型为 string
- const age = getProperty(person, "age"); // 类型为 number
- const email = getProperty(person, "email"); // 类型为 string
- // 错误示例：不存在的属性
- // const invalid = getProperty(person, "invalid"); // 编译错误
+  email: 'alice@example.com',
+};
+const name = getProperty(person, 'name'); // 类型为 string
+const age = getProperty(person, 'age'); // 类型为 number
+const email = getProperty(person, 'email'); // 类型为 string
+// 错误示例：不存在的属性
+// const invalid = getProperty(person, "invalid"); // 编译错误
 ```
 
 ### 3.4 泛型约束与默认值
@@ -259,7 +254,6 @@ logLength({ length: 10, value: 'test' }); // 输出: Length: 10
 // 带默认值的泛型约束
 function createArray<T extends number | string = string>(length: number, defaultValue: T): T[] {
   return Array(length).fill(defaultValue);
-  True;
 }
 // 使用示例
 const numberArray = createArray(5, 0); // 类型为 number[]
@@ -286,7 +280,6 @@ class Box<T> {
   setData(data: T): void {
     this.data = data;
   }
-  True;
 }
 // 使用示例
 const numberBox = new Box<number>(42);
@@ -305,12 +298,12 @@ console.log(stringBox.getData()); // World
  // 带约束的泛型类
  interface Printable {
   toString(): string;
- True}
+ }
  class Printer<T extends Printable> {
   print(item: T): void {
   console.log(item.toString());
   }
- True}
+ }
  // 使用示例
  const numberPrinter = new Printer<number>();
  numberPrinter.print(42); // 输出: 42
@@ -320,7 +313,7 @@ console.log(stringBox.getData()); // World
  objPrinter.print({
   name: "Test",
   toString() { return `Object: ${this.name}`; }
- True}); // 输出: Object: Test
+ }
 ```
 
 ### 4.3 泛型类与静态成员
@@ -341,7 +334,6 @@ class GenericClass<T> {
   static create<U>(value: U): GenericClass<U> {
     return new GenericClass<U>(value);
   }
-  True;
 }
 // 使用示例
 const instance = new GenericClass<string>('Hello');
@@ -363,7 +355,6 @@ class BaseRepository<T> {
   getById(id: number): T | undefined {
     return this.items[id];
   }
-  True;
 }
 // 继承泛型类
 class User {
@@ -373,13 +364,11 @@ class User {
     this.id = id;
     this.name = name;
   }
-  True;
 }
 class UserRepository extends BaseRepository<User> {
   findByName(name: string): User | undefined {
     return this.items.find((user) => user.name === name);
   }
-  True;
 }
 // 使用示例
 const userRepo = new UserRepository();
@@ -406,7 +395,7 @@ console.log(userRepo.findByName('Bob')?.id); // 2
   static filter<T extends { active: boolean }>(array: T[]): T[] {
   return array.filter(item => item.active);
   }
- True}
+ }
  // 使用示例
  const numbers = [1, 2, 3, 4, 5];
  const squared = Utils.map(numbers, n => n * n); // 类型为 number[]
@@ -415,7 +404,7 @@ console.log(userRepo.findByName('Bob')?.id); // 2
   { id: 1, name: "Alice", active:  },
   { id: 2, name: "Bob", active: false },
   { id: 3, name: "Charlie", active:  }
- True];
+ ]
  const activeUsers = Utils.filter(users); // 类型为 { id: number; name: string; active: boolean }[]
  console.log(activeUsers); // [{ id: 1, name: "Alice", active:  }, { id: 3, name: "Charlie", active:  }]
 ```
@@ -429,18 +418,18 @@ console.log(userRepo.findByName('Bob')?.id); // 2
   <T>(items: T[]): T[];
   // 带约束的泛型方法
   <T extends { id: number }>(items: T[]): T[];
- True}
+ }
  // 实现接口
  const MyCollection: Collection = function<T>(items: T[]): T[] {
   return items;
- True};
+ }
  // 使用示例
  const strings = MyCollection<string>(["a", "b", "c"]); // 类型为 string[]
  const numbers = MyCollection<number>([1, 2, 3]); // 类型为 number[]
  const users = MyCollection([
   { id: 1, name: "Alice" },
   { id: 2, name: "Bob" }
- True]); // 类型为 { id: number; name: string }[]
+ ]
 ```
 
 ## 6. 泛型工具类型 (Utility Types)
@@ -472,7 +461,7 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
   email: string;
   age: number;
   active: boolean;
- True}
+ }
  // Partial<T>
  type PartialUser = Partial<User>;
  const partialUser: PartialUser = { id: 1, name: "Alice" };
@@ -484,7 +473,7 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
   email: "alice@example.com",
   age: 30,
   active:
- True};
+ }
  // readonlyUser.name = "Bob"; // 编译错误
  // Record<K, T>
  type UserRoleMap = Record<string, "admin" | "user" | "guest">;
@@ -492,14 +481,14 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
   "alice": "admin",
   "bob": "user",
   "charlie": "guest"
- True};
+ }
  // Pick<T, K>
  type UserEssential = Pick<User, "id" | "name" | "email">;
  const essentialUser: UserEssential = {
   id: 1,
   name: "Alice",
   email: "alice@example.com"
- True};
+ }
  // Omit<T, K>
  type UserWithoutAge = Omit<User, "age">;
  const userWithoutAge: UserWithoutAge = {
@@ -507,7 +496,7 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
   name: "Alice",
   email: "alice@example.com",
   active:
- True};
+ }
  // Exclude<T, U>
  type Status = "active" | "inactive" | "pending" | "deleted";
  type ActiveStatus = Exclude<Status, "deleted">; // "active" | "inactive" | "pending"
@@ -534,14 +523,14 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
   category: string;
   stock: number;
   active: boolean;
- True}
+ }
  // 创建产品的更新类型
  type ProductUpdate = Partial<Pick<Product, "name" | "price" | "description" | "stock" | "active">>;
  // 使用示例
  const update: ProductUpdate = {
   price: 99.99,
   stock: 100
- True};
+ }
  // 创建产品的响应类型
  type ProductResponse = Readonly<Omit<Product, "stock">>;
  // 使用示例
@@ -552,7 +541,7 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
   description: "A powerful laptop",
   category: "Electronics",
   active:
- True};
+ }
 ```
 
 ## 7. 泛型的高级应用
@@ -560,36 +549,34 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
 ### 7.1 递归泛型
 
 ```typescript
- // 递归泛型
- interface TreeNode<T> {
+// 递归泛型
+interface TreeNode<T> {
   value: T;
   children: TreeNode<T>[];
- True}
- // 使用示例
- const tree: TreeNode<number> = {
+}
+// 使用示例
+const tree: TreeNode<number> = {
   value: 1,
   children: [
-  {
-  value: 2,
-  children: [
-  { value: 4, children: [] },
-  { value: 5, children: [] }
-  ]
-  },
-  {
-  value: 3,
-  children: [
-  { value: 6, children: [] }
-  ]
-  }
-  ]
- True};
- // 递归函数处理树
- function traverse<T>(node: TreeNode<T>, callback: (value: T) => void): void {
+    {
+      value: 2,
+      children: [
+        { value: 4, children: [] },
+        { value: 5, children: [] },
+      ],
+    },
+    {
+      value: 3,
+      children: [{ value: 6, children: [] }],
+    },
+  ],
+};
+// 递归函数处理树
+function traverse<T>(node: TreeNode<T>, callback: (value: T) => void): void {
   callback(node.value);
-  node.children.forEach(child => traverse(child, callback));
- True}
- traverse(tree, value => console.log(value)); // 输出: 1, 2, 4, 5, 3, 6
+  node.children.forEach((child) => traverse(child, callback));
+}
+traverse(tree, (value) => console.log(value)); // 输出: 1, 2, 4, 5, 3, 6
 ```
 
 ### 7.2 条件类型与泛型
@@ -616,40 +603,40 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
 ### 7.3 泛型与映射类型
 
 ```typescript
- // 映射类型
- interface Person {
+// 映射类型
+interface Person {
   name: string;
   age: number;
   email: string;
- True}
- // 映射类型：将所有属性变为可选
- type Optional<T> = {
+}
+// 映射类型：将所有属性变为可选
+type Optional<T> = {
   [K in keyof T]?: T[K];
- True};
- // 映射类型：将所有属性变为只读
- type Readonly<T> = {
+};
+// 映射类型：将所有属性变为只读
+type Readonly<T> = {
   readonly [K in keyof T]: T[K];
- True};
- // 映射类型：将所有属性类型变为 string
- type Stringify<T> = {
+};
+// 映射类型：将所有属性类型变为 string
+type Stringify<T> = {
   [K in keyof T]: string;
- True};
- // 使用示例
- type OptionalPerson = Optional<Person>;
- type ReadonlyPerson = Readonly<Person>;
- type StringifiedPerson = Stringify<Person>;
- const optionalPerson: OptionalPerson = { name: "Alice" };
- const readonlyPerson: ReadonlyPerson = {
-  name: "Alice",
+};
+// 使用示例
+type OptionalPerson = Optional<Person>;
+type ReadonlyPerson = Readonly<Person>;
+type StringifiedPerson = Stringify<Person>;
+const optionalPerson: OptionalPerson = { name: 'Alice' };
+const readonlyPerson: ReadonlyPerson = {
+  name: 'Alice',
   age: 30,
-  email: "alice@example.com"
- True};
- // readonlyPerson.age = 31; // 编译错误
- const stringifiedPerson: StringifiedPerson = {
-  name: "Alice",
-  age: "30", // 类型为 string
-  email: "alice@example.com"
- True};
+  email: 'alice@example.com',
+};
+// readonlyPerson.age = 31; // 编译错误
+const stringifiedPerson: StringifiedPerson = {
+  name: 'Alice',
+  age: '30', // 类型为 string
+  email: 'alice@example.com',
+};
 ```
 
 ## 8. 最佳实践
@@ -681,48 +668,48 @@ TypeScript 提供了一系列内置的泛型工具类型，用于常见的类型
 ### 9.1 泛型函数的综合使用
 
 ```typescript
- // 泛型函数：安全地获取对象属性
- function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
+// 泛型函数：安全地获取对象属性
+function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
   return obj[key];
- True}
- // 泛型函数：深度克隆对象
- function deepClone<T>(obj: T): T {
-  if (obj === null || typeof obj !== "object") {
-  return obj;
+}
+// 泛型函数：深度克隆对象
+function deepClone<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') {
+    return obj;
   }
   if (obj instanceof Array) {
-  return obj.map(item => deepClone(item)) as unknown as T;
+    return obj.map((item) => deepClone(item)) as unknown as T;
   }
   const clonedObj = {} as T;
   for (const key in obj) {
-  if (obj.hasOwnProperty(key)) {
-  clonedObj[key] = deepClone(obj[key]);
-  }
+    if (obj.hasOwnProperty(key)) {
+      clonedObj[key] = deepClone(obj[key]);
+    }
   }
   return clonedObj;
- True}
- // 泛型函数：创建带有默认值的数组
- function createArray<T>(length: number, defaultValue: T): T[] {
+}
+// 泛型函数：创建带有默认值的数组
+function createArray<T>(length: number, defaultValue: T): T[] {
   return Array(length).fill(defaultValue);
- True}
- // 使用示例
- const person = {
-  name: "Alice",
+}
+// 使用示例
+const person = {
+  name: 'Alice',
   age: 30,
   address: {
-  street: "123 Main St",
-  city: "New York"
-  }
- True};
- // 安全获取属性
- const name = getProperty(person, "name"); // 类型为 string
- const age = getProperty(person, "age"); // 类型为 number
- // 深度克隆
- const clonedPerson = deepClone(person);
- console.log(clonedPerson.address.city); // New York
- // 创建数组
- const numbers = createArray(5, 0); // 类型为 number[]
- const strings = createArray(3, "hello"); // 类型为 string[]
+    street: '123 Main St',
+    city: 'New York',
+  },
+};
+// 安全获取属性
+const name = getProperty(person, 'name'); // 类型为 string
+const age = getProperty(person, 'age'); // 类型为 number
+// 深度克隆
+const clonedPerson = deepClone(person);
+console.log(clonedPerson.address.city); // New York
+// 创建数组
+const numbers = createArray(5, 0); // 类型为 number[]
+const strings = createArray(3, 'hello'); // 类型为 string[]
 ```
 
 ### 9.2 泛型类的综合使用
@@ -746,7 +733,7 @@ class Queue<T> {
   isEmpty(): boolean {
     return this.items.length === 0;
   }
-  True;
+  ;
 }
 // 泛型栈类
 class Stack<T> {
@@ -766,7 +753,7 @@ class Stack<T> {
   isEmpty(): boolean {
     return this.items.length === 0;
   }
-  True;
+  ;
 }
 // 使用示例
 // 数字队列
@@ -787,7 +774,7 @@ console.log(stringStack.peek()); // b
 interface User {
   id: number;
   name: string;
-  True;
+  ;
 }
 const userQueue = new Queue<User>();
 userQueue.enqueue({ id: 1, name: 'Alice' });
@@ -798,68 +785,68 @@ console.log(userQueue.dequeue()?.name); // Alice
 ### 9.3 泛型工具类型的综合使用
 
 ```typescript
- // 定义基础类型
- interface APIResponse<T> {
+// 定义基础类型
+interface APIResponse<T> {
   success: boolean;
   data: T;
   error?: string;
- True}
- interface User {
+}
+interface User {
   id: number;
   name: string;
   email: string;
   age: number;
   password: string;
- True}
- // 创建响应类型
-  type UserResponse = APIResponse<Omit<User, "password">>;
-  type UserListResponse = APIResponse<Array<Omit<User, "password">>>;
- // 创建请求类型
-  type CreateUserRequest = Omit<User, "id">;
-  type UpdateUserRequest = Partial<Omit<User, "id" | "password">>;
- // 使用示例
- // 模拟 API 响应
- const userResponse: UserResponse = {
+}
+// 创建响应类型
+type UserResponse = APIResponse<Omit<User, 'password'>>;
+type UserListResponse = APIResponse<Array<Omit<User, 'password'>>>;
+// 创建请求类型
+type CreateUserRequest = Omit<User, 'id'>;
+type UpdateUserRequest = Partial<Omit<User, 'id' | 'password'>>;
+// 使用示例
+// 模拟 API 响应
+const userResponse: UserResponse = {
   success: true,
   data: {
-  id: 1,
-  name: "Alice",
-  email: "alice@example.com",
-  age: 30
-  }
- True};
- const userListResponse: UserListResponse = {
+    id: 1,
+    name: 'Alice',
+    email: 'alice@example.com',
+    age: 30,
+  },
+};
+const userListResponse: UserListResponse = {
   success: true,
   data: [
-  {
-  id: 1,
-  name: "Alice",
-  email: "alice@example.com",
-  age: 30
-  },
-  {
-  id: 2,
-  name: "Bob",
-  email: "bob@example.com",
-  age: 25
-  }
-  ]
- True};
- // 模拟请求数据
- const createUserRequest: CreateUserRequest = {
-  name: "Charlie",
-  email: "charlie@example.com",
+    {
+      id: 1,
+      name: 'Alice',
+      email: 'alice@example.com',
+      age: 30,
+    },
+    {
+      id: 2,
+      name: 'Bob',
+      email: 'bob@example.com',
+      age: 25,
+    },
+  ],
+};
+// 模拟请求数据
+const createUserRequest: CreateUserRequest = {
+  name: 'Charlie',
+  email: 'charlie@example.com',
   age: 35,
-  password: "password123"
- True};
- const updateUserRequest: UpdateUserRequest = {
-  name: "Alice Smith",
-  age: 31
- True};
- console.log(userResponse.data);
- console.log(userListResponse.data);
- console.log(createUserRequest);
- console.log(updateUserRequest);
+  password: 'password123',
+};
+const updateUserRequest: UpdateUserRequest = {
+  name: 'Alice Smith',
+  age: 31,
+};
+console.log(userResponse.data);
+console.log(userListResponse.data);
+console.log(createUserRequest);
+console.log(updateUserRequest);
 ```
 
 ---

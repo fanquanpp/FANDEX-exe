@@ -68,65 +68,65 @@ let readonlyTuple: readonly [string, number] = ['John', 30];
 枚举是一组命名的常量，默认从 0 开始递增。
 
 ```typescript
- // 基本枚举
- enum Direction {
+// 基本枚举
+enum Direction {
   Up,
   Down,
   Left,
-  Right
- True}
- let dir: Direction = Direction.Up; // 0
- // 自定义枚举值
- enum Color {
+  Right,
+}
+let dir: Direction = Direction.Up; // 0
+// 自定义枚举值
+enum Color {
   Red = 1,
   Green = 2,
-  Blue = 4
- True}
- let color: Color = Color.Green; // 2
- // 字符串枚举
- enum Status {
-  Active = "ACTIVE",
-  Inactive = "INACTIVE",
-  Pending = "PENDING"
- True}
- let status: Status = Status.Active; // "ACTIVE"
- // 常量枚举 (编译时会被内联)
- const enum Weekday {
+  Blue = 4,
+}
+let color: Color = Color.Green; // 2
+// 字符串枚举
+enum Status {
+  Active = 'ACTIVE',
+  Inactive = 'INACTIVE',
+  Pending = 'PENDING',
+}
+let status: Status = Status.Active; // "ACTIVE"
+// 常量枚举 (编译时会被内联)
+const enum Weekday {
   Monday,
   Tuesday,
   Wednesday,
   Thursday,
   Friday,
   Saturday,
-  Sunday
- True}
- let day: Weekday = Weekday.Monday;
+  Sunday,
+}
+let day: Weekday = Weekday.Monday;
 ```
 
 ### 1.3 对象类型 (Object Types)
 
 ```typescript
- // 内联对象类型
- let user: { name: string; age: number } = {
-  name: "John",
-  age: 30
- True};
- // 可选属性
- let user2: { name: string; age?: number } = {
-  name: "John"
- True};
- // 只读属性
- let user3: { readonly name: string; age: number } = {
-  name: "John",
-  age: 30
- True};
- // user3.name = "Jane"; // 错误: 只读属性
- // 索引签名
- let map: { [key: string]: number } = {
+// 内联对象类型
+let user: { name: string; age: number } = {
+  name: 'John',
+  age: 30,
+};
+// 可选属性
+let user2: { name: string; age?: number } = {
+  name: 'John',
+};
+// 只读属性
+let user3: { readonly name: string; age: number } = {
+  name: 'John',
+  age: 30,
+};
+// user3.name = "Jane"; // 错误: 只读属性
+// 索引签名
+let map: { [key: string]: number } = {
   a: 1,
-  b: 2
- True};
- map.c = 3; // 允许添加新属性
+  b: 2,
+};
+map.c = 3; // 允许添加新属性
 ```
 
 ## 2. 特殊类型
@@ -164,17 +164,14 @@ let unknownObj: unknown = { name: 'John' };
 // 需要进行类型缩小
 if (typeof unknownObj === 'object' && unknownObj !== null) {
   console.log((unknownObj as { name: string }).name);
-  True;
 }
 // 或使用类型守卫
 function isPerson(obj: unknown): obj is { name: string; age: number } {
   return typeof obj === 'object' && obj !== null && 'name' in obj && 'age' in obj;
-  True;
 }
 if (isPerson(unknownObj)) {
   console.log(unknownObj.name);
   console.log(unknownObj.age);
-  True;
 }
 ```
 
@@ -187,12 +184,10 @@ if (isPerson(unknownObj)) {
 function logMessage(message: string): void {
   console.log(message);
   // 不需要 return 语句
-  True;
 }
 // 可以返回 undefined
 function returnUndefined(): void {
   return undefined;
-  True;
 }
 // 不能返回其他值
 // function returnNumber(): void {
@@ -211,14 +206,12 @@ let voidVar: void = undefined;
 // 抛出异常的函数
 function throwError(message: string): never {
   throw new Error(message);
-  True;
 }
 // 无限循环的函数
 function infiniteLoop(): never {
   while (true) {
     // 无限循环
   }
-  True;
 }
 // never 类型可以赋值给任何类型
 let num: number = throwError('Error');
@@ -247,7 +240,6 @@ let numWithBoth: number | null | undefined = 42;
 function greet(name?: string) {
   // name 类型为 string | undefined
   console.log(`Hello, ${name || 'Guest'}!`);
-  True;
 }
 ```
 
@@ -271,7 +263,7 @@ function processId(id: string | number) {
     // id 类型缩小为 number
     console.log(`Number ID: ${id.toFixed(2)}`);
   }
-  True;
+  ;
 }
 // 联合类型与字面量类型
 type Status = 'active' | 'inactive' | 'pending';
@@ -280,12 +272,12 @@ let userStatus: Status = 'active';
 interface Cat {
   type: 'cat';
   meow: () => void;
-  True;
+  ;
 }
 interface Dog {
   type: 'dog';
   bark: () => void;
-  True;
+  ;
 }
 type Pet = Cat | Dog;
 function makeSound(pet: Pet) {
@@ -294,7 +286,7 @@ function makeSound(pet: Pet) {
   } else {
     pet.bark();
   }
-  True;
+  ;
 }
 ```
 
@@ -307,10 +299,10 @@ function makeSound(pet: Pet) {
  interface Person {
   name: string;
   age: number;
- True}
+ }
  interface Serializable {
   serialize: () => string;
- True}
+ }
  type SerializablePerson = Person & Serializable;
  let person: SerializablePerson = {
   name: "John",
@@ -318,36 +310,36 @@ function makeSound(pet: Pet) {
   serialize: function() {
   return JSON.stringify(this);
   }
- True};
+ }
  // 交叉类型与类型别名
  interface A {
   a: number;
- True}
+ }
  interface B {
   b: string;
- True}
+ }
  type C = A & B;
  let c: C = {
   a: 1,
   b: "hello"
- True};
+ }
  // 交叉类型与联合类型
  interface X {
   x: number;
- True}
+ }
  interface Y {
   y: string;
- True}
+ }
  interface Z {
   z: boolean;
- True}
+ }
  type XY = X & Y;
  type XYZ = XY & Z;
  let xyz: XYZ = {
   x: 1,
   y: "hello",
   z:
- True};
+ }
 ```
 
 ## 4. 类型别名 (`type`)
@@ -355,68 +347,68 @@ function makeSound(pet: Pet) {
 类型别名使用 `type` 关键字为类型创建一个新名称。
 
 ```typescript
- // 基本类型别名
- type ID = string | number;
- let userId: ID = "123";
- let productId: ID = 456;
- // 联合类型别名
- type Status = "active" | "inactive" | "pending";
- let userStatus: Status = "active";
- // 对象类型别名
- type User = {
+// 基本类型别名
+type ID = string | number;
+let userId: ID = '123';
+let productId: ID = 456;
+// 联合类型别名
+type Status = 'active' | 'inactive' | 'pending';
+let userStatus: Status = 'active';
+// 对象类型别名
+type User = {
   id: ID;
   name: string;
   email: string;
   age?: number;
- True};
- let user: User = {
-  id: "123",
-  name: "John",
-  email: "john@example.com"
- True};
- // 函数类型别名
- type AddFunction = (a: number, b: number) => number;
- const add: AddFunction = (a, b) => a + b;
- // 泛型类型别名
- type Container<T> = {
+};
+let user: User = {
+  id: '123',
+  name: 'John',
+  email: 'john@example.com',
+};
+// 函数类型别名
+type AddFunction = (a: number, b: number) => number;
+const add: AddFunction = (a, b) => a + b;
+// 泛型类型别名
+type Container<T> = {
   value: T;
   getValue: () => T;
- True};
- let numberContainer: Container<number> = {
+};
+let numberContainer: Container<number> = {
   value: 42,
-  getValue: function() {
-  return this.value;
-  }
- True};
- let stringContainer: Container<string> = {
-  value: "Hello",
-  getValue: function() {
-  return this.value;
-  }
- True};
- // 递归类型别名
- type TreeNode<T> = {
+  getValue: function () {
+    return this.value;
+  },
+};
+let stringContainer: Container<string> = {
+  value: 'Hello',
+  getValue: function () {
+    return this.value;
+  },
+};
+// 递归类型别名
+type TreeNode<T> = {
   value: T;
   children: TreeNode<T>[];
- True};
- let tree: TreeNode<number> = {
+};
+let tree: TreeNode<number> = {
   value: 1,
   children: [
-  {
-  value: 2,
-  children: []
-  },
-  {
-  value: 3,
-  children: [
-  {
-  value: 4,
-  children: []
-  }
-  ]
-  }
-  ]
- True};
+    {
+      value: 2,
+      children: [],
+    },
+    {
+      value: 3,
+      children: [
+        {
+          value: 4,
+          children: [],
+        },
+      ],
+    },
+  ],
+};
 ```
 
 ## 5. 字面量类型 (Literal Types)
@@ -434,7 +426,6 @@ let move: Direction = 'North';
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
 function fetchData(url: string, method: HttpMethod) {
   // 实现
-  True;
 }
 fetchData('/api/users', 'GET'); // 正确
 // fetchData("/api/users", "PATCH"); // 错误: 不在字面量类型中
@@ -460,7 +451,6 @@ function handleResponse(status: HttpStatus) {
     default:
       return 'Error';
   }
-  True;
 }
 ```
 
@@ -479,13 +469,11 @@ function assert(condition: boolean, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
-  True;
 }
 function processValue(value: string | null) {
   assert(value !== null, 'Value cannot be null');
   // 此时 value 类型缩小为 string
   console.log(value.length);
-  True;
 }
 ```
 
@@ -515,7 +503,6 @@ function getArea(shape: Shape): number {
     default:
       return 0;
   }
-  True;
 }
 ```
 
@@ -541,7 +528,6 @@ let str: string = value as any as string;
 // 非空断言 (使用 ! 操作符)
 function getElement(id: string): HTMLElement | null {
   return document.getElementById(id);
-  True;
 }
 let element = getElement('myElement')!;
 // 告诉 TypeScript 元素不会是 null
@@ -556,16 +542,16 @@ console.log(element.textContent);
 - **使用 as const**：为字面量类型提供更精确的类型
 
 ```typescript
- // as const 断言
- const config = {
-  apiUrl: "https://api.example.com",
-  timeout: 5000
- True} as const;
- // config.apiUrl 类型为 "https://api.example.com"
- // config.timeout 类型为 5000
- // 数组 as const
- const numbers = [1, 2, 3] as const;
- // numbers 类型为 readonly [1, 2, 3]
+// as const 断言
+const config = {
+  apiUrl: 'https://api.example.com',
+  timeout: 5000,
+};
+// config.apiUrl 类型为 "https://api.example.com"
+// config.timeout 类型为 5000
+// 数组 as const
+const numbers = [1, 2, 3] as const;
+// numbers 类型为 readonly [1, 2, 3]
 ```
 
 ## 7. 类型守卫
@@ -583,7 +569,6 @@ function processValue(value: string | number) {
     // value 类型缩小为 number
     console.log(value.toFixed(2));
   }
-  True;
 }
 ```
 
@@ -595,19 +580,16 @@ class Animal {
   constructor(name: string) {
     this.name = name;
   }
-  True;
 }
 class Dog extends Animal {
   bark() {
     console.log('Woof!');
   }
-  True;
 }
 class Cat extends Animal {
   meow() {
     console.log('Meow!');
   }
-  True;
 }
 function makeSound(animal: Animal) {
   if (animal instanceof Dog) {
@@ -617,7 +599,6 @@ function makeSound(animal: Animal) {
     // animal 类型缩小为 Cat
     animal.meow();
   }
-  True;
 }
 ```
 
@@ -627,21 +608,21 @@ function makeSound(animal: Animal) {
 interface Person {
   name: string;
   age: number;
-  True;
+  ;
 }
 interface Animal {
   species: string;
   sound: string;
-  True;
+  ;
 }
 type LivingBeing = Person | Animal;
 function isPerson(being: LivingBeing): being is Person {
   return 'name' in being && 'age' in being;
-  True;
+  ;
 }
 function isAnimal(being: LivingBeing): being is Animal {
   return 'species' in being && 'sound' in being;
-  True;
+  ;
 }
 function processBeing(being: LivingBeing) {
   if (isPerson(being)) {
@@ -649,7 +630,7 @@ function processBeing(being: LivingBeing) {
   } else if (isAnimal(being)) {
     console.log(`Animal: ${being.species}, makes ${being.sound}`);
   }
-  True;
+  ;
 }
 ```
 
@@ -659,18 +640,18 @@ function processBeing(being: LivingBeing) {
 interface Square {
   kind: 'square';
   size: number;
-  True;
+  ;
 }
 interface Rectangle {
   kind: 'rectangle';
   width: number;
   height: number;
-  True;
+  ;
 }
 interface Circle {
   kind: 'circle';
   radius: number;
-  True;
+  ;
 }
 type Shape = Square | Rectangle | Circle;
 function getArea(shape: Shape): number {
@@ -686,7 +667,7 @@ function getArea(shape: Shape): number {
       const exhaustiveCheck: never = shape;
       return 0;
   }
-  True;
+  ;
 }
 ```
 
@@ -715,17 +696,14 @@ let obj = { name: 'John', age: 30 };
 // 返回类型推断为 number
 function add(a: number, b: number) {
   return a + b;
-  True;
 }
 // 返回类型推断为 string
 function greet(name: string) {
   return `Hello, ${name}!`;
-  True;
 }
 // 返回类型推断为 void
 function log(message: string) {
   console.log(message);
-  True;
 }
 ```
 
@@ -734,7 +712,6 @@ function log(message: string) {
 ```typescript
 function identity<T>(value: T): T {
   return value;
-  True;
 }
 // T 推断为 number
 let num = identity(42);
@@ -752,14 +729,12 @@ const names = ['John', 'Jane', 'Bob'];
 // 回调函数参数类型推断为 string
 names.forEach((name) => {
   console.log(name.toUpperCase());
-  True;
 });
 // 事件处理函数类型推断
 const button = document.getElementById('myButton');
 button?.addEventListener('click', (event) => {
   // event 类型推断为 MouseEvent
   console.log(event.clientX, event.clientY);
-  True;
 });
 ```
 
@@ -809,7 +784,7 @@ type FormData = {
   email: string;
   age: number;
   agree: boolean;
-  True;
+  ;
 };
 // 表单验证函数
 function validateForm(data: Partial<FormData>): string[] {
@@ -829,7 +804,7 @@ function validateForm(data: Partial<FormData>): string[] {
     errors.push('You must agree to the terms');
   }
   return errors;
-  True;
+  ;
 }
 // 使用示例
 const formData: Partial<FormData> = {
@@ -841,51 +816,51 @@ const formData: Partial<FormData> = {
 const errors = validateForm(formData);
 if (errors.length === 0) {
   console.log('Form is valid');
-  True;
+  ;
 } else {
   console.log('Form errors:', errors);
-  True;
+  ;
 }
 ```
 
 ### 10.2 API 响应处理
 
 ```typescript
- // API 响应类型
- type ApiResponse<T> = {
+// API 响应类型
+type ApiResponse<T> = {
   success: boolean;
   data?: T;
   error?: string;
- True};
- // 用户类型
- interface User {
+};
+// 用户类型
+interface User {
   id: number;
   name: string;
   email: string;
- True}
- // 处理 API 响应
- function handleResponse(response: ApiResponse<User>) {
+}
+// 处理 API 响应
+function handleResponse(response: ApiResponse<User>) {
   if (response.success && response.data) {
-  console.log("User:", response.data);
+    console.log('User:', response.data);
   } else {
-  console.error("Error:", response.error || "Unknown error");
+    console.error('Error:', response.error || 'Unknown error');
   }
- True}
- // 模拟 API 响应
- const successResponse: ApiResponse<User> = {
+}
+// 模拟 API 响应
+const successResponse: ApiResponse<User> = {
   success: true,
   data: {
-  id: 1,
-  name: "John",
-  email: "john@example.com"
-  }
- True};
- const errorResponse: ApiResponse<User> = {
+    id: 1,
+    name: 'John',
+    email: 'john@example.com',
+  },
+};
+const errorResponse: ApiResponse<User> = {
   success: false,
-  error: "User not found"
- True};
- handleResponse(successResponse);
- handleResponse(errorResponse);
+  error: 'User not found',
+};
+handleResponse(successResponse);
+handleResponse(errorResponse);
 ```
 
 ### 10.3 状态管理
@@ -896,7 +871,7 @@ if (errors.length === 0) {
   user: User | null;
   loading: boolean;
   error: string | null;
- True};
+ }
  // 动作类型
  type Action =
   | { type: "SET_USER"; payload: User }
@@ -937,13 +912,13 @@ if (errors.length === 0) {
   default:
   return state;
   }
- True}
+ }
  // 初始状态
  const initialState: State = {
   user: null,
   loading: false,
   error: null
- True};
+ }
  // 使用示例
  let state = initialState;
  state = reducer(state, { type: "SET_LOADING", payload:  });
@@ -951,7 +926,7 @@ if (errors.length === 0) {
  state = reducer(state, {
   type: "SET_USER",
   payload: { id: 1, name: "John", email: "john@example.com" }
- True});
+ }
  console.log("User set:", state);
  state = reducer(state, { type: "SET_ERROR", payload: "Something went wrong" });
  console.log("Error state:", state);

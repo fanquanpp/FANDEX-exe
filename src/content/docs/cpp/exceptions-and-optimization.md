@@ -35,7 +35,7 @@ author: 'Anonymous'
   std::cerr << "Exception caught: " << e.what() << std::endl;
   }
   return 0;
- True}
+ }
 ```
 
 ### 1.2 异常类型
@@ -65,10 +65,10 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   const char* what() const noexcept override {
   return message.c_str();
   }
- True};
+ }
  void function_that_throws() {
   throw MyException("Custom exception occurred");
- True}
+ }
  int main() {
   try {
   function_that_throws();
@@ -78,7 +78,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   std::cerr << "Standard exception caught: " << e.what() << std::endl;
   }
   return 0;
- True}
+ }
 ```
 
 ### 1.4 异常处理最佳实践
@@ -98,17 +98,17 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
  // 声明函数不会抛出异常
  void function_noexcept() noexcept {
   // 函数体
- True}
+ }
  // 条件 noexcept
  void function_conditionally_noexcept() noexcept(noexcept(expression)) {
   // 函数体
- True}
+ }
  // 检查函数是否会抛出异常
  template <typename T>
  void check_noexcept() {
   static_assert(noexcept(std::declval<T>().some_method()),
   "some_method() must be noexcept");
- True}
+ }
 ```
 
 ### 1.6 异常与构造函数/析构函数
@@ -129,7 +129,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   delete[] data;
   // 析构函数中不应抛出异常
   }
- True};
+ }
 ```
 
 ## 2. 性能优化 (Performance)
@@ -146,7 +146,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
  // 内联函数声明
  inline int max(int a, int b) {
   return a > b ? a : b;
- True}
+ }
  // 类内定义的成员函数默认内联
  class MyClass {
  public:
@@ -155,7 +155,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   }
  private:
   int value;
- True};
+ }
 ```
 
 #### 2.1.2 常量优化
@@ -166,7 +166,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
  // 常量引用参数，避免拷贝
  void printValue(const std::string& str) {
   std::cout << str << std::endl;
- True}
+ }
  // 常量成员函数，保证不修改对象状态
  class MyClass {
  public:
@@ -175,11 +175,11 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   }
  private:
   int value;
- True};
+ }
  // 编译期常量
  constexpr int square(int x) {
   return x * x;
- True}
+ }
  constexpr int SQUARE_OF_5 = square(5); // 编译期计算
 ```
 
@@ -209,7 +209,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   std::cout << "Move assignment called" << std::endl;
   return *this;
   }
- True};
+ }
  int main() {
   // 使用移动语义
   MyClass obj1("Hello"); // 拷贝构造
@@ -217,7 +217,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   std::string s = "Test";
   MyClass obj3(std::move(s)); // 移动构造，s 现在为空
   return 0;
- True}
+ }
 ```
 
 #### 2.1.4 避免不必要的拷贝
@@ -229,16 +229,16 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
  std::vector<int> process_vector(std::vector<int> v) {
   // 处理 v
   return v; // 返回时再次拷贝
- True}
+ }
  // 好的做法：使用引用
  void process_vector(const std::vector<int>& v) {
   // 处理 v（只读）
- True}
+ }
  // 好的做法：使用移动语义
  std::vector<int> create_vector() {
   std::vector<int> v = {1, 2, 3, 4, 5};
   return v; // 编译器会进行返回值优化 (RVO)
- True}
+ }
 ```
 
 #### 2.1.5 预分配内存
@@ -250,7 +250,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
  v.reserve(1000); // 预先分配 1000 个元素的空间
  for (int i = 0; i < 1000; i++) {
   v.push_back(i); // 不需要频繁重新分配内存
- True}
+ }
 ```
 
 ### 2.2 编译器优化
@@ -289,11 +289,11 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
  class A {
  public:
   std::weak_ptr<B> b; // 使用 weak_ptr 打破循环
- True};
+ }
  class B {
  public:
   std::shared_ptr<A> a;
- True};
+ }
 ```
 
 #### 2.3.2 内存池
@@ -333,7 +333,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   void deallocate(void* ptr) {
   // 简单实现，不做实际释放
   }
- True};
+ }
 ```
 
 ### 2.4 算法与数据结构优化
@@ -365,7 +365,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   std::transform(std::execution::par, v.begin(), v.end(), v.begin(),
   [](int x) { return x * 2; });
   return 0;
- True}
+ }
 ```
 
 #### 2.5.2 线程库 (C++11)
@@ -379,7 +379,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   // 处理数据
   std::cout << data[i] << " ";
   }
- True}
+ }
  int main() {
   std::vector<int> data(1000);
   for (int i = 0; i < 1000; i++) {
@@ -398,7 +398,7 @@ C++ 标准库提供了多种异常类型，位于 `<stdexcept>` 头文件中。
   t.join();
   }
   return 0;
- True}
+ }
 ```
 
 ## 3. 性能分析与调试工具
@@ -419,7 +419,7 @@ Google Benchmark 是一个用于基准测试的框架，可以测量代码的执
   }
   benchmark::DoNotOptimize(result);
   }
- True}
+ }
  BENCHMARK(BM_Square);
  BENCHMARK_MAIN();
 ```
@@ -567,7 +567,7 @@ LLDB 是 LLVM 项目的调试器，功能类似于 GDB。
  public:
   explicit FileException(const std::string& message)
   : std::runtime_error(message) {}
- True};
+ }
  // 文件操作类
  class FileHandler {
  private:
@@ -591,7 +591,7 @@ LLDB 是 LLVM 项目的调试器，功能类似于 GDB。
   }
   std::cout << "Reading from file " << filename << std::endl;
   }
- True};
+ }
  int main() {
   try {
   // 测试正常情况
@@ -613,7 +613,7 @@ LLDB 是 LLVM 项目的调试器，功能类似于 GDB。
   std::cerr << "File exception: " << e.what() << std::endl;
   }
   return 0;
- True}
+ }
 ```
 
 ### 5.2 性能优化示例
@@ -631,22 +631,22 @@ LLDB 是 LLVM 项目的调试器，功能类似于 GDB。
   func();
   auto end = std::chrono::high_resolution_clock::now();
   return std::chrono::duration<double, std::milli>(end - start).count();
- True}
+ }
  // 普通排序
  void regular_sort(std::vector<int>& v) {
   std::sort(v.begin(), v.end());
- True}
+ }
  // 并行排序
  void parallel_sort(std::vector<int>& v) {
   std::sort(std::execution::par, v.begin(), v.end());
- True}
+ }
  // 不使用 reserve
  void without_reserve() {
   std::vector<int> v;
   for (int i = 0; i < 1000000; i++) {
   v.push_back(i);
   }
- True}
+ }
  // 使用 reserve
  void with_reserve() {
   std::vector<int> v;
@@ -654,7 +654,7 @@ LLDB 是 LLVM 项目的调试器，功能类似于 GDB。
   for (int i = 0; i < 1000000; i++) {
   v.push_back(i);
   }
- True}
+ }
  int main() {
   // 测试排序性能
   std::vector<int> v1(1000000);
@@ -672,7 +672,7 @@ LLDB 是 LLVM 项目的调试器，功能类似于 GDB。
   std::cout << "With reserve: " << time_with_reserve << " ms" << std::endl;
   std::cout << "Speedup: " << time_without_reserve / time_with_reserve << "x" << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 5.3 内存管理示例
@@ -687,7 +687,7 @@ LLDB 是 LLVM 项目的调试器，功能类似于 GDB。
   std::cout << "Custom deleter called" << std::endl;
   delete p;
   }
- True};
+ }
  int main() {
   // 智能指针示例
   std::cout << "=== Unique_ptr ===" << std::endl;
@@ -735,7 +735,7 @@ LLDB 是 LLVM 项目的调试器，功能类似于 GDB。
   std::cout << "up value: " << *up << std::endl;
   } // 自动调用自定义删除器
   return 0;
- True}
+ }
 ```
 
 ---

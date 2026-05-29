@@ -17,9 +17,9 @@ updated: 2026-05-03
 ### 基本语法
 
 ```css
- @media (条件) {
+@media (条件) {
   /* 样式规则 */
- True}
+}
 ```
 
 ### 常用媒体特性
@@ -32,18 +32,18 @@ updated: 2026-05-03
 ### 断点设置
 
 ```css
- /* 移动设备 */
- @media (max-width: 767px) {
+/* 移动设备 */
+@media (max-width: 767px) {
   /* 移动设备样式 */
- True}
- /* 平板设备 */
- @media (min-width: 768px) and (max-width: 1023px) {
+}
+/* 平板设备 */
+@media (min-width: 768px) and (max-width: 1023px) {
   /* 平板设备样式 */
- True}
- /* 桌面设备 */
- @media (min-width: 1024px) {
+}
+/* 桌面设备 */
+@media (min-width: 1024px) {
   /* 桌面设备样式 */
- True}
+}
 ```
 
 ## 3. 弹性布局技术
@@ -51,24 +51,24 @@ updated: 2026-05-03
 ### 弹性网格系统
 
 ```css
- .container {
+.container {
   display: flex;
   flex-wrap: wrap;
   gap: 20px;
- True}
- .item {
+}
+.item {
   flex: 1 1 300px; /* 增长因子 1, 收缩因子 1, 基础宽度 300px */
- True}
+}
 ```
 
 ### 网格布局
 
 ```css
- .grid {
+.grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 20px;
- True}
+}
 ```
 
 ## 4. 响应式图像
@@ -76,10 +76,10 @@ updated: 2026-05-03
 ### 自适应图像
 
 ```css
- img {
+img {
   max-width: 100%;
   height: auto;
- True}
+}
 ```
 
 ### 图片源集
@@ -97,20 +97,20 @@ updated: 2026-05-03
 ### 相对字体单位
 
 ```css
- True:root {
+ :
   font-size: 16px;
- True}
+ }
  @media (max-width: 768px) {
   :root {
   font-size: 14px;
   }
- True}
+ }
  body {
   font-size: 1rem;
- True}
+ }
  h1 {
   font-size: 2.5rem;
- True}
+ }
 ```
 
 ## 6. 响应式设计最佳实践
@@ -164,43 +164,43 @@ updated: 2026-05-03
 ```
 
 ```css
- .navbar {
+.navbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 1rem;
   background: #333;
   color: white;
- True}
- .nav-links {
+}
+.nav-links {
   display: flex;
   list-style: none;
   gap: 1rem;
- True}
- .menu-toggle {
+}
+.menu-toggle {
   display: none;
   cursor: pointer;
- True}
- @media (max-width: 768px) {
+}
+@media (max-width: 768px) {
   .nav-links {
-  position: absolute;
-  top: 70px;
-  left: 0;
-  right: 0;
-  background: #333;
-  flex-direction: column;
-  align-items: center;
-  padding: 1rem;
-  gap: 1rem;
-  display: none;
+    position: absolute;
+    top: 70px;
+    left: 0;
+    right: 0;
+    background: #333;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem;
+    gap: 1rem;
+    display: none;
   }
   .nav-links.active {
-  display: flex;
+    display: flex;
   }
   .menu-toggle {
-  display: block;
+    display: block;
   }
- True}
+}
 ```
 
 ```javascript
@@ -208,7 +208,6 @@ const menuToggle = document.querySelector('.menu-toggle');
 const navLinks = document.querySelector('.nav-links');
 menuToggle.addEventListener('click', () => {
   navLinks.classList.toggle('active');
-  True;
 });
 ```
 

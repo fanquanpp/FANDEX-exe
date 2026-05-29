@@ -19,11 +19,11 @@ author: 'Anonymous'
 ```java
  if (condition) {
   // 条件为真时执行
- True} else if (anotherCondition) {
+ }
   // 另一个条件为真时执行
- True} else {
+ }
   // 所有条件都为假时执行
- True}
+ }
 ```
 
 #### 1.1.2 嵌套 `if-else`
@@ -35,11 +35,11 @@ author: 'Anonymous'
   } else {
   System.out.println("A");
   }
- True} else if (score >= 60) {
+ }
   System.out.println("B");
- True} else {
+ }
   System.out.println("C");
- True}
+ }
 ```
 
 #### 1.1.3 卫语句 (Guard Clause)
@@ -60,7 +60,7 @@ author: 'Anonymous'
   return;
   }
   // 处理订单逻辑
- True}
+ }
 ```
 
 ### 1.2 `switch` 结构
@@ -89,7 +89,7 @@ author: 'Anonymous'
   break;
   default:
   System.out.println("Invalid day");
- True}
+ }
 ```
 
 #### 1.2.2 Java 12+ `switch` 表达式
@@ -106,7 +106,7 @@ author: 'Anonymous'
   case 3, 4, 5 -> "Weekday";
   case 6, 7 -> "Weekend";
   default -> "Invalid day";
- True};
+ }
  // 使用 yield 返回复杂表达式
  int result = switch (operation) {
   case "add" -> {
@@ -119,7 +119,7 @@ author: 'Anonymous'
   System.out.println("Invalid operation");
   yield 0;
   }
- True};
+ }
 ```
 
 #### 1.2.3 Java 17+ `switch` 模式匹配
@@ -132,7 +132,7 @@ author: 'Anonymous'
   case String s -> "String: " + s;
   case null -> "null";
   default -> "Other";
- True};
+ }
 ```
 
 ## 2. 循环结构 (Iteration)
@@ -144,7 +144,7 @@ author: 'Anonymous'
 ```java
  for (int i = 0; i < 10; i++) {
   System.out.println(i);
- True}
+ }
 ```
 
 #### 2.1.2 增强型 `for` 循环 (for-each)
@@ -156,12 +156,12 @@ author: 'Anonymous'
  int[] numbers = {1, 2, 3, 4, 5};
  for (int number : numbers) {
   System.out.println(number);
- True}
+ }
  // 遍历集合
  List<String> names = List.of("Alice", "Bob", "Charlie");
  for (String name : names) {
   System.out.println(name);
- True}
+ }
 ```
 
 #### 2.1.3 带标签的 `for` 循环
@@ -174,7 +174,7 @@ author: 'Anonymous'
   }
   System.out.println(i + ", " + j);
   }
- True}
+ }
 ```
 
 ### 2.2 `while` 循环
@@ -187,7 +187,7 @@ author: 'Anonymous'
  while (i < 10) {
   System.out.println(i);
   i++;
- True}
+ }
 ```
 
 ### 2.3 `do-while` 循环
@@ -200,7 +200,7 @@ author: 'Anonymous'
  do {
   System.out.println(i);
   i++;
- True} while (i < 10);
+ }
 ```
 
 ### 2.4 循环控制
@@ -216,7 +216,7 @@ author: 'Anonymous'
   break; // 跳出循环
   }
   System.out.println(i);
- True}
+ }
 ```
 
 #### 2.4.2 `continue` 语句
@@ -230,7 +230,7 @@ author: 'Anonymous'
   continue; // 跳过偶数
   }
   System.out.println(i);
- True}
+ }
 ```
 
 ## 3. 跳转语句 (Jumps)
@@ -243,13 +243,13 @@ author: 'Anonymous'
 ```java
  public int add(int a, int b) {
   return a + b; // 返回计算结果
- True}
+ }
  public void validate(int value) {
   if (value < 0) {
   return; // 提前结束方法
   }
   // 继续执行
- True}
+ }
 ```
 
 ### 3.2 标签 (Labels)
@@ -266,7 +266,7 @@ author: 'Anonymous'
   }
   System.out.println(i + ", " + j);
   }
- True}
+ }
 ```
 
 ## 4. 实际应用案例
@@ -285,7 +285,7 @@ author: 'Anonymous'
   case 2 -> System.out.println("Subtract operation");
   case 3 -> System.out.println("Exiting");
   default -> System.out.println("Invalid choice");
- True}
+ }
 ```
 
 ### 4.2 查找元素
@@ -299,7 +299,7 @@ author: 'Anonymous'
   found = true;
   break;
   }
- True}
+ }
  System.out.println(found ? "Found" : "Not found");
 ```
 
@@ -312,7 +312,7 @@ author: 'Anonymous'
   result *= i;
   }
   return result;
- True}
+ }
 ```
 
 ## 5. 最佳实践 (Best Practices)

@@ -346,9 +346,9 @@ Python 的 versatility 使其在多个领域都有广泛应用：
  python hello.py
  # 交互式运行
  python
- True>>> print("Hello, Python!")
+ >
  Hello, Python!
- True>>> exit()
+ >
  # 使用 IPython
  ipython
  in [1]: print("Hello, Python!")

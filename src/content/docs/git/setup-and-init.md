@@ -274,9 +274,9 @@ Git 配置文件采用 INI 格式，由节（section）和键值对组成：
  # 编辑器文件
  .vscode/
  .idea/
- True*.swp
- True*.swo
- True*~
+ *
+ *
+ *
  # 编译产物
  build/
  dist/
@@ -293,10 +293,10 @@ Git 配置文件采用 INI 格式，由节（section）和键值对组成：
  .env.production.local
  # 日志文件
  logs
- True*.log
+ *
  # 数据库文件
- True*.db
- True*.sqlite
+ *
+ *
  # 临时文件
  tmp/
  temp/

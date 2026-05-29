@@ -78,7 +78,7 @@ author: 'Anonymous'
  // 使用 for 循环遍历
  for (int i = 0; i < 5; i++) {
   printf("arr[%d] = %d\n", i, arr[i]);
- True}
+ }
 ```
 
 ### 2.5 数组大小计算
@@ -118,7 +118,7 @@ author: 'Anonymous'
  int matrix[2][3] = {
   {1, 2, 3},
   {4, 5, 6}
- True};
+ }
  // 部分初始化
  int matrix[2][3] = {{1, 2}, {4}}; // 其余元素为 0
  // 自动推断行数
@@ -142,7 +142,7 @@ author: 'Anonymous'
   printf("%d ", matrix[i][j]);
   }
   printf("\n");
- True}
+ }
 ```
 
 ### 3.2 三维及以上数组
@@ -267,14 +267,14 @@ author: 'Anonymous'
   printf("%d ", arr[i]);
   }
   printf("\n");
- True}
+ }
  // 调用
  int main() {
   int numbers[] = {1, 2, 3, 4, 5};
   int size = sizeof(numbers) / sizeof(numbers[0]);
   print_array(numbers, size);
   return 0;
- True}
+ }
 ```
 
 ### 5.4 指针数组
@@ -329,11 +329,11 @@ author: 'Anonymous'
   printf("%d ", arr[i]);
   }
   printf("\n");
- True}
+ }
  int main() {
   func(5); // 传递数组大小
   return 0;
- True}
+ }
 ```
 
 ## 7. 动态数组
@@ -371,7 +371,7 @@ author: 'Anonymous'
   // 释放内存
   free(arr);
   return 0;
- True}
+ }
 ```
 
 ### 7.3 动态调整数组大小
@@ -383,7 +383,7 @@ author: 'Anonymous'
   printf("Memory reallocation failed!\n");
   free(arr);
   return 1;
- True}
+ }
  arr = new_arr;
 ```
 
@@ -404,7 +404,7 @@ author: 'Anonymous'
   }
   }
   }
- True}
+ }
  // 选择排序
  void selection_sort(int arr[], int size) {
   for (int i = 0; i < size - 1; i++) {
@@ -419,7 +419,7 @@ author: 'Anonymous'
   arr[i] = arr[min_idx];
   arr[min_idx] = temp;
   }
- True}
+ }
 ```
 
 ### 8.2 数组查找
@@ -433,7 +433,7 @@ author: 'Anonymous'
   }
   }
   return -1; // 未找到
- True}
+ }
  // 二分查找（要求数组已排序）
  int binary_search(int arr[], int low, int high, int target) {
   if (low > high) {
@@ -447,7 +447,7 @@ author: 'Anonymous'
   } else {
   return binary_search(arr, mid + 1, high, target);
   }
- True}
+ }
 ```
 
 ### 8.3 二维数组的应用
@@ -460,7 +460,7 @@ author: 'Anonymous'
   result[i][j] = a[i][j] + b[i][j];
   }
   }
- True}
+ }
  // 矩阵转置
  void matrix_transpose(int matrix[][3], int transposed[][2], int rows, int cols) {
   for (int i = 0; i < rows; i++) {
@@ -468,7 +468,7 @@ author: 'Anonymous'
   transposed[j][i] = matrix[i][j];
   }
   }
- True}
+ }
 ```
 
 ## 9. 数组的最佳实践
@@ -540,14 +540,14 @@ author: 'Anonymous'
   // 释放内存
   free(arr);
   return 0;
- True}
+ }
  // 打印数组
  void print_array(int arr[], int size) {
   for (int i = 0; i < size; i++) {
   printf("%d ", arr[i]);
   }
   printf("\n");
- True}
+ }
  // 冒泡排序
  void sort_array(int arr[], int size) {
   for (int i = 0; i < size - 1; i++) {
@@ -559,7 +559,7 @@ author: 'Anonymous'
   }
   }
   }
- True}
+ }
  // 查找最大值
  int find_max(int arr[], int size) {
   int max = arr[0];
@@ -569,7 +569,7 @@ author: 'Anonymous'
   }
   }
   return max;
- True}
+ }
  // 查找最小值
  int find_min(int arr[], int size) {
   int min = arr[0];
@@ -579,7 +579,7 @@ author: 'Anonymous'
   }
   }
   return min;
- True}
+ }
  // 计算平均值
  double calculate_average(int arr[], int size) {
   int sum = 0;
@@ -587,7 +587,7 @@ author: 'Anonymous'
   sum += arr[i];
   }
   return (double)sum / size;
- True}
+ }
 ```
 
 ## 11. 常见错误与调试

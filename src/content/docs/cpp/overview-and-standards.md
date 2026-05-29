@@ -318,7 +318,7 @@ C++ 广泛应用于需要高性能和系统级控制的领域：
  int main() {
   std::cout << "Hello, C++!" << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 6.2 现代 C++ 特性示例
@@ -354,7 +354,7 @@ C++ 广泛应用于需要高性能和系统级控制的领域：
   }
   std::cout << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 6.3 面向对象示例
@@ -367,7 +367,7 @@ C++ 广泛应用于需要高性能和系统级控制的领域：
  public:
   virtual void draw() const = 0; // 纯虚函数
   virtual ~Shape() = default;
- True};
+ }
  class Circle : public Shape {
  private:
   double radius;
@@ -376,7 +376,7 @@ C++ 广泛应用于需要高性能和系统级控制的领域：
   void draw() const override {
   std::cout << "Drawing a circle with radius " << radius << std::endl;
   }
- True};
+ }
  class Rectangle : public Shape {
  private:
   double width;
@@ -387,14 +387,14 @@ C++ 广泛应用于需要高性能和系统级控制的领域：
   std::cout << "Drawing a rectangle with width " << width
   << " and height " << height << std::endl;
   }
- True};
+ }
  int main() {
   std::unique_ptr<Shape> shape1 = std::make_unique<Circle>(5.0);
   std::unique_ptr<Shape> shape2 = std::make_unique<Rectangle>(4.0, 6.0);
   shape1->draw();
   shape2->draw();
   return 0;
- True}
+ }
 ```
 
 ## 7. 最佳实践

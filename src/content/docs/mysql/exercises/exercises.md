@@ -56,7 +56,7 @@ D. Durability - 事务之间互不干扰
  WHERE EXISTS (
   SELECT 1 FROM order_items oi
   WHERE oi.order_id = o.id AND oi.amount > 1000
- True);
+ )
  ```
 
 A. 标量子查询
@@ -73,8 +73,8 @@ D. 派生表
 ### 1. 多表联查与聚合
 给定以下表结构，编写 SQL 查询每个部门的员工数量和平均薪资，只显示员工数大于 5 的部门，按平均薪资降序排列。
 ```sql
- True-- departments: id, name
- True-- employees: id, name, department_id, salary
+ -
+ -
  ```
 
 **输入**: 部门和员工数据
@@ -109,7 +109,7 @@ D. 派生表
   amount,
   ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY amount DESC) AS rn
   FROM orders
- True) ranked
+ )
  WHERE rn <= 3
  ORDER BY user_id, rn;
  ```
@@ -117,8 +117,8 @@ D. 派生表
 ### 3. 事务与锁实战
 编写一个事务，实现安全的账户转账：从账户 A 转账 500 元到账户 B。要求：检查余额充足、使用行锁防止并发问题、转账失败时回滚。
 ```sql
- True-- accounts: id, name, balance
- True-- transactions: id, from_account, to_account, amount, created_at
+ -
+ -
  ```
 
 **输入**: A 账户 id=1，B 账户 id=2，转账金额 500
@@ -130,13 +130,13 @@ D. 派生表
  START TRANSACTION;
  SELECT balance FROM accounts WHERE id = 1 FOR UPDATE;
  UPDATE accounts SET balance = balance - 500 WHERE id = 1 AND balance >= 500;
- True-- 检查是否更新成功（受影响行数为 0 表示余额不足）
- True-- 应用层判断 ROW_COUNT()，若为 0 则 ROLLBACK
+ -
+ -
  UPDATE accounts SET balance = balance + 500 WHERE id = 2 FOR UPDATE;
  inSERT INTO transactions (from_account, to_account, amount, created_at)
  VALUES (1, 2, 500, NOW());
  commit;
- True-- 若任意步骤失败：
- True-- ROLLBACK;
+ -
+ -
  ```
 </details>

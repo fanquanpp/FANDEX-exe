@@ -97,7 +97,7 @@ D. 路由独享守卫 → 全局守卫 → 组件内守卫
   }
   watch(page, fetchData, { immediate:  });
   return { data, page, totalPages, nextPage, prevPage, loading };
- True}
+ }
  ```
 </details>
 ### 2. Pinia Store 实战
@@ -137,7 +137,7 @@ D. 路由独享守卫 → 全局守卫 → 组件内守卫
   filter.value = f;
   }
   return { todos, filter, filteredTodos, remaining, addTodo, removeTodo, toggleTodo, setFilter };
- True});
+ }
  ```
 </details>
 ### 3. 带权限的路由守卫
@@ -152,7 +152,7 @@ D. 路由独享守卫 → 全局守卫 → 组件内守卫
   admin: ['admin', 'user', 'guest'],
   user: ['user', 'guest'],
   guest: ['guest'],
- True};
+ }
  function createGuardedRouter(routes) {
   const router = createRouter({ routes });
   router.beforeEach((to, from) => {
@@ -169,6 +169,6 @@ D. 路由独享守卫 → 全局守卫 → 组件内守卫
   return true;
   });
   return router;
- True}
+ }
  ```
 </details>

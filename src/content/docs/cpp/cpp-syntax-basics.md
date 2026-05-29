@@ -107,13 +107,13 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  int score = 85;
  if (score >= 90) {
   std::cout << "优秀" << std::endl;
- True} else if (score >= 80) {
+ }
   std::cout << "良好" << std::endl;
- True} else if (score >= 60) {
+ }
   std::cout << "及格" << std::endl;
- True} else {
+ }
   std::cout << "不及格" << std::endl;
- True}
+ }
  // 嵌套 if 语句
  int x = 10, y = 20;
  if (x > 0) {
@@ -122,15 +122,15 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   } else {
   std::cout << "x 是正数，y 不是正数" << std::endl;
   }
- True}
+ }
  // 使用逻辑运算符
  int a = 5, b = 10, c = 15;
  if (a > 0 && b > 0 && c > 0) {
   std::cout << "所有数都是正数" << std::endl;
- True}
+ }
  if (a > 10 || b > 10 || c > 10) {
   std::cout << "至少有一个数大于 10" << std::endl;
- True}
+ }
 ```
 
 #### 2.1.2 switch 语句
@@ -161,7 +161,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   default:
   std::cout << "无效的日期" << std::endl;
   break;
- True}
+ }
  // 使用枚举的 switch 语句
  enum Color { RED, GREEN, BLUE };
  Color color = GREEN;
@@ -178,7 +178,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   default:
   std::cout << "未知颜色" << std::endl;
   break;
- True}
+ }
  // 使用枚举类的 switch 语句 (C++11)
  enum class Direction { UP, DOWN, LEFT, RIGHT };
  Direction dir = Direction::UP;
@@ -195,7 +195,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   case Direction::RIGHT:
   std::cout << "向右" << std::endl;
   break;
- True}
+ }
 ```
 
 ### 2.2 循环结构
@@ -206,7 +206,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  // 传统 for 循环
  for (int i = 0; i < 10; ++i) {
   std::cout << i << " ";
- True}
+ }
  std::cout << std::endl;
  // 循环变量作用域控制
  {
@@ -214,36 +214,36 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::cout << i << " ";
   }
   // i 在这里不可见
- True}
+ }
  // 多变量 for 循环
  for (int i = 0, j = 10; i < 5 && j > 5; ++i, --j) {
   std::cout << "i: " << i << ", j: " << j << std::endl;
- True}
+ }
  // 范围 for 循环 (C++11)
  std::vector<int> numbers = {1, 2, 3, 4, 5};
  for (int num : numbers) {
   std::cout << num << " ";
- True}
+ }
  std::cout << std::endl;
  // 使用 auto 的范围 for 循环 (C++11)
  for (auto num : numbers) {
   std::cout << num << " ";
- True}
+ }
  std::cout << std::endl;
  // 使用 const 引用的范围 for 循环（避免复制）
  for (const auto& num : numbers) {
   std::cout << num << " ";
- True}
+ }
  std::cout << std::endl;
  // 使用引用的范围 for 循环（可以修改元素）
  for (auto& num : numbers) {
   num *= 2; // 每个元素都乘以 2
- True}
+ }
  // 遍历数组
  int arr[] = {10, 20, 30, 40, 50};
  for (int x : arr) {
   std::cout << x << " ";
- True}
+ }
  std::cout << std::endl;
 ```
 
@@ -255,7 +255,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  while (i < 10) {
   std::cout << i << " ";
   ++i;
- True}
+ }
  std::cout << std::endl;
  // 无限循环（需要内部 break）
  i = 0;
@@ -265,7 +265,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   if (i >= 10) {
   break;
   }
- True}
+ }
  std::cout << std::endl;
  // 基于条件的 while 循环
  std::string input;
@@ -276,7 +276,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   break;
   }
   std::cout << "你输入了: " << input << std::endl;
- True}
+ }
 ```
 
 #### 2.2.3 do-while 循环
@@ -287,14 +287,14 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  do {
   std::cout << i << " ";
   ++i;
- True} while (i < 10);
+ }
  std::cout << std::endl;
  // 至少执行一次的情况
  std::string password;
  do {
   std::cout << "请输入密码: ";
   std::cin >> password;
- True} while (password != "123456");
+ }
  std::cout << "密码正确！" << std::endl;
 ```
 
@@ -309,7 +309,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   break; // 跳出循环
   }
   std::cout << i << " ";
- True}
+ }
  // 输出: 0 1 2 3 4
  // 在 while 循环中使用 break
  int j = 0;
@@ -319,7 +319,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   }
   std::cout << j << " ";
   ++j;
- True}
+ }
  // 在 switch 语句中使用 break
  int value = 2;
  switch (value) {
@@ -332,7 +332,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   case 3:
   std::cout << "值为 3" << std::endl;
   break;
- True}
+ }
 ```
 
 #### 2.3.2 continue 语句
@@ -344,7 +344,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   continue; // 跳过当前迭代
   }
   std::cout << i << " ";
- True}
+ }
  // 输出: 1 3 5 7 9
  // 在 while 循环中使用 continue
  int j = 0;
@@ -354,7 +354,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   continue;
   }
   std::cout << j << " ";
- True}
+ }
  // 在范围 for 循环中使用 continue
  std::vector<int> nums = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
  for (auto num : nums) {
@@ -362,7 +362,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   continue;
   }
   std::cout << num << " ";
- True}
+ }
 ```
 
 #### 2.3.3 return 语句
@@ -371,26 +371,26 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  // 基本 return 语句
  int add(int a, int b) {
   return a + b; // 返回值并结束函数
- True}
+ }
  // 提前返回
  bool is_even(int n) {
   if (n % 2 == 0) {
   return true; // 提前返回
   }
   return false;
- True}
+ }
  // 返回引用
  int& get_largest(int& a, int& b) {
   if (a > b) {
   return a;
   }
   return b;
- True}
+ }
  // 返回空
  void print_hello() {
   std::cout << "Hello!" << std::endl;
   return; // 可选
- True}
+ }
  int main() {
   int result = add(5, 3);
   std::cout << "5 + 3 = " << result << std::endl;
@@ -399,7 +399,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   largest = 100; // 修改返回的引用
   std::cout << "x: " << x << ", y: " << y << std::endl;
   return 0; // 结束主函数
- True}
+ }
 ```
 
 #### 2.3.4 goto 语句（不推荐使用）
@@ -415,7 +415,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   goto loop; // 跳转到标签处
   }
   return 0;
- True}
+ }
  // 使用 goto 跳出多层循环
  void nested_loops() {
   for (int i = 0; i < 10; ++i) {
@@ -428,7 +428,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   }
  exit_loops:
   std::cout << "跳出循环" << std::endl;
- True}
+ }
  // 使用 goto 进行错误处理
  bool process_data() {
   // 模拟错误
@@ -441,7 +441,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  error_handler:
   std::cout << "处理错误" << std::endl;
   return false;
- True}
+ }
 ```
 
 ## 3. 输入输出 (I/O)
@@ -474,7 +474,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::cout << "Character: " << c << std::endl;
   std::cout << "String: " << s << std::endl;
   return 0;
- True}
+ }
 ```
 
 #### 3.1.2 输入
@@ -520,7 +520,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::cin >> a >> b;
   std::cout << "You entered: " << a << " and " << b << std::endl;
   return 0;
- True}
+ }
 ```
 
 #### 3.1.3 输入验证
@@ -546,7 +546,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   }
   std::cout << "Your age is: " << age << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 3.2 格式化输出
@@ -587,7 +587,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   int num = 42;
   std::cout << "With leading zeros: " << std::setw(5) << std::setfill('0') << num << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 3.3 文件输入输出
@@ -621,7 +621,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::cerr << "Unable to open file for reading." << std::endl;
   }
   return 0;
- True}
+ }
 ```
 
 ### 3.4 字符串流
@@ -650,7 +650,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::string pi_str = format_ss.str();
   std::cout << "Formatted pi: " << pi_str << std::endl;
   return 0;
- True}
+ }
 ```
 
 ## 4. 命名空间 (Namespace)
@@ -668,7 +668,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   return a * b;
   }
   }
- True}
+ }
  int main() {
   // 使用命名空间
   int result1 = MyNamespace::add(5, 3);
@@ -676,7 +676,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   std::cout << "5 + 3 = " << result1 << std::endl;
   std::cout << "5 * 3 = " << result2 << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 4.2 using 声明
@@ -689,7 +689,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  int main() {
   cout << "Hello, C++!" << endl;
   return 0;
- True}
+ }
 ```
 
 ### 4.3 using 指令
@@ -701,7 +701,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
  int main() {
   cout << "Hello, C++!" << endl;
   return 0;
- True}
+ }
 ```
 
 ### 4.4 命名空间别名
@@ -712,13 +712,13 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   void func() {
   std::cout << "Function in long namespace" << std::endl;
   }
- True}
+ }
  // 命名空间别名
  namespace lnn = long_namespace_name;
  int main() {
   lnn::func();
   return 0;
- True}
+ }
 ```
 
 ## 5. 作用域 (Scope)
@@ -738,7 +738,7 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   // 这里无法访问 local_var
   std::cout << "global_var: " << global_var << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 5.2 函数作用域
@@ -748,12 +748,12 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   // 函数作用域
   int func_var = 100;
   std::cout << "func_var: " << func_var << std::endl;
- True}
+ }
  int main() {
   // 这里无法访问 func_var
   func();
   return 0;
- True}
+ }
 ```
 
 ### 5.3 类作用域
@@ -764,13 +764,13 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
   int public_var; // 类作用域
  private:
   int private_var; // 类作用域
- True};
+ }
  int main() {
   MyClass obj;
   obj.public_var = 10; // 可以访问
   // obj.private_var = 20; // 无法访问，private 成员
   return 0;
- True}
+ }
 ```
 
 ### 5.4 命名空间作用域
@@ -778,11 +778,11 @@ C++ 具有丰富的类型系统，分为基本类型和复合类型。
 ```cpp
  namespace MyNS {
   int ns_var = 1000; // 命名空间作用域
- True}
+ }
  int main() {
   std::cout << MyNS::ns_var << std::endl;
   return 0;
- True}
+ }
 ```
 
 ---

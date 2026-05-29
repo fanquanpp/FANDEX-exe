@@ -24,13 +24,11 @@ async function serialExecution() {
   const result1 = await fetchData('url1');
   const result2 = await fetchData('url2');
   return { result1, result2 };
-  True;
 }
 // 并行执行
 async function parallelExecution() {
   const [result1, result2] = await Promise.all([fetchData('url1'), fetchData('url2')]);
   return { result1, result2 };
-  True;
 }
 // 带超时的并行执行
 async function parallelWithTimeout() {
@@ -47,7 +45,6 @@ async function parallelWithTimeout() {
     console.error('Error:', error);
     return { error: error.message };
   }
-  True;
 }
 ```
 
@@ -58,11 +55,9 @@ async function parallelWithTimeout() {
 console.log('Start');
 setTimeout(() => {
   console.log('Timeout');
-  True;
 }, 0);
 Promise.resolve().then(() => {
   console.log('Promise');
-  True;
 });
 console.log('End');
 // 输出顺序: Start -> End -> Promise -> Timeout
@@ -79,17 +74,14 @@ const readableStream = fs.createReadStream('large-file.txt');
 // 监听数据事件
 readableStream.on('data', (chunk) => {
   console.log(`Received ${chunk.length} bytes of data`);
-  True;
 });
 // 监听结束事件
 readableStream.on('end', () => {
   console.log('End of file');
-  True;
 });
 // 监听错误事件
 readableStream.on('error', (error) => {
   console.error('Error:', error);
-  True;
 });
 ```
 
@@ -107,7 +99,6 @@ writableStream.end();
 // 监听完成事件
 writableStream.on('finish', () => {
   console.log('Write completed');
-  True;
 });
 ```
 
@@ -127,7 +118,6 @@ readableStream.pipe(gzipStream).pipe(writableStream);
 // 监听完成事件
 writableStream.on('finish', () => {
   console.log('File compressed successfully');
-  True;
 });
 ```
 
@@ -150,7 +140,6 @@ if (cluster.isMaster) {
     // 重启工作进程
     cluster.fork();
   });
-  True;
 } else {
   // 工作进程创建服务器
   http
@@ -160,7 +149,6 @@ if (cluster.isMaster) {
     })
     .listen(8080);
   console.log(`Worker ${process.pid} started`);
-  True;
 }
 ```
 
@@ -172,15 +160,12 @@ const { spawn, exec, fork } = require('child_process');
 const ls = spawn('ls', ['-la']);
 ls.stdout.on('data', (data) => {
   console.log(`stdout: ${data}`);
-  True;
 });
 ls.stderr.on('data', (data) => {
   console.error(`stderr: ${data}`);
-  True;
 });
 ls.on('close', (code) => {
   console.log(`child process exited with code ${code}`);
-  True;
 });
 // 使用 exec
 exec('ls -la', (error, stdout, stderr) => {
@@ -193,13 +178,11 @@ exec('ls -la', (error, stdout, stderr) => {
     return;
   }
   console.log(`stdout: ${stdout}`);
-  True;
 });
 // 使用 fork
 const child = fork('./child.js');
 child.on('message', (message) => {
   console.log('Received from child:', message);
-  True;
 });
 child.send({ hello: 'world' });
 ```
@@ -218,7 +201,6 @@ function createClosure() {
     console.log('Closure created');
     // 注意：这里没有引用 largeArray，所以它可以被垃圾回收
   };
-  True;
 }
 // 正确处理事件监听器
 class EventEmitter {
@@ -231,7 +213,6 @@ class EventEmitter {
       this.listeners = this.listeners.filter((l) => l !== listener);
     };
   }
-  True;
 }
 // 使用 WeakMap 存储临时数据
 const cache = new WeakMap();
@@ -242,7 +223,6 @@ function processObject(obj) {
   const result = expensiveOperation(obj);
   cache.set(obj, result);
   return result;
-  True;
 }
 ```
 
@@ -258,7 +238,6 @@ async function batchProcess(items, batchSize = 10) {
     results.push(...batchResults);
   }
   return results;
-  True;
 }
 // 限流
 class RateLimiter {
@@ -279,7 +258,6 @@ class RateLimiter {
     }
     this.requests.push(Date.now());
   }
-  True;
 }
 ```
 
@@ -294,14 +272,14 @@ class RateLimiter {
  const server = http2.createSecureServer({
   key: fs.readFileSync('server.key'),
   cert: fs.readFileSync('server.cert')
- True});
+ }
  server.on('stream', (stream, headers) => {
   stream.respond({
   ':status': 200,
   'content-type': 'text/html'
   });
   stream.end('<h1>Hello HTTP/2!</h1>');
- True});
+ }
  server.listen(8443);
 ```
 
@@ -318,7 +296,7 @@ class RateLimiter {
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
- True});
+ }
  // 使用连接池
  async function query(sql, params) {
   return new Promise((resolve, reject) => {
@@ -330,11 +308,11 @@ class RateLimiter {
   }
   });
   });
- True}
+ }
  // 关闭连接池
  function closePool() {
   pool.end();
- True}
+ }
 ```
 
 ### 2.3 缓存策略
@@ -380,7 +358,6 @@ class MemoryCache {
   clear() {
     this.cache.clear();
   }
-  True;
 }
 // 使用示例
 const cache = new MemoryCache();
@@ -395,7 +372,7 @@ const user = cache.get('user:1');
  // 创建 Redis 客户端
  const client = redis.createClient({
   url: 'redis://localhost:6379'
- True});
+ }
  client.connect();
  // 设置缓存
  async function setCache(key, value, ttl = 3600) {
@@ -406,7 +383,7 @@ const user = cache.get('user:1');
   } catch (error) {
   console.error('Redis set error:', error);
   }
- True}
+ }
  // 获取缓存
  async function getCache(key) {
   try {
@@ -416,7 +393,7 @@ const user = cache.get('user:1');
   console.error('Redis get error:', error);
   return null;
   }
- True}
+ }
  // 删除缓存
  async function deleteCache(key) {
   try {
@@ -424,7 +401,7 @@ const user = cache.get('user:1');
   } catch (error) {
   console.error('Redis delete error:', error);
   }
- True}
+ }
 ```
 
 ## 3. 安全最佳实践
@@ -446,7 +423,7 @@ const user = cache.get('user:1');
   password: Joi.string()
   .pattern(new RegExp('^[a-zA-Z0-9]{3,30}$'))
   .required()
- True});
+ }
  // 验证输入
  async function validateUser(user) {
   try {
@@ -455,7 +432,7 @@ const user = cache.get('user:1');
   } catch (error) {
   return { valid: false, error: error.details[0].message };
   }
- True}
+ }
 ```
 
 ### 3.2 防止注入攻击
@@ -467,13 +444,13 @@ const user = cache.get('user:1');
   const sql = 'SELECT * FROM users WHERE id = ?';
   const [rows] = await pool.execute(sql, [id]);
   return rows[0];
- True}
+ }
  // 使用 ORM 框架
  const Sequelize = require('sequelize');
  const sequelize = new Sequelize('database', 'username', 'password', {
   host: 'localhost',
   dialect: 'mysql'
- True});
+ }
  const User = sequelize.define('User', {
   id: {
   type: Sequelize.INTEGER,
@@ -482,11 +459,11 @@ const user = cache.get('user:1');
   },
   username: Sequelize.STRING,
   email: Sequelize.STRING
- True});
+ }
  // 安全查询
  async function findUser(id) {
   return await User.findByPk(id);
- True}
+ }
 ```
 
 ### 3.3 身份验证与授权
@@ -498,7 +475,6 @@ function generateToken(user) {
   return jwt.sign({ id: user.id, username: user.username }, process.env.JWT_SECRET, {
     expiresIn: '1h',
   });
-  True;
 }
 // 验证 JWT
 function verifyToken(token) {
@@ -507,7 +483,6 @@ function verifyToken(token) {
   } catch (error) {
     return null;
   }
-  True;
 }
 // 中间件验证
 function authenticateToken(req, res, next) {
@@ -522,7 +497,6 @@ function authenticateToken(req, res, next) {
   }
   req.user = user;
   next();
-  True;
 }
 ```
 
@@ -535,7 +509,6 @@ const assert = require('assert');
 const { describe, it } = require('mocha');
 function sum(a, b) {
   return a + b;
-  True;
 }
 describe('sum function', () => {
   it('should return the sum of two numbers', () => {
@@ -543,7 +516,6 @@ describe('sum function', () => {
     assert.strictEqual(sum(-1, 1), 0);
     assert.strictEqual(sum(0, 0), 0);
   });
-  True;
 });
 ```
 
@@ -554,7 +526,6 @@ const { performance } = require('perf_hooks');
 function fibonacci(n) {
   if (n <= 1) return n;
   return fibonacci(n - 1) + fibonacci(n - 2);
-  True;
 }
 // 性能分析
 const start = performance.now();
@@ -617,13 +588,13 @@ console.log(`Execution time: ${end - start}ms`);
   name: 'http_requests_total',
   help: 'Total number of HTTP requests',
   labelNames: ['method', 'route', 'status']
- True});
+ }
  const httpRequestDuration = new prometheus.Histogram({
   name: 'http_request_duration_seconds',
   help: 'HTTP request duration in seconds',
   labelNames: ['method', 'route'],
   buckets: [0.1, 0.5, 1, 2, 5]
- True});
+ }
  // 中间件
  function prometheusMiddleware(req, res, next) {
   const start = Date.now();
@@ -640,12 +611,12 @@ console.log(`Execution time: ${end - start}ms`);
   }, duration);
   });
   next();
- True}
+ }
  // 暴露指标端点
  app.get('/metrics', async (req, res) => {
   res.set('Content-Type', prometheus.register.contentType);
   res.end(await prometheus.register.metrics());
- True});
+ }
 ```
 
 ## 6. 项目实战
@@ -663,7 +634,6 @@ if (cluster.isMaster) {
   for (let i = 0; i < numCPUs; i++) {
     cluster.fork();
   }
-  True;
 } else {
   const app = express();
   const redis = new Redis();
@@ -695,7 +665,6 @@ if (cluster.isMaster) {
   app.listen(3000, () => {
     console.log(`Worker ${process.pid} listening on port 3000`);
   });
-  True;
 }
 ```
 

@@ -32,7 +32,7 @@ author: 'Anonymous'
 ### 1.4 IO 流的层次结构
 
 ```
- True┌─────────────────────────────────────────────────────────┐
+ ┌
  │ 字节流 │
  ├───────────────────────────────┬───────────────────────┤
  │ InputStream │ OutputStream │
@@ -40,7 +40,7 @@ author: 'Anonymous'
  │FileInput │ByteArray│Buffered│FileOutput│ByteArray│Buffered│
  │Stream │InputStream│InputStream│Stream │OutputStream│OutputStream│
  └──────────┴──────────┴────────┴──────────┴──────────┴─────┘
- True┌─────────────────────────────────────────────────────────┐
+ ┌
  │ 字符流 │
  ├───────────────────────────────┬───────────────────────┤
  │ Reader │ Writer │
@@ -48,12 +48,12 @@ author: 'Anonymous'
  │FileReader│CharArray│Buffered│FileWriter│CharArray│Buffered│
  │ │Reader │Reader │ │Writer │Writer │
  └──────────┴──────────┴────────┴──────────┴──────────┴─────┘
- True┌─────────────────────────────────────────────────────────┐
+ ┌
  │ 转换流 │
  ├───────────────────────────────┬───────────────────────┤
  │ InputStreamReader │ OutputStreamWriter│
  └───────────────────────────────┴───────────────────────┘
- True┌─────────────────────────────────────────────────────────┐
+ ┌
  │ 对象流 │
  ├───────────────────────────────┬───────────────────────┤
  │ ObjectInputStream │ ObjectOutputStream│
@@ -75,9 +75,9 @@ author: 'Anonymous'
   while ((data = fis.read()) != -1) {
   System.out.print((char) data);
   }
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 #### 2.1.2 FileOutputStream
@@ -89,9 +89,9 @@ author: 'Anonymous'
  try (FileOutputStream fos = new FileOutputStream("output.txt")) {
   String content = "Hello, FileOutputStream!";
   fos.write(content.getBytes());
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ### 2.2 缓冲字节流
@@ -108,9 +108,9 @@ author: 'Anonymous'
   while ((bytesRead = bis.read(buffer)) != -1) {
   System.out.print(new String(buffer, 0, bytesRead));
   }
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 #### 2.2.2 BufferedOutputStream
@@ -123,9 +123,9 @@ author: 'Anonymous'
   String content = "Hello, BufferedOutputStream!";
   bos.write(content.getBytes());
   bos.flush(); // 刷新缓冲区
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ## 3. 字符流 (Character Stream)
@@ -143,9 +143,9 @@ author: 'Anonymous'
   while ((data = fr.read()) != -1) {
   System.out.print((char) data);
   }
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 #### 3.1.2 FileWriter
@@ -157,9 +157,9 @@ author: 'Anonymous'
  try (FileWriter fw = new FileWriter("output.txt")) {
   String content = "Hello, FileWriter!";
   fw.write(content);
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ### 3.2 缓冲字符流
@@ -175,9 +175,9 @@ author: 'Anonymous'
   while ((line = br.readLine()) != null) {
   System.out.println(line);
   }
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 #### 3.2.2 BufferedWriter
@@ -191,9 +191,9 @@ author: 'Anonymous'
   bw.newLine(); // 写入换行
   bw.write("This is a new line.");
   bw.flush(); // 刷新缓冲区
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ## 4. 转换流
@@ -209,9 +209,9 @@ author: 'Anonymous'
   while ((data = isr.read()) != -1) {
   System.out.print((char) data);
   }
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ### 4.2 OutputStreamWriter
@@ -224,9 +224,9 @@ author: 'Anonymous'
   String content = "Hello, OutputStreamWriter!";
   osw.write(content);
   osw.flush();
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ## 5. 对象序列化 (Serialization)
@@ -252,7 +252,7 @@ author: 'Anonymous'
   private int age;
   private transient String password; // 不参与序列化
   // 构造器、getter、setter 方法
- True}
+ }
 ```
 
 #### 5.3.2 对象序列化
@@ -263,9 +263,9 @@ author: 'Anonymous'
   Person person = new Person("Alice", 25, "123456");
   oos.writeObject(person);
   System.out.println("对象序列化成功");
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 #### 5.3.3 对象反序列化
@@ -278,9 +278,9 @@ author: 'Anonymous'
   System.out.println("年龄: " + person.getAge());
   System.out.println("密码: " + person.getPassword()); // 输出 null，因为 password 是 transient
   System.out.println("对象反序列化成功");
- True} catch (IOException | ClassNotFoundException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ### 5.4 序列化的注意事项
@@ -340,9 +340,9 @@ author: 'Anonymous'
   } else {
   System.out.println("文件已存在");
   }
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 #### 6.2.2 创建目录
@@ -352,16 +352,16 @@ author: 'Anonymous'
  File dir = new File("mydir");
  if (dir.mkdir()) {
   System.out.println("目录创建成功");
- True} else {
+ }
   System.out.println("目录创建失败");
- True}
+ }
  // 创建多级目录
  File multiDir = new File("dir1/dir2/dir3");
  if (multiDir.mkdirs()) {
   System.out.println("多级目录创建成功");
- True} else {
+ }
   System.out.println("多级目录创建失败");
- True}
+ }
 ```
 
 #### 6.2.3 列出目录内容
@@ -372,13 +372,13 @@ author: 'Anonymous'
  System.out.println("目录内容:");
  for (String file : files) {
   System.out.println(file);
- True}
+ }
  // 使用 FileFilter
  File[] javaFiles = dir.listFiles((f) -> f.getName().endsWith(".java"));
  System.out.println("Java 文件:");
  for (File file : javaFiles) {
   System.out.println(file.getName());
- True}
+ }
 ```
 
 ## 7. NIO (Non-blocking I/O)
@@ -440,16 +440,16 @@ author: 'Anonymous'
   System.out.print(new String(data));
   buffer.clear();
   }
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
  // 写入文件
  try (FileChannel channel = new FileOutputStream("output.txt").getChannel()) {
   ByteBuffer buffer = ByteBuffer.wrap("Hello, FileChannel!".getBytes());
   channel.write(buffer);
- True} catch (IOException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ### 7.4 NIO 2.0 (Java 7+)
@@ -472,7 +472,7 @@ author: 'Anonymous'
  List<String> lines = Files.readAllLines(Paths.get("input.txt"), StandardCharsets.UTF_8);
  for (String line : lines) {
   System.out.println(line);
- True}
+ }
  // 写入文件
  List<String> content = Arrays.asList("Hello, Files!", "This is a test.");
  Files.write(Paths.get("output.txt"), content, StandardCharsets.UTF_8);
@@ -498,7 +498,7 @@ author: 'Anonymous'
   os.write(buffer, 0, length);
   }
   }
- True}
+ }
 ```
 
 #### 8.1.2 使用缓冲流复制
@@ -513,7 +513,7 @@ author: 'Anonymous'
   bos.write(buffer, 0, length);
   }
   }
- True}
+ }
 ```
 
 #### 8.1.3 使用 NIO 复制
@@ -524,7 +524,7 @@ author: 'Anonymous'
   FileChannel destChannel = new FileOutputStream(dest).getChannel()) {
   destChannel.transferFrom(sourceChannel, 0, sourceChannel.size());
   }
- True}
+ }
 ```
 
 ### 8.2 文本文件读写
@@ -541,7 +541,7 @@ author: 'Anonymous'
   }
   }
   return lines;
- True}
+ }
 ```
 
 #### 8.2.2 写入文本文件
@@ -554,7 +554,7 @@ author: 'Anonymous'
   bw.newLine();
   }
   }
- True}
+ }
 ```
 
 ### 8.3 目录遍历
@@ -575,7 +575,7 @@ author: 'Anonymous'
   }
   }
   }
- True}
+ }
 ```
 
 ## 9. 最佳实践

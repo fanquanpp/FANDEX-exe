@@ -105,7 +105,7 @@ author: 'Anonymous'
   }
   // System.out.println(ifVariable); // 错误：ifVariable 超出作用域
   System.out.println(localVariable); // 可以访问
- True}
+ }
 ```
 
 ### 3.2 成员变量
@@ -138,7 +138,7 @@ author: 'Anonymous'
   System.out.println("Age: " + age);
   System.out.println("Is Adult: " + isAdult);
   }
- True}
+ }
  // 使用
  Person person = new Person();
  person.display(); // 输出默认值
@@ -176,7 +176,7 @@ author: 'Anonymous'
   Counter c3 = new Counter();
   System.out.println("Count: " + Counter.count); // 输出 3
   }
- True}
+ }
 ```
 
 ## 4. 常量
@@ -221,12 +221,12 @@ author: 'Anonymous'
   this.ID = id;
   this.NAME = name;
   }
- True}
+ }
  // 局部 final 常量
  public void method() {
   final int LOCAL_CONSTANT = 100;
   // LOCAL_CONSTANT = 200; // 错误：final 变量不能修改
- True}
+ }
 ```
 
 ### 4.4 枚举常量
@@ -237,7 +237,7 @@ author: 'Anonymous'
 ```java
  public enum Day {
   MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
- True}
+ }
  // 使用
  Day today = Day.MONDAY;
  System.out.println("Today is " + today);
@@ -367,7 +367,7 @@ Java 10 引入了 `var` 关键字，用于局部变量的类型推断。编译�
   System.out.println("\nStudent 2:");
   student2.display();
   }
- True}
+ }
 ```
 
 ### 7.2 示例 2：使用常量和枚举
@@ -395,7 +395,7 @@ Java 10 引入了 `var` 关键字，用于局部变量的类型推断。编译�
   double area = PI * radius * radius;
   System.out.println("Circle Area: " + area);
   }
- True}
+ }
 ```
 
 ### 7.3 示例 3：使用 var 类型推断
@@ -433,7 +433,7 @@ Java 10 引入了 `var` 关键字，用于局部变量的类型推断。编译�
   System.out.println(entry.getKey() + ": " + entry.getValue());
   }
   }
- True}
+ }
 ```
 
 ---

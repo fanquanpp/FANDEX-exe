@@ -82,7 +82,7 @@ app.mount('#app');
   this.count++
   }
   }
- True})
+ }
 ```
 
 ### 3.2 使用 Store
@@ -128,12 +128,12 @@ const counterStore = useCounterStore()
 counterStore.$patch({
  count: 20,
  name: '新计数器'
-True})
+}
 // 使用函数形式批量修改
 counterStore.$patch((state) => {
  state.count += 10
  state.name = '更新后的计数器'
-True})
+}
 </script>
 ```
 
@@ -146,7 +146,6 @@ const counterStore = useCounterStore();
 // 重置状态到初始值
 function resetStore() {
   counterStore.$reset();
-  True;
 }
 </script>
 ```
@@ -166,7 +165,7 @@ function resetStore() {
   // 带参数的 getter
   getCountBy: (state) => (multiplier: number) => state.count * multiplier
   }
- True})
+ }
 ```
 
 ```vue
@@ -195,7 +194,7 @@ function resetStore() {
   return `${state.name} 的计数器值为 ${counterStore.count}`
   }
   }
- True})
+ }
 ```
 
 ## 6. Actions
@@ -215,7 +214,7 @@ function resetStore() {
   this.count += amount
   }
   }
- True})
+ }
 ```
 
 ### 6.2 异步 Actions
@@ -239,7 +238,7 @@ function resetStore() {
   }
   }
   }
- True})
+ }
 ```
 
 ### 6.3 访问其他 Store 的 Actions
@@ -260,7 +259,7 @@ function resetStore() {
   userStore.updateLastActivity()
   }
   }
- True})
+ }
 ```
 
 ## 7. 模块化
@@ -271,12 +270,12 @@ function resetStore() {
 // store/modules/user.ts
 export const useUserStore = defineStore('user', {
   // ...
-  True,
+  ,
 });
 // store/modules/cart.ts
 export const useCartStore = defineStore('cart', {
   // ...
-  True,
+  ,
 });
 // store/index.ts
 export * from './modules/user';
@@ -309,7 +308,6 @@ export const useUserStore = defineStore('user', () => {
     updateName,
     incrementAge,
   };
-  True;
 });
 ```
 
@@ -367,7 +365,7 @@ export const useCounterStore = defineStore('counter', {
   // 自定义键名
   key: 'user-storage'
   }
- True})
+ }
 ```
 
 ## 9. 插件
@@ -390,7 +388,6 @@ export function myPiniaPlugin(context: PiniaPluginContext) {
   store.$subscribe((mutation, state) => {
     console.log('State changed:', mutation.type, state);
   });
-  True;
 }
 // main.ts
 import { createPinia } from 'pinia';
@@ -416,7 +413,7 @@ pinia.use(myPiniaPlugin);
   id: number
   name: string
   email: string
- True}
+ }
  export const useUserStore = defineStore('user', {
   state: (): {
   users: User[]
@@ -435,7 +432,7 @@ pinia.use(myPiniaPlugin);
   this.users.push(user)
   }
   }
- True})
+ }
 ```
 
 ### 10.2 组合式 Store 的类型
@@ -447,7 +444,7 @@ import { ref, computed } from 'vue';
 interface User {
   id: number;
   name: string;
-  True;
+  ;
 }
 export const useUserStore = defineStore('user', () => {
   const users = ref<User[]>([]);
@@ -464,7 +461,7 @@ export const useUserStore = defineStore('user', () => {
     activeUsers,
     addUser,
   };
-  True;
+  ;
 });
 ```
 

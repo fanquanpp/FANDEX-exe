@@ -121,10 +121,10 @@ author: 'Anonymous'
  int *p2 = &arr[2];
  if (p1 < p2) {
   printf("p1 在 p2 的前面\n");
- True}
+ }
  if (p1 == &arr[0]) {
   printf("p1 指向数组的第一个元素\n");
- True}
+ }
 ```
 
 ### 3.4 指针差值
@@ -165,7 +165,7 @@ author: 'Anonymous'
  for (int i = 0; i < size; i++) {
   printf("%d ", *p);
   p++; // 指针移动到下一个元素
- True}
+ }
  printf("\n");
 ```
 
@@ -183,14 +183,14 @@ author: 'Anonymous'
   printf("%d ", arr[i]);
   }
   printf("\n");
- True}
+ }
  // 调用
  int main() {
   int numbers[] = {1, 2, 3, 4, 5};
   int size = sizeof(numbers) / sizeof(numbers[0]);
   print_array(numbers, size);
   return 0;
- True}
+ }
 ```
 
 ## 5. 指针数组与数组指针
@@ -330,14 +330,14 @@ author: 'Anonymous'
   }
   }
   }
- True}
+ }
  // 比较函数
  int ascending(int a, int b) {
   return a - b;
- True}
+ }
  int descending(int a, int b) {
   return b - a;
- True}
+ }
  // 使用
  int main() {
   int arr[] = {5, 2, 8, 1, 9};
@@ -347,7 +347,7 @@ author: 'Anonymous'
   // 降序排序
   sort(arr, size, descending);
   return 0;
- True}
+ }
 ```
 
 #### 7.3.2 函数指针数组
@@ -367,7 +367,7 @@ author: 'Anonymous'
   printf("%d %s %d = %d\n", a, op_names[i], b, result);
   }
   return 0;
- True}
+ }
 ```
 
 ## 8. void 指针
@@ -460,7 +460,7 @@ author: 'Anonymous'
   free(arr);
   arr = NULL; // 避免野指针
   return 0;
- True}
+ }
 ```
 
 ## 10. 常见指针错误与陷阱
@@ -571,24 +571,24 @@ author: 'Anonymous'
   // 释放内存
   free_array(arr);
   return 0;
- True}
+ }
  // 创建动态数组
  int *create_array(int size) {
   return (int *)malloc(size * sizeof(int));
- True}
+ }
  // 初始化数组为随机值
  void initialize_array(int *arr, int size) {
   for (int i = 0; i < size; i++) {
   arr[i] = rand() % 100;
   }
- True}
+ }
  // 打印数组
  void print_array(int *arr, int size) {
   for (int i = 0; i < size; i++) {
   printf("%d ", arr[i]);
   }
   printf("\n");
- True}
+ }
  // 查找最大值并返回其指针
  int *find_max(int *arr, int size) {
   int *max_ptr = arr;
@@ -598,11 +598,11 @@ author: 'Anonymous'
   }
   }
   return max_ptr;
- True}
+ }
  // 释放数组内存
  void free_array(int *arr) {
   free(arr);
- True}
+ }
 ```
 
 ## 13. 指针与其他语言的对比
@@ -633,7 +633,7 @@ author: 'Anonymous'
  typedef struct Node {
   int data;
   struct Node *next;
- True} Node;
+ }
  // 创建新节点
  Node *create_node(int data) {
   Node *new_node = (Node *)malloc(sizeof(Node));
@@ -643,7 +643,7 @@ author: 'Anonymous'
   new_node->data = data;
   new_node->next = NULL;
   return new_node;
- True}
+ }
  // 添加节点到链表末尾
  void append(Node **head, int data) {
   Node *new_node = create_node(data);
@@ -656,7 +656,7 @@ author: 'Anonymous'
   temp = temp->next;
   }
   temp->next = new_node;
- True}
+ }
  // 打印链表
  void print_list(Node *head) {
   Node *temp = head;
@@ -665,7 +665,7 @@ author: 'Anonymous'
   temp = temp->next;
   }
   printf("NULL\n");
- True}
+ }
  // 释放链表
  void free_list(Node *head) {
   Node *temp;
@@ -674,7 +674,7 @@ author: 'Anonymous'
   head = head->next;
   free(temp);
   }
- True}
+ }
 ```
 
 ### 14.2 二叉树实现
@@ -684,7 +684,7 @@ author: 'Anonymous'
   int data;
   struct TreeNode *left;
   struct TreeNode *right;
- True} TreeNode;
+ }
  // 创建新节点
  TreeNode *create_node(int data) {
   TreeNode *new_node = (TreeNode *)malloc(sizeof(TreeNode));
@@ -695,7 +695,7 @@ author: 'Anonymous'
   new_node->left = NULL;
   new_node->right = NULL;
   return new_node;
- True}
+ }
  // 插入节点
  TreeNode *insert(TreeNode *root, int data) {
   if (root == NULL) {
@@ -707,7 +707,7 @@ author: 'Anonymous'
   root->right = insert(root->right, data);
   }
   return root;
- True}
+ }
  // 中序遍历
  void inorder_traversal(TreeNode *root) {
   if (root != NULL) {
@@ -715,7 +715,7 @@ author: 'Anonymous'
   printf("%d ", root->data);
   inorder_traversal(root->right);
   }
- True}
+ }
  // 释放树
  void free_tree(TreeNode *root) {
   if (root != NULL) {
@@ -723,7 +723,7 @@ author: 'Anonymous'
   free_tree(root->right);
   free(root);
   }
- True}
+ }
 ```
 
 ---

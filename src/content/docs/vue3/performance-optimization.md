@@ -52,7 +52,6 @@ const heavyComputation = (value) => {
     result += i;
   }
   return result + value;
-  True;
 };
 </script>
 ```
@@ -117,13 +116,13 @@ const users = ref([
  { name: 'John', age: 20 },
  { name: 'Jane', age: 17 },
  { name: 'Bob', age: 25 }
-True])
+]
 const adultUserNames = computed(() => {
  return users.value
  .filter(user => user.age > 18)
  .map(user => user.name)
  .join(', ')
-True})
+}
 </script>
 ```
 
@@ -149,14 +148,14 @@ True})
   </div>
 </template>
 <script setup>
-import { ref } from 'vue'
-import VirtualList from 'vue-virtual-scroller'
+import { ref } from 'vue';
+import VirtualList from 'vue-virtual-scroller';
 const items = ref(
- Array.from({ length: 10000 }, (_, i) => ({
- id: i,
- name: `Item ${i}`
- }))
-True)
+  Array.from({ length: 10000 }, (_, i) => ({
+    id: i,
+    name: `Item ${i}`,
+  }))
+);
 </script>
 ```
 
@@ -182,7 +181,7 @@ const user = shallowRef({
  street: '123 Main St',
  city: 'New York'
  }
-True})
+}
 const updateUser = () => {
  // 直接替换整个对象
  user.value = {
@@ -193,7 +192,7 @@ const updateUser = () => {
  city: 'Boston'
  }
  }
-True}
+}
 </script>
 ```
 
@@ -213,7 +212,7 @@ import { markRaw } from 'vue'
 const config = markRaw({
  apiUrl: 'https://api.example.com',
  timeout: 5000
-True})
+}
 </script>
 ```
 
@@ -234,7 +233,6 @@ const items = ref([1, 2, 3, 4, 5]);
 const total = computed(() => {
   console.log('Computing total...');
   return items.value.reduce((sum, item) => sum + item, 0);
-  True;
 });
 </script>
 ```
@@ -259,7 +257,6 @@ const message = ref('Hello');
 const updateData = () => {
   count.value = 1;
   message.value = 'Hi';
-  True;
 };
 </script>
 ```
@@ -283,7 +280,6 @@ const dynamicComponent = ref(null);
 const loadComponent = async () => {
   const { default: Component } = await import('./HeavyComponent.vue');
   dynamicComponent.value = Component;
-  True;
 };
 </script>
 ```
@@ -328,7 +324,6 @@ onMounted(async () => {
   loading.value = false;
   // 缓存数据
   localStorage.setItem('apiData', JSON.stringify(result));
-  True;
 });
 </script>
 ```
@@ -352,7 +347,7 @@ onMounted(async () => {
   { path: '/comments' }
   ]
   })
- True})
+ }
 ```
 
 ## 5. 构建优化 | Build Optimization
@@ -376,7 +371,7 @@ onMounted(async () => {
   }
   }
   }
- True})
+ }
 ```
 
 ### 5.2 树摇 (Tree-shaking)
@@ -406,11 +401,11 @@ import { debounce, throttle } from 'lodash';
   path: '/about',
   component: () => import('../views/About.vue')
   }
- True]
+ ]
  const router = createRouter({
   history: createWebHistory(),
   routes
- True})
+ }
  export default router
 ```
 
@@ -496,18 +491,18 @@ Vue DevTools 可以帮助你分析组件的渲染性能：
   </div>
 </template>
 <script setup>
-import { ref } from 'vue'
+import { ref } from 'vue';
 const users = ref(
- Array.from({ length: 1000 }, (_, i) => ({
- id: i,
- name: `User ${i}`,
- email: `user${i}@example.com`,
- createdAt: new Date()
- }))
-True)
+  Array.from({ length: 1000 }, (_, i) => ({
+    id: i,
+    name: `User ${i}`,
+    email: `user${i}@example.com`,
+    createdAt: new Date(),
+  }))
+);
 const formatDate = (date) => {
- return date.toLocaleString()
-True}
+  return date.toLocaleString();
+};
 </script>
 ```
 
@@ -529,16 +524,16 @@ True}
   </div>
 </template>
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed } from 'vue';
 const users = ref(
- Array.from({ length: 1000 }, (_, i) => ({
- id: i,
- name: `User ${i}`,
- email: `user${i}@example.com`,
- createdAt: new Date(),
- formattedCreatedAt: new Date().toLocaleString()
- }))
-True)
+  Array.from({ length: 1000 }, (_, i) => ({
+    id: i,
+    name: `User ${i}`,
+    email: `user${i}@example.com`,
+    createdAt: new Date(),
+    formattedCreatedAt: new Date().toLocaleString(),
+  }))
+);
 </script>
 ```
 

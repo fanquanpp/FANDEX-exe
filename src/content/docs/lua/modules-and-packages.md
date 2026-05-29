@@ -18,7 +18,7 @@ updated: 2026-05-03
 在 Lua 中，模块是一种组织代码的方式，将相关的函数、变量和常量封装在一个命名空间中，避免全局命名冲突：
 
 ```lua
- True-- 创建一个简单的模块
+ -
  local MyModule = {}
  function MyModule.add(a, b)
   return a + b
@@ -34,9 +34,9 @@ updated: 2026-05-03
 使用 `require` 函数加载模块：
 
 ```lua
- True-- 加载模块
+ -
  local MyModule = require("mymodule")
- True-- 使用模块中的函数
+ -
  print(MyModule.add(1, 2)) -- 输出 3
  print(MyModule.multiply(3, 4)) -- 输出 12
 ```
@@ -48,15 +48,15 @@ updated: 2026-05-03
 最常见的模块实现方式是使用表：
 
 ```lua
- True-- mymodule.lua
+ -
  local M = {}
- True-- 私有变量
+ -
  local privateVar = "私有变量"
- True-- 私有函数
+ -
  local function privateFunction()
   return "私有函数"
  end
- True-- 公共函数
+ -
  function M.publicFunction()
   return "公共函数"
  end
@@ -71,12 +71,12 @@ updated: 2026-05-03
 使用 `setfenv` 或 `_ENV`（Lua 5.2+）创建模块环境：
 
 ```lua
- True-- mymodule.lua
+ -
  local M = {}
  local _ENV = M
- True-- 私有变量
+ -
  local privateVar = "私有变量"
- True-- 公共函数
+ -
  function add(a, b)
   return a + b
  end
@@ -108,9 +108,9 @@ LuaRocks 是 Lua 的包管理器，用于安装和管理 Lua 库：
 Lua 使用 `package.path` 来搜索模块：
 
 ```lua
- True-- 查看包搜索路径
+ -
  print(package.path)
- True-- 添加自定义搜索路径
+ -
  package.path = package.path .. ";/path/to/modules/?.lua"
 ```
 
@@ -121,9 +121,9 @@ Lua 使用 `package.path` 来搜索模块：
 `require` 函数会缓存已加载的模块，避免重复加载：
 
 ```lua
- True-- 第一次加载模块
+ -
  local M1 = require("mymodule")
- True-- 第二次加载，返回缓存的模块
+ -
  local M2 = require("mymodule")
  print(M1 == M2) -- 输出
 ```
@@ -133,9 +133,9 @@ Lua 使用 `package.path` 来搜索模块：
 如果需要重新加载模块，可以清除缓存：
 
 ```lua
- True-- 清除模块缓存
+ -
  package.loaded["mymodule"] = nil
- True-- 重新加载模块
+ -
  local M = require("mymodule")
 ```
 
@@ -144,13 +144,13 @@ Lua 使用 `package.path` 来搜索模块：
 模块可以继承其他模块：
 
 ```lua
- True-- 基础模块
+ -
  local BaseModule = {
   baseMethod = function(self)
   return "基础方法"
   end
- True}
- True-- 派生模块
+ }
+ -
  local DerivedModule = setmetatable({}, {__index = BaseModule})
  function DerivedModule.derivedMethod(self)
   return "派生方法"
@@ -163,7 +163,7 @@ Lua 使用 `package.path` 来搜索模块：
 ### 5.1 数学工具模块
 
 ```lua
- True-- mathutils.lua
+ -
  local M = {}
  function M.add(a, b)
   return a + b
@@ -192,27 +192,27 @@ Lua 使用 `package.path` 来搜索模块：
 ### 5.2 配置模块
 
 ```lua
- True-- config.lua
+ -
  local M = {}
- True-- 默认配置
+ -
  local defaultConfig = {
   host = "localhost",
   port = 8080,
   timeout = 30,
   debug = false
- True}
- True-- 加载配置
+ }
+ -
  function M.load(config)
   for k, v in pairs(config or {}) do
   defaultConfig[k] = v
   end
   return defaultConfig
  end
- True-- 获取配置
+ -
  function M.get(key)
   return defaultConfig[key]
  end
- True-- 设置配置
+ -
  function M.set(key, value)
   defaultConfig[key] = value
  end
@@ -222,7 +222,7 @@ Lua 使用 `package.path` 来搜索模块：
 ### 5.3 事件系统模块
 
 ```lua
- True-- events.lua
+ -
  local M = {}
  local listeners = {}
  function M.on(event, callback)

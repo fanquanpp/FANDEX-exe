@@ -179,7 +179,7 @@ C 语言是由 **Dennis Ritchie** 于 1972 年在贝尔实验室 (Bell Labs) 开
  int main() {
   printf("Hello, C Language!\n");
   return 0;
- True}
+ }
 ```
 
 ### 编译与运行

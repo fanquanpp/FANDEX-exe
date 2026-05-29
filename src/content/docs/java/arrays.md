@@ -55,7 +55,7 @@ author: 'Anonymous'
  // 动态初始化后赋值
  for (int i = 0; i < arr.length; i++) {
   arr[i] = i + 1;
- True}
+ }
 ```
 
 ### 1.3 数组的访问与遍历
@@ -87,7 +87,7 @@ author: 'Anonymous'
  int[] arr = {1, 2, 3, 4, 5};
  for (int i = 0; i < arr.length; i++) {
   System.out.println(arr[i]);
- True}
+ }
 ```
 
 **方法2：增强型 for 循环 (for-each)**
@@ -96,7 +96,7 @@ author: 'Anonymous'
  int[] arr = {1, 2, 3, 4, 5};
  for (int num : arr) {
   System.out.println(num);
- True}
+ }
 ```
 
 **方法3：使用 Stream API (Java 8+)**
@@ -121,7 +121,7 @@ author: 'Anonymous'
   {1, 2, 3},
   {4, 5, 6},
   {7, 8, 9}
- True};
+ }
 ```
 
 **动态初始化**
@@ -156,13 +156,13 @@ author: 'Anonymous'
   {1, 2, 3},
   {4, 5, 6},
   {7, 8, 9}
- True};
+ }
  for (int i = 0; i < matrix.length; i++) {
   for (int j = 0; j < matrix[i].length; j++) {
   System.out.print(matrix[i][j] + " ");
   }
   System.out.println();
- True}
+ }
 ```
 
 **方法2：嵌套增强型 for 循环**
@@ -173,7 +173,7 @@ author: 'Anonymous'
   System.out.print(num + " ");
   }
   System.out.println();
- True}
+ }
 ```
 
 ### 2.2 三维及以上数组
@@ -198,7 +198,7 @@ Java 支持三维及以上的多维数组，使用较少。
 
 ```
  栈 堆
- True┌───────┐ ┌─────┐
+ ┌
  │ arr │──────→ │ 10 │
  └───────┘ ├─────┤
   │ 20 │
@@ -216,7 +216,7 @@ Java 支持三维及以上的多维数组，使用较少。
 
 ```
  栈 堆
- True┌────────┐ ┌───────┐
+ ┌
  │ matrix │────────→ │ 引用1 │────→ [1, 2, 3]
  └────────┘ ├───────┤
   │ 引用2 │────→ [4, 5, 6]
@@ -281,7 +281,7 @@ Java 支持三维及以上的多维数组，使用较少。
   }
   }
   return -1;
- True}
+ }
 ```
 
 **方法2：二分查找（数组必须已排序）**
@@ -363,7 +363,7 @@ Java 支持三维及以上的多维数组，使用较少。
   int[] arr2 = {1, 2, 3};
   System.out.println(Arrays.equals(arr1, arr2));
   }
- True}
+ }
 ```
 
 ## 6. 数组与集合的关系
@@ -400,7 +400,7 @@ Java 支持三维及以上的多维数组，使用较少。
   return Arrays.stream(arr)
   .distinct()
   .toArray();
- True}
+ }
  // 示例
  int[] arr = {1, 2, 2, 3, 4, 4, 5};
  int[] unique = removeDuplicates(arr);
@@ -412,10 +412,10 @@ Java 支持三维及以上的多维数组，使用较少。
 ```java
  public static int findMax(int[] arr) {
   return Arrays.stream(arr).max().orElse(Integer.MIN_VALUE);
- True}
+ }
  public static int findMin(int[] arr) {
   return Arrays.stream(arr).min().orElse(Integer.MAX_VALUE);
- True}
+ }
  // 示例
  int[] arr = {5, 2, 8, 1, 3};
  System.out.println("Max: " + findMax(arr)); // 8
@@ -435,7 +435,7 @@ Java 支持三维及以上的多维数组，使用较少。
   left++;
   right--;
   }
- True}
+ }
  // 示例
  int[] arr = {1, 2, 3, 4, 5};
  reverse(arr);
@@ -455,13 +455,13 @@ Java 支持三维及以上的多维数组，使用较少。
   }
   }
   return transposed;
- True}
+ }
  // 示例
  int[][] matrix = {{1, 2, 3}, {4, 5, 6}};
  int[][] transposed = transpose(matrix);
  for (int[] row : transposed) {
   System.out.println(Arrays.toString(row));
- True}
+ }
  // 输出:
  // [1, 4]
  // [2, 5]

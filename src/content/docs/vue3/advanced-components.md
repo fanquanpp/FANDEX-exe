@@ -48,12 +48,12 @@ const currentComponent = ref('ComponentA');
 </template>
 <style scoped>
 .component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- margin-top: 20px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  margin-top: 20px;
+  background-color: #f9f9f9;
+}
 </style>
 ```
 
@@ -75,7 +75,6 @@ const currentComponent = ref('ComponentA');
 const message = ref('Hello from parent');
 function handleUpdate(newMessage: string) {
   message.value = newMessage;
-  True;
 }
 </script>
 ```
@@ -127,7 +126,7 @@ const AsyncComponent = defineAsyncComponent({
  errorComponent: () => <div>加载失败</div>,
  delay: 200,
  timeout: 3000
-True})
+}
 </script>
 ```
 
@@ -159,19 +158,19 @@ const AsyncComponentWithOptions = defineAsyncComponent({
  timeout: 5000,
  // 是否在组件加载失败时重试
  suspensible: false
-True})
+}
 </script>
 <style scoped>
 .loading {
- padding: 20px;
- text-align: center;
- color: #666;
-True}
+  padding: 20px;
+  text-align: center;
+  color: #666;
+}
 .error {
- padding: 20px;
- text-align: center;
- color: #e74c3c;
-True}
+  padding: 20px;
+  text-align: center;
+  color: #e74c3c;
+}
 </style>
 ```
 
@@ -208,30 +207,30 @@ const props = defineProps<{
       children?: Array<any>;
     }>;
   };
-  True;
+  ;
 }>();
 const expanded = ref(false);
 function toggleExpanded() {
   expanded.value = !expanded.value;
-  True;
+  ;
 }
 </script>
 <style scoped>
 .tree-node {
- margin-left: 20px;
-True}
+  margin-left: 20px;
+}
 .node-content {
- cursor: pointer;
- padding: 5px;
- border-radius: 4px;
- transition: background-color 0.3s;
-True}
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
 .node-content:hover {
- background-color: #f0f0f0;
-True}
+  background-color: #f0f0f0;
+}
 .node-children {
- margin-top: 5px;
-True}
+  margin-top: 5px;
+}
 </style>
 ```
 
@@ -245,45 +244,45 @@ True}
   </div>
 </template>
 <script setup lang="ts">
-import TreeView from './TreeView.vue'
+import TreeView from './TreeView.vue';
 const treeData = {
- id: 1,
- name: '根节点',
- children: [
- {
- id: 2,
- name: '子节点 1',
- children: [
- {
- id: 3,
- name: '孙节点 1-1'
- },
- {
- id: 4,
- name: '孙节点 1-2'
- }
- ]
- },
- {
- id: 5,
- name: '子节点 2',
- children: [
- {
- id: 6,
- name: '孙节点 2-1'
- }
- ]
- }
- ]
-True}
+  id: 1,
+  name: '根节点',
+  children: [
+    {
+      id: 2,
+      name: '子节点 1',
+      children: [
+        {
+          id: 3,
+          name: '孙节点 1-1',
+        },
+        {
+          id: 4,
+          name: '孙节点 1-2',
+        },
+      ],
+    },
+    {
+      id: 5,
+      name: '子节点 2',
+      children: [
+        {
+          id: 6,
+          name: '孙节点 2-1',
+        },
+      ],
+    },
+  ],
+};
 </script>
 <style scoped>
 .tree-view {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
 </style>
 ```
 
@@ -315,7 +314,7 @@ const message = ref('Hello from parent');
 import { defineProps } from 'vue';
 const props = defineProps<{
   message: string;
-  True;
+  ;
 }>();
 </script>
 <template>
@@ -326,11 +325,11 @@ const props = defineProps<{
 </template>
 <style scoped>
 .functional-component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
 </style>
 ```
 
@@ -366,11 +365,11 @@ import SlotComponent from './SlotComponent.vue';
 </template>
 <style scoped>
 .slot-component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
 </style>
 ```
 
@@ -417,24 +416,24 @@ import NamedSlotComponent from './NamedSlotComponent.vue';
 </template>
 <style scoped>
 .named-slot-component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
 .header {
- margin-bottom: 10px;
- padding-bottom: 10px;
- border-bottom: 1px solid #eee;
-True}
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee;
+}
 .content {
- margin-bottom: 10px;
- padding-bottom: 10px;
- border-bottom: 1px solid #eee;
-True}
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee;
+}
 .footer {
- margin-top: 10px;
-True}
+  margin-top: 10px;
+}
 </style>
 ```
 
@@ -456,9 +455,9 @@ import ScopedSlotComponent from './ScopedSlotComponent.vue';
 </script>
 <style scoped>
 .custom-item {
- padding: 5px;
- border-bottom: 1px solid #eee;
-True}
+  padding: 5px;
+  border-bottom: 1px solid #eee;
+}
 </style>
 ```
 
@@ -481,20 +480,20 @@ const items = ref([
  { id: 1, name: '项目 1' },
  { id: 2, name: '项目 2' },
  { id: 3, name: '项目 3' }
-True])
+]
 </script>
 <style scoped>
 .scoped-slot-component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
 ul {
- list-style: none;
- padding: 0;
- margin: 0;
-True}
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
 </style>
 ```
 
@@ -518,24 +517,24 @@ import { ref } from 'vue';
 const props = defineProps<{
   title: string;
   message: string;
-  True;
+  ;
 }>();
 const emit = defineEmits<{
   (e: 'click'): void;
-  True;
+  ;
 }>();
 function handleClick() {
   emit('click');
-  True;
+  ;
 }
 </script>
 <style scoped>
 .base-component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
 </style>
 ```
 
@@ -555,16 +554,15 @@ const title = ref('扩展组件');
 const message = ref('这是扩展组件的消息');
 function handleBaseClick() {
   console.log('Base component clicked');
-  True;
 }
 </script>
 <style scoped>
 .extended-component {
- padding: 20px;
- border: 1px solid #42b983;
- border-radius: 8px;
- background-color: #f0f9f0;
-True}
+  padding: 20px;
+  border: 1px solid #42b983;
+  border-radius: 8px;
+  background-color: #f0f9f0;
+}
 </style>
 ```
 
@@ -590,15 +588,15 @@ provide('message', 'Hello from parent')
 provide('user', {
  name: '张三',
  age: 20
-True})
+}
 </script>
 <style scoped>
 .parent-component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
 </style>
 ```
 
@@ -623,12 +621,12 @@ const injectedUser = inject('user', { name: '默认用户', age: 0 });
 </script>
 <style scoped>
 .child-component {
- padding: 20px;
- border: 1px solid #3498db;
- border-radius: 8px;
- background-color: #f0f8ff;
- margin-top: 10px;
-True}
+  padding: 20px;
+  border: 1px solid #3498db;
+  border-radius: 8px;
+  background-color: #f0f8ff;
+  margin-top: 10px;
+}
 </style>
 ```
 
@@ -650,12 +648,12 @@ const injectedUser = inject('user', { name: '默认用户', age: 0 });
 </script>
 <style scoped>
 .grandchild-component {
- padding: 20px;
- border: 1px solid #e74c3c;
- border-radius: 8px;
- background-color: #fff0f0;
- margin-top: 10px;
-True}
+  padding: 20px;
+  border: 1px solid #e74c3c;
+  border-radius: 8px;
+  background-color: #fff0f0;
+  margin-top: 10px;
+}
 </style>
 ```
 
@@ -687,47 +685,40 @@ const message = ref('初始消息');
 onBeforeMount(() => {
   status.value = '挂载前';
   console.log('组件挂载前');
-  True;
 });
 // 组件挂载后
 onMounted(() => {
   status.value = '已挂载';
   console.log('组件挂载后');
-  True;
 });
 // 组件更新前
 onBeforeUpdate(() => {
   console.log('组件更新前');
-  True;
 });
 // 组件更新后
 onUpdated(() => {
   console.log('组件更新后');
-  True;
 });
 // 组件卸载前
 onBeforeUnmount(() => {
   status.value = '卸载前';
   console.log('组件卸载前');
-  True;
 });
 // 组件卸载后
 onUnmounted(() => {
   console.log('组件卸载后');
-  True;
 });
 function updateMessage() {
   message.value = '更新后的消息';
-  True;
 }
 </script>
 <style scoped>
 .lifecycle-component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
 </style>
 ```
 
@@ -753,11 +744,11 @@ import BuggyComponent from './BuggyComponent.vue';
 </script>
 <style scoped>
 .error-boundary {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
 </style>
 ```
 
@@ -781,22 +772,20 @@ const error = ref<Error | null>(null);
 onErrorCaptured((err) => {
   hasError.value = error.value = err as Error;
   return; // 阻止错误继续传播
-  True;
 });
 function resetError() {
   hasError.value = false;
   error.value = null;
-  True;
 }
 </script>
 <style scoped>
 .error-message {
- padding: 20px;
- border: 1px solid #e74c3c;
- border-radius: 8px;
- background-color: #fff0f0;
- color: #e74c3c;
-True}
+  padding: 20px;
+  border: 1px solid #e74c3c;
+  border-radius: 8px;
+  background-color: #fff0f0;
+  color: #e74c3c;
+}
 </style>
 ```
 
@@ -813,16 +802,15 @@ True}
 function triggerError() {
   // 故意触发错误
   throw new Error('这是一个测试错误');
-  True;
 }
 </script>
 <style scoped>
 .buggy-component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
- background-color: #f9f9f9;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+}
 </style>
 ```
 

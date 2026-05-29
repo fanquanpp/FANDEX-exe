@@ -21,7 +21,6 @@ author: 'Anonymous'
 function functionName(parameters) {
   // 函数体
   return value; // 可选
-  True;
 }
 ```
 
@@ -36,7 +35,6 @@ function functionName(parameters) {
 console.log(add(2, 3)); // 输出: 5
 function add(a, b) {
   return a + b;
-  True;
 }
 ```
 
@@ -48,7 +46,6 @@ function add(a, b) {
 const functionName = function (parameters) {
   // 函数体
   return value; // 可选
-  True;
 };
 ```
 
@@ -64,7 +61,6 @@ const functionName = function (parameters) {
 // console.log(subtract(5, 2)); // 错误: subtract is not defined
 const subtract = function (a, b) {
   return a - b;
-  True;
 };
 console.log(subtract(5, 2)); // 输出: 3
 ```
@@ -78,12 +74,10 @@ console.log(subtract(5, 2)); // 输出: 3
 const functionName = (parameters) => {
   // 函数体
   return value;
-  True;
 };
 // 单个参数可以省略括号
 const double = (num) => {
   return num * 2;
-  True;
 };
 // 单个表达式可以省略花括号和 return
 const triple = (num) => num * 3;
@@ -102,22 +96,22 @@ const multiply = (a, b) => a * b;
   **示例**：
 
 ```javascript
- // 箭头函数作为回调
- const numbers = [1, 2, 3, 4, 5];
- const doubled = numbers.map(num => num * 2);
- console.log(doubled); // 输出: [2, 4, 6, 8, 10]
- // 箭头函数与 this
- const obj = {
+// 箭头函数作为回调
+const numbers = [1, 2, 3, 4, 5];
+const doubled = numbers.map((num) => num * 2);
+console.log(doubled); // 输出: [2, 4, 6, 8, 10]
+// 箭头函数与 this
+const obj = {
   name: '张三',
-  regularFunction: function() {
-  console.log(this.name); // 输出: 张三
+  regularFunction: function () {
+    console.log(this.name); // 输出: 张三
   },
   arrowFunction: () => {
-  console.log(this.name); // 输出: undefined (继承全局作用域的 this)
-  }
- True};
- obj.regularFunction();
- obj.arrowFunction();
+    console.log(this.name); // 输出: undefined (继承全局作用域的 this)
+  },
+};
+obj.regularFunction();
+obj.arrowFunction();
 ```
 
 ### 1.4 函数参数
@@ -127,7 +121,6 @@ const multiply = (a, b) => a * b;
 ```javascript
 function greet(name = '世界') {
   return `Hello, ${name}!`;
-  True;
 }
 console.log(greet()); // 输出: Hello, 世界!
 console.log(greet('张三')); // 输出: Hello, 张三!
@@ -138,7 +131,6 @@ console.log(greet('张三')); // 输出: Hello, 张三!
 ```javascript
 function sum(...numbers) {
   return numbers.reduce((total, num) => total + num, 0);
-  True;
 }
 console.log(sum(1, 2, 3, 4, 5)); // 输出: 15
 ```
@@ -148,7 +140,6 @@ console.log(sum(1, 2, 3, 4, 5)); // 输出: 15
 ```javascript
 function printUser({ name, age }) {
   console.log(`Name: ${name}, Age: ${age}`);
-  True;
 }
 const user = { name: '张三', age: 30 };
 printUser(user); // 输出: Name: 张三, Age: 30
@@ -165,7 +156,6 @@ printUser(user); // 输出: Name: 张三, Age: 30
 const globalVar = '全局变量';
 function test() {
   console.log(globalVar); // 可以访问全局变量
-  True;
 }
 test(); // 输出: 全局变量
 console.log(globalVar); // 可以访问全局变量
@@ -180,7 +170,6 @@ console.log(globalVar); // 可以访问全局变量
 function test() {
   const localVar = '局部变量';
   console.log(localVar); // 可以访问局部变量
-  True;
 }
 test(); // 输出: 局部变量
 // console.log(localVar); // 错误: localVar is not defined
@@ -197,7 +186,6 @@ if (true) {
   const constBlockVar = '常量块级变量';
   console.log(blockVar); // 可以访问
   console.log(constBlockVar); // 可以访问
-  True;
 }
 // console.log(blockVar); // 错误: blockVar is not defined
 // console.log(constBlockVar); // 错误: constBlockVar is not defined
@@ -220,7 +208,6 @@ function outer() {
   }
   inner();
   // console.log(innerVar); // 错误: innerVar is not defined
-  True;
 }
 outer();
 // console.log(outerVar); // 错误: outerVar is not defined
@@ -239,7 +226,6 @@ function createCounter() {
   return function () {
     return ++count;
   };
-  True;
 }
 const counter = createCounter();
 console.log(counter()); // 输出: 1
@@ -275,7 +261,6 @@ function createCounter(initialValue = 0) {
       return count;
     },
   };
-  True;
 }
 const counter = createCounter(10);
 console.log(counter.increment()); // 输出: 11
@@ -306,7 +291,6 @@ const mathModule = (function () {
       return PI;
     },
   };
-  True;
 })();
 console.log(mathModule.add(5, 3)); // 输出: 8
 console.log(mathModule.subtract(5, 3)); // 输出: 2
@@ -323,7 +307,6 @@ function createButtonClickHandler() {
     clickCount++;
     console.log(`按钮被点击了 ${clickCount} 次`);
   };
-  True;
 }
 const button = document.createElement('button');
 button.textContent = '点击我';
@@ -344,14 +327,12 @@ for (var i = 0; i < 5; i++) {
   setTimeout(function () {
     console.log(i); // 输出: 5, 5, 5, 5, 5
   }, 1000);
-  True;
 }
 // 解决方案 1: 使用 let
 for (let i = 0; i < 5; i++) {
   setTimeout(function () {
     console.log(i); // 输出: 0, 1, 2, 3, 4
   }, 1000);
-  True;
 }
 // 解决方案 2: 使用立即执行函数表达式 (IIFE)
 for (var i = 0; i < 5; i++) {
@@ -360,7 +341,6 @@ for (var i = 0; i < 5; i++) {
       console.log(j); // 输出: 0, 1, 2, 3, 4
     }, 1000);
   })(i);
-  True;
 }
 ```
 
@@ -372,20 +352,20 @@ for (var i = 0; i < 5; i++) {
 **示例**：
 
 ```javascript
- function test() {
+function test() {
   console.log(this);
- True}
- // 直接调用，this 指向全局对象 (window)
- test();
- // 作为对象方法调用，this 指向对象
- const obj = {
+}
+// 直接调用，this 指向全局对象 (window)
+test();
+// 作为对象方法调用，this 指向对象
+const obj = {
   name: '张三',
-  test: test
- True};
- obj.test(); // this 指向 obj
- // 使用 call 或 apply 显式绑定 this
- const anotherObj = { name: '李四' };
- test.call(anotherObj); // this 指向 anotherObj
+  test: test,
+};
+obj.test(); // this 指向 obj
+// 使用 call 或 apply 显式绑定 this
+const anotherObj = { name: '李四' };
+test.call(anotherObj); // this 指向 anotherObj
 ```
 
 ### 4.2 箭头函数中的 `this`
@@ -394,21 +374,21 @@ for (var i = 0; i < 5; i++) {
 **示例**：
 
 ```javascript
- const obj = {
+const obj = {
   name: '张三',
-  regularFunction: function() {
-  console.log(this.name); // 输出: 张三
-  // 普通函数，this 指向全局对象
-  setTimeout(function() {
-  console.log(this.name); // 输出: undefined
-  }, 1000);
-  // 箭头函数，继承父级作用域的 this
-  setTimeout(() => {
-  console.log(this.name); // 输出: 张三
-  }, 1000);
-  }
- True};
- obj.regularFunction();
+  regularFunction: function () {
+    console.log(this.name); // 输出: 张三
+    // 普通函数，this 指向全局对象
+    setTimeout(function () {
+      console.log(this.name); // 输出: undefined
+    }, 1000);
+    // 箭头函数，继承父级作用域的 this
+    setTimeout(() => {
+      console.log(this.name); // 输出: 张三
+    }, 1000);
+  },
+};
+obj.regularFunction();
 ```
 
 ### 4.3 构造函数中的 `this`
@@ -423,7 +403,6 @@ function Person(name, age) {
   this.greet = function () {
     console.log(`Hello, my name is ${this.name}`);
   };
-  True;
 }
 const person = new Person('张三', 30);
 console.log(person.name); // 输出: 张三
@@ -440,7 +419,6 @@ person.greet(); // 输出: Hello, my name is 张三
 ```javascript
 function greet(greeting) {
   console.log(`${greeting}, ${this.name}!`);
-  True;
 }
 const person = { name: '张三' };
 greet.call(person, 'Hello'); // 输出: Hello, 张三!
@@ -454,7 +432,6 @@ greet.call(person, 'Hello'); // 输出: Hello, 张三!
 ```javascript
 function sum(a, b, c) {
   return a + b + c;
-  True;
 }
 const numbers = [1, 2, 3];
 const result = sum.apply(null, numbers);
@@ -469,7 +446,6 @@ console.log(result); // 输出: 6
 ```javascript
 function greet() {
   console.log(`Hello, ${this.name}!`);
-  True;
 }
 const person = { name: '张三' };
 const boundGreet = greet.bind(person);
@@ -517,13 +493,11 @@ function debounce(func, delay) {
       func.apply(this, args);
     }, delay);
   };
-  True;
 }
 // 使用示例
 const debouncedSearch = debounce(function (query) {
   console.log('搜索:', query);
   // 实际的搜索逻辑
-  True;
 }, 300);
 // 输入时会防抖，只有停止输入 300ms 后才会执行搜索
 debouncedSearch('JavaScript');
@@ -546,13 +520,11 @@ function throttle(func, limit) {
       }, limit);
     }
   };
-  True;
 }
 // 使用示例
 const throttledScroll = throttle(function () {
   console.log('滚动事件触发');
   // 实际的滚动处理逻辑
-  True;
 }, 1000);
 // 滚动时会节流，每 1000ms 最多执行一次
 window.addEventListener('scroll', throttledScroll);
@@ -594,7 +566,6 @@ const calculator = (function () {
       return NaN;
     },
   };
-  True;
 })();
 // 使用示例
 console.log(calculator.add(5, 3)); // 输出: 8

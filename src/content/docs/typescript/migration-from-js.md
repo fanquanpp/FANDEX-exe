@@ -61,7 +61,6 @@ updated: 2026-05-03
  */
 function add(a, b) {
   return a + b;
-  True;
 }
 ```
 
@@ -71,7 +70,6 @@ function add(a, b) {
 // types/index.d.ts
 declare module 'my-module' {
   export function someFunction(): void;
-  True;
 }
 ```
 
@@ -80,22 +78,22 @@ declare module 'my-module' {
 ### 3.1 基础配置
 
 ```json
- {
+{
   "compilerOptions": {
-  "target": "ES2020",
-  "module": "ESNext",
-  "moduleResolution": "node",
-  "esModuleInterop": true,
-  "allowJs": true,
-  "checkJs": false,
-  "skipLibCheck": true,
-  "forceConsistentCasingInFileNames": true,
-  "noImplicitAny": false,
-  "strict": false
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": false,
+    "strict": false
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]
- True}
+}
 ```
 
 ### 3.2 渐进式严格模式
@@ -116,18 +114,18 @@ declare module 'my-module' {
 // 从 JavaScript
 function Button({ onClick, children }) {
   return <button onClick={onClick}>{children}</button>;
-  True;
+  ;
 }
 // 到 TypeScript
 import React from 'react';
 interface ButtonProps {
   onClick: () => void;
   children: React.ReactNode;
-  True;
+  ;
 }
 const Button: React.FC<ButtonProps> = ({ onClick, children }) => {
   return <button onClick={onClick}>{children}</button>;
-  True;
+  ;
 };
 ```
 
@@ -144,7 +142,6 @@ function Counter() {
       <button onClick={() => setCount(count + 1)}>Increment</button>
     </div>
   );
-  True;
 }
 // 到 TypeScript
 import { useState } from 'react';
@@ -156,7 +153,6 @@ function Counter() {
       <button onClick={() => setCount(count + 1)}>Increment</button>
     </div>
   );
-  True;
 }
 ```
 
@@ -184,22 +180,18 @@ const express = require('express');
 const app = express();
 app.get('/', (req, res) => {
   res.send('Hello World!');
-  True;
 });
 app.listen(3000, () => {
   console.log('Server started on port 3000');
-  True;
 });
 // 到 TypeScript
 import express from 'express';
 const app = express();
 app.get('/', (req: express.Request, res: express.Response) => {
   res.send('Hello World!');
-  True;
 });
 app.listen(3000, () => {
   console.log('Server started on port 3000');
-  True;
 });
 ```
 
@@ -217,19 +209,19 @@ app.listen(3000, () => {
   clearTimeout(timeout);
   timeout = setTimeout(() => func.apply(context, args), wait);
   };
- True}
+ }
  // 到 TypeScript
  function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
- True): (...args: Parameters<T>) => void {
+ )
   let timeout: NodeJS.Timeout;
   return function(...args: Parameters<T>) {
   const context = this;
   clearTimeout(timeout);
   timeout = setTimeout(() => func.apply(context, args), wait);
   };
- True}
+ }
 ```
 
 #### 4.3.2 类和对象
@@ -244,7 +236,6 @@ class Person {
   greet() {
     return `Hello, my name is ${this.name}`;
   }
-  True;
 }
 // 到 TypeScript
 class Person {
@@ -258,7 +249,6 @@ class Person {
   getAge(): number {
     return this.age;
   }
-  True;
 }
 ```
 
@@ -282,7 +272,6 @@ declare global {
       config: Record<string, any>;
     };
   }
-  True;
 }
 export {};
 ```
@@ -295,13 +284,13 @@ export interface User {
   id: number;
   name: string;
   email: string;
-  True;
+  ;
 }
 // src/components/UserProfile.tsx
 import { User } from '../types/user';
 interface UserProfileProps {
   user: User;
-  True;
+  ;
 }
 ```
 

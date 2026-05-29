@@ -77,7 +77,7 @@ f(n) = omega(g(n)) 当且仅当对任意正常数c，存在n0，使得对所有 
 
 ```
  n值 | O(1) O(logn) O(n) O(nlogn) O(n^2) O(2^n)
- True-------|--------------------------------------------------
+ -
  1 | 1 0 1 0 1 2
  2 | 1 1 2 2 4 4
  4 | 1 2 4 8 16 16
@@ -244,7 +244,7 @@ f(n) = omega(g(n)) 当且仅当对任意正常数c，存在n0，使得对所有 
   workPerLevel.push_back(numNodes * workPerNode);
   }
   return workPerLevel;
- True}
+ }
  int main() {
   auto fMergeSort = [](double n) -> double { return n; };
   auto work = analyzeRecurrence(2, 2, fMergeSort, 1024);
@@ -255,7 +255,7 @@ f(n) = omega(g(n)) 当且仅当对任意正常数c，存在n0，使得对所有 
   }
   cout << "Total: " << total << endl;
   return 0;
- True}
+ }
 ```
 
 ---
@@ -323,7 +323,7 @@ f(n) = omega(g(n)) 当且仅当对任意正常数c，存在n0，使得对所有 
   }
   int operator[](int i) const { return data[i]; }
   int size() const { return sz; }
- True};
+ }
 ```
 
 ### 5.3 核算法（Accounting Method）

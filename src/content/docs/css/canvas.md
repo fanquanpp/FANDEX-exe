@@ -173,7 +173,6 @@ img.onload = function () {
   ctx.drawImage(img, 0, 150, 200, 100);
   // 绘制图像的一部分
   ctx.drawImage(img, 100, 100, 200, 100, 200, 150, 200, 100);
-  True;
 };
 ```
 
@@ -195,7 +194,6 @@ img.onload = function () {
   ctx.drawImage(img, 0, 0);
   // 恢复之前的状态
   ctx.restore();
-  True;
 };
 ```
 
@@ -232,7 +230,6 @@ function animate() {
   // ...
   // 请求下一帧
   requestAnimationFrame(animate);
-  True;
 }
 // 开始动画
 animate();
@@ -265,7 +262,6 @@ function animate() {
   }
   // 请求下一帧
   requestAnimationFrame(animate);
-  True;
 }
 // 开始动画
 animate();
@@ -281,7 +277,6 @@ let lastY = 0;
 canvas.addEventListener('mousedown', (e) => {
   isDrawing = true;
   [lastX, lastY] = [e.offsetX, e.offsetY];
-  True;
 });
 // 鼠标移动事件
 canvas.addEventListener('mousemove', (e) => {
@@ -293,17 +288,14 @@ canvas.addEventListener('mousemove', (e) => {
   ctx.lineWidth = 2;
   ctx.stroke();
   [lastX, lastY] = [e.offsetX, e.offsetY];
-  True;
 });
 // 鼠标释放事件
 canvas.addEventListener('mouseup', () => {
   isDrawing = false;
-  True;
 });
 // 鼠标离开事件
 canvas.addEventListener('mouseout', () => {
   isDrawing = false;
-  True;
 });
 ```
 

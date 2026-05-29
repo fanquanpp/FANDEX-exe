@@ -32,16 +32,16 @@ updated: 2026-05-03
 #### 1.2.2 类图
 
 ```
- True+----------------+ +----------------+ +----------------+ +----------------+
+ +
  | FileManager |<----| CommandParser |---->| UI |<----| ErrorHandler |
- True+----------------+ +----------------+ +----------------+ +----------------+
+ +
  | - list_dir() | | - parse() | | - display() | | - handle() |
  | - create_file()| | - get_command()| | - get_input() | | - log_error() |
  | - delete_file()| +----------------+ +----------------+ +----------------+
  | - move_file() |
  | - copy_file() |
  | - create_dir() |
- True+----------------+
+ +
 ```
 
 ### 1.3 核心实现
@@ -155,7 +155,7 @@ updated: 2026-05-03
   throw;
   }
   }
- True};
+ }
 ```
 
 #### 1.3.2 CommandParser 类
@@ -211,7 +211,7 @@ updated: 2026-05-03
   }
   return tokens;
   }
- True};
+ }
 ```
 
 #### 1.3.3 UI 类
@@ -251,7 +251,7 @@ updated: 2026-05-03
   void display_success(const std::string& message) {
   std::cout << "Success: " << message << std::endl;
   }
- True};
+ }
 ```
 
 #### 1.3.4 ErrorHandler 类
@@ -282,7 +282,7 @@ updated: 2026-05-03
   // Ignore logging errors
   }
   }
- True};
+ }
 ```
 
 #### 1.3.5 主函数
@@ -364,7 +364,7 @@ updated: 2026-05-03
   }
   }
   return 0;
- True}
+ }
 ```
 
 ### 1.4 构建与部署
@@ -383,7 +383,7 @@ updated: 2026-05-03
   CommandParser.cpp
   UI.cpp
   ErrorHandler.cpp
- True)
+ )
  # 包含头文件目录
  target_include_directories(FileManager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
  # 链接必要的库
@@ -422,23 +422,23 @@ updated: 2026-05-03
  # 运行
  ./FileManager
  # 测试命令
- True> ls
- True> touch test.txt
- True> ls
- True> cat test.txt
- True> cp test.txt test_copy.txt
- True> ls
- True> mv test_copy.txt test_move.txt
- True> ls
- True> rm test.txt
- True> ls
- True> mkdir test_dir
- True> ls
- True> rm test_move.txt
- True> rmdir test_dir
- True> ls
- True> help
- True> exit
+ >
+ >
+ >
+ >
+ >
+ >
+ >
+ >
+ >
+ >
+ >
+ >
+ >
+ >
+ >
+ >
+ >
 ```
 
 #### 1.5.2 异常测试
@@ -550,7 +550,7 @@ updated: 2026-05-03
   request_handler_.handle(client_socket);
   close(client_socket);
   }
- True};
+ }
 ```
 
 #### 2.3.2 ThreadPool 类
@@ -615,7 +615,7 @@ updated: 2026-05-03
   std::mutex mutex_;
   std::condition_variable condition_;
   std::atomic<bool> stop_;
- True};
+ }
 ```
 
 #### 2.3.3 RequestHandler 类
@@ -687,7 +687,7 @@ updated: 2026-05-03
   if (path.ends_with(".gif")) return "image/gif";
   return "text/plain";
   }
- True};
+ }
 ```
 
 #### 2.3.4 FileServer 类
@@ -725,7 +725,7 @@ updated: 2026-05-03
   }
  private:
   std::string root_dir_;
- True};
+ }
 ```
 
 #### 2.3.5 主函数
@@ -740,7 +740,7 @@ updated: 2026-05-03
   HTTPServer server(port, 4);
   server.start();
   return 0;
- True}
+ }
 ```
 
 ### 2.4 构建与部署
@@ -759,7 +759,7 @@ updated: 2026-05-03
   ThreadPool.cpp
   RequestHandler.cpp
   FileServer.cpp
- True)
+ )
  # 包含头文件目录
  target_include_directories(HTTPServer PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
  # 链接必要的库
@@ -900,7 +900,7 @@ updated: 2026-05-03
   std::string db_file_;
   std::unordered_map<std::string, std::string> data_;
   std::mutex mutex_;
- True};
+ }
 ```
 
 #### 3.3.2 主函数
@@ -946,7 +946,7 @@ updated: 2026-05-03
   }
   }
   return 0;
- True}
+ }
 ```
 
 ### 3.4 构建与部署
@@ -962,7 +962,7 @@ updated: 2026-05-03
  add_executable(SimpleDatabase
   main.cpp
   Database.cpp
- True)
+ )
  # 包含头文件目录
  target_include_directories(SimpleDatabase PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 ```
@@ -979,17 +979,17 @@ updated: 2026-05-03
  # 运行
  ./SimpleDatabase
  # 测试命令
- True> set name John
- True> get name
- True> set age 30
- True> get age
- True> del name
- True> get name
- True> exit
+ >
+ >
+ >
+ >
+ >
+ >
+ >
  # 再次运行，测试持久化
  ./SimpleDatabase
- True> get age
- True> exit
+ >
+ >
 ```
 
 ## 4. 最佳实践

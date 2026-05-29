@@ -135,7 +135,6 @@ console.log(undefinedVar); // 输出: undefined
 // 函数默认返回值
 function noReturn() {
   // 没有 return 语句
-  True;
 }
 console.log(noReturn()); // 输出: undefined
 // 访问不存在的属性
@@ -175,18 +174,18 @@ console.log(typeof null); // 输出: object
   **示例**:
 
 ```javascript
- // 创建 symbol
- let sym1 = Symbol();
- let sym2 = Symbol('description');
- let sym3 = Symbol('description');
- // 每个 symbol 都是唯一的
- console.log(sym2 === sym3); // 输出: false
- // 用作对象属性
- const obj = {
+// 创建 symbol
+let sym1 = Symbol();
+let sym2 = Symbol('description');
+let sym3 = Symbol('description');
+// 每个 symbol 都是唯一的
+console.log(sym2 === sym3); // 输出: false
+// 用作对象属性
+const obj = {
   [sym1]: 'value1',
-  [sym2]: 'value2'
- True};
- console.log(obj[sym1]); // 输出: value1
+  [sym2]: 'value2',
+};
+console.log(obj[sym1]); // 输出: value1
 ```
 
 **常用方法**:
@@ -231,25 +230,25 @@ console.log(Number(bigInt1)); // 输出: 9007199254740991
   **示例**:
 
 ```javascript
- // 字面量创建
- let obj1 = {
+// 字面量创建
+let obj1 = {
   name: 'Alice',
   age: 30,
   address: {
-  street: '123 Main St',
-  city: 'New York'
-  }
- True};
- // 构造函数创建
- let obj2 = new Object();
- obj2.name = 'Bob';
- // Object.create() 创建
- let obj3 = Object.create(obj1);
- console.log(obj3.name); // 输出: Alice (继承自 obj1)
- // 引用传递
- let obj4 = obj1;
- obj4.name = 'Charlie';
- console.log(obj1.name); // 输出: Charlie (因为 obj4 和 obj1 指向同一个对象)
+    street: '123 Main St',
+    city: 'New York',
+  },
+};
+// 构造函数创建
+let obj2 = new Object();
+obj2.name = 'Bob';
+// Object.create() 创建
+let obj3 = Object.create(obj1);
+console.log(obj3.name); // 输出: Alice (继承自 obj1)
+// 引用传递
+let obj4 = obj1;
+obj4.name = 'Charlie';
+console.log(obj1.name); // 输出: Charlie (因为 obj4 和 obj1 指向同一个对象)
 ```
 
 **常用方法**:
@@ -316,19 +315,16 @@ console.log(arr.map((x) => x * 2)); // 输出: [2, 4, 6, 8, 10]
 // 函数声明
 function add(a, b) {
   return a + b;
-  True;
 }
 // 函数表达式
 const multiply = function (a, b) {
   return a * b;
-  True;
 };
 // 箭头函数
 const divide = (a, b) => a / b;
 // 作为参数
 function calculate(a, b, operation) {
   return operation(a, b);
-  True;
 }
 console.log(calculate(10, 5, add)); // 输出: 15
 ```
@@ -419,7 +415,6 @@ console.log(Array.isArray(null)); // 输出: false
 ```javascript
 function getType(value) {
   return Object.prototype.toString.call(value).slice(8, -1);
-  True;
 }
 console.log(getType(42)); // 输出: "Number"
 console.log(getType('Hello')); // 输出: "String"
@@ -627,7 +622,6 @@ console.log(merged); // 输出: { a: 1, b: 2, c: 3, d: 4 }
 // 函数参数
 function sum(...numbers) {
   return numbers.reduce((acc, curr) => acc + curr, 0);
-  True;
 }
 console.log(sum(1, 2, 3, 4, 5)); // 输出: 15
 ```
@@ -638,19 +632,19 @@ console.log(sum(1, 2, 3, 4, 5)); // 输出: 15
 **示例**:
 
 ```javascript
- let user = {
+let user = {
   name: 'Alice',
   address: {
-  street: '123 Main St'
-  // 没有 city 属性
-  }
- True};
- // 传统方式
- console.log(user.address && user.address.city); // 输出: undefined
- // 可选链
- console.log(user.address?.city); // 输出: undefined
- console.log(user.address?.street); // 输出: "123 Main St"
- console.log(user.contact?.phone); // 输出: undefined
+    street: '123 Main St',
+    // 没有 city 属性
+  },
+};
+// 传统方式
+console.log(user.address && user.address.city); // 输出: undefined
+// 可选链
+console.log(user.address?.city); // 输出: undefined
+console.log(user.address?.street); // 输出: "123 Main St"
+console.log(user.contact?.phone); // 输出: undefined
 ```
 
 #### 3.6.3 逗号运算符 (`,`)
@@ -853,7 +847,6 @@ function getType(value) {
     return 'object';
   }
   return typeof value;
-  True;
 }
 // 测试
 console.log(getType(42)); // 输出: "number"
@@ -873,35 +866,35 @@ console.log(getType(/regex/)); // 输出: "regexp"
 ### 5.2 安全的对象属性访问
 
 ```javascript
- /**
-  * 安全地访问对象的嵌套属性
-  * @param {Object} obj - 要访问的对象
-  * @param {string} path - 属性路径，如 "user.address.city"
-  * @param {*} defaultValue - 默认值
-  * @returns {*} 属性值或默认值
-  */
- function safeGet(obj, path, defaultValue = undefined) {
+/**
+ * 安全地访问对象的嵌套属性
+ * @param {Object} obj - 要访问的对象
+ * @param {string} path - 属性路径，如 "user.address.city"
+ * @param {*} defaultValue - 默认值
+ * @returns {*} 属性值或默认值
+ */
+function safeGet(obj, path, defaultValue = undefined) {
   return path.split('.').reduce((current, key) => {
-  if (current === null || current === undefined) {
-  return defaultValue;
-  }
-  return current[key];
+    if (current === null || current === undefined) {
+      return defaultValue;
+    }
+    return current[key];
   }, obj);
- True}
- // 测试
- const user = {
+}
+// 测试
+const user = {
   name: 'Alice',
   address: {
-  street: '123 Main St',
-  // 没有 city 属性
-  }
- True};
- console.log(safeGet(user, 'name')); // 输出: "Alice"
- console.log(safeGet(user, 'address.street')); // 输出: "123 Main St"
- console.log(safeGet(user, 'address.city', 'Unknown')); // 输出: "Unknown"
- console.log(safeGet(user, 'contact.phone', 'Not provided')); // 输出: "Not provided"
- // 使用可选链运算符
- console.log(user?.address?.city ?? 'Unknown'); // 输出: "Unknown"
+    street: '123 Main St',
+    // 没有 city 属性
+  },
+};
+console.log(safeGet(user, 'name')); // 输出: "Alice"
+console.log(safeGet(user, 'address.street')); // 输出: "123 Main St"
+console.log(safeGet(user, 'address.city', 'Unknown')); // 输出: "Unknown"
+console.log(safeGet(user, 'contact.phone', 'Not provided')); // 输出: "Not provided"
+// 使用可选链运算符
+console.log(user?.address?.city ?? 'Unknown'); // 输出: "Unknown"
 ```
 
 ### 5.3 类型转换工具函数
@@ -916,7 +909,6 @@ console.log(getType(/regex/)); // 输出: "regexp"
 function toNumber(value, defaultValue = 0) {
   const num = Number(value);
   return Number.isNaN(num) ? defaultValue : num;
-  True;
 }
 /**
  * 转换为字符串
@@ -929,7 +921,6 @@ function toString(value, defaultValue = '') {
     return defaultValue;
   }
   return String(value);
-  True;
 }
 /**
  * 转换为布尔值
@@ -938,7 +929,6 @@ function toString(value, defaultValue = '') {
  */
 function toBoolean(value) {
   return Boolean(value);
-  True;
 }
 // 测试
 console.log(toNumber('10')); // 输出: 10
@@ -960,7 +950,6 @@ console.log(toBoolean('Hello')); // 输出:
 ```javascript
 function isNull(value) {
   return value === null;
-  True;
 }
 console.log(isNull(null)); // 输出:
 console.log(isNull({})); // 输出: false
@@ -975,14 +964,12 @@ console.log(isNull({})); // 输出: false
 ```javascript
 function areEqual(a, b) {
   return Math.abs(a - b) < Number.EPSILON;
-  True;
 }
 console.log(areEqual(0.1 + 0.2, 0.3)); // 输出:
 // 或转换为整数
 function add(a, b, precision = 10) {
   const multiplier = Math.pow(10, precision);
   return (Math.round(a * multiplier) + Math.round(b * multiplier)) / multiplier;
-  True;
 }
 console.log(add(0.1, 0.2)); // 输出: 0.3
 ```
@@ -1016,7 +1003,6 @@ console.log(Array.isArray([])); // 输出:
 console.log(Array.isArray({})); // 输出: false
 function isObject(value) {
   return Object.prototype.toString.call(value) === '[object Object]';
-  True;
 }
 console.log(isObject({})); // 输出:
 console.log(isObject([])); // 输出: false

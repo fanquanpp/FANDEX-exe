@@ -43,7 +43,6 @@ console.log('结束');
 console.log('开始');
 setTimeout(() => {
   console.log('执行异步任务');
-  True;
 }, 1000);
 console.log('结束');
 // 输出顺序:
@@ -75,11 +74,9 @@ console.log('结束');
 console.log('1. 同步任务开始');
 setTimeout(() => {
   console.log('4. 宏任务执行');
-  True;
 }, 0);
 Promise.resolve().then(() => {
   console.log('3. 微任务执行');
-  True;
 });
 console.log('2. 同步任务结束');
 // 输出顺序:
@@ -103,11 +100,9 @@ function fetchData(callback) {
     const data = { name: '张三', age: 30 };
     callback(data);
   }, 1000);
-  True;
 }
 fetchData((data) => {
   console.log('获取到数据:', data);
-  True;
 });
 ```
 
@@ -124,7 +119,6 @@ fetchUser((user) => {
       console.log('评论:', comments);
     });
   });
-  True;
 });
 ```
 
@@ -154,7 +148,6 @@ const promise = new Promise((resolve, reject) => {
   } else {
     reject(错误);
   }
-  True;
 });
 ```
 
@@ -170,7 +163,6 @@ const promise = new Promise((resolve, reject) => {
       reject('操作失败');
     }
   }, 1000);
-  True;
 });
 promise
   .then((result) => {
@@ -195,11 +187,9 @@ promise
   .then((result) => {
     console.log('处理成功:', result);
     return '处理后的结果';
-    True;
   })
   .then((result) => {
     console.log('再次处理:', result);
-    True;
   });
 ```
 
@@ -231,7 +221,6 @@ const promise = new Promise((resolve, reject) => {
   setTimeout(() => {
     resolve('成功');
   }, 1000);
-  True;
 });
 promise
   .then((result) => {
@@ -284,7 +273,6 @@ Promise.race([promise1, promise2]).then((result) => {
 const promise = Promise.resolve('成功');
 promise.then((result) => {
   console.log(result); // 输出: 成功
-  True;
 });
 ```
 
@@ -298,7 +286,6 @@ promise.then((result) => {
 const promise = Promise.reject('失败');
 promise.catch((error) => {
   console.log(error); // 输出: 失败
-  True;
 });
 ```
 
@@ -325,7 +312,6 @@ async function functionName() {
   } catch (error) {
     // 处理错误
   }
-  True;
 }
 ```
 
@@ -346,11 +332,9 @@ async function fetchData() {
     console.error('错误:', error);
     throw error;
   }
-  True;
 }
 fetchData().then((data) => {
   console.log('处理数据:', data);
-  True;
 });
 ```
 
@@ -388,7 +372,6 @@ async function fetchData() {
   } catch (error) {
     console.error(error);
   }
-  True;
 }
 fetchData();
 ```
@@ -406,7 +389,6 @@ fetchData();
 ```javascript
 const timeoutId = setTimeout(() => {
   console.log('1秒后执行');
-  True;
 }, 1000);
 // 取消计时器
 clearTimeout(timeoutId);
@@ -421,7 +403,6 @@ clearTimeout(timeoutId);
 ```javascript
 const intervalId = setInterval(() => {
   console.log('每1秒执行一次');
-  True;
 }, 1000);
 // 取消计时器
 clearInterval(intervalId);
@@ -457,7 +438,7 @@ clearInterval(intervalId);
   'Content-Type': 'application/json'
   },
   body: JSON.stringify({ name: '张三', age: 30 })
- True})
+ }
   .then(response => response.json())
   .then(data => {
   console.log('提交成功:', data);
@@ -479,11 +460,9 @@ xhr.onload = function () {
   } else {
     console.error('网络请求失败:', xhr.status);
   }
-  True;
 };
 xhr.onerror = function () {
   console.error('网络错误');
-  True;
 };
 xhr.send();
 ```
@@ -507,7 +486,7 @@ xhr.send();
  axios.post('https://api.example.com/data', {
   name: '张三',
   age: 30
- True})
+ }
   .then(response => {
   console.log('提交成功:', response.data);
   })
@@ -529,7 +508,6 @@ fs.readFile('file.txt', 'utf8', (err, data) => {
     return;
   }
   console.log('文件内容:', data);
-  True;
 });
 // 异步写入文件
 fs.writeFile('file.txt', 'Hello World', (err) => {
@@ -538,7 +516,6 @@ fs.writeFile('file.txt', 'Hello World', (err) => {
     return;
   }
   console.log('写入文件成功');
-  True;
 });
 ```
 
@@ -559,14 +536,12 @@ function fetchData(callback) {
       });
     });
   });
-  True;
 }
 // 好的做法（Promise 链式调用）
 function fetchData() {
   return fetchUser()
     .then((user) => fetchPosts(user.id))
     .then((posts) => fetchComments(posts[0].id));
-  True;
 }
 // 更好的做法（Async / Await）
 async function fetchData() {
@@ -574,7 +549,6 @@ async function fetchData() {
   const posts = await fetchPosts(user.id);
   const comments = await fetchComments(posts[0].id);
   return comments;
-  True;
 }
 ```
 
@@ -597,7 +571,6 @@ async function fetchData() {
     console.error('错误:', error);
     throw error;
   }
-  True;
 }
 // 使用 Promise 的 catch()
 fetch('https://api.example.com/data')
@@ -627,13 +600,11 @@ async function fetchData() {
   const posts = await fetchPosts();
   const comments = await fetchComments();
   return { user, posts, comments };
-  True;
 }
 // 并行执行（较快）
 async function fetchData() {
   const [user, posts, comments] = await Promise.all([fetchUser(), fetchPosts(), fetchComments()]);
   return { user, posts, comments };
-  True;
 }
 ```
 
@@ -648,7 +619,6 @@ async function processData() {
   const data1 = await fetchData1();
   const data2 = await fetchData2(); // 等待 data1 获取完成后才开始获取 data2
   return { data1, data2 };
-  True;
 }
 // 好的做法（并行获取）
 async function processData() {
@@ -656,7 +626,6 @@ async function processData() {
   const promise2 = fetchData2(); // 同时开始获取 data1 和 data2
   const [data1, data2] = await Promise.all([promise1, promise2]);
   return { data1, data2 };
-  True;
 }
 ```
 
@@ -704,7 +673,6 @@ async function login(username, password) {
     console.error('登录错误:', error);
     throw error;
   }
-  True;
 }
 // 使用
 login('admin', 'password')
@@ -719,45 +687,44 @@ login('admin', 'password')
 ### 8.2 示例 2：数据批量处理
 
 ```javascript
- async function processBatch(data) {
+async function processBatch(data) {
   try {
-  // 并行处理所有数据
-  const results = await Promise.all(
-  data.map(item => {
-  return fetch('https://api.example.com/process', {
-  method: 'POST',
-  headers: {
-  'Content-Type': 'application/json'
-  },
-  body: JSON.stringify(item)
-  })
-  .then(response => {
-  if (!response.ok) {
-  throw new Error(`处理数据失败: ${item.id}`);
-  }
-  return response.json();
-  });
-  })
-  );
-  console.log('批量处理完成:', results);
-  return results;
+    // 并行处理所有数据
+    const results = await Promise.all(
+      data.map((item) => {
+        return fetch('https://api.example.com/process', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(item),
+        }).then((response) => {
+          if (!response.ok) {
+            throw new Error(`处理数据失败: ${item.id}`);
+          }
+          return response.json();
+        });
+      })
+    );
+    console.log('批量处理完成:', results);
+    return results;
   } catch (error) {
-  console.error('批量处理错误:', error);
-  throw error;
+    console.error('批量处理错误:', error);
+    throw error;
   }
- True}
- // 使用
- const data = [
+}
+// 使用
+const data = [
   { id: 1, name: '数据1' },
   { id: 2, name: '数据2' },
-  { id: 3, name: '数据3' }
- True];
- processBatch(data)
-  .then(results => {
-  console.log('处理结果:', results);
+  { id: 3, name: '数据3' },
+];
+processBatch(data)
+  .then((results) => {
+    console.log('处理结果:', results);
   })
-  .catch(error => {
-  console.error('处理失败:', error);
+  .catch((error) => {
+    console.error('处理失败:', error);
   });
 ```
 
@@ -787,7 +754,6 @@ async function uploadImages(images) {
     console.error('上传错误:', error);
     throw error;
   }
-  True;
 }
 // 使用
 const input = document.querySelector('input[type="file"]');
@@ -799,7 +765,6 @@ input.addEventListener('change', async (e) => {
   } catch (error) {
     console.error('上传失败:', error);
   }
-  True;
 });
 ```
 

@@ -18,25 +18,25 @@ author: 'Anonymous'
 #### 1.1.1 创建数据库
 
 ```sql
- True-- 查看所有数据库
+ -
  SHOW DATABASES;
- True-- 创建数据库（指定字符集和校对规则）
+ -
  CREATE DATABASE mydb
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_unicode_ci;
- True-- 创建数据库（如果不存在）
+ -
  CREATE DATABASE IF NOT EXISTS mydb;
- True-- 创建数据库（简写）
+ -
  CREATE DATABASE mydb;
- True-- 删除数据库
+ -
  DROP DATABASE IF EXISTS mydb;
- True-- 使用数据库
+ -
  use mydb;
- True-- 查看当前数据库
+ -
  SELECT DATABASE();
- True-- 查看数据库创建语句
+ -
  SHOW CREATE DATABASE mydb;
- True-- 修改数据库字符集
+ -
  ALTER DATABASE mydb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
@@ -65,7 +65,7 @@ author: 'Anonymous'
 #### 1.2.1 创建表
 
 ```sql
- True-- 创建用户表（包含多种约束）
+ -
  CREATE TABLE users (
   id INT PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID',
   username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
@@ -75,48 +75,48 @@ author: 'Anonymous'
   status TINYINT DEFAULT 1 COMMENT '状态：1-正常，0-禁用',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
- True) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户表';
- True-- 查看表结构
+ )
+ -
  DESCRIBE users;
  SHOW COLUMNS FROM users;
- True-- 查看表创建语句
+ -
  SHOW CREATE TABLE users;
- True-- 查看所有表
+ -
  SHOW TABLES;
- True-- 查看表状态
+ -
  SHOW TABLE STATUS FROM mydb;
 ```
 
 #### 1.2.2 修改表结构
 
 ```sql
- True-- 添加列
+ -
  ALTER TABLE users ADD COLUMN phone VARCHAR(20) AFTER email;
  ALTER TABLE users ADD COLUMN last_login DATETIME AFTER updated_at;
- True-- 修改列（类型、约束等）
+ -
  ALTER TABLE users MODIFY COLUMN age INT UNSIGNED NOT NULL DEFAULT 0;
- True-- 修改列名和类型
+ -
  ALTER TABLE users CHANGE COLUMN username user_name VARCHAR(50) NOT NULL;
- True-- 删除列
+ -
  ALTER TABLE users DROP COLUMN phone;
- True-- 添加索引
+ -
  ALTER TABLE users ADD INDEX idx_email (email);
  ALTER TABLE users ADD UNIQUE INDEX idx_username (username);
- True-- 添加外键
+ -
  ALTER TABLE orders ADD CONSTRAINT fk_user_id FOREIGN KEY (user_id) REFERENCES users(id);
- True-- 重命名表
+ -
  ALTER TABLE users RENAME TO customers;
  RENAME TABLE users TO customers, orders TO purchase_orders;
- True-- 删除表
+ -
  DROP TABLE IF EXISTS users;
- True-- 清空表（重置自增ID）
+ -
  TRUNCATE TABLE users;
 ```
 
 #### 1.2.3 表结构设计示例
 
 ```sql
- True-- 订单主表
+ -
  CREATE TABLE orders (
   order_id BIGINT PRIMARY KEY AUTO_INCREMENT,
   order_no VARCHAR(32) NOT NULL UNIQUE COMMENT '订单编号',
@@ -133,8 +133,8 @@ author: 'Anonymous'
   INDEX idx_user_id (user_id),
   INDEX idx_order_time (order_time),
   INDEX idx_status (status)
- True) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单表';
- True-- 订单明细表
+ )
+ -
  CREATE TABLE order_items (
   item_id BIGINT PRIMARY KEY AUTO_INCREMENT,
   order_id BIGINT NOT NULL COMMENT '订单ID',
@@ -149,7 +149,7 @@ author: 'Anonymous'
   FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE,
   INDEX idx_order_id (order_id),
   INDEX idx_product_id (product_id)
- True) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='订单明细表';
+ )
 ```
 
 ### 1.3 数据操作详解
@@ -157,59 +157,59 @@ author: 'Anonymous'
 #### 1.3.1 插入数据
 
 ```sql
- True-- 插入单条数据（所有字段）
+ -
  inSERT INTO users (username, email, password, age) VALUES ('张三', 'zhangsan@example.com', 'encrypted_pass', 25);
- True-- 插入单条数据（指定部分字段）
+ -
  inSERT INTO users (username, email) VALUES ('李四', 'lisi@example.com');
- True-- 插入多条数据
+ -
  inSERT INTO users (username, email, password, age) VALUES
  ('王五', 'wangwu@example.com', 'pass1', 30),
  ('赵六', 'zhaoliu@example.com', 'pass2', 28),
  ('钱七', 'qianqi@example.com', 'pass3', 35);
- True-- 插入查询结果
+ -
  inSERT INTO users (username, email, age)
  SELECT username, email, age FROM old_users WHERE status = 1;
- True-- 使用 SET 语法
+ -
  inSERT INTO users SET username='孙八', email='sunba@example.com', age=27;
- True-- 插入或更新（存在则更新，不存在则插入）
+ -
  inSERT INTO users (id, username, email) VALUES (1, '张三', 'new_email@example.com')
  ON DUPLICATE KEY UPDATE email='new_email@example.com', updated_at=NOW();
- True-- 替换插入
+ -
  replace INTO users (id, username, email) VALUES (1, '张三', 'new_email@example.com');
- True-- 查看最后插入的ID
+ -
  SELECT LAST_INSERT_ID();
 ```
 
 #### 1.3.2 查询数据
 
 ```sql
- True-- 查询所有字段
+ -
  SELECT * FROM users;
- True-- 查询指定字段
+ -
  SELECT id, username, email FROM users;
- True-- 使用别名
+ -
  SELECT id AS user_id, username AS name FROM users;
- True-- 去重查询
+ -
  SELECT DISTINCT status FROM users;
  SELECT COUNT(DISTINCT status) FROM users;
- True-- 限制查询结果
+ -
  SELECT * FROM users LIMIT 10;
  SELECT * FROM users LIMIT 10 OFFSET 20;
  SELECT * FROM users LIMIT 20, 10;
- True-- 查询并计算
+ -
  SELECT username, price, quantity, price * quantity AS total FROM order_items;
- True-- 条件查询
+ -
  SELECT * FROM users WHERE age > 25 AND status = 1;
  SELECT * FROM users WHERE age BETWEEN 20 AND 30;
  SELECT * FROM users WHERE username LIKE '张%';
  SELECT * FROM users WHERE email IN ('a@example.com', 'b@example.com');
- True-- 排序查询
+ -
  SELECT * FROM users ORDER BY created_at DESC;
  SELECT * FROM users ORDER BY age ASC, created_at DESC;
- True-- 分组查询
+ -
  SELECT status, COUNT(*) AS count FROM users GROUP BY status;
  SELECT status, AVG(age) AS avg_age FROM users GROUP BY status HAVING AVG(age) > 25;
- True-- 连接查询
+ -
  SELECT u.username, o.order_no, o.total_amount
  from users u
  inNER JOIN orders o ON u.id = o.user_id
@@ -219,20 +219,20 @@ author: 'Anonymous'
 #### 1.3.3 更新数据
 
 ```sql
- True-- 更新单条数据
+ -
  UPDATE users SET age = 26 WHERE id = 1;
- True-- 更新多条数据
+ -
  UPDATE users SET age = age + 1 WHERE age < 30;
- True-- 更新多个字段
+ -
  UPDATE users SET age = 27, email = 'new_email@example.com', updated_at = NOW() WHERE id = 1;
- True-- 更新查询结果
+ -
  UPDATE users SET status = 0 WHERE created_at < '2024-01-01';
- True-- 事务中的更新
+ -
  START TRANSACTION;
  UPDATE accounts SET balance = balance - 100 WHERE id = 1;
  UPDATE accounts SET balance = balance + 100 WHERE id = 2;
  commit;
- True-- 注意：更新前最好先查询确认
+ -
  SELECT * FROM users WHERE id = 1 FOR UPDATE;
  UPDATE users SET age = 26 WHERE id = 1;
 ```
@@ -240,21 +240,21 @@ author: 'Anonymous'
 #### 1.3.4 删除数据
 
 ```sql
- True-- 删除单条数据
+ -
  delete FROM users WHERE id = 1;
- True-- 删除多条数据
+ -
  delete FROM users WHERE status = 0 AND created_at < '2024-01-01';
- True-- 删除所有数据（谨慎使用）
+ -
  delete FROM users;
- True-- 清空表（重置自增ID，性能更快）
+ -
  TRUNCATE TABLE users;
- True-- 删除表
+ -
  DROP TABLE IF EXISTS users;
- True-- 级联删除
+ -
  delete FROM orders WHERE user_id = 1;
- True-- 或者设置外键级联删除
+ -
  ALTER TABLE orders ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
- True-- 删除前查询确认
+ -
  SELECT * FROM users WHERE id = 1;
  delete FROM users WHERE id = 1;
 ```
@@ -264,51 +264,51 @@ author: 'Anonymous'
 #### 1.4.1 用户管理
 
 ```sql
- True-- 创建用户
+ -
  CREATE USER 'newuser'@'localhost' IDENTIFIED BY 'password';
  CREATE USER 'newuser'@'%' IDENTIFIED BY 'password'; -- 允许远程连接
  CREATE USER 'newuser'@'192.168.1.%' IDENTIFIED BY 'password'; -- 允许特定网段
- True-- 修改用户密码
+ -
  ALTER USER 'newuser'@'localhost' IDENTIFIED BY 'new_password';
- True-- 使用 SET 修改密码
+ -
  SET PASSWORD FOR 'newuser'@'localhost' = 'new_password';
- True-- 删除用户
+ -
  DROP USER 'newuser'@'localhost';
- True-- 查看所有用户
+ -
  SELECT user, host FROM mysql.user;
- True-- 查看用户权限
+ -
  SHOW GRANTS FOR 'newuser'@'localhost';
- True-- 重命名用户
+ -
  RENAME USER 'olduser'@'localhost' TO 'newuser'@'localhost';
 ```
 
 #### 1.4.2 权限管理
 
 ```sql
- True-- 授予所有权限
+ -
  GRANT ALL PRIVILEGES ON mydb.* TO 'newuser'@'localhost';
  FLUSH PRIVILEGES;
- True-- 授予特定权限
+ -
  GRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO 'newuser'@'localhost';
- True-- 授予所有数据库的所有权限
+ -
  GRANT ALL PRIVILEGES ON *.* TO 'admin'@'localhost';
- True-- 授予管理权限
+ -
  GRANT CREATE USER ON *.* TO 'admin'@'localhost';
  GRANT RELOAD ON *.* TO 'admin'@'localhost';
  GRANT BACKUP ADMIN ON *.* TO 'admin'@'localhost';
- True-- 授予特定表的权限
+ -
  GRANT SELECT, INSERT ON mydb.orders TO 'newuser'@'localhost';
- True-- 授予存储过程执行权限
+ -
  GRANT EXECUTE ON PROCEDURE mydb.sp_name TO 'newuser'@'localhost';
- True-- 撤销权限
+ -
  REVOKE ALL PRIVILEGES ON mydb.* FROM 'newuser'@'localhost';
  REVOKE DELETE ON mydb.* FROM 'newuser'@'localhost';
- True-- 查看权限层级
- True-- 全局层级：*.*
- True-- 数据库层级：db_name.*
- True-- 表层级：db_name.table_name
- True-- 列层级：需要单独授予每一列的权限
- True-- 角色管理（MySQL 8.0+）
+ -
+ -
+ -
+ -
+ -
+ -
  CREATE ROLE 'app_read', 'app_write';
  GRANT SELECT ON mydb.* TO 'app_read';
  GRANT SELECT, INSERT, UPDATE, DELETE ON mydb.* TO 'app_write';
@@ -344,12 +344,12 @@ author: 'Anonymous'
 #### 2.1.2 连接配置
 
 ```sql
- True-- 最大连接数
+ -
  SET GLOBAL max_connections = 500;
- True-- 连接超时时间
+ -
  SET GLOBAL wait_timeout = 600;
  SET GLOBAL interactive_timeout = 600;
- True-- 查看当前连接数
+ -
  SHOW STATUS LIKE 'Threads_connected';
  SHOW VARIABLES LIKE 'max_connections';
 ```
@@ -373,53 +373,53 @@ author: 'Anonymous'
 #### 2.2.1 索引优化
 
 ```sql
- True-- 创建合适的索引
+ -
  CREATE INDEX idx_username ON users(username);
  CREATE INDEX idx_email_status ON users(email, status);
- True-- 复合索引设计原则
- True-- 1. 区分度高的列放前面
- True-- 2. 经常作为条件的列放前面
- True-- 3. 排序和分组的列应包含在索引中
- True-- 示例：为常用查询创建索引
- True-- 查询：WHERE status = 1 AND created_at > '2024-01-01' ORDER BY created_at
+ -
+ -
+ -
+ -
+ -
+ -
  CREATE INDEX idx_status_created ON users(status, created_at);
 ```
 
 #### 2.2.2 SQL 语句优化
 
 ```sql
- True-- 优化前
+ -
  SELECT * FROM users WHERE YEAR(created_at) = 2024;
- True-- 优化后
+ -
  SELECT * FROM users WHERE created_at >= '2024-01-01' AND created_at < '2025-01-01';
- True-- 优化前（使用函数导致索引失效）
+ -
  SELECT * FROM orders WHERE MONTH(order_time) = 1;
- True-- 优化后（范围查询可以利用索引）
+ -
  SELECT * FROM orders WHERE order_time >= '2024-01-01' AND order_time < '2024-02-01';
- True-- 使用 EXPLAIN 分析查询
+ -
  EXPLAIN SELECT * FROM users WHERE email = 'test@example.com';
 ```
 
 #### 2.2.3 慢查询优化示例
 
 ```sql
- True-- 开启慢查询日志
+ -
  SET GLOBAL slow_query_log = 'ON';
  SET GLOBAL long_query_time = 1;
  SET GLOBAL slow_query_log_file = '/var/log/mysql/slow.log';
- True-- 分析慢查询
- True-- 1. 查看慢查询
+ -
+ -
  SHOW FULL PROCESSLIST;
- True-- 2. 使用 EXPLAIN
+ -
  EXPLAIN SELECT u.username, o.total_amount
  from users u
  inNER JOIN orders o ON u.id = o.user_id
  WHERE o.created_at > '2024-01-01';
- True-- 3. 优化建议
- True-- - 添加合适的索引
- True-- - 避免 SELECT *
- True-- - 使用 LIMIT 限制结果集
- True-- - 优化分页查询
+ -
+ -
+ -
+ -
+ -
 ```
 
 ### 2.3 存储引擎选择详解
@@ -435,35 +435,35 @@ author: 'Anonymous'
 ### 2.4 分区表详解
 
 ```sql
- True-- 按日期范围分区
+ -
  CREATE TABLE sales (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   sale_date DATE NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
   region VARCHAR(50)
- True) PARTITION BY RANGE (YEAR(sale_date)) (
+ )
   PARTITION p2020 VALUES LESS THAN (2021),
   PARTITION p2021 VALUES LESS THAN (2022),
   PARTITION p2022 VALUES LESS THAN (2023),
   PARTITION p2023 VALUES LESS THAN (2024),
   PARTITION p2024 VALUES LESS THAN (2025),
   PARTITION pmax VALUES LESS THAN MAXVALUE
- True);
- True-- 按哈希分区
+ )
+ -
  CREATE TABLE users (
   id INT PRIMARY KEY,
   name VARCHAR(50)
- True) PARTITION BY HASH(id) PARTITIONS 8;
- True-- 按列表分区
+ )
+ -
  CREATE TABLE products (
   id INT PRIMARY KEY,
   category_id INT,
   name VARCHAR(50)
- True) PARTITION BY LIST (category_id) (
+ )
   PARTITION p_electronics VALUES IN (1, 2, 3),
   PARTITION p_clothing VALUES IN (4, 5, 6),
   PARTITION p_other VALUES IN (NULL)
- True);
+ )
 ```
 
 ## 3. 安全配置详解
@@ -471,18 +471,18 @@ author: 'Anonymous'
 ### 3.1 基础安全配置
 
 ```sql
- True-- 设置强密码（至少8位，包含大小写字母、数字、特殊字符）
+ -
  ALTER USER 'root'@'localhost' IDENTIFIED BY 'NewStrongPass@123';
- True-- 删除匿名用户
+ -
  delete FROM mysql.user WHERE User = '';
- True-- 禁止 root 用户远程登录
+ -
  delete FROM mysql.user WHERE User = 'root' AND Host != 'localhost';
  FLUSH PRIVILEGES;
- True-- 创建应用专用用户
+ -
  CREATE USER 'app_user'@'%' IDENTIFIED BY 'AppPass@2024';
  GRANT SELECT, INSERT, UPDATE, DELETE ON production_db.* TO 'app_user'@'%';
  FLUSH PRIVILEGES;
- True-- 限制用户只能从特定 IP 登录
+ -
  CREATE USER 'app_user'@'192.168.1.%' IDENTIFIED BY 'AppPass@2024';
  CREATE USER 'app_user'@'10.%.%.%' IDENTIFIED BY 'AppPass@2024';
 ```
@@ -490,32 +490,32 @@ author: 'Anonymous'
 ### 3.2 SSL/TLS 配置
 
 ```sql
- True-- 检查 SSL 状态
+ -
  SHOW VARIABLES LIKE 'have_ssl';
  SHOW VARIABLES LIKE 'have_openssl';
- True-- 配置 SSL（需要在 my.cnf 中配置）
- True-- [mysqld]
- True-- ssl-ca=/path/to/ca.pem
- True-- ssl-cert=/path/to/server-cert.pem
- True-- ssl-key=/path/to/server-key.pem
- True-- 强制用户使用 SSL 连接
+ -
+ -
+ -
+ -
+ -
+ -
  ALTER USER 'root'@'localhost' REQUIRE SSL;
- True-- 查看用户是否使用 SSL
+ -
  SELECT user, host, ssl_type FROM mysql.user;
 ```
 
 ### 3.3 审计和监控
 
 ```sql
- True-- 开启审计日志（企业版）
- True-- 安装审计插件后配置
- True-- 查看用户连接历史
+ -
+ -
+ -
  SELECT * FROM mysql.general_log WHERE command_type='Connect' ORDER BY event_time DESC LIMIT 100;
- True-- 监控长时间运行的查询
+ -
  SELECT * FROM information_schema.processlist WHERE Command != 'Sleep' AND Time > 60;
- True-- 查看锁等待
+ -
  SELECT * FROM information_schema.innodb_lock_waits;
- True-- 查看事务
+ -
  SELECT * FROM information_schema.innodb_trx;
 ```
 
@@ -563,12 +563,12 @@ author: 'Anonymous'
 ### 5.1 常用监控命令
 
 ```sql
- True-- 查看服务器状态
+ -
  SHOW STATUS; -- 所有状态变量
  SHOW GLOBAL STATUS; -- 全局状态
  SHOW VARIABLES; -- 所有配置变量
  SHOW GLOBAL VARIABLES;
- True-- 关键指标
+ -
  SHOW STATUS LIKE 'Threads_connected'; -- 当前连接数
  SHOW STATUS LIKE 'Max_used_connections'; -- 历史最大连接数
  SHOW STATUS LIKE 'Slow_queries'; -- 慢查询数量
@@ -577,34 +577,34 @@ author: 'Anonymous'
  SHOW STATUS LIKE 'Com_insert'; -- 插入次数
  SHOW STATUS LIKE 'Com_update'; -- 更新次数
  SHOW STATUS LIKE 'Com_delete'; -- 删除次数
- True-- 查看进程
+ -
  SHOW PROCESSLIST;
  SHOW FULL PROCESSLIST;
- True-- 查看 InnoDB 状态
+ -
  SHOW ENGINE INNODB STATUS;
- True-- 查看所有表状态
+ -
  SHOW TABLE STATUS FROM database_name;
- True-- 查看索引使用情况
+ -
  SHOW INDEX FROM table_name;
 ```
 
 ### 5.2 定期维护任务
 
 ```sql
- True-- 分析表（更新统计信息）
+ -
  ANALYZE TABLE users;
- True-- 检查表
+ -
  CHECK TABLE users;
- True-- 修复表
+ -
  REPAIR TABLE users;
- True-- 优化表（整理碎片）
+ -
  OPTIMIZE TABLE users;
- True-- 重新生成表统计
+ -
  ANALYZE TABLE users;
- True-- 清理二进制日志
+ -
  PURGE BINARY LOGS BEFORE '2024-01-01 00:00:00';
  PURGE BINARY LOGS TO 'mysql-bin.000010';
- True-- 查看表碎片
+ -
  SELECT TABLE_NAME, Data_free FROM information_schema.tables WHERE Data_free > 0;
 ```
 

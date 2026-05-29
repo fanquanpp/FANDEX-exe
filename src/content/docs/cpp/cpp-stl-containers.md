@@ -61,7 +61,7 @@ author: 'Anonymous'
   v.clear();
   std::cout << "Size after clear: " << v.size() << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 1.2 std::list
@@ -103,7 +103,7 @@ author: 'Anonymous'
   }
   std::cout << std::endl;
   return 0;
- True}
+ }
 ```
 
 ### 1.3 std::array
@@ -136,7 +136,7 @@ author: 'Anonymous'
   }
   std::cout << std::endl;
   return 0;
- True}
+ }
 ```
 
 ## 2. 关联容器
@@ -188,7 +188,7 @@ author: 'Anonymous'
   // 清空容器
   // m.clear();
   return 0;
- True}
+ }
 ```
 
 ### 2.2 std::multimap
@@ -219,7 +219,7 @@ author: 'Anonymous'
   // 计算特定键的元素个数
   std::cout << "\nNumber of Bob's entries: " << mm.count("Bob") << std::endl;
   return 0;
- True}
+ }
 ```
 
 ## 3. 无序容器 (C++11)
@@ -263,7 +263,7 @@ author: 'Anonymous'
   // 删除元素
   um.erase("Charlie");
   return 0;
- True}
+ }
 ```
 
 ## 4. 容器适配器
@@ -302,7 +302,7 @@ author: 'Anonymous'
   }
   std::cout << "Size after clear: " << st.size() << std::endl; // 0
   return 0;
- True}
+ }
 ```
 
 ### 4.2 std::queue
@@ -329,7 +329,7 @@ author: 'Anonymous'
   // 检查是否为空
   std::cout << "Empty: " << (q.empty() ? "yes" : "no") << std::endl; // no
   return 0;
- True}
+ }
 ```
 
 ### 4.3 std::priority_queue
@@ -347,7 +347,7 @@ author: 'Anonymous'
   bool operator<(const Person& other) const {
   return age < other.age; // 年龄大的优先级高
   }
- True};
+ }
  int main() {
   // 创建优先队列（默认最大堆）
   std::priority_queue<int> pq;
@@ -380,7 +380,7 @@ author: 'Anonymous'
   }
   // 输出：Bob (30), Alice (25), Charlie (20)
   return 0;
- True}
+ }
 ```
 
 ## 5. 迭代器 (Iterators)
@@ -449,7 +449,7 @@ author: 'Anonymous'
   }
   std::cout << std::endl;
   return 0;
- True}
+ }
 ```
 
 ---

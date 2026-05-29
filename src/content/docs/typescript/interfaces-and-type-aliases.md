@@ -17,20 +17,20 @@ author: 'Anonymous'
 ### 1.1 基本接口定义
 
 ```typescript
- // 基本接口定义
- interface Person {
+// 基本接口定义
+interface Person {
   name: string;
   age: number;
- True}
- // 使用接口
- const person: Person = {
-  name: "Alice",
-  age: 30
- True};
- // 错误示例：缺少属性
- // const invalidPerson: Person = {
- // name: "Bob" // 缺少 age 属性
- // };
+}
+// 使用接口
+const person: Person = {
+  name: 'Alice',
+  age: 30,
+};
+// 错误示例：缺少属性
+// const invalidPerson: Person = {
+// name: "Bob" // 缺少 age 属性
+// };
 ```
 
 ### 1.2 可选属性
@@ -38,24 +38,24 @@ author: 'Anonymous'
 使用 `?` 标记可选属性。
 
 ```typescript
- interface User {
+interface User {
   id: number;
   name: string;
   age?: number; // 可选属性
   email?: string; // 可选属性
- True}
- // 正确：只提供必需属性
- const user1: User = {
+}
+// 正确：只提供必需属性
+const user1: User = {
   id: 1,
-  name: "Alice"
- True};
- // 正确：提供所有属性
- const user2: User = {
+  name: 'Alice',
+};
+// 正确：提供所有属性
+const user2: User = {
   id: 2,
-  name: "Bob",
+  name: 'Bob',
   age: 25,
-  email: "bob@example.com"
- True};
+  email: 'bob@example.com',
+};
 ```
 
 ### 1.3 只读属性
@@ -63,19 +63,19 @@ author: 'Anonymous'
 使用 `readonly` 标记只读属性，这些属性只能在初始化时赋值，之后不能修改。
 
 ```typescript
- interface Product {
+interface Product {
   readonly id: number;
   name: string;
   price: number;
- True}
- const product: Product = {
+}
+const product: Product = {
   id: 1001,
-  name: "Laptop",
-  price: 999.99
- True};
- // 错误：不能修改只读属性
- // product.id = 1002; // 编译错误
- product.price = 899.99; // 可以修改非只读属性
+  name: 'Laptop',
+  price: 999.99,
+};
+// 错误：不能修改只读属性
+// product.id = 1002; // 编译错误
+product.price = 899.99; // 可以修改非只读属性
 ```
 
 ### 1.4 函数接口
@@ -86,7 +86,7 @@ author: 'Anonymous'
 // 函数接口
 interface GreetFunction {
   (name: string, age?: number): string;
-  True;
+  ;
 }
 // 实现函数接口
 const greet: GreetFunction = (name, age) => {
@@ -94,7 +94,7 @@ const greet: GreetFunction = (name, age) => {
     return `Hello, ${name}! You are ${age} years old.`;
   }
   return `Hello, ${name}!`;
-  True;
+  ;
 };
 console.log(greet('Alice')); // Hello, Alice!
 console.log(greet('Bob', 25)); // Hello, Bob! You are 25 years old.
@@ -105,30 +105,30 @@ console.log(greet('Bob', 25)); // Hello, Bob! You are 25 years old.
 使用索引签名定义任意属性。
 
 ```typescript
- // 字符串索引签名
- interface StringMap {
+// 字符串索引签名
+interface StringMap {
   [key: string]: string;
- True}
- const colors: StringMap = {
-  red: "#FF0000",
-  green: "#00FF00",
-  blue: "#0000FF"
- True};
- // 数字索引签名
- interface NumberArray {
+}
+const colors: StringMap = {
+  red: '#FF0000',
+  green: '#00FF00',
+  blue: '#0000FF',
+};
+// 数字索引签名
+interface NumberArray {
   [index: number]: number;
- True}
- const numbers: NumberArray = [1, 2, 3, 4, 5];
- // 混合索引签名
- interface MixedMap {
+}
+const numbers: NumberArray = [1, 2, 3, 4, 5];
+// 混合索引签名
+interface MixedMap {
   [key: string]: string | number;
   length: number; // 具体属性类型必须与索引签名兼容
- True}
- const mixed: MixedMap = {
-  name: "Alice",
+}
+const mixed: MixedMap = {
+  name: 'Alice',
   age: 30,
-  length: 2
- True};
+  length: 2,
+};
 ```
 
 ### 1.6 类实现接口
@@ -138,18 +138,18 @@ console.log(greet('Bob', 25)); // Hello, Bob! You are 25 years old.
 ```typescript
 interface Printable {
   print(): void;
-  True;
+  ;
 }
 interface Loggable {
   log(message: string): void;
-  True;
+  ;
 }
 // 实现单个接口
 class Document implements Printable {
   print(): void {
     console.log('Printing document...');
   }
-  True;
+  ;
 }
 // 实现多个接口
 class AdvancedDocument implements Printable, Loggable {
@@ -159,7 +159,7 @@ class AdvancedDocument implements Printable, Loggable {
   log(message: string): void {
     console.log(`Logging: ${message}`);
   }
-  True;
+  ;
 }
 const doc = new AdvancedDocument();
 doc.print(); // Printing advanced document...
@@ -173,20 +173,20 @@ doc.log('Document created'); // Logging: Document created
 ### 2.1 单继承
 
 ```typescript
- interface Person {
+interface Person {
   name: string;
   age: number;
- True}
- interface Employee extends Person {
+}
+interface Employee extends Person {
   employeeId: number;
   department: string;
- True}
- const employee: Employee = {
-  name: "Alice",
+}
+const employee: Employee = {
+  name: 'Alice',
   age: 30,
   employeeId: 1001,
-  department: "Engineering"
- True};
+  department: 'Engineering',
+};
 ```
 
 ### 2.2 多继承
@@ -196,15 +196,15 @@ doc.log('Document created'); // Logging: Document created
 ```typescript
 interface Readable {
   read(): string;
-  True;
+  ;
 }
 interface Writeable {
   write(content: string): void;
-  True;
+  ;
 }
 interface ReadWriteable extends Readable, Writeable {
   readWrite(): void;
-  True;
+  ;
 }
 class File implements ReadWriteable {
   read(): string {
@@ -216,7 +216,7 @@ class File implements ReadWriteable {
   readWrite(): void {
     console.log('Reading and writing...');
   }
-  True;
+  ;
 }
 const file = new File();
 console.log(file.read()); // File content
@@ -229,23 +229,23 @@ file.readWrite(); // Reading and writing...
 接口继承后可以添加新的属性和方法。
 
 ```typescript
- interface BaseConfig {
+interface BaseConfig {
   host: string;
   port: number;
- True}
- interface DatabaseConfig extends BaseConfig {
+}
+interface DatabaseConfig extends BaseConfig {
   database: string;
   username: string;
   password: string;
   ssl?: boolean; // 新增可选属性
- True}
- const dbConfig: DatabaseConfig = {
-  host: "localhost",
+}
+const dbConfig: DatabaseConfig = {
+  host: 'localhost',
   port: 5432,
-  database: "mydb",
-  username: "admin",
-  password: "password"
- True};
+  database: 'mydb',
+  username: 'admin',
+  password: 'password',
+};
 ```
 
 ## 3. 类型别名 (Type Aliases)
@@ -255,24 +255,24 @@ file.readWrite(); // Reading and writing...
 ### 3.1 基本类型别名
 
 ```typescript
- // 原始类型别名
- type Age = number;
- type Name = string;
- type IsActive = boolean;
- // 使用类型别名
- const age: Age = 30;
- const name: Name = "Alice";
- const isActive: IsActive = true;
- // 对象类型别名
- type Person = {
+// 原始类型别名
+type Age = number;
+type Name = string;
+type IsActive = boolean;
+// 使用类型别名
+const age: Age = 30;
+const name: Name = 'Alice';
+const isActive: IsActive = true;
+// 对象类型别名
+type Person = {
   name: string;
   age: number;
   email?: string;
- True};
- const person: Person = {
-  name: "Bob",
-  age: 25
- True};
+};
+const person: Person = {
+  name: 'Bob',
+  age: 25,
+};
 ```
 
 ### 3.2 联合类型别名
@@ -320,7 +320,6 @@ const greet: Callback = () => console.log('Hello!');
 const process: ProcessFunction = (data, callback) => {
   console.log('Processing data...', data);
   callback();
-  True;
 };
 console.log(add(5, 3)); // 8
 greet(); // Hello!
@@ -333,23 +332,23 @@ process({ id: 1 }, greet); // Processing data... { id: 1 }
 使用 `&` 创建交叉类型，组合多个类型的特性。
 
 ```typescript
- // 交叉类型
- type Person = {
+// 交叉类型
+type Person = {
   name: string;
   age: number;
- True};
- type Employee = {
+};
+type Employee = {
   employeeId: number;
   department: string;
- True};
- // 交叉类型：同时具有 Person 和 Employee 的属性
- type EmployeePerson = Person & Employee;
- const employee: EmployeePerson = {
-  name: "Alice",
+};
+// 交叉类型：同时具有 Person 和 Employee 的属性
+type EmployeePerson = Person & Employee;
+const employee: EmployeePerson = {
+  name: 'Alice',
   age: 30,
   employeeId: 1001,
-  department: "Engineering"
- True};
+  department: 'Engineering',
+};
 ```
 
 ### 3.6 条件类型
@@ -393,23 +392,23 @@ process({ id: 1 }, greet); // Processing data... { id: 1 }
 接口支持声明合并，多个同名接口会自动合并为一个。
 
 ```typescript
- // 声明合并示例
- interface User {
+// 声明合并示例
+interface User {
   id: number;
   name: string;
- True}
- // 自动合并到上面的 User 接口
- interface User {
+}
+// 自动合并到上面的 User 接口
+interface User {
   age?: number;
   email?: string;
- True}
- // 使用合并后的接口
- const user: User = {
+}
+// 使用合并后的接口
+const user: User = {
   id: 1,
-  name: "Alice",
+  name: 'Alice',
   age: 30,
-  email: "alice@example.com"
- True};
+  email: 'alice@example.com',
+};
 ```
 
 类型别名不支持声明合并。
@@ -434,12 +433,12 @@ process({ id: 1 }, greet); // Processing data... { id: 1 }
 interface Person {
   name: string;
   age: number;
-  True;
+  ;
 }
 interface Employee extends Person {
   employeeId: number;
   department: string;
-  True;
+  ;
 }
 ```
 
@@ -449,12 +448,12 @@ interface Employee extends Person {
 type Person = {
   name: string;
   age: number;
-  True;
+  ;
 };
 type Employee = Person & {
   employeeId: number;
   department: string;
-  True;
+  ;
 };
 ```
 
@@ -463,22 +462,22 @@ type Employee = Person & {
 类型别名支持计算属性。
 
 ```typescript
- // 计算属性示例
- type Keys = "a" | "b" | "c";
- type StringMap = {
+// 计算属性示例
+type Keys = 'a' | 'b' | 'c';
+type StringMap = {
   [K in Keys]: string;
- True};
- // 等价于
- // type StringMap = {
- // a: string;
- // b: string;
- // c: string;
- // };
- const map: StringMap = {
-  a: "value1",
-  b: "value2",
-  c: "value3"
- True};
+};
+// 等价于
+// type StringMap = {
+// a: string;
+// b: string;
+// c: string;
+// };
+const map: StringMap = {
+  a: 'value1',
+  b: 'value2',
+  c: 'value3',
+};
 ```
 
 接口不支持计算属性。
@@ -488,25 +487,25 @@ type Employee = Person & {
 两者都支持泛型。
 
 ```typescript
- // 泛型接口
- interface GenericInterface<T> {
+// 泛型接口
+interface GenericInterface<T> {
   value: T;
   getValue(): T;
- True}
- // 泛型类型别名
- type GenericType<T> = {
+}
+// 泛型类型别名
+type GenericType<T> = {
   value: T;
   getValue(): T;
- True};
- // 使用泛型
- const numInterface: GenericInterface<number> = {
+};
+// 使用泛型
+const numInterface: GenericInterface<number> = {
   value: 42,
-  getValue: () => 42
- True};
- const stringType: GenericType<string> = {
-  value: "Hello",
-  getValue: () => "Hello"
- True};
+  getValue: () => 42,
+};
+const stringType: GenericType<string> = {
+  value: 'Hello',
+  getValue: () => 'Hello',
+};
 ```
 
 ## 5. 最佳实践
@@ -546,7 +545,7 @@ interface User {
   name: string;
   age?: number;
   email?: string;
-  True;
+  ;
 }
 // 函数接口
 interface UserService {
@@ -554,7 +553,7 @@ interface UserService {
   createUser(user: Omit<User, 'id'>): User;
   updateUser(id: number, user: Partial<User>): User;
   deleteUser(id: number): boolean;
-  True;
+  ;
 }
 // 实现接口
 class UserServiceImpl implements UserService {
@@ -590,7 +589,7 @@ class UserServiceImpl implements UserService {
     this.users = this.users.filter((u) => u.id !== id);
     return this.users.length < initialLength;
   }
-  True;
+  ;
 }
 // 使用示例
 const userService = new UserServiceImpl();
@@ -625,13 +624,13 @@ type User = {
   role: UserRole;
   status: Status;
   lastLogin?: Date;
-  True;
+  ;
 };
 // 交叉类型
 type AdminPermissions = {
   canManageUsers: boolean;
   canManageSettings: boolean;
-  True;
+  ;
 };
 type AdminUser = User & AdminPermissions;
 // 函数类型
@@ -640,7 +639,7 @@ type AsyncCallback = (error: Error | null, result: any) => void;
 // 使用示例
 const validateUser: UserValidator = (user) => {
   return !!user.name && !!user.email && !!user.role;
-  True;
+  ;
 };
 const adminUser: AdminUser = {
   id: 1,
@@ -662,67 +661,67 @@ console.log('Is valid user:', validateUser(adminUser));
 ### 6.3 接口与类型别名的混合使用
 
 ```typescript
- // 接口定义核心结构
- interface BaseEntity {
+// 接口定义核心结构
+interface BaseEntity {
   id: number;
   createdAt: Date;
   updatedAt: Date;
- True}
- // 类型别名定义复杂类型
- type EntityType = "user" | "product" | "order";
- type EntityStatus = "active" | "inactive" | "deleted";
- // 接口继承并使用类型别名
- interface User extends BaseEntity {
+}
+// 类型别名定义复杂类型
+type EntityType = 'user' | 'product' | 'order';
+type EntityStatus = 'active' | 'inactive' | 'deleted';
+// 接口继承并使用类型别名
+interface User extends BaseEntity {
   name: string;
   email: string;
-  type: Extract<EntityType, "user">;
+  type: Extract<EntityType, 'user'>;
   status: EntityStatus;
- True}
- interface Product extends BaseEntity {
+}
+interface Product extends BaseEntity {
   name: string;
   price: number;
-  type: Extract<EntityType, "product">;
+  type: Extract<EntityType, 'product'>;
   status: EntityStatus;
- True}
- // 类型别名创建联合类型
- type Entity = User | Product;
- // 类型守卫函数
- type EntityGuard<T extends EntityType> = (entity: Entity) => entity is Extract<Entity, { type: T }>;
- const isUser: EntityGuard<"user"> = (entity): entity is User => {
-  return entity.type === "user";
- True};
- const isProduct: EntityGuard<"product"> = (entity): entity is Product => {
-  return entity.type === "product";
- True};
- // 使用示例
- const user: User = {
+}
+// 类型别名创建联合类型
+type Entity = User | Product;
+// 类型守卫函数
+type EntityGuard<T extends EntityType> = (entity: Entity) => entity is Extract<Entity, { type: T }>;
+const isUser: EntityGuard<'user'> = (entity): entity is User => {
+  return entity.type === 'user';
+};
+const isProduct: EntityGuard<'product'> = (entity): entity is Product => {
+  return entity.type === 'product';
+};
+// 使用示例
+const user: User = {
   id: 1,
-  name: "Alice",
-  email: "alice@example.com",
-  type: "user",
-  status: "active",
+  name: 'Alice',
+  email: 'alice@example.com',
+  type: 'user',
+  status: 'active',
   createdAt: new Date(),
-  updatedAt: new Date()
- True};
- const product: Product = {
+  updatedAt: new Date(),
+};
+const product: Product = {
   id: 1001,
-  name: "Laptop",
+  name: 'Laptop',
   price: 999.99,
-  type: "product",
-  status: "active",
+  type: 'product',
+  status: 'active',
   createdAt: new Date(),
-  updatedAt: new Date()
- True};
- const processEntity = (entity: Entity) => {
+  updatedAt: new Date(),
+};
+const processEntity = (entity: Entity) => {
   console.log(`Processing entity ${entity.id} (${entity.type})`);
   if (isUser(entity)) {
-  console.log(`User: ${entity.name}, Email: ${entity.email}`);
+    console.log(`User: ${entity.name}, Email: ${entity.email}`);
   } else if (isProduct(entity)) {
-  console.log(`Product: ${entity.name}, Price: $${entity.price}`);
+    console.log(`Product: ${entity.name}, Price: $${entity.price}`);
   }
- True};
- processEntity(user);
- processEntity(product);
+};
+processEntity(user);
+processEntity(product);
 ```
 
 ---

@@ -144,13 +144,13 @@ CODEOWNERS 文件可以放在以下位置：
 ```gitignore
  # 语法：模式 @团队或用户
  # 整个仓库的所有者
- True* @owner
+ *
  # 特定目录的所有者
- True/docs/ @doc-team # /docs/ 下变更需要 doc-team 成员审查
- True/src/ @dev-team # /src/ 下变更需要 dev-team 成员审查
+ /
+ /
  # 特定文件类型的所有者
- True*.js @frontend-owner # 所有 .js 文件变更需要指定审查者
- True*.java @backend-owner # 所有 .java 文件变更需要指定审查者
+ *
+ *
  # 特定文件的所有者
  README.md @maintainer # README.md 文件变更需要 maintainer 审查
 ```

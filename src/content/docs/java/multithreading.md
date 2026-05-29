@@ -42,7 +42,7 @@ author: 'Anonymous'
   }
   }
   }
- True}
+ }
  // 使用
  MyThread thread1 = new MyThread();
  MyThread thread2 = new MyThread();
@@ -65,7 +65,7 @@ author: 'Anonymous'
   }
   }
   }
- True}
+ }
  // 使用
  Runnable runnable = new MyRunnable();
  Thread thread1 = new Thread(runnable, "Thread-1");
@@ -86,7 +86,7 @@ author: 'Anonymous'
   }
   return sum;
   }
- True}
+ }
  // 使用
  Callable<Integer> callable = new MyCallable();
  FutureTask<Integer> futureTask = new FutureTask<>(callable);
@@ -96,9 +96,9 @@ author: 'Anonymous'
   // 获取结果
   Integer result = futureTask.get();
   System.out.println("Sum: " + result);
- True} catch (Exception e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ### 2.4 使用 Lambda 表达式
@@ -114,7 +114,7 @@ author: 'Anonymous'
   e.printStackTrace();
   }
   }
- True}, "Thread-1");
+ }
  thread1.start();
 ```
 
@@ -134,7 +134,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 ### 3.2 状态转换图
 
 ```
- True┌─────────┐ start() ┌──────────┐ CPU调度 ┌──────────┐
+ ┌
  │ NEW │───────────────→│ RUNNABLE │──────────────→│ RUNNING │
  └─────────┘ └──────────┘ └──────────┘
   ↑ ↑ │
@@ -142,7 +142,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   │ await() │ wait()/sleep() │
   │ join() │ join(timeout) │
   │ │ │
- True┌─────────┐ run()结束 ┌──────────┐←─────────────┘
+ ┌
  │TERMINATED│←───────────────┐ │ WAITING │
  └─────────┘ │ └──────────┘
   │ ↑
@@ -190,7 +190,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 ```java
  public synchronized void increment() {
   count++;
- True}
+ }
 ```
 
 #### 4.2.2 同步代码块
@@ -198,7 +198,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 ```java
  synchronized (this) {
   count++;
- True}
+ }
 ```
 
 #### 4.2.3 静态同步方法
@@ -206,7 +206,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 ```java
  public static synchronized void increment() {
   staticCount++;
- True}
+ }
 ```
 
 ### 4.3 volatile 关键字
@@ -219,10 +219,10 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
  private volatile boolean flag = false;
  public void setFlag(boolean flag) {
   this.flag = flag; // 对其他线程可见
- True}
+ }
  public boolean getFlag() {
   return flag; // 读取最新值
- True}
+ }
 ```
 
 ### 4.4 Lock 接口
@@ -238,7 +238,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   } finally {
   lock.unlock(); // 必须在 finally 中释放锁
   }
- True}
+ }
 ```
 
 #### 4.4.2 ReentrantReadWriteLock
@@ -257,7 +257,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   } finally {
   readLock.unlock();
   }
- True}
+ }
  public void write() {
   writeLock.lock();
   try {
@@ -265,7 +265,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   } finally {
   writeLock.unlock();
   }
- True}
+ }
 ```
 
 ### 4.5 原子类
@@ -277,10 +277,10 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
  private AtomicInteger count = new AtomicInteger(0);
  public void increment() {
   count.incrementAndGet(); // 原子操作
- True}
+ }
  public int getCount() {
   return count.get();
- True}
+ }
 ```
 
 ## 5. 线程池 (Thread Pools)
@@ -321,7 +321,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   e.printStackTrace();
   }
   });
- True}
+ }
  // 关闭线程池
  executorService.shutdown();
 ```
@@ -339,7 +339,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   new LinkedBlockingQueue<>(100), // 工作队列
   Executors.defaultThreadFactory(), // 线程工厂
   new ThreadPoolExecutor.AbortPolicy() // 拒绝策略
- True);
+ )
 ```
 
 ### 5.4 线程池的参数
@@ -378,7 +378,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   latch.countDown(); // 倒计时减1
   System.out.println(Thread.currentThread().getName() + " finished");
   }).start();
- True}
+ }
  System.out.println("Waiting for all threads to finish...");
  latch.await(); // 等待倒计时为0
  System.out.println("All threads have finished");
@@ -391,7 +391,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
 ```java
  CyclicBarrier barrier = new CyclicBarrier(3, () -> {
   System.out.println("All threads have reached the barrier");
- True});
+ }
  for (int i = 0; i < 3; i++) {
   new Thread(() -> {
   System.out.println(Thread.currentThread().getName() + " is working");
@@ -404,7 +404,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   e.printStackTrace();
   }
   }).start();
- True}
+ }
 ```
 
 ### 6.3 Semaphore
@@ -426,7 +426,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   System.out.println(Thread.currentThread().getName() + " released the semaphore");
   }
   }).start();
- True}
+ }
 ```
 
 ### 6.4 Future 和 CompletableFuture
@@ -444,19 +444,19 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   e.printStackTrace();
   }
   return "Hello, CompletableFuture!";
- True}).thenAccept(result -> {
+ }
   System.out.println("Result: " + result);
- True}).exceptionally(ex -> {
+ }
   ex.printStackTrace();
   return "Error occurred";
- True});
+ }
  System.out.println("Main thread continues");
  // 等待异步任务完成
  try {
   Thread.sleep(2000);
- True} catch (InterruptedException e) {
+ }
   e.printStackTrace();
- True}
+ }
 ```
 
 ## 7. 线程安全集合
@@ -508,7 +508,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   notifyAll(); // 通知生产者
   return data;
   }
- True}
+ }
 ```
 
 ### 8.2 Condition
@@ -555,7 +555,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   lock.unlock();
   }
   }
- True}
+ }
 ```
 
 ## 9. 实际应用案例
@@ -593,7 +593,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   new Thread(producer).start();
   new Thread(consumer).start();
   }
- True}
+ }
 ```
 
 ### 9.2 线程池的使用
@@ -627,7 +627,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   // 关闭线程池
   executorService.shutdown();
   }
- True}
+ }
 ```
 
 ### 9.3 并行计算
@@ -646,7 +646,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   System.out.println("Sum: " + sum);
   System.out.println("Time taken: " + (endTime - startTime) + " ms");
   }
- True}
+ }
 ```
 
 ## 10. 线程安全问题
@@ -694,7 +694,7 @@ Java 线程有 6 种状态，定义在 `Thread.State` 枚举中：
   }
   }).start();
   }
- True}
+ }
 ```
 
 ### 10.3 避免死锁的方法

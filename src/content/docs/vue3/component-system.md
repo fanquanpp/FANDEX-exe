@@ -52,26 +52,25 @@ const title = ref('Hello');
 const message = ref('Welcome to Vue3');
 const handleClick = () => {
   message.value = 'You clicked the button!';
-  True;
 };
 </script>
 <style scoped>
 .component {
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
-True}
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
 h2 {
- color: #42b983;
-True}
+  color: #42b983;
+}
 button {
- padding: 5px 10px;
- background-color: #42b983;
- color: white;
- border: none;
- border-radius: 4px;
- cursor: pointer;
-True}
+  padding: 5px 10px;
+  background-color: #42b983;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
 </style>
 ```
 
@@ -104,7 +103,7 @@ defineProps({
  type: String,
  default: 'Default message'
  }
-True})
+}
 </script>
 <!-- ParentComponent.vue -->
 <template>
@@ -145,7 +144,7 @@ defineProps({
  return ['option1', 'option2'].includes(value)
  }
  }
-True})
+}
 </script>
 ```
 
@@ -167,7 +166,6 @@ const emit = defineEmits(['click', 'custom-event']);
 const handleClick = () => {
   emit('click', 'Button clicked');
   emit('custom-event', { data: 'Custom event data' });
-  True;
 };
 </script>
 <!-- ParentComponent.vue -->
@@ -180,11 +178,9 @@ const handleClick = () => {
 import ChildComponent from './ChildComponent.vue';
 const handleChildClick = (message) => {
   console.log('Child clicked:', message);
-  True;
 };
 const handleCustomEvent = (data) => {
   console.log('Custom event:', data);
-  True;
 };
 </script>
 ```
@@ -200,7 +196,7 @@ const emit = defineEmits({
  'update:count': (value) => {
  return typeof value === 'number'
  }
-True})
+}
 </script>
 ```
 
@@ -280,7 +276,7 @@ const items = ref([
  { id: 1, name: 'Item 1' },
  { id: 2, name: 'Item 2' },
  { id: 3, name: 'Item 3' }
-True])
+]
 </script>
 <!-- ParentComponent.vue -->
 <template>
@@ -328,17 +324,14 @@ const message = ref('Welcome to Vue3');
 onMounted(() => {
   console.log('Component mounted');
   // 执行初始化逻辑
-  True;
 });
 onUpdated(() => {
   console.log('Component updated');
   // 执行更新后逻辑
-  True;
 });
 onUnmounted(() => {
   console.log('Component unmounted');
   // 执行清理逻辑
-  True;
 });
 </script>
 ```
@@ -367,7 +360,6 @@ import ParentComponent from './ParentComponent.vue';
 const theme = ref('light');
 const changeTheme = () => {
   theme.value = theme.value === 'light' ? 'dark' : 'light';
-  True;
 };
 provide('theme', theme);
 provide('changeTheme', changeTheme);
@@ -386,13 +378,13 @@ const changeTheme = inject('changeTheme');
 </template>
 <style scoped>
 .light {
- background-color: white;
- color: black;
-True}
+  background-color: white;
+  color: black;
+}
 .dark {
- background-color: black;
- color: white;
-True}
+  background-color: black;
+  color: white;
+}
 </style>
 ```
 
@@ -439,7 +431,7 @@ const AsyncComponent = defineAsyncComponent({
  errorComponent: () => '<p>Error</p>',
  delay: 200,
  timeout: 3000
-True})
+}
 </script>
 ```
 
@@ -460,29 +452,29 @@ True})
 import { ref } from 'vue'
 const props = defineProps({
  node: Object
-True})
+}
 const isOpen = ref(false)
 const toggle = () => {
  isOpen.value = !isOpen.value
-True}
+}
 </script>
 <style scoped>
 .tree-node {
- margin-left: 20px;
-True}
+  margin-left: 20px;
+}
 .node-content {
- cursor: pointer;
- padding: 5px;
- border: 1px solid #ddd;
- border-radius: 4px;
- margin: 5px 0;
-True}
+  cursor: pointer;
+  padding: 5px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin: 5px 0;
+}
 .node-content:hover {
- background-color: #f0f0f0;
-True}
+  background-color: #f0f0f0;
+}
 .node-children {
- margin-top: 5px;
-True}
+  margin-top: 5px;
+}
 </style>
 ```
 
@@ -545,37 +537,37 @@ defineProps({
  type: Boolean,
  default: false
  }
-True})
+}
 defineEmits(['click'])
 </script>
 <style scoped>
 .btn {
- padding: 8px 16px;
- border: none;
- border-radius: 4px;
- cursor: pointer;
- font-size: 14px;
-True}
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
 .btn-primary {
- background-color: #42b983;
- color: white;
-True}
+  background-color: #42b983;
+  color: white;
+}
 .btn-secondary {
- background-color: #999;
- color: white;
-True}
+  background-color: #999;
+  color: white;
+}
 .btn-success {
- background-color: #28a745;
- color: white;
-True}
+  background-color: #28a745;
+  color: white;
+}
 .btn-danger {
- background-color: #dc3545;
- color: white;
-True}
+  background-color: #dc3545;
+  color: white;
+}
 .btn-disabled {
- opacity: 0.6;
- cursor: not-allowed;
-True}
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 </style>
 ```
 
@@ -610,14 +602,14 @@ const todos = ref([
  { id: 1, text: 'Learn Vue3', completed: false },
  { id: 2, text: 'Build a project', completed: false },
  { id: 3, text: 'Deploy to production', completed: false }
-True])
+]
 const newTodo = ref('')
 const completedCount = computed(() => {
  return todos.value.filter(todo => todo.completed).length
-True})
+}
 const remainingCount = computed(() => {
  return todos.value.filter(todo => !todo.completed).length
-True})
+}
 const addTodo = () => {
  if (newTodo.value.trim()) {
  todos.value.push({
@@ -627,76 +619,76 @@ const addTodo = () => {
  })
  newTodo.value = ''
  }
-True}
+}
 const updateTodo = (todo) => {
  // 可以在这里添加更新逻辑，比如发送到服务器
  console.log('Updated todo:', todo)
-True}
+}
 const deleteTodo = (id) => {
  todos.value = todos.value.filter(todo => todo.id !== id)
-True}
+}
 </script>
 <style scoped>
 .todo-list {
- max-width: 400px;
- margin: 0 auto;
- padding: 20px;
- border: 1px solid #ddd;
- border-radius: 8px;
-True}
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+}
 .todo-input {
- display: flex;
- margin-bottom: 20px;
-True}
+  display: flex;
+  margin-bottom: 20px;
+}
 .todo-input input {
- flex: 1;
- padding: 8px;
- border: 1px solid #ddd;
- border-radius: 4px 0 0 4px;
-True}
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px 0 0 4px;
+}
 .todo-input button {
- padding: 8px 16px;
- background-color: #42b983;
- color: white;
- border: none;
- border-radius: 0 4px 4px 0;
- cursor: pointer;
-True}
+  padding: 8px 16px;
+  background-color: #42b983;
+  color: white;
+  border: none;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+}
 .todo-items {
- list-style-type: none;
- padding: 0;
- margin-bottom: 20px;
-True}
+  list-style-type: none;
+  padding: 0;
+  margin-bottom: 20px;
+}
 .todo-item {
- display: flex;
- align-items: center;
- padding: 10px;
- border-bottom: 1px solid #eee;
-True}
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+}
 .todo-item input {
- margin-right: 10px;
-True}
+  margin-right: 10px;
+}
 .todo-item span {
- flex: 1;
-True}
+  flex: 1;
+}
 .todo-item .completed {
- text-decoration: line-through;
- color: #999;
-True}
+  text-decoration: line-through;
+  color: #999;
+}
 .todo-item button {
- padding: 4px 8px;
- background-color: #dc3545;
- color: white;
- border: none;
- border-radius: 4px;
- cursor: pointer;
-True}
+  padding: 4px 8px;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
 .todo-stats {
- display: flex;
- justify-content: space-between;
- font-size: 14px;
- color: #666;
-True}
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  color: #666;
+}
 </style>
 ```
 

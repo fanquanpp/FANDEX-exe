@@ -99,9 +99,9 @@ const count = ref(0);
 </script>
 <style scoped>
 .hello {
- text-align: center;
- margin-top: 2rem;
-True}
+  text-align: center;
+  margin-top: 2rem;
+}
 </style>
 ```
 
@@ -130,12 +130,10 @@ const doubleCount = computed(() => count.value * 2);
 // 生命周期钩子
 onMounted(() => {
   console.log('组件挂载完成');
-  True;
 });
 // 方法
 function increment() {
   count.value++;
-  True;
 }
 </script>
 ```
@@ -151,7 +149,7 @@ const count = ref(0)
 const user = reactive({
  name: '张三',
  age: 20
-True})
+}
 // 解构响应式对象
 const { name, age } = toRefs(user)
 </script>
@@ -181,7 +179,7 @@ const parentMessage = ref('来自父组件的消息');
 <script setup lang="ts">
 defineProps<{
   message: string;
-  True;
+  ;
 }>();
 </script>
 ```
@@ -196,7 +194,7 @@ defineProps<{
 <script setup lang="ts">
 const emit = defineEmits<{
   (e: 'update', message: string): void;
-  True;
+  ;
 }>();
 </script>
 ```
@@ -213,7 +211,6 @@ import { ref } from 'vue';
 const childMessage = ref('');
 function handleUpdate(message: string) {
   childMessage.value = message;
-  True;
 }
 </script>
 ```
@@ -245,11 +242,11 @@ function handleUpdate(message: string) {
   name: 'About',
   component: () => import('../views/About.vue')
   }
- True]
+ ]
  const router = createRouter({
   history: createWebHistory(),
   routes
- True})
+ }
  export default router
 ```
 
@@ -278,7 +275,7 @@ function handleUpdate(message: string) {
   getters: {
   doubleCount: (state) => state.count * 2
   }
- True})
+ }
 ```
 
 使用：

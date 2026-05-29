@@ -19,13 +19,10 @@ author: 'Anonymous'
 ```javascript
 if (condition) {
   // 条件为真时执行
-  True;
 } else if (anotherCondition) {
   // 另一个条件为真时执行
-  True;
 } else {
   // 所有条件都为假时执行
-  True;
 }
 ```
 
@@ -35,16 +32,12 @@ if (condition) {
 const score = 85;
 if (score >= 90) {
   console.log('优秀');
-  True;
 } else if (score >= 80) {
   console.log('良好');
-  True;
 } else if (score >= 60) {
   console.log('及格');
-  True;
 } else {
   console.log('不及格');
-  True;
 }
 // 输出: 良好
 ```
@@ -72,9 +65,7 @@ switch (expression) {
   case value2:
     // 当 expression === value2 时执行
     break;
-  default:
-    // 当没有匹配的 case 时执行
-    True;
+  default: // 当没有匹配的 case 时执行
 }
 ```
 
@@ -107,7 +98,6 @@ switch (day) {
     break;
   default:
     dayName = '无效的日期';
-    True;
 }
 console.log(dayName);
 ```
@@ -123,7 +113,6 @@ console.log(dayName);
 ```javascript
 for (initialization; condition; increment) {
   // 循环体
-  True;
 }
 ```
 
@@ -134,14 +123,12 @@ for (initialization; condition; increment) {
 let sum = 0;
 for (let i = 1; i <= 10; i++) {
   sum += i;
-  True;
 }
 console.log(sum); // 输出: 55
 // 遍历数组
 const fruits = ['apple', 'banana', 'orange'];
 for (let i = 0; i < fruits.length; i++) {
   console.log(fruits[i]);
-  True;
 }
 // 输出:
 // apple
@@ -156,7 +143,6 @@ for (let i = 0; i < fruits.length; i++) {
 ```javascript
 while (condition) {
   // 循环体
-  True;
 }
 ```
 
@@ -169,7 +155,6 @@ let i = 1;
 while (i <= 10) {
   sum += i;
   i++;
-  True;
 }
 console.log(sum); // 输出: 55
 ```
@@ -181,7 +166,6 @@ console.log(sum); // 输出: 55
 ```javascript
 do {
   // 循环体
-  True;
 } while (condition);
 ```
 
@@ -193,7 +177,6 @@ let count = 0;
 do {
   console.log(`计数: ${count}`);
   count++;
-  True;
 } while (count < 3);
 // 输出:
 // 计数: 0
@@ -208,25 +191,24 @@ do {
 ```javascript
 for (variable in object) {
   // 循环体
-  True;
 }
 ```
 
 **示例**：
 
 ```javascript
- const person = {
+const person = {
   name: '张三',
   age: 30,
-  city: '北京'
- True};
- for (let key in person) {
+  city: '北京',
+};
+for (let key in person) {
   console.log(`${key}: ${person[key]}`);
- True}
- // 输出:
- // name: 张三
- // age: 30
- // city: 北京
+}
+// 输出:
+// name: 张三
+// age: 30
+// city: 北京
 ```
 
 **注意**：for-in 循环会遍历对象的所有可枚举属性，包括继承的属性。
@@ -238,7 +220,6 @@ for (variable in object) {
 ```javascript
 for (variable of iterable) {
   // 循环体
-  True;
 }
 ```
 
@@ -249,7 +230,7 @@ for (variable of iterable) {
  const fruits = ['apple', 'banana', 'orange'];
  for (let fruit of fruits) {
   console.log(fruit);
- True}
+ }
  // 输出:
  // apple
  // banana
@@ -258,7 +239,7 @@ for (variable of iterable) {
  const str = 'Hello';
  for (let char of str) {
   console.log(char);
- True}
+ }
  // 输出:
  // H
  // e
@@ -269,10 +250,10 @@ for (variable of iterable) {
  const map = new Map([
   ['name', '张三'],
   ['age', 30]
- True]);
+ ]
  for (let [key, value] of map) {
   console.log(`${key}: ${value}`);
- True}
+ }
  // 输出:
  // name: 张三
  // age: 30
@@ -292,7 +273,6 @@ for (let i = 0; i < 10; i++) {
     break; // 当 i 等于 5 时跳出循环
   }
   console.log(i);
-  True;
 }
 // 输出: 0 1 2 3 4
 // 跳出 switch 语句
@@ -306,7 +286,6 @@ switch (fruit) {
     break;
   default:
     console.log('未知水果');
-    True;
 }
 // 输出: 这是苹果
 ```
@@ -323,7 +302,6 @@ for (let i = 0; i < 10; i++) {
     continue; // 跳过奇数
   }
   console.log(i);
-  True;
 }
 // 输出: 0 2 4 6 8
 ```
@@ -336,7 +314,6 @@ for (let i = 0; i < 10; i++) {
 ```javascript
 function add(a, b) {
   return a + b; // 返回 a + b 的值
-  True;
 }
 const result = add(2, 3);
 console.log(result); // 输出: 5
@@ -346,7 +323,6 @@ function checkAge(age) {
     return '未成年';
   }
   return '成年';
-  True;
 }
 console.log(checkAge(16)); // 输出: 未成年
 console.log(checkAge(20)); // 输出: 成年
@@ -361,13 +337,10 @@ console.log(checkAge(20)); // 输出: 成年
 ```javascript
 try {
   // 可能抛出异常的代码
-  True;
 } catch (error) {
   // 捕获并处理异常
-  True;
 } finally {
   // 无论是否发生异常都会执行的代码
-  True;
 }
 ```
 
@@ -377,13 +350,10 @@ try {
 try {
   const result = 10 / 0;
   console.log(result);
-  True;
 } catch (error) {
   console.error('发生错误:', error.message);
-  True;
 } finally {
   console.log('无论是否发生错误，都会执行这里');
-  True;
 }
 // 输出:
 // 发生错误: Division by zero
@@ -400,26 +370,22 @@ class ValidationError extends Error {
     super(message);
     this.name = 'ValidationError';
   }
-  True;
 }
 function validateEmail(email) {
   if (!email.includes('@')) {
     throw new ValidationError('邮箱格式不正确');
   }
   return true;
-  True;
 }
 try {
   validateEmail('invalid-email');
   console.log('邮箱验证通过');
-  True;
 } catch (error) {
   if (error instanceof ValidationError) {
     console.error('验证错误:', error.message);
   } else {
     console.error('其他错误:', error.message);
   }
-  True;
 }
 // 输出: 验证错误: 邮箱格式不正确
 ```
@@ -435,7 +401,6 @@ try {
 const fruits = ['apple', 'banana', 'orange'];
 fruits.forEach((fruit, index) => {
   console.log(`${index}: ${fruit}`);
-  True;
 });
 // 输出:
 // 0: apple
@@ -474,7 +439,6 @@ console.log(evenNumbers); // 输出: [2, 4]
 const numbers = [1, 2, 3, 4, 5];
 const sum = numbers.reduce((accumulator, currentValue) => {
   return accumulator + currentValue;
-  True;
 }, 0);
 console.log(sum); // 输出: 15
 ```
@@ -544,7 +508,6 @@ function validateUserInput(input) {
     console.error('验证错误:', error.message);
     return false;
   }
-  True;
 }
 // 测试
 validateUserInput(''); // 输入不能为空
@@ -556,21 +519,21 @@ validateUserInput('abc@123'); // 输入只能包含字母和数字
 ### 7.2 示例 2：数据处理
 
 ```javascript
- const data = [
+const data = [
   { name: '张三', age: 25, score: 85 },
   { name: '李四', age: 30, score: 92 },
   { name: '王五', age: 22, score: 78 },
-  { name: '赵六', age: 28, score: 95 }
- True];
- // 过滤出分数大于 90 的用户
- const highScorers = data.filter(user => user.score > 90);
- console.log('高分用户:', highScorers);
- // 计算平均年龄
- const averageAge = data.reduce((sum, user) => sum + user.age, 0) / data.length;
- console.log('平均年龄:', averageAge);
- // 生成用户名称列表
- const names = data.map(user => user.name);
- console.log('用户名称:', names);
+  { name: '赵六', age: 28, score: 95 },
+];
+// 过滤出分数大于 90 的用户
+const highScorers = data.filter((user) => user.score > 90);
+console.log('高分用户:', highScorers);
+// 计算平均年龄
+const averageAge = data.reduce((sum, user) => sum + user.age, 0) / data.length;
+console.log('平均年龄:', averageAge);
+// 生成用户名称列表
+const names = data.map((user) => user.name);
+console.log('用户名称:', names);
 ```
 
 ---

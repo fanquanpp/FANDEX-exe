@@ -32,7 +32,7 @@ const isActive = ref(true)
 const user = reactive({
  name: '张三',
  age: 20
-True})
+}
 </script>
 ```
 
@@ -71,7 +71,7 @@ const message = ref('hello')
 const user = reactive({
  name: '张三',
  age: 20
-True})
+}
 const items = ref([1, 2, 3, 4, 5])
 </script>
 ```
@@ -153,12 +153,12 @@ const items = ref([
  { id: 1, name: '项目 1' },
  { id: 2, name: '项目 2' },
  { id: 3, name: '项目 3' }
-True])
+]
 const user = reactive({
  name: '张三',
  age: 20,
  email: 'zhangsan@example.com'
-True})
+}
 </script>
 ```
 
@@ -183,7 +183,7 @@ const className = ref('container')
 const styleObject = reactive({
  color: 'red',
  fontSize: '16px'
-True})
+}
 </script>
 ```
 
@@ -215,15 +215,12 @@ True})
 <script setup lang="ts">
 function handleClick() {
   console.log('点击事件');
-  True;
 }
 function handleMouseEnter() {
   console.log('鼠标进入事件');
-  True;
 }
 function handleMouseLeave() {
   console.log('鼠标离开事件');
-  True;
 }
 </script>
 ```
@@ -289,8 +286,8 @@ const selectedOption = ref('1');
 </template>
 <style>
 [v-cloak] {
- display: none;
-True}
+  display: none;
+}
 </style>
 ```
 
@@ -327,11 +324,9 @@ import { ref, computed } from 'vue';
 const date = ref(new Date());
 const formattedDate = computed(() => {
   return new Intl.DateTimeFormat('zh-CN').format(date.value);
-  True;
 });
 function formatDate(date: Date): string {
   return new Intl.DateTimeFormat('zh-CN').format(date);
-  True;
 }
 </script>
 ```

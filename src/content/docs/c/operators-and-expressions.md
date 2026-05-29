@@ -51,7 +51,7 @@ author: 'Anonymous'
   printf("++c = %d\n", ++c); // 7
   printf("c = %d\n", c); // 7
   return 0;
- True}
+ }
 ```
 
 ### 1.2 关系运算符 (Relational)
@@ -80,7 +80,7 @@ author: 'Anonymous'
   printf("a >= b: %d\n", a >= b); // 1
   printf("a <= b: %d\n", a <= b); // 0
   return 0;
- True}
+ }
 ```
 
 ### 1.3 逻辑运算符 (Logical)
@@ -113,7 +113,7 @@ author: 'Anonymous'
   printf("(x != 0) || (++y): %d\n", (x != 0) || (++y)); // 1，y 不变
   printf("y = %d\n", y); // 5
   return 0;
- True}
+ }
 ```
 
 ### 1.4 位运算符 (Bitwise)
@@ -138,7 +138,7 @@ author: 'Anonymous'
   printf("%d", (n >> i) & 1);
   }
   printf("\n");
- True}
+ }
  int main() {
   int a = 6; // 0110
   int b = 3; // 0011
@@ -159,7 +159,7 @@ author: 'Anonymous'
   printf("a >> 1 = %d: ", a >> 1);
   print_bits(a >> 1, 4);
   return 0;
- True}
+ }
 ```
 
 #### 1.4.3 位运算符的应用
@@ -186,7 +186,7 @@ author: 'Anonymous'
   CLEAR_BIT(x, 2); // 0010
   printf("x after clearing bit 2: %d\n", x); // 2
   return 0;
- True}
+ }
 ```
 
 ### 1.5 赋值运算符 (Assignment)
@@ -225,7 +225,7 @@ author: 'Anonymous'
   a %= b; // a = a % b
   printf("a %%= b: %d\n", a); // 1
   return 0;
- True}
+ }
 ```
 
 ### 1.6 其他运算符
@@ -243,7 +243,7 @@ author: 'Anonymous'
   printf("Size of arr: %zu bytes\n", sizeof(arr));
   printf("Number of elements: %zu\n", sizeof(arr) / sizeof(arr[0]));
   return 0;
- True}
+ }
 ```
 
 #### 1.6.2 取地址和解引用运算符
@@ -260,7 +260,7 @@ author: 'Anonymous'
   *p = 20; // 通过指针修改值
   printf("After modification: a = %d\n", a);
   return 0;
- True}
+ }
 ```
 
 #### 1.6.3 条件运算符（三目运算符）
@@ -279,7 +279,7 @@ author: 'Anonymous'
   int result = (a % 2 == 0) ? 1 : 0;
   printf("Is a even? %d\n", result); // 1
   return 0;
- True}
+ }
 ```
 
 #### 1.6.4 逗号运算符
@@ -296,7 +296,7 @@ author: 'Anonymous'
   printf("i = %d, j = %d\n", i, j);
   }
   return 0;
- True}
+ }
 ```
 
 ## 2. 运算符优先级 (Precedence)
@@ -337,7 +337,7 @@ author: 'Anonymous'
   int result4 = a > b ? c : d; // 条件运算符: 10 > 3 为真，结果 5
   printf("a > b ? c : d = %d\n", result4);
   return 0;
- True}
+ }
 ```
 
 ### 2.3 结合性示例
@@ -357,7 +357,7 @@ author: 'Anonymous'
   int e = -++d; // -(++d) = -6
   printf("-++d = %d\n", e);
   return 0;
- True}
+ }
 ```
 
 ## 3. 表达式 (Expressions)
@@ -400,7 +400,7 @@ author: 'Anonymous'
   int comma_expr = (a = 10, b = 20, a + b);
   printf("Comma expression: %d\n", comma_expr);
   return 0;
- True}
+ }
 ```
 
 ### 3.3 表达式中的类型转换
@@ -419,7 +419,7 @@ author: 'Anonymous'
   int result2 = a + (int)b;
   printf("a + (int)b = %d\n", result2); // 13
   return 0;
- True}
+ }
 ```
 
 #### 3.3.2 显式类型转换
@@ -438,7 +438,7 @@ author: 'Anonymous'
   int *int_ptr = (int *)ptr;
   printf("*int_ptr = %d\n", *int_ptr); // 100
   return 0;
- True}
+ }
 ```
 
 ### 3.4 表达式中的副作用
@@ -457,7 +457,7 @@ author: 'Anonymous'
   int result = b + c;
   printf("b = %d, c = %d, result = %d\n", b, c, result); // 5, 7, 12
   return 0;
- True}
+ }
 ```
 
 ## 4. 运算符与表达式的最佳实践
@@ -493,7 +493,7 @@ author: 'Anonymous'
  // 逻辑运算符短路优化
  int is_valid(int *ptr, int size) {
   return ptr != NULL && size > 0; // 如果 ptr 为 NULL，size > 0 不会执行
- True}
+ }
  int main() {
   // 使用括号明确优先级
   int a = 10, b = 3, c = 5;
@@ -511,7 +511,7 @@ author: 'Anonymous'
   printf("Invalid pointer or size\n"); // 执行这里
   }
   return 0;
- True}
+ }
 ```
 
 ## 5. 常见问题与解决方案
@@ -551,13 +551,13 @@ author: 'Anonymous'
  // 问题：如果 ptr 为 NULL，func() 不会执行
  if (ptr != NULL && func()) {
   // ...
- True}
+ }
  // 解决方案：如果 func() 需要执行，分开写
  if (ptr != NULL) {
   if (func()) {
   // ...
   }
- True}
+ }
 ```
 
 ### 5.4 位运算符号扩展
@@ -611,41 +611,41 @@ author: 'Anonymous'
  for (int i = 0; i < 1000; i++) {
   int result = a * 8 + b * 4;
   // ...
- True}
+ }
  // 优化后
  for (int i = 0; i < 1000; i++) {
   int result = (a << 3) + (b << 2); // 位运算更快
   // ...
- True}
+ }
  // 优化前
  if (x > 0 && y > 0 && z > 0) {
   // ...
- True}
+ }
  // 优化后（假设 x > 0 的概率最高）
  if (x > 0 && y > 0 && z > 0) {
   // 保持不变，因为短路特性会自动优化
- True}
+ }
  // 优化前
  if (flag == 1) {
   // case 1
- True} else if (flag == 2) {
+ }
   // case 2
- True} else if (flag == 4) {
+ }
   // case 4
- True}
+ }
  // 优化后（使用位掩码）
  #define FLAG_1 1
  #define FLAG_2 2
  #define FLAG_4 4
  if (flag & FLAG_1) {
   // case 1
- True}
+ }
  if (flag & FLAG_2) {
   // case 2
- True}
+ }
  if (flag & FLAG_4) {
   // case 4
- True}
+ }
 ```
 
 ---

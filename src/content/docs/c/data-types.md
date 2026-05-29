@@ -45,7 +45,7 @@ C 语言的整型包括以下类型：
   printf("Valid\n");
   }
   return 0;
- True}
+ }
 ```
 
 ### 1.4 备考知识点
@@ -135,7 +135,7 @@ C 语言的整型包括以下类型：
   printf("double size: %zu bytes\n", sizeof(double));
   printf("void* size: %zu bytes\n", sizeof(void*));
   return 0;
- True}
+ }
 ```
 
 ### 3.3 内存对齐
@@ -150,7 +150,7 @@ C 语言的整型包括以下类型：
   char c; // 1字节，但会对齐到4字节
   int i; // 4字节
   double d; // 8字节
- True};
+ }
  // 在32位系统中，sizeof(struct Example) = 16字节
  // 在64位系统中，sizeof(struct Example) = 24字节
 ```
@@ -180,7 +180,7 @@ C 语言的整型包括以下类型：
   {1, 2, 3},
   {4, 5, 6},
   {7, 8, 9}
- True};
+ }
  // 字符数组（字符串）
  char message[] = "Hello, C!";
 ```
@@ -197,7 +197,7 @@ C 语言的整型包括以下类型：
  printf("x 的地址: %p\n", &x);
  printf("ptr 存储的地址: %p\n", ptr);
  printf("ptr 指向的值: %d\n", *ptr);
- True*ptr = 20; // 通过指针修改 x 的值
+ *
  printf("修改后 x 的值: %d\n", x);
 ```
 
@@ -212,7 +212,7 @@ C 语言的整型包括以下类型：
   int id;
   char name[50];
   float salary;
- True} Employee;
+ }
  // 结构体使用
  Employee emp1;
  emp1.id = 101;
@@ -232,7 +232,7 @@ C 语言的整型包括以下类型：
   int i;
   float f;
   char str[20];
- True} data;
+ }
  data.i = 10;
  printf("data.i: %d\n", data.i);
  data.f = 3.14;
@@ -254,7 +254,7 @@ C 语言的整型包括以下类型：
   FRIDAY, // 4
   SATURDAY, // 5
   SUNDAY // 6
- True};
+ }
  enum Weekday today = WEDNESDAY;
  printf("Today is day %d\n", today); // 输出 2
  // 显式指定值
@@ -262,7 +262,7 @@ C 语言的整型包括以下类型：
   RED = 1,
   GREEN = 2,
   BLUE = 4
- True};
+ }
 ```
 
 ### 4.6 备考知识点
@@ -372,7 +372,7 @@ C 语言的整型包括以下类型：
  typedef struct {
   int x;
   int y;
- True} Point;
+ }
  // 使用别名
  uint count = 100;
  int64 large_number = 9999999999;

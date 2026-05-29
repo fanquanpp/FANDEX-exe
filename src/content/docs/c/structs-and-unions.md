@@ -30,7 +30,7 @@ author: 'Anonymous'
   char name[50]; // 姓名
   int age; // 年龄
   float height; // 身高
- True};
+ }
 ```
 
 #### 1.2.2 同时定义结构体变量
@@ -40,7 +40,7 @@ author: 'Anonymous'
  struct Person {
   char name[50];
   int age;
- True} p1, p2; // 声明两个 Person 类型的变量
+ }
 ```
 
 #### 1.2.3 匿名结构体
@@ -50,7 +50,7 @@ author: 'Anonymous'
  struct {
   int x;
   int y;
- True} point;
+ }
 ```
 
 ### 1.3 结构体的初始化
@@ -66,7 +66,7 @@ author: 'Anonymous'
  struct Person p3 = {
   .name = "Charlie",
   .age = 30
- True}; // height 为 0
+ }
 ```
 
 #### 1.3.2 动态初始化
@@ -108,7 +108,7 @@ author: 'Anonymous'
   printf("Name: %s\n", p.name);
   printf("Age: %d\n", p.age);
   printf("Height: %.2f\n", p.height);
- True}
+ }
  // 调用
  print_person(p1);
 ```
@@ -118,7 +118,7 @@ author: 'Anonymous'
 ```c
  void update_person(struct Person *p, int new_age) {
   p->age = new_age;
- True}
+ }
  // 调用
  update_person(&p1, 26);
 ```
@@ -131,12 +131,12 @@ author: 'Anonymous'
   {"Alice", 25, 1.65},
   {"Bob", 30, 1.75},
   {"Charlie", 35, 1.80}
- True};
+ }
  // 访问数组元素
  for (int i = 0; i < 3; i++) {
   printf("Person %d: %s, %d, %.2f\n",
   i+1, people[i].name, people[i].age, people[i].height);
- True}
+ }
 ```
 
 ### 1.7 嵌套结构体
@@ -147,19 +147,19 @@ author: 'Anonymous'
   int day;
   int month;
   int year;
- True};
+ }
  // 定义包含日期的结构体
  struct Person {
   char name[50];
   int age;
   struct Date birthday; // 嵌套结构体
- True};
+ }
  // 初始化
  struct Person p = {
   "Alice",
   25,
   {15, 5, 1999} // 初始化嵌套的 Date 结构体
- True};
+ }
  // 访问嵌套结构体成员
  printf("Birthday: %d/%d/%d\n",
   p.birthday.day, p.birthday.month, p.birthday.year);
@@ -187,7 +187,7 @@ author: 'Anonymous'
   int i; // 4 字节
   double d; // 8 字节
   // 4 字节填充（使总大小为 8 的整数倍）
- True};
+ }
  // sizeof(struct Example) 通常为 24 字节
  // 解释：1 + 3 + 4 + 8 + 4 = 20？不，实际是 24
  // 正确计算：
@@ -216,14 +216,14 @@ author: 'Anonymous'
   char c;
   int i;
   double d;
- True};
+ }
  #pragma pack() // 恢复默认对齐
  // 使用 packed 属性
  struct __attribute__((packed)) PackedStruct {
   char c;
   int i;
   double d;
- True};
+ }
 ```
 
 ### 1.9 结构体的应用示例
@@ -234,7 +234,7 @@ author: 'Anonymous'
  typedef struct Node {
   int data;
   struct Node *next;
- True} Node;
+ }
  // 创建新节点
  Node *create_node(int data) {
   Node *new_node = (Node *)malloc(sizeof(Node));
@@ -244,7 +244,7 @@ author: 'Anonymous'
   new_node->data = data;
   new_node->next = NULL;
   return new_node;
- True}
+ }
  // 添加节点
  void append(Node **head, int data) {
   Node *new_node = create_node(data);
@@ -257,7 +257,7 @@ author: 'Anonymous'
   temp = temp->next;
   }
   temp->next = new_node;
- True}
+ }
 ```
 
 #### 1.9.2 学生信息管理
@@ -268,18 +268,18 @@ author: 'Anonymous'
   int id;
   float grades[3]; // 三门课的成绩
   float average;
- True} Student;
+ }
  // 计算平均成绩
  void calculate_average(Student *s) {
   s->average = (s->grades[0] + s->grades[1] + s->grades[2]) / 3.0;
- True}
+ }
  // 打印学生信息
  void print_student(Student s) {
   printf("Name: %s\n", s.name);
   printf("ID: %d\n", s.id);
   printf("Grades: %.2f, %.2f, %.2f\n", s.grades[0], s.grades[1], s.grades[2]);
   printf("Average: %.2f\n", s.average);
- True}
+ }
 ```
 
 ## 2. 联合体 (Unions)
@@ -301,7 +301,7 @@ author: 'Anonymous'
   float f; // 4 字节
   char c; // 1 字节
   char str[20]; // 20 字节
- True}; // 大小为 20 字节
+ }
  // 使用
  union Data data;
  data.i = 100;
@@ -325,13 +325,13 @@ author: 'Anonymous'
  union FloatInt {
   float f;
   int i;
- True};
+ }
  // 查看浮点数的二进制表示
  void print_float_bits(float f) {
   union FloatInt fi;
   fi.f = f;
   printf("Float: %f, Int: %d, Hex: 0x%X\n", f, fi.i, fi.i);
- True}
+ }
 ```
 
 #### 2.3.3 判别式联合（Tagged Union）
@@ -341,7 +341,7 @@ author: 'Anonymous'
 ```c
  enum DataType {
   INT, FLOAT, STRING
- True};
+ }
  struct TaggedUnion {
   enum DataType type; // 类型标签
   union {
@@ -349,7 +349,7 @@ author: 'Anonymous'
   float f;
   char str[50];
   } data; // 数据
- True};
+ }
  void print_data(struct TaggedUnion tu) {
   switch (tu.type) {
   case INT:
@@ -364,7 +364,7 @@ author: 'Anonymous'
   default:
   printf("Unknown type\n");
   }
- True}
+ }
  // 使用
  struct TaggedUnion tu1;
  tu1.type = INT;
@@ -386,12 +386,12 @@ author: 'Anonymous'
   unsigned int is_active : 1; // 1位
   unsigned int is_admin : 1; // 1位
   unsigned int level : 3; // 3位
- True};
+ }
  // 联合体
  union FlagUnion {
   struct Flags flags;
   unsigned char value; // 1字节
- True};
+ }
  // 使用
  union FlagUnion fu;
  fu.value = 0; // 初始化
@@ -419,7 +419,7 @@ author: 'Anonymous'
   RED, // 默认值 0
   GREEN, // 默认值 1
   BLUE // 默认值 2
- True};
+ }
  // 使用
  enum Color my_color = GREEN;
  printf("Color value: %d\n", my_color); // 输出 1
@@ -436,7 +436,7 @@ author: 'Anonymous'
   FRIDAY, // 5
   SATURDAY = 10, // 10
   SUNDAY // 11
- True};
+ }
  // 使用
  enum Day today = WEDNESDAY;
  printf("Today is day %d\n", today); // 输出 3
@@ -456,14 +456,14 @@ author: 'Anonymous'
   ERROR_INVALID_INPUT = 1,
   ERROR_MEMORY = 2,
   ERROR_NETWORK = 3
- True};
+ }
  int process_data(int input) {
   if (input < 0) {
   return ERROR_INVALID_INPUT;
   }
   // 处理数据
   return SUCCESS;
- True}
+ }
 ```
 
 #### 3.3.2 选项标志
@@ -474,7 +474,7 @@ author: 'Anonymous'
   MODE_WRITE = 1 << 1, // 0b0010
   MODE_APPEND = 1 << 2, // 0b0100
   MODE_BINARY = 1 << 3 // 0b1000
- True};
+ }
  void open_file(const char *filename, int mode) {
   if (mode & MODE_READ) {
   printf("Opening file for reading\n");
@@ -483,7 +483,7 @@ author: 'Anonymous'
   printf("Opening file for writing\n");
   }
   // 打开文件
- True}
+ }
  // 使用
  open_file("data.txt", MODE_READ | MODE_WRITE);
 ```
@@ -520,18 +520,18 @@ author: 'Anonymous'
  struct Person {
   char name[50];
   int age;
- True};
+ }
  typedef struct Person Person;
  // 方式 2：定义结构体的同时创建别名
  typedef struct {
   char name[50];
   int age;
- True} Person;
+ }
  // 方式 3：带标签的结构体
  typedef struct Person {
   char name[50];
   int age;
- True} Person;
+ }
  // 使用
  Person p = {"Alice", 25};
 ```
@@ -555,7 +555,7 @@ author: 'Anonymous'
  // 使用
  int ascending(int a, int b) {
   return a - b;
- True}
+ }
  CompareFunc cmp = ascending;
  int result = cmp(5, 3);
 ```
@@ -572,7 +572,7 @@ author: 'Anonymous'
   int day;
   int month;
   int year;
- True} Date;
+ }
  // 定义学生结构体
  typedef struct {
   char name[50];
@@ -580,11 +580,11 @@ author: 'Anonymous'
   Date birthday;
   float grades[3];
   float average;
- True} Student;
+ }
  // 计算平均成绩
  void calculate_average(Student *s) {
   s->average = (s->grades[0] + s->grades[1] + s->grades[2]) / 3.0;
- True}
+ }
  // 打印学生信息
  void print_student(Student s) {
   printf("Name: %s\n", s.name);
@@ -594,7 +594,7 @@ author: 'Anonymous'
   printf("Grades: %.2f, %.2f, %.2f\n",
   s.grades[0], s.grades[1], s.grades[2]);
   printf("Average: %.2f\n\n", s.average);
- True}
+ }
  int main() {
   // 初始化学生数组
   Student students[3] = {
@@ -626,7 +626,7 @@ author: 'Anonymous'
   print_student(students[i]);
   }
   return 0;
- True}
+ }
 ```
 
 ### 5.2 图形库中的形状表示
@@ -638,40 +638,40 @@ author: 'Anonymous'
   CIRCLE,
   RECTANGLE,
   TRIANGLE
- True};
+ }
  // 点结构体
  typedef struct {
   int x;
   int y;
- True} Point;
+ }
  // 圆形结构体
  typedef struct {
   Point center;
   int radius;
- True} Circle;
+ }
  // 矩形结构体
  typedef struct {
   Point top_left;
   int width;
   int height;
- True} Rectangle;
+ }
  // 三角形结构体
  typedef struct {
   Point p1;
   Point p2;
   Point p3;
- True} Triangle;
+ }
  // 形状联合体
  typedef union {
   Circle circle;
   Rectangle rectangle;
   Triangle triangle;
- True} ShapeData;
+ }
  // 形状结构体
  typedef struct {
   enum ShapeType type;
   ShapeData data;
- True} Shape;
+ }
  // 计算面积
  float calculate_area(Shape shape) {
   switch (shape.type) {
@@ -695,7 +695,7 @@ author: 'Anonymous'
   default:
   return 0.0;
   }
- True}
+ }
  // 打印形状信息
  void print_shape(Shape shape) {
   switch (shape.type) {
@@ -721,7 +721,7 @@ author: 'Anonymous'
   default:
   printf("Unknown shape\n");
   }
- True}
+ }
  int main() {
   // 创建圆形
   Shape circle_shape;
@@ -742,7 +742,7 @@ author: 'Anonymous'
   print_shape(rect_shape);
   printf("Area: %.2f\n\n", calculate_area(rect_shape));
   return 0;
- True}
+ }
 ```
 
 ## 6. 最佳实践

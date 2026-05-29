@@ -37,23 +37,23 @@ author: 'Anonymous'
   int temp = a;
   a = b;
   b = temp;
- True}
+ }
  int main() {
   int x = 10, y = 20;
   swap(x, y);
   std::cout << x << " " << y; // 输出 20 10
   return 0;
- True}
+ }
  // 引用作为函数返回值
  int& get_element(int arr[], int index) {
   return arr[index];
- True}
+ }
  int main() {
   int arr[] = {1, 2, 3, 4, 5};
   get_element(arr, 2) = 10; // 修改数组元素
   std::cout << arr[2]; // 输出 10
   return 0;
- True}
+ }
 ```
 
 ## 4. 常量引用

@@ -19,7 +19,7 @@ updated: 2026-05-03
 协程（Coroutine）是一种特殊的函数，可以在执行过程中挂起，并在后续恢复执行。与线程不同，协程是协作式的，而不是抢占式的：
 
 ```lua
- True-- 创建协程
+ -
  local co = coroutine.create(function()
   print("协程开始执行")
   coroutine.yield() -- 挂起协程
@@ -27,10 +27,10 @@ updated: 2026-05-03
   return "协程执行完成"
  end)
  print("协程状态:", coroutine.status(co)) -- 输出 suspended
- True-- 启动协程
+ -
  coroutine.resume(co) -- 输出 协程开始执行
  print("协程状态:", coroutine.status(co)) -- 输出 suspended
- True-- 恢复协程
+ -
  local success, result = coroutine.resume(co) -- 输出 协程恢复执行
  print("协程状态:", coroutine.status(co)) -- 输出 dead
  print("协程返回值:", result) -- 输出 协程执行完成
@@ -68,7 +68,7 @@ updated: 2026-05-03
   end
   end)
  end
- True-- 使用自定义迭代器
+ -
  for i in range(1, 5) do
   print(i) -- 输出 1, 2, 3, 4, 5
  end
@@ -92,7 +92,7 @@ updated: 2026-05-03
   print("消费:", value)
   end
  end
- True-- 使用生产者-消费者模式
+ -
  local prod = producer()
  consumer(prod)
 ```
@@ -104,7 +104,7 @@ updated: 2026-05-03
 在 Lua 中，可以使用协程来模拟异步操作：
 
 ```lua
- True-- 模拟异步操作
+ -
  function asyncOperation(callback)
   -- 模拟异步延迟
   print("开始异步操作")
@@ -123,7 +123,7 @@ updated: 2026-05-03
   end
   checkTimer()
  end
- True-- 使用协程包装异步操作
+ -
  function asyncOperationWithCoroutine()
   local co = coroutine.running()
   asyncOperation(function(result)
@@ -131,7 +131,7 @@ updated: 2026-05-03
   end)
   return coroutine.yield()
  end
- True-- 使用示例
+ -
  local result = asyncOperationWithCoroutine()
  print("结果:", result) -- 输出 结果: 异步操作完成
 ```
@@ -141,7 +141,7 @@ updated: 2026-05-03
 在游戏开发中，协程常与事件循环结合使用：
 
 ```lua
- True-- 模拟游戏事件循环
+ -
  local events = {}
  function addEvent(event)
   table.insert(events, event)
@@ -152,7 +152,7 @@ updated: 2026-05-03
   event()
   end
  end
- True-- 使用协程实现延时操作
+ -
  function delay(seconds, callback)
   local startTime = os.time()
   local function checkTime()
@@ -164,7 +164,7 @@ updated: 2026-05-03
   end
   addEvent(checkTime)
  end
- True-- 使用协程包装延时操作
+ -
  function wait(seconds)
   local co = coroutine.running()
   delay(seconds, function()
@@ -172,7 +172,7 @@ updated: 2026-05-03
   end)
   coroutine.yield()
  end
- True-- 示例：游戏角色移动
+ -
  function moveCharacter()
   local co = coroutine.create(function()
   print("开始移动")
@@ -183,7 +183,7 @@ updated: 2026-05-03
   end)
   addEvent(function() coroutine.resume(co) end)
  end
- True-- 运行事件循环
+ -
  moveCharacter()
  while  do
   processEvents()
@@ -241,7 +241,7 @@ updated: 2026-05-03
   checkTimer()
   return coroutine.yield()
  end
- True-- 使用示例
+ -
  local co = coroutine.create(function()
   local response = httpGet("https://api.example.com/data")
   print("收到响应:", response)

@@ -305,9 +305,9 @@ Java 是一种强类型语言，数据类型分为两大类：
  if (i >= Byte.MIN_VALUE && i <= Byte.MAX_VALUE) {
   byte b = (byte) i;
   System.out.println("转换成功: " + b);
- True} else {
+ }
   System.out.println("转换失败：值超出 byte 范围");
- True}
+ }
 ```
 
 ### 6.2 避免精度丢失
@@ -356,16 +356,16 @@ Java 是一种强类型语言，数据类型分为两大类：
  try {
   int i = Integer.parseInt(s);
   System.out.println("转换成功: " + i);
- True} catch (NumberFormatException e) {
+ }
   System.out.println("转换失败: " + e.getMessage());
- True}
+ }
  // 空值检查
  String s2 = null;
  if (s2 != null) {
   int i2 = Integer.parseInt(s2);
- True} else {
+ }
   System.out.println("字符串为 null");
- True}
+ }
 ```
 
 ## 7. 实际应用示例
@@ -384,7 +384,7 @@ Java 是一种强类型语言，数据类型分为两大类：
   System.out.println(celsius + " 摄氏度 = " + fahrenheit + " 华氏度");
   sc.close();
   }
- True}
+ }
 ```
 
 ### 7.2 示例 2：计算圆的面积
@@ -401,7 +401,7 @@ Java 是一种强类型语言，数据类型分为两大类：
   System.out.println("圆的面积: " + area);
   sc.close();
   }
- True}
+ }
 ```
 
 ### 7.3 示例 3：类型转换练习
@@ -442,7 +442,7 @@ Java 是一种强类型语言，数据类型分为两大类：
   System.out.println("Integer: " + iObj);
   System.out.println("int: " + iUnboxed);
   }
- True}
+ }
 ```
 
 ---

@@ -70,6 +70,48 @@
 | 质量  | Husky + lint-staged + Prettier | Pre-commit 自动格式化                                       |
 | CI/CD | GitHub Actions                 | 三阶段流水线 (setup → build → deploy)                       |
 
+## 仅获取文档内容
+
+如果你只需要文档 Markdown 源文件（`src/content/docs/`），无需克隆整个项目，可以使用 Git sparse-checkout：
+
+```bash
+# 初始化空仓库
+git clone --no-checkout --filter=blob:none https://github.com/fanquanpp/FANDEX.git
+cd FANDEX
+
+# 启用 sparse-checkout 并指定路径
+git sparse-checkout set src/content/docs
+
+# 拉取内容
+git checkout
+```
+
+文档目录结构：
+
+```
+src/content/docs/
+├── algorithm/        # 算法与数据结构
+├── c/                # C 语言
+├── cpp/              # C++
+├── cs-fundamentals/  # 计算机基础
+├── css/              # CSS
+├── data-analysis/    # 数据分析
+├── getting-started/  # 入门指南
+├── git/              # Git
+├── github/           # GitHub
+├── html5/            # HTML5
+├── java/             # Java
+├── javascript/       # JavaScript
+├── lua/              # Lua
+├── markdown/         # Markdown
+├── mysql/            # MySQL
+├── python/           # Python
+├── typescript/       # TypeScript
+└── vue3/             # Vue 3
+```
+
+> 每篇文档均为独立 Markdown 文件，包含 frontmatter 元数据（标题、模块、难度、标签等）和正文内容，可直接在任何 Markdown 阅读器中使用。
+
 ## 快速开始
 
 ```bash

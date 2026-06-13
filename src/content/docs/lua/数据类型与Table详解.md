@@ -22,6 +22,7 @@ Lua 是动态类型语言，变量的类型在运行时确定。Lua 有 8 种基
 Line 2](Line 1
 Line 2)` |
 | **`function`** | 函数，是一等公民 | `local add = function(a, b) return a + b end` |
+|---|---|---|
 | **`table`** | 表，Lua 唯一的容器类型 | `local t = {1, 2, 3}` |
 | **`thread`** | 线程，主要用于协程 | `local co = coroutine.create(function() end)` |
 | **`userdata`** | 用户数据，用于 C 语言扩展 | `local ud = ffi.new("int[10]")` |

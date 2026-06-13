@@ -9,7 +9,7 @@
 [![在线阅读](https://img.shields.io/badge/在线阅读-fanquanpp.github.io%2FFANDEX-2563eb?style=for-the-badge&logo=github&logoColor=white)](https://fanquanpp.github.io/FANDEX/)
 [![Astro 5](https://img.shields.io/badge/Astro-5-ff5d01?style=flat-square&logo=astro&logoColor=white)](https://astro.build)
 [![Vue 3](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org)
-[![文档数](https://img.shields.io/badge/文档-221+-0ea5e9?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
+[![文档数](https://img.shields.io/badge/文档-236+-0ea5e9?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
 [![模块数](https://img.shields.io/badge/模块-18-8b5cf6?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
 
 </div>
@@ -26,7 +26,7 @@
 | 数据技术   | MySQL · 数据分析                                        |
 | 计算机科学 | 算法与数据结构 · 计算机基础                             |
 
-> 221 篇文档 · 32 篇术语表 · 18 个模块 · 交互式测验 · 知识地图
+> 236 篇文档 · 17 篇术语表 · 18 个模块 · 交互式测验 · 知识地图
 
 ## 功能特性
 
@@ -146,9 +146,9 @@ FANDEX/
 ├── scripts/               # 工具脚本
 │   ├── build-glossary-index.mjs   # 术语索引构建
 │   ├── build-search-index.mjs     # 搜索索引构建
-│   ├── clean-true-prefix.mjs     # AI 痕迹清理
-│   ├── content-audit.mjs         # 内容质量审计
-│   └── qa-check.mjs              # 预发布质量检查
+│   ├── clean-true-prefix.mjs      # AI 痕迹清理
+│   ├── content-audit.mjs          # 内容质量审计
+│   └── qa-check.mjs               # 预发布质量检查
 ├── src/
 │   ├── components/        # Astro 组件
 │   │   ├── Layout.astro            # 文档页布局（导航+侧边栏+主内容）
@@ -159,8 +159,8 @@ FANDEX/
 │   │   ├── ModuleCard.astro        # 模块卡片
 │   │   └── DocNav.astro            # 上下篇导航
 │   ├── content/
-│   │   ├── docs/{18 模块}/ # 文档内容 (221 篇)
-│   │   ├── glossary/      # 术语表 (32 篇)
+│   │   ├── docs/{18 模块}/ # 文档内容 (236 篇)
+│   │   ├── glossary/      # 术语表 (17 篇)
 │   │   └── config.ts      # Zod Schema 定义
 │   ├── islands/           # Vue 岛屿组件
 │   │   ├── ThemeToggle.vue         # 暗色模式切换

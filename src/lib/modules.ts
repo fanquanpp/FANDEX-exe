@@ -198,6 +198,27 @@ export const modules = [
     description: '组合·图论·代数系统',
     categories: ['comp-sci'],
   },
+  {
+    id: 'linear-algebra',
+    title: 'Linear Algebra',
+    icon: '线代',
+    description: '矩阵·向量空间·特征值',
+    categories: ['comp-sci'],
+  },
+  {
+    id: 'probability-statistics',
+    title: 'Probability & Statistics',
+    icon: '概率',
+    description: '概率论与数理统计',
+    categories: ['comp-sci', 'data'],
+  },
+  {
+    id: 'english',
+    title: 'English',
+    icon: 'En',
+    description: '应试英语与专业英语',
+    categories: ['comp-sci'],
+  },
 
   // ── 工程与基础设施 ──
   {

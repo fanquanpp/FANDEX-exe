@@ -9,8 +9,8 @@
 [![在线阅读](https://img.shields.io/badge/在线阅读-fanquanpp.github.io%2FFANDEX-2563eb?style=for-the-badge&logo=github&logoColor=white)](https://fanquanpp.github.io/FANDEX/)
 [![Astro 5](https://img.shields.io/badge/Astro-5-ff5d01?style=flat-square&logo=astro&logoColor=white)](https://astro.build)
 [![Vue 3](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org)
-[![文档数](https://img.shields.io/badge/文档-381+-0ea5e9?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
-[![模块数](https://img.shields.io/badge/模块-35-8b5cf6?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
+[![文档数](https://img.shields.io/badge/文档-1195+-0ea5e9?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
+[![模块数](https://img.shields.io/badge/模块-38-8b5cf6?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
 
 </div>
 
@@ -23,11 +23,11 @@
 | 工具链         | Getting Started · Markdown · Git · GitHub                                                                            |
 | 开发语言       | HTML5 · CSS · JavaScript · TypeScript · Vue 3 · React · C · C++ · Java · Kotlin · C# · Python · Go · Lua · HarmonyOS |
 | 数据库         | SQL · MySQL · PostgreSQL · Redis                                                                                     |
-| 计算机科学     | Algorithm · CS Fundamentals · Calculus · Discrete Math                                                               |
+| 计算机科学     | Algorithm · CS Fundamentals · Calculus · Discrete Math · Linear Algebra · Probability & Statistics · English         |
 | 工程与基础设施 | DevOps · Networking · Cybersecurity · Cloud Computing · IoT · Software Testing · AI Agent                            |
-| 数据技术       | Data Analysis                                                                                                        |
+| 数据技术       | Data Analysis · Probability & Statistics                                                                             |
 
-> 381 篇文档 · 27 篇术语表 · 35 个模块 · 交互式测验 · 知识地图
+> 1195 篇文档 · 38 个模块 · 交互式测验 · 知识地图
 
 ## 功能特性
 

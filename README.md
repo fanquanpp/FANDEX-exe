@@ -16,16 +16,6 @@
 
 ---
 
-## 学习路径
-
-```
-入门  Markdown → Git → GitHub → HTML5 → CSS → JavaScript
-前端  JavaScript → TypeScript → Vue 3
-数据  Python → 数据分析 | MySQL
-系统  C → C++ | Java
-进阶  算法与数据结构 → 计算机基础
-```
-
 ## 模块总览
 
 | 类别       | 模块                                                    |

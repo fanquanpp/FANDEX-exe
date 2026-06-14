@@ -1,12 +1,12 @@
 # FANDEX Code Wiki
 
-> **FANDEX** — 开发者知识库 | Astro 5 + Vue 3 | 45 模块 · 1521 篇文档
+> **FANDEX** — 开发者知识库 | Astro 5 + Vue 3 | 45 模块 · 1511 篇文档
 
 ---
 
 ## 1. 项目概述
 
-FANDEX 是一个基于 Astro 5 SSG 的开发者知识库站点，使用 Vue 3 岛屿架构实现客户端交互。项目覆盖 45 个技术模块、1521 篇文档，部署在 GitHub Pages 上。
+FANDEX 是一个基于 Astro 5 SSG 的开发者知识库站点，使用 Vue 3 岛屿架构实现客户端交互。项目覆盖 45 个技术模块、1511 篇文档、13 篇术语表，部署在 GitHub Pages 上。
 
 **核心特性：**
 
@@ -141,7 +141,7 @@ FANDEX-vue/
 │   │   ├── SEO.astro                 # SEO 元数据
 │   │   └── Sidebar.astro             # 侧边栏
 │   ├── content/
-│   │   ├── docs/                     # 文档内容（45 模块 / 1521 篇）
+│   │   ├── docs/                     # 文档内容（45 模块 / 1511 篇）
 │   │   │   ├── agent/                # AI Agent
 │   │   │   ├── algorithm/            # 算法与数据结构
 │   │   │   ├── big-data/             # 大数据
@@ -896,4 +896,4 @@ node scripts/clean-true-prefix.mjs
 
 ---
 
-> FANDEX v4.0.0 | 45 模块 · 1521 篇文档
+> FANDEX v4.0.0 | 45 模块 · 1511 篇文档

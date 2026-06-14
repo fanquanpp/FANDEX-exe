@@ -9,7 +9,7 @@
 [![在线阅读](https://img.shields.io/badge/在线阅读-fanquanpp.github.io%2FFANDEX-2563eb?style=for-the-badge&logo=github&logoColor=white)](https://fanquanpp.github.io/FANDEX/)
 [![Astro 5](https://img.shields.io/badge/Astro-5-ff5d01?style=flat-square&logo=astro&logoColor=white)](https://astro.build)
 [![Vue 3](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org)
-[![文档数](https://img.shields.io/badge/文档-1521+-0ea5e9?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
+[![文档数](https://img.shields.io/badge/文档-1511+-0ea5e9?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
 [![模块数](https://img.shields.io/badge/模块-45-8b5cf6?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
 
 </div>
@@ -27,7 +27,7 @@
 | 工程与基础设施 | 运维 · 网络技术 · 网络安全 · 云计算 · 物联网 · 软件测试 · AI Agent · 软件工程 · 软件架构 · 工程实践 · 职业发展       |
 | 数据技术       | 数据分析 · 大数据 · 机器学习 · 深度学习 · 概率论与数理统计                                                           |
 
-> 1521 篇文档 · 45 个模块 · 交互式测验 · 知识地图
+> 1511 篇文档 · 45 个模块 · 13 篇术语表 · 交互式测验 · 知识地图
 
 ## 功能特性
 
@@ -187,8 +187,8 @@ FANDEX/
 │   │   ├── ModuleCard.astro        # 模块卡片
 │   │   └── DocNav.astro            # 上下篇导航
 │   ├── content/
-│   │   ├── docs/{45 模块}/ # 文档内容 (1521 篇)
-│   │   ├── glossary/      # 术语表 (17 篇)
+│   │   ├── docs/{45 模块}/ # 文档内容 (1511 篇)
+│   │   ├── glossary/      # 术语表 (13 篇)
 │   │   └── config.ts      # Zod Schema 定义
 │   ├── islands/           # Vue 岛屿组件
 │   │   ├── ThemeToggle.vue         # 暗色模式切换

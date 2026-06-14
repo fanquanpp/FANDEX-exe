@@ -164,11 +164,11 @@ GFM 扩展了 CommonMark 的自动链接，无需尖括号即可识别 URL：
 
 | 类型               | 示例                      | 是否自动链接 |
 | :----------------- | :------------------------ | :----------- |
-| **http/https URL** | `https://example.com`     | ✅           |
-| **www 域名**       | `www.example.com`         | ✅           |
-| **邮箱地址**       | `user@example.com`        | ✅           |
-| **其他协议**       | `ftp://files.example.com` | ❌           |
-| **纯域名**         | `example.com`             | ❌           |
+| **http/https URL** | `https://example.com`     |              |
+| **www 域名**       | `www.example.com`         |              |
+| **邮箱地址**       | `user@example.com`        |              |
+| **其他协议**       | `ftp://files.example.com` |              |
+| **纯域名**         | `example.com`             |              |
 
 ### 5.3 链接截断
 

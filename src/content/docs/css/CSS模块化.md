@@ -106,7 +106,7 @@ import styles from './Component.module.css';
 
 | 方案        | 隔离方式   | 运行时 | 优点     |
 | ----------- | ---------- | ------ | -------- |
-| CSS Modules | 哈希类名   | ❌     | 零运行时 |
-| CSS-in-JS   | 运行时生成 | ✅     | 动态样式 |
-| Shadow DOM  | DOM 隔离   | ✅     | 完全隔离 |
-| BEM         | 命名约定   | ❌     | 简单     |
+| CSS Modules | 哈希类名   |        | 零运行时 |
+| CSS-in-JS   | 运行时生成 |        | 动态样式 |
+| Shadow DOM  | DOM 隔离   |        | 完全隔离 |
+| BEM         | 命名约定   |        | 简单     |

@@ -37,13 +37,13 @@ updated: 2026-06-14
 ### 2.1 noImplicitAny
 
 ```typescript
-// ❌ 隐式 any
+//  隐式 any
 function parse(input) {
   // Parameter 'input' implicitly has an 'any' type
   return input.trim();
 }
 
-// ✅ 显式类型
+//  显式类型
 function parse(input: string): string {
   return input.trim();
 }
@@ -52,10 +52,10 @@ function parse(input: string): string {
 ### 2.2 strictNullChecks
 
 ```typescript
-// ❌ null 不安全
+//  null 不安全
 let name: string = null; // Error
 
-// ✅ 明确包含 null
+//  明确包含 null
 let name: string | null = null;
 
 // 可选链
@@ -77,24 +77,24 @@ function process(value: string | null) {
 type AnimalHandler = (animal: Animal) => void;
 type DogHandler = (dog: Dog) => void;
 
-let handler: AnimalHandler = (dog: Dog) => {}; // ❌ 不安全
+let handler: AnimalHandler = (dog: Dog) => {}; //  不安全
 ```
 
 ### 2.4 strictPropertyInitialization
 
 ```typescript
 class User {
-  name: string; // ❌ 属性未初始化
+  name: string; //  属性未初始化
 
   constructor() {}
 
-  // ✅ 方式一：构造函数中初始化
+  //  方式一：构造函数中初始化
   // constructor() { this.name = ''; }
 
-  // ✅ 方式二：确定赋值断言
+  //  方式二：确定赋值断言
   // name!: string;
 
-  // ✅ 方式三：可选属性
+  //  方式三：可选属性
   // name?: string;
 }
 ```

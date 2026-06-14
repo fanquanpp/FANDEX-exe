@@ -66,10 +66,10 @@ updated: 2026-06-14
 ### 2.2 配置管理示例
 
 ```python
-# ❌ 硬编码配置
+#  硬编码配置
 DATABASE_URL = "postgresql://admin:password@db:5432/prod"
 
-# ✅ 环境变量配置
+#  环境变量配置
 import os
 from pydantic_settings import BaseSettings
 

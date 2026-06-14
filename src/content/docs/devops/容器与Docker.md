@@ -348,14 +348,14 @@ docker-compose*.yml
 ### 5.3 优化前后对比
 
 ```dockerfile
-# ❌ 优化前（~800MB）
+#  优化前（~800MB）
 FROM python:3.12
 COPY . /app
 WORKDIR /app
 RUN pip install -r requirements.txt
 CMD ["python", "main.py"]
 
-# ✅ 优化后（~150MB）
+#  优化后（~150MB）
 FROM python:3.12-slim AS builder
 WORKDIR /app
 COPY requirements.txt .

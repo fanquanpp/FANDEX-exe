@@ -62,22 +62,22 @@ const converted = #{ arr: Tuple.from([1, 2, 3]) };
 console.log({ a: 1 } === { a: 1 }); // false
 
 // Record 是值比较
-console.log(#{ a: 1 } === #{ a: 1 }); // true ✅
+console.log(#{ a: 1 } === #{ a: 1 }); // true
 
 // 数组是引用比较
 console.log([1, 2] === [1, 2]); // false
 
 // Tuple 是值比较
-console.log(#[1, 2] === #[1, 2]); // true ✅
+console.log(#[1, 2] === #[1, 2]); // true
 
 // 可以用作 Map 键和 Set 值
 const map = new Map();
 map.set(#{ x: 1, y: 2 }, 'point');
-console.log(map.get(#{ x: 1, y: 2 })); // 'point' ✅
+console.log(map.get(#{ x: 1, y: 2 })); // 'point'
 
 const set = new Set();
 set.add(#[1, 2, 3]);
-console.log(set.has(#[1, 2, 3])); // true ✅
+console.log(set.has(#[1, 2, 3])); // true
 ```
 
 ## 5. 转换
@@ -137,12 +137,12 @@ function cachedFetch(...args) {
 
 ## 7. 与 Object.freeze 的区别
 
-| 特性          | Record/Tuple      | Object.freeze |
-| ------------- | ----------------- | ------------- |
-| 比较方式      | 值比较            | 引用比较      |
-| 深度不可变    | ✅ 天然深度不可变 | ❌ 浅层冻结   |
-| 可用作 Map 键 | ✅                | ❌            |
-| 性能          | 优化为值比较      | 普通对象      |
-| 语法          | `#{}` / `#[]`     | 运行时调用    |
+| 特性          | Record/Tuple   | Object.freeze |
+| ------------- | -------------- | ------------- |
+| 比较方式      | 值比较         | 引用比较      |
+| 深度不可变    | 天然深度不可变 | 浅层冻结      |
+| 可用作 Map 键 |                |               |
+| 性能          | 优化为值比较   | 普通对象      |
+| 语法          | `#{}` / `#[]`  | 运行时调用    |
 
 > **注意**：Record 和 Tuple 目前处于 Stage 2/3 阶段，语法可能变化。可关注 TC39 提案进展。

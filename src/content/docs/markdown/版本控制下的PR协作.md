@@ -161,7 +161,7 @@ const result = await fetchData(userId);
 ### 3.3 审查评论格式
 
 ```markdown
-### 🔴 必须修改
+###  必须修改
 
 **位置**：`src/auth/login.ts:42`
 
@@ -185,11 +185,11 @@ await db.query('INSERT INTO users (password) VALUES (?)', [hashedPassword]);
 
 | 标记 | 含义 | 使用场景 |
 | :--- | :--- | :--- |
-| 🏗️ `nit` | 小问题 | 代码风格、命名 |
-| ❓ `question` | 疑问 | 不理解的逻辑 |
-| 💡 `suggestion` | 建议 | 可选的改进 |
-| 🔴 `blocker` | 阻塞 | 必须修改才能合并 |
-| ⚠️ `warning` | 警告 | 潜在问题 |
+|  `nit` | 小问题 | 代码风格、命名 |
+|  `question` | 疑问 | 不理解的逻辑 |
+|  `suggestion` | 建议 | 可选的改进 |
+|  `blocker` | 阻塞 | 必须修改才能合并 |
+|  `warning` | 警告 | 潜在问题 |
 
 ## 4. 提交信息规范
 

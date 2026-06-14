@@ -73,7 +73,7 @@ export function LikeButton({ postId }: { postId: string }) {
 
   return (
     <button onClick={handleLike}>
-      {liked ? '❤️' : '🤍'} {count}
+      {liked ? '' : ''} {count}
     </button>
   );
 }
@@ -146,7 +146,7 @@ const ThemeContext = createContext<'light' | 'dark'>('light');
 // use() 可以在条件语句中调用（与 useContext 不同）
 function ThemedComponent({ showTheme }: { showTheme: boolean }) {
   if (showTheme) {
-    const theme = use(ThemeContext); // ✅ use() 可以在条件中调用
+    const theme = use(ThemeContext); //  use() 可以在条件中调用
     return <p>当前主题：{theme}</p>;
   }
   return <p>未显示主题</p>;
@@ -157,9 +157,9 @@ function ThemedComponent({ showTheme }: { showTheme: boolean }) {
 
 | 特性          | useContext | use()               |
 | :------------ | :--------- | :------------------ |
-| 条件中调用    | ❌ 不可以  | ✅ 可以             |
-| 读取 Promise  | ❌ 不可以  | ✅ 可以             |
-| 读取 Context  | ✅ 可以    | ✅ 可以             |
+| 条件中调用    | 不可以     | 可以                |
+| 读取 Promise  | 不可以     | 可以                |
+| 读取 Context  | 可以       | 可以                |
 | 需要 Suspense | 不需要     | 读取 Promise 时需要 |
 
 ## 3. Actions

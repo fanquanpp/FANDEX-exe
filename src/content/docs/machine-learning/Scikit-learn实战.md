@@ -228,11 +228,11 @@ halving_search = HalvingGridSearchCV(
 ### 5.1 数据泄露防范
 
 ```python
-# ❌ 错误：先标准化再划分
+#  错误：先标准化再划分
 X_scaled = StandardScaler().fit_transform(X)
 X_train, X_test = train_test_split(X_scaled)
 
-# ✅ 正确：Pipeline确保只在训练集上fit
+#  正确：Pipeline确保只在训练集上fit
 pipe = Pipeline([('scaler', StandardScaler()), ('model', LogisticRegression())])
 pipe.fit(X_train, y_train)
 ```

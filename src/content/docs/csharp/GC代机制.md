@@ -41,4 +41,4 @@ GC.Collect(0);        // 仅 Gen 0
 GC.Collect(2, GCCollectionMode.Forced, blocking: true);
 ```
 
-> ⚠️ 通常不需要手动触发 GC。
+> 通常不需要手动触发 GC。

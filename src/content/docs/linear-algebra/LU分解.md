@@ -67,7 +67,7 @@ $l_{32} = (7 - 4 \times 1)/1 = 3$
 
 $$L = \begin{pmatrix} 1 & 0 & 0 \\ 2 & 1 & 0 \\ 4 & 3 & 1 \end{pmatrix}, \quad U = \begin{pmatrix} 2 & 1 & 1 \\ 0 & 1 & 1 \\ 0 & 0 & 2 \end{pmatrix}$$
 
-验证：$LU = \begin{pmatrix} 2 & 1 & 1 \\ 4 & 3 & 3 \\ 8 & 7 & 9 \end{pmatrix} = A$ ✓
+验证：$LU = \begin{pmatrix} 2 & 1 & 1 \\ 4 & 3 & 3 \\ 8 & 7 & 9 \end{pmatrix} = A$
 
 ## 3. Crout 分解
 
@@ -142,7 +142,7 @@ $l_{11} = 2$，$l_{21} = 2/2 = 1$，$l_{22} = \sqrt{5 - 1} = 2$
 
 $$L = \begin{pmatrix} 2 & 0 \\ 1 & 2 \end{pmatrix}, \quad L^T = \begin{pmatrix} 2 & 1 \\ 0 & 2 \end{pmatrix}$$
 
-验证：$LL^T = \begin{pmatrix} 4 & 2 \\ 2 & 5 \end{pmatrix}$ ✓
+验证：$LL^T = \begin{pmatrix} 4 & 2 \\ 2 & 5 \end{pmatrix}$
 
 ### 6.4 Cholesky 分解的优势
 

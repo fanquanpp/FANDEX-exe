@@ -61,10 +61,10 @@ interface UIElement {
 // 确保回调函数中没有 this
 class Handler {
   info: string;
-  // ❌ this 指向 Handler，不是 void
+  //  this 指向 Handler，不是 void
   // badHandler(this: Handler, e: Event) { console.log(this.info); }
 
-  // ✅ 箭头函数没有自己的 this
+  //  箭头函数没有自己的 this
   goodHandler = (e: Event) => {
     console.log(this.info);
   };

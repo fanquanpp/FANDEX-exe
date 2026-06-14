@@ -91,10 +91,10 @@ Compiler 假设组件和 Hook 是纯函数：
 ### 4.2 不可变数据
 
 ```jsx
-// ❌ 直接修改
+//  直接修改
 items.push(newItem);
 
-// ✅ 不可变更新
+//  不可变更新
 const newItems = [...items, newItem];
 ```
 

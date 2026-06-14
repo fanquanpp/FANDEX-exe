@@ -99,7 +99,7 @@ Dictionary<string, int> dict = query.ToDictionary(
 ### 2.2 延迟执行陷阱
 
 ```csharp
-// ❌ 陷阱：闭包捕获循环变量
+//  陷阱：闭包捕获循环变量
 var actions = new List<Func<int>>();
 for (int i = 0; i < 5; i++)
 {
@@ -107,20 +107,20 @@ for (int i = 0; i < 5; i++)
 }
 // actions 全部返回 5
 
-// ✅ 解决：局部变量捕获
+//  解决：局部变量捕获
 for (int i = 0; i < 5; i++)
 {
     int local = i;
     actions.Add(() => local); // 每个 lambda 捕获各自的 local
 }
 
-// ❌ 陷阱：多次枚举
+//  陷阱：多次枚举
 var filtered = products.Where(p => p.Price > 100);
 // 每次遍历都重新查询！
 var count = filtered.Count();      // 查询1次
 foreach (var p in filtered) { }    // 又查询1次
 
-// ✅ 解决：缓存结果
+//  解决：缓存结果
 var cached = products.Where(p => p.Price > 100).ToList();
 ```
 
@@ -344,11 +344,11 @@ var products = await _context.Products
     .Select(p => new { p.Name, p.Price }) // → SELECT
     .ToListAsync();
 
-// ❌ 表达式树中不能包含 C# 方法调用
+//  表达式树中不能包含 C# 方法调用
 var bad = _context.Products
     .Where(p => IsValid(p.Name)); // 无法翻译为 SQL！
 
-// ✅ 先在内存中处理或使用可翻译的表达式
+//  先在内存中处理或使用可翻译的表达式
 var good = _context.Products
     .Where(p => p.Name.StartsWith("A") && p.Price > 100);
 ```

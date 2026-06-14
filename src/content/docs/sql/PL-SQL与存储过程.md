@@ -596,8 +596,8 @@ END LOOP;
 | 游标循环   | FOR rec IN   | FETCH + WHILE   | FETCH + WHILE | FOR rec IN        |
 | 动态SQL    | EXECUTE      | PREPARE/EXECUTE | sp_executesql | EXECUTE IMMEDIATE |
 | 返回结果集 | RETURN QUERY | SELECT          | SELECT        | PIPELINED         |
-| 数组支持   | ✅           | ❌              | ❌            | ✅(VARRAY)        |
-| 事务控制   | ✅           | ✅              | ✅            | ✅                |
+| 数组支持   |              |                 |               | (VARRAY)          |
+| 事务控制   |              |                 |               |                   |
 
 ## 小结
 

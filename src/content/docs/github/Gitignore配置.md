@@ -78,9 +78,9 @@ config.local.json
 # 但不忽略 main.js
 !main.js
 
-# ⚠️ 如果忽略整个目录，! 不生效
+#  如果忽略整个目录，! 不生效
 build/
-!build/important.js  # ❌ 不生效！
+!build/important.js  #  不生效！
 ```
 
 ## 3. 多级 .gitignore

@@ -119,11 +119,11 @@ gh copilot explain "git rebase -i HEAD~5"
 ### 4.3 提高建议质量
 
 ```javascript
-// ❌ 模糊的注释
+//  模糊的注释
 // 处理数据
 function process(data) {
 
-// ✅ 清晰的注释
+//  清晰的注释
 // 将用户数据转换为 API 请求格式，过滤无效邮箱
 function formatUserForAPI(users: User[]): APIUser[] {
 ```

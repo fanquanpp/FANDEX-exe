@@ -13,9 +13,9 @@ updated: 2026-06-14
 
 | 存储方式       | 容量    | 生命周期     | 随请求发送 |
 | -------------- | ------- | ------------ | ---------- |
-| Cookie         | ~4KB    | 可设过期时间 | ✅         |
-| localStorage   | ~5-10MB | 永久         | ❌         |
-| sessionStorage | ~5-10MB | 标签页关闭   | ❌         |
+| Cookie         | ~4KB    | 可设过期时间 |            |
+| localStorage   | ~5-10MB | 永久         |            |
+| sessionStorage | ~5-10MB | 标签页关闭   |            |
 
 ## 2. localStorage
 

@@ -71,4 +71,4 @@ suspenseRef.value?.onResolve();
 suspenseRef.value?.onFallback();
 ```
 
-> ⚠️ Suspense 仍是实验性功能，API 可能变更。
+> Suspense 仍是实验性功能，API 可能变更。

@@ -16,31 +16,31 @@ ArkTS 基于 TypeScript，但增加了以下约束：
 ### 1.1 禁止使用 any
 
 ```typescript
-// ❌ 不允许
+//  不允许
 let x: any = 42;
 
-// ✅ 使用具体类型
+//  使用具体类型
 let x: number = 42;
 ```
 
 ### 1.2 禁止运行时类型改变
 
 ```typescript
-// ❌ 不允许
+//  不允许
 let x: number | string = 42;
 x = 'hello'; // 运行时类型改变
 
-// ✅ 使用联合类型但保持类型不变
+//  使用联合类型但保持类型不变
 let x: number = 42;
 ```
 
 ### 1.3 禁止使用 eval
 
 ```typescript
-// ❌ 不允许
+//  不允许
 eval("console.log('hello')");
 
-// ✅ 使用正常代码
+//  使用正常代码
 console.log('hello');
 ```
 

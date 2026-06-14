@@ -167,7 +167,7 @@ print(answer)
 ### 2.3 工具定义最佳实践
 
 ```python
-# ✅ 好的工具定义
+#  好的工具定义
 {
     "name": "get_stock_price",
     "description": "获取指定股票代码的实时价格信息，包括当前价格、涨跌幅和成交量",
@@ -183,7 +183,7 @@ print(answer)
     }
 }
 
-# ❌ 差的工具定义
+#  差的工具定义
 {
     "name": "stock",
     "description": "获取股票信息",  # 描述太模糊

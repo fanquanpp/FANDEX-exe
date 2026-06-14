@@ -56,14 +56,14 @@ export function Counter() {
 
 ## 3. 界限划分
 
-| 场景                    | Server          | Client |
-| ----------------------- | --------------- | ------ |
-| 获取数据                | ✅              | ❌     |
-| 访问后端资源            | ✅              | ❌     |
-| 交互（点击/输入）       | ❌              | ✅     |
-| useState/useEffect      | ❌              | ✅     |
-| 自定义 Hook（依赖状态） | ❌              | ✅     |
-| 大型依赖（如 D3）       | ✅（不发送 JS） | ❌     |
+| 场景                    | Server        | Client |
+| ----------------------- | ------------- | ------ |
+| 获取数据                |               |        |
+| 访问后端资源            |               |        |
+| 交互（点击/输入）       |               |        |
+| useState/useEffect      |               |        |
+| 自定义 Hook（依赖状态） |               |        |
+| 大型依赖（如 D3）       | （不发送 JS） |        |
 
 ## 4. 组合模式
 
@@ -80,4 +80,4 @@ export default function Page() {
 }
 ```
 
-> ⚠️ Server Component 可以导入 Client Component，但 Client Component 不能导入 Server Component。
+> Server Component 可以导入 Client Component，但 Client Component 不能导入 Server Component。

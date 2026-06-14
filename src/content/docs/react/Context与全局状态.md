@@ -416,13 +416,13 @@ function Counter() {
 复杂交互往往涉及多个互斥状态，用布尔值组合容易产生无效状态：
 
 ```tsx
-// ❌ 布尔值组合 — 可能出现无效状态
+//  布尔值组合 — 可能出现无效状态
 const [isLoading, setIsLoading] = useState(false);
 const [isError, setIsError] = useState(false);
 const [isSuccess, setIsSuccess] = useState(false);
 // isLoading && isError 同时为 true 是无效状态
 
-// ✅ 状态机 — 每个时刻只有一个状态
+//  状态机 — 每个时刻只有一个状态
 type Status = 'idle' | 'loading' | 'success' | 'error';
 const [status, setStatus] = useState<Status>('idle');
 ```

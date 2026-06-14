@@ -256,7 +256,7 @@ class List {
 
 // 如果写在 prototype 上会共享
 function ListOld() {}
-ListOld.prototype.items = []; // ❌ 所有实例共享同一个数组！
+ListOld.prototype.items = []; //  所有实例共享同一个数组！
 ```
 
 ### 4.2 箭头函数与 this
@@ -280,8 +280,8 @@ class Button {
 
 const btn = new Button('Submit');
 const { handleClick, handleClickNormal } = btn;
-handleClick(); // 'Submit' ✅
-handleClickNormal(); // undefined ❌
+handleClick(); // 'Submit'
+handleClickNormal(); // undefined
 ```
 
 ### 4.3 多重继承限制

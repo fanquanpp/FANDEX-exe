@@ -22,13 +22,13 @@ dotnet ef migrations remove  # 撤销上次迁移
 ### 2.1 N+1 问题
 
 ```csharp
-// ❌ N+1 查询
+//  N+1 查询
 var blogs = context.Blogs.ToList();
 foreach (var blog in blogs) {
     var posts = blog.Posts.ToList();  // 每个博客一次查询
 }
 
-// ✅ Eager Loading
+//  Eager Loading
 var blogs = context.Blogs.Include(b => b.Posts).ToList();
 ```
 

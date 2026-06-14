@@ -44,12 +44,12 @@ CMD ["node", "dist/main.js"]
 ### 1.3 缓存优化
 
 ```dockerfile
-# ✅ 先复制依赖文件，利用缓存
+#  先复制依赖文件，利用缓存
 COPY package*.json ./
 RUN npm ci
 COPY . .
 
-# ❌ 先复制全部，每次代码变更都重新安装依赖
+#  先复制全部，每次代码变更都重新安装依赖
 COPY . .
 RUN npm ci
 ```

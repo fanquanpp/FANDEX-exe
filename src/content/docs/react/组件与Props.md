@@ -41,12 +41,12 @@ const Greeting: FC = () => {
 - 每个文件只导出一个主组件
 
 ```tsx
-// ✅ 正确：大写开头
+//  正确：大写开头
 function UserProfile() {
   return <div>...</div>;
 }
 
-// ❌ 错误：小写开头，React 会将其视为 HTML 标签
+//  错误：小写开头，React 会将其视为 HTML 标签
 function userProfile() {
   return <div>...</div>;
 }
@@ -439,12 +439,12 @@ function TodoList({ todos }: { todos: Todo[] }) {
 | **不需要全局唯一** | 只需在同级兄弟间唯一                 |
 
 ```tsx
-// ❌ 错误：使用索引作为 key
+//  错误：使用索引作为 key
 {
   items.map((item, index) => <Item key={index} {...item} />);
 }
 
-// ✅ 正确：使用稳定唯一 ID
+//  正确：使用稳定唯一 ID
 {
   items.map((item) => <Item key={item.id} {...item} />);
 }

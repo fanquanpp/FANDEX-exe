@@ -39,7 +39,7 @@ git restore -SW file.txt
 | :------------- | :--------------------------- | :---------------------------- |
 | 恢复工作区文件 | `git restore file`           | `git checkout -- file`        |
 | 取消暂存       | `git restore --staged file`  | `git reset HEAD file`         |
-| 切换分支       | ❌                           | `git checkout branch`         |
+| 切换分支       |                              | `git checkout branch`         |
 | 恢复到指定提交 | `git restore -s commit file` | `git checkout commit -- file` |
 
 ## 2. git rm

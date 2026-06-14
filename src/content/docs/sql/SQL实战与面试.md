@@ -422,7 +422,7 @@ ALTER TABLE fact_sales EXCHANGE PARTITION p202406 WITH TABLE fact_sales_new;
 ### 命名规范
 
 ```sql
--- ✅ 推荐
+--  推荐
 SELECT
   user_id,
   order_date,
@@ -430,7 +430,7 @@ SELECT
 FROM orders
 WHERE order_status = 'completed';
 
--- ❌ 不推荐
+--  不推荐
 SELECT UserID, OrderDate, TotalAmount FROM ORDERS WHERE OrderStatus = 'completed';
 
 -- 表名：小写，下划线分隔，复数形式
@@ -449,7 +449,7 @@ SELECT UserID, OrderDate, TotalAmount FROM ORDERS WHERE OrderStatus = 'completed
 ### 格式规范
 
 ```sql
--- ✅ 关键字大写，合理缩进
+--  关键字大写，合理缩进
 SELECT
   u.name,
   u.email,
@@ -466,7 +466,7 @@ HAVING COUNT(o.id) > 0
 ORDER BY total_amount DESC
 LIMIT 100;
 
--- ✅ 子查询使用 CTE
+--  子查询使用 CTE
 WITH active_users AS (
   SELECT id, name, email
   FROM users
@@ -480,7 +480,7 @@ FROM active_users au
 LEFT JOIN orders o ON au.id = o.user_id
 GROUP BY au.name;
 
--- ✅ 复杂条件换行
+--  复杂条件换行
 SELECT *
 FROM orders
 WHERE
@@ -495,21 +495,21 @@ WHERE
 
 ```sql
 -- 1. 避免 SELECT *
--- ❌
+--
 SELECT * FROM users;
--- ✅
+--
 SELECT id, name, email FROM users;
 
 -- 2. 谨慎使用 DISTINCT
--- ❌ 可能掩盖数据问题
+--  可能掩盖数据问题
 SELECT DISTINCT user_id FROM orders;
--- ✅ 理解为什么有重复
+--  理解为什么有重复
 SELECT user_id FROM orders GROUP BY user_id;
 
 -- 3. 大表操作分批进行
--- ❌ 锁表时间过长
+--  锁表时间过长
 DELETE FROM logs WHERE created_at < '2023-01-01';
--- ✅ 分批删除
+--  分批删除
 DELETE FROM logs WHERE created_at < '2023-01-01' LIMIT 10000;
 -- 或使用游标循环
 
@@ -518,13 +518,13 @@ DELETE FROM logs WHERE created_at < '2023-01-01' LIMIT 10000;
 -- 6. 合理使用索引提示（最后手段）
 
 -- 7. 事务保持简短
--- ❌ 事务中包含耗时操作
+--  事务中包含耗时操作
 BEGIN;
 SELECT * FROM large_table WHERE ...;  -- 耗时查询
 UPDATE accounts SET ...;
 COMMIT;
 
--- ✅ 事务只包含必要的操作
+--  事务只包含必要的操作
 -- 先查询，再开事务更新
 BEGIN;
 UPDATE accounts SET balance = balance - 100 WHERE id = 1;
@@ -536,9 +536,9 @@ COMMIT;
 
 ```sql
 -- 1. 永远使用参数化查询
--- ❌ SQL 注入
+--  SQL 注入
 -- "SELECT * FROM users WHERE name = '" + input + "'"
--- ✅
+--
 -- cursor.execute("SELECT * FROM users WHERE name = %s", (input,))
 
 -- 2. 最小权限原则
@@ -553,9 +553,9 @@ GRANT SELECT, INSERT, UPDATE ON orders TO app_user;
 -- 日志中脱敏处理
 
 -- 4. 避免动态 SQL 拼接
--- ❌
+--
 -- EXECUTE 'SELECT * FROM ' || table_name;
--- ✅ 使用白名单校验
+--  使用白名单校验
 IF table_name NOT IN ('users', 'orders', 'products') THEN
   RAISE EXCEPTION '非法表名';
 END IF;

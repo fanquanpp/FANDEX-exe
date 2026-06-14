@@ -54,8 +54,8 @@ GitHub Projects 是内置的**项目管理工具**，支持看板视图、表格
 
 ```
 Status: Backlog → Todo → In Progress → In Review → Done
-Priority: 🔴 Critical → 🟠 High → 🟡 Medium → 🟢 Low
-Type: 🐛 Bug → ✨ Feature → 🔧 Chore → 📝 Docs
+Priority:  Critical →  High →  Medium →  Low
+Type:  Bug →  Feature →  Chore →  Docs
 Sprint: Sprint 1, Sprint 2, Sprint 3...
 Estimate: 1, 2, 3, 5, 8, 13
 ```

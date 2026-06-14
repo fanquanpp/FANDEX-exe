@@ -58,20 +58,20 @@ SELECT * FROM users WHERE id = '' UNION SELECT 1,username,password FROM users --
 **防御措施**：
 
 ```python
-# ❌ 不安全：字符串拼接
+#  不安全：字符串拼接
 query = f"SELECT * FROM users WHERE id = '{user_id}'"
 
-# ✅ 安全：参数化查询
+#  安全：参数化查询
 import sqlite3
 conn = sqlite3.connect('app.db')
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
 
-# ✅ 安全：ORM 框架
+#  安全：ORM 框架
 # SQLAlchemy
 user = session.query(User).filter(User.id == user_id).first()
 
-# ✅ 安全：输入验证
+#  安全：输入验证
 import re
 if not re.match(r'^\d+$', user_id):
     raise ValueError("Invalid user ID")
@@ -253,13 +253,13 @@ def upload_file():
 ### 6.1 命令注入
 
 ```python
-# ❌ 不安全：直接拼接用户输入
+#  不安全：直接拼接用户输入
 import os
 def ping_host(host):
     os.system(f"ping -c 3 {host}")  # 危险！
     # 攻击: host = "127.0.0.1; cat /etc/passwd"
 
-# ✅ 安全：使用 subprocess + 参数列表
+#  安全：使用 subprocess + 参数列表
 import subprocess
 def ping_host_safe(host):
     # 输入验证

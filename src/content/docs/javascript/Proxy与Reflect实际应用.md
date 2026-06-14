@@ -61,13 +61,13 @@ const proxy = new Proxy(obj, {
 ### 2.2 为什么用 Reflect 而非直接操作
 
 ```javascript
-// ❌ 直接操作可能忽略属性描述符
+//  直接操作可能忽略属性描述符
 set(target, key, value) {
   target[key] = value; // 忽略 setter、writable 等限制
   return true;
 }
 
-// ✅ Reflect 尊重属性描述符
+//  Reflect 尊重属性描述符
 set(target, key, value, receiver) {
   return Reflect.set(target, key, value, receiver); // 正确触发 setter
 }
@@ -160,9 +160,9 @@ const user = validated(
   }
 );
 
-user.age = 25; // ✅
+user.age = 25; //
 user.age = -1; // TypeError: Invalid value for age: -1
-user.email = 'a@b.com'; // ✅
+user.email = 'a@b.com'; //
 user.email = 'invalid'; // TypeError
 ```
 

@@ -283,7 +283,7 @@ transform, opacity, filter
 }
 ```
 
-> ⚠️ 不要滥用 `will-change`，过多声明会消耗 GPU 内存。
+> 不要滥用 `will-change`，过多声明会消耗 GPU 内存。
 
 ### 5.5 contain 属性
 

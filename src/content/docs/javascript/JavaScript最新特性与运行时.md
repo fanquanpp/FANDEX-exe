@@ -264,26 +264,26 @@ if (global.gc) {
 **内存优化实践**：
 
 ```javascript
-// ❌ 闭包意外持有大对象
+//  闭包意外持有大对象
 function createHandler() {
   const hugeData = new Array(1_000_000).fill('*');
   return () => hugeData.length; // hugeData 无法被回收
 }
 
-// ✅ 只保留需要的值
+//  只保留需要的值
 function createHandler() {
   const hugeData = new Array(1_000_000).fill('*');
   const length = hugeData.length; // 提取原始值
   return () => length; // hugeData 可被回收
 }
 
-// ❌ 全局缓存无限增长
+//  全局缓存无限增长
 const cache = new Map();
 function addToCache(key, value) {
   cache.set(key, value); // 永远不会清理
 }
 
-// ✅ 使用 WeakRef 或 LRU 缓存
+//  使用 WeakRef 或 LRU 缓存
 const cache = new Map();
 function addToCache(key, value) {
   if (cache.size > 1000) {

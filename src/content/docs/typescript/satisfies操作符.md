@@ -34,8 +34,8 @@ const colors2 = {
   red: [255, 0, 0],
   green: '#00ff00',
 } satisfies Record<string, string | number[]>;
-colors2.red[0]; // number — 保留具体类型 ✅
-colors2.green.toUpperCase(); // string — 保留具体类型 ✅
+colors2.red[0]; // number — 保留具体类型
+colors2.green.toUpperCase(); // string — 保留具体类型
 ```
 
 ## 3. 实际应用
@@ -47,8 +47,8 @@ const config = {
   features: { darkMode: true, analytics: false },
 } satisfies Record<string, Record<string, string | number | boolean>>;
 
-config.api.baseURL; // string ✅
-config.features.darkMode; // boolean ✅
+config.api.baseURL; // string
+config.features.darkMode; // boolean
 
 // 映射常量
 const STATUS_CODES = {
@@ -57,5 +57,5 @@ const STATUS_CODES = {
   ERROR: 500,
 } satisfies Record<string, number>;
 
-STATUS_CODES.OK; // 200 — 数字字面量类型 ✅
+STATUS_CODES.OK; // 200 — 数字字面量类型
 ```

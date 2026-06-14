@@ -285,13 +285,13 @@ stateDiagram-v2
 
 | 平台           | Mermaid 支持 | 说明                |
 | :------------- | :----------- | :------------------ |
-| **GitHub**     | ✅           | 原生支持            |
-| **GitLab**     | ✅           | 原生支持            |
-| **Obsidian**   | ✅           | 原生支持            |
-| **Typora**     | ✅           | 原生支持            |
-| **Hugo**       | ✅           | 需 shortcode 或插件 |
-| **Jekyll**     | ✅           | 需插件              |
-| **CommonMark** | ❌           | 不支持              |
+| **GitHub**     |              | 原生支持            |
+| **GitLab**     |              | 原生支持            |
+| **Obsidian**   |              | 原生支持            |
+| **Typora**     |              | 原生支持            |
+| **Hugo**       |              | 需 shortcode 或插件 |
+| **Jekyll**     |              | 需插件              |
+| **CommonMark** |              | 不支持              |
 
 ## 8. 调试技巧
 

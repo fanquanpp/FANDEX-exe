@@ -222,8 +222,8 @@ Source-1 ──→ Map ──→ Sink
 Source-2 ──→ Map ──→ Sink
 
 Checkpoint Barrier注入:
-Source-1 ──|B1|──→ Map ──|B1|──→ Sink ✓
-Source-2 ──|B1|──→ Map ──|B1|──→ Sink ✓
+Source-1 ──|B1|──→ Map ──|B1|──→ Sink
+Source-2 ──|B1|──→ Map ──|B1|──→ Sink
 
 所有算子收到Barrier后保存状态快照
 ```

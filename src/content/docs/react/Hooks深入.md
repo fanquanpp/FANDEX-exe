@@ -28,7 +28,7 @@ function DataFetcher({ url }: { url: string }) {
     fetch(url)
       .then((res) => res.json())
       .then(setData);
-  }); // ⚠️ 无依赖数组，每次渲染都执行
+  }); //  无依赖数组，每次渲染都执行
 
   return <div>{JSON.stringify(data)}</div>;
 }
@@ -262,21 +262,21 @@ function ExpensiveList({ items, filter }: { items: Item[]; filter: string }) {
 ### 3.2 何时使用 useMemo
 
 ```tsx
-// ✅ 场景一：昂贵计算
+//  场景一：昂贵计算
 const sortedData = useMemo(() => {
   return [...data].sort((a, b) => a.name.localeCompare(b.name));
 }, [data]);
 
-// ✅ 场景二：引用相等性（作为其他 Hook 的依赖或传给 memo 组件）
+//  场景二：引用相等性（作为其他 Hook 的依赖或传给 memo 组件）
 const options = useMemo(() => ({ pageSize: 10, sortBy: 'name' }), []);
 
-// ✅ 场景三：创建对象/数组避免每次渲染创建新引用
+//  场景三：创建对象/数组避免每次渲染创建新引用
 const style = useMemo(() => ({ color: 'red', fontSize: 16 }), []);
 
-// ❌ 不需要 useMemo：简单计算
+//  不需要 useMemo：简单计算
 const sum = a + b; // 直接计算即可
 
-// ❌ 不需要 useMemo：原始值
+//  不需要 useMemo：原始值
 const name = 'hello'; // 原始值天然引用稳定
 ```
 
@@ -482,14 +482,14 @@ function useToggle(initial = false): [boolean, () => void] {
 2. **只在 React 函数中调用 Hook** — 函数组件或自定义 Hook 中
 
 ```tsx
-// ❌ 错误：在条件中调用 Hook
+//  错误：在条件中调用 Hook
 function BadComponent({ isLoggedIn }: { isLoggedIn: boolean }) {
   if (isLoggedIn) {
     const [user, setUser] = useState(null); // 违反规则
   }
 }
 
-// ✅ 正确：将条件放在 Hook 内部
+//  正确：将条件放在 Hook 内部
 function GoodComponent({ isLoggedIn }: { isLoggedIn: boolean }) {
   const [user, setUser] = useState(null);
 
@@ -524,7 +524,7 @@ npm install -D eslint-plugin-react-hooks
 ### 8.1 闭包陷阱（Stale Closure）
 
 ```tsx
-// ❌ 错误：定时器中的 count 是闭包捕获的旧值
+//  错误：定时器中的 count 是闭包捕获的旧值
 function Counter() {
   const [count, setCount] = useState(0);
 
@@ -539,7 +539,7 @@ function Counter() {
   return <p>{count}</p>;
 }
 
-// ✅ 正确：使用函数式更新
+//  正确：使用函数式更新
 function Counter() {
   const [count, setCount] = useState(0);
 
@@ -557,12 +557,12 @@ function Counter() {
 ### 8.2 无限循环
 
 ```tsx
-// ❌ 错误：每次渲染都创建新对象，导致 useEffect 无限触发
+//  错误：每次渲染都创建新对象，导致 useEffect 无限触发
 useEffect(() => {
   doSomething({ name: 'test' });
 }, [{ name: 'test' }]); // 每次渲染都是新对象
 
-// ✅ 正确：提取到组件外部或使用 useMemo
+//  正确：提取到组件外部或使用 useMemo
 const options = useMemo(() => ({ name: 'test' }), []);
 useEffect(() => {
   doSomething(options);
@@ -572,12 +572,12 @@ useEffect(() => {
 ### 8.3 依赖遗漏
 
 ```tsx
-// ❌ 错误：缺少依赖
+//  错误：缺少依赖
 useEffect(() => {
   fetchData(userId); // userId 变化时不会重新执行
 }, []); // 缺少 userId
 
-// ✅ 正确：添加所有依赖
+//  正确：添加所有依赖
 useEffect(() => {
   fetchData(userId);
 }, [userId]);
@@ -586,18 +586,18 @@ useEffect(() => {
 ### 8.4 对象依赖比较
 
 ```tsx
-// ❌ 对象引用每次都不同
+//  对象引用每次都不同
 const obj = { a: 1, b: 2 };
 useEffect(() => {
   /* ... */
 }, [obj]); // 每次渲染都执行
 
-// ✅ 方式一：拆分为原始值依赖
+//  方式一：拆分为原始值依赖
 useEffect(() => {
   /* ... */
 }, [obj.a, obj.b]);
 
-// ✅ 方式二：useMemo 缓存对象
+//  方式二：useMemo 缓存对象
 const memoizedObj = useMemo(() => ({ a: 1, b: 2 }), []);
 useEffect(() => {
   /* ... */

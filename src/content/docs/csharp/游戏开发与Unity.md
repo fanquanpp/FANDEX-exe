@@ -531,40 +531,40 @@ queue.Dispose();
 ### 7.1 通用优化策略
 
 ```csharp
-// ❌ 避免在 Update 中分配
+//  避免在 Update 中分配
 private void Update()
 {
     var list = new List<int>(); // 每帧 GC 分配！
 }
 
-// ✅ 缓存集合
+//  缓存集合
 private readonly List<int> _cache = new();
 private void Update()
 {
     _cache.Clear(); // 复用
 }
 
-// ❌ 避免 GetComponent 频繁调用
+//  避免 GetComponent 频繁调用
 private void Update()
 {
     GetComponent<Rigidbody>().linearVelocity = Vector3.zero;
 }
 
-// ✅ Awake 中缓存
+//  Awake 中缓存
 private Rigidbody _rb = null!;
 private void Awake() => _rb = GetComponent<Rigidbody>();
 private void Update() => _rb.linearVelocity = Vector3.zero;
 
-// ❌ 避免字符串拼接
+//  避免字符串拼接
 Debug.Log("Score: " + score + " Level: " + level);
 
-// ✅ 使用字符串插值或 StringBuilder
+//  使用字符串插值或 StringBuilder
 Debug.Log($"Score: {score} Level: {level}");
 
-// ❌ 避免 GameObject.Find / FindWithTag
+//  避免 GameObject.Find / FindWithTag
 var player = GameObject.Find("Player"); // O(n) 遍历
 
-// ✅ 使用引用或管理器
+//  使用引用或管理器
 [SerializeField] private Transform player;
 ```
 

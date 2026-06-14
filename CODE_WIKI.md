@@ -313,7 +313,7 @@ export function docSlug(id: string): string;
 ```typescript
 interface Module {
   id: string; // 目录名，如 'getting-started'
-  title: string; // 显示名称，如 'Getting Started'
+  title: string; // 显示名称，如 '入门指南'
   icon: string; // 卡片图标文本，如 '入门'、'JS'、'算法'
   description: string; // 模块描述
   categories: string[]; // 分类数组，支持多分类，第一个为主分类
@@ -504,16 +504,16 @@ quiz:
 
 ### 8.2 模块分类
 
-| 分类 ID     | 中文名         | 颜色      | 包含模块                                                                                                                                                                  |
-| :---------- | :------------- | :-------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `toolchain` | 工具链         | `#4f5bd5` | Getting Started · Markdown · Git · GitHub                                                                                                                                 |
-| `dev-lang`  | 开发语言       | `#d63031` | HTML5 · CSS · JavaScript · TypeScript · Vue 3 · React · C · C++ · Java · Kotlin · C# · Python · Go · Lua · HarmonyOS                                                      |
-| `database`  | 数据库         | `#00b894` | SQL · MySQL · PostgreSQL · Redis                                                                                                                                          |
-| `comp-sci`  | 计算机科学     | `#8854d0` | Algorithm · CS Fundamentals · Calculus · Discrete Math · Linear Algebra · Probability & Statistics · English                                                              |
-| `eng-infra` | 工程与基础设施 | `#e05a2b` | DevOps · Networking · Cybersecurity · Cloud Computing · IoT · Software Testing · AI Agent · Software Engineering · Software Architecture · Engineering Practices · Career |
-| `data`      | 数据技术       | `#f9a825` | Data Analysis · Big Data · Machine Learning · Deep Learning · Probability & Statistics                                                                                    |
+| 分类 ID     | 中文名         | 颜色      | 包含模块                                                                                                             |
+| :---------- | :------------- | :-------- | :------------------------------------------------------------------------------------------------------------------- |
+| `toolchain` | 工具链         | `#4f5bd5` | 入门指南 · Markdown · Git · GitHub                                                                                   |
+| `dev-lang`  | 开发语言       | `#d63031` | HTML5 · CSS · JavaScript · TypeScript · Vue 3 · React · C · C++ · Java · Kotlin · C# · Python · Go · Lua · HarmonyOS |
+| `database`  | 数据库         | `#00b894` | SQL · MySQL · PostgreSQL · Redis                                                                                     |
+| `comp-sci`  | 计算机科学     | `#8854d0` | 算法与数据结构 · 计算机基础 · 高等数学 · 离散数学 · 线性代数 · 概率论与数理统计 · 英语                               |
+| `eng-infra` | 工程与基础设施 | `#e05a2b` | 运维 · 网络技术 · 网络安全 · 云计算 · 物联网 · 软件测试 · AI Agent · 软件工程 · 软件架构 · 工程实践 · 职业发展       |
+| `data`      | 数据技术       | `#f9a825` | 数据分析 · 大数据 · 机器学习 · 深度学习 · 概率论与数理统计                                                           |
 
-> 部分模块属于多个分类：C/C++ 同时属于开发语言和计算机科学；Python 同时属于开发语言和数据技术；Go 同时属于开发语言和工程与基础设施；Redis 同时属于数据库和工程与基础设施；Networking 同时属于工程与基础设施和计算机科学；AI Agent 同时属于工程与基础设施和数据技术；Probability & Statistics 同时属于计算机科学和数据技术。
+> 部分模块属于多个分类：C/C++ 同时属于开发语言和计算机科学；Python 同时属于开发语言和数据技术；Go 同时属于开发语言和工程与基础设施；Redis 同时属于数据库和工程与基础设施；网络技术 同时属于工程与基础设施和计算机科学；AI Agent 同时属于工程与基础设施和数据技术；概率论与数理统计 同时属于计算机科学和数据技术。
 
 ---
 

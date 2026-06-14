@@ -18,14 +18,14 @@
 
 ## 模块总览
 
-| 类别           | 模块                                                                                                                                                                      |
-| :------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 工具链         | Getting Started · Markdown · Git · GitHub                                                                                                                                 |
-| 开发语言       | HTML5 · CSS · JavaScript · TypeScript · Vue 3 · React · C · C++ · Java · Kotlin · C# · Python · Go · Lua · HarmonyOS                                                      |
-| 数据库         | SQL · MySQL · PostgreSQL · Redis                                                                                                                                          |
-| 计算机科学     | Algorithm · CS Fundamentals · Calculus · Discrete Math · Linear Algebra · Probability & Statistics · English                                                              |
-| 工程与基础设施 | DevOps · Networking · Cybersecurity · Cloud Computing · IoT · Software Testing · AI Agent · Software Engineering · Software Architecture · Engineering Practices · Career |
-| 数据技术       | Data Analysis · Big Data · Machine Learning · Deep Learning · Probability & Statistics                                                                                    |
+| 类别           | 模块                                                                                                                 |
+| :------------- | :------------------------------------------------------------------------------------------------------------------- |
+| 工具链         | 入门指南 · Markdown · Git · GitHub                                                                                   |
+| 开发语言       | HTML5 · CSS · JavaScript · TypeScript · Vue 3 · React · C · C++ · Java · Kotlin · C# · Python · Go · Lua · HarmonyOS |
+| 数据库         | SQL · MySQL · PostgreSQL · Redis                                                                                     |
+| 计算机科学     | 算法与数据结构 · 计算机基础 · 高等数学 · 离散数学 · 线性代数 · 概率论与数理统计 · 英语                               |
+| 工程与基础设施 | 运维 · 网络技术 · 网络安全 · 云计算 · 物联网 · 软件测试 · AI Agent · 软件工程 · 软件架构 · 工程实践 · 职业发展       |
+| 数据技术       | 数据分析 · 大数据 · 机器学习 · 深度学习 · 概率论与数理统计                                                           |
 
 > 1521 篇文档 · 45 个模块 · 交互式测验 · 知识地图
 

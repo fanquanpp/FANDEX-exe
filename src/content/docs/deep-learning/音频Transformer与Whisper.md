@@ -196,5 +196,5 @@ for s in segments:
 - [Baevski et al. (2020). wav2vec 2.0: A Framework for Self-Supervised Learning of Speech Representations](https://arxiv.org/abs/2006.11477) — 前身;在某些设置中仍然是SOTA特征。
 - [SYSTRAN/faster-whisper](https://github.com/SYSTRAN/faster-whisper) — 生产封装器,比参考快4倍。
 - [Jia et al. (2024). Moonshine: Speech Recognition for Live Transcription and Voice Commands](https://arxiv.org/abs/2410.15608) — 2024年边缘友好ASR,Whisper形但更小。
-- [HuggingFace blog — "Fine-Tune Whisper For Multilingual ASR with 🤗 Transformers"](https://huggingface.co/blog/fine-tune-whisper) — 规范微调方案,包括mel频谱图预处理器和token-时间戳处理。
+- [HuggingFace blog — "Fine-Tune Whisper For Multilingual ASR with Transformers"](https://huggingface.co/blog/fine-tune-whisper) — 规范微调方案,包括mel频谱图预处理器和token-时间戳处理。
 - [HuggingFace `modeling_whisper.py`](https://github.com/huggingface/transformers/blob/main/src/transformers/models/whisper/modeling_whisper.py) — 完整实现(编码器, 解码器, 交叉注意力, 生成),与课程架构图对应。

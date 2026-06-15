@@ -2,15 +2,15 @@
 
 # FANDEX
 
-**开发者知识库** · fanquanpp + memex
+**计算机自学教程** · fanquanpp + memex
 
-覆盖工具链 · 开发语言 · 数据库 · 计算机科学 · 工程基础设施 · 数据技术
+从零基础到计算机专业毕业生水平的系统化自学路径，覆盖工具链 · 开发语言 · 数据库 · 计算机科学 · 工程基础设施 · 数据技术与AI
 
 [![在线阅读](https://img.shields.io/badge/在线阅读-fanquanpp.github.io%2FFANDEX-2563eb?style=for-the-badge&logo=github&logoColor=white)](https://fanquanpp.github.io/FANDEX/)
 [![Astro 5](https://img.shields.io/badge/Astro-5-ff5d01?style=flat-square&logo=astro&logoColor=white)](https://astro.build)
 [![Vue 3](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org)
-[![文档数](https://img.shields.io/badge/文档-1504+-0ea5e9?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
-[![模块数](https://img.shields.io/badge/模块-44-8b5cf6?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
+[![文档数](https://img.shields.io/badge/文档-2031+-0ea5e9?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
+[![模块数](https://img.shields.io/badge/模块-51-8b5cf6?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
 
 </div>
 

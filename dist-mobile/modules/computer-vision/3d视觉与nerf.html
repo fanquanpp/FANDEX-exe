@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D视觉与NeRF</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">3D视觉与NeRF</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            7 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">NeRF</span><span class="doc-tag">3D视觉</span
+          ><span class="doc-tag">体渲染</span><span class="doc-tag">辐射场</span
+          ><span class="doc-tag">神经渲染</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          NeRF用MLP将场景表示为连续的5D辐射场，通过体渲染从任意视角合成照片级真实图像。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="3d视觉与nerf"><a href="#3d视觉与nerf">3D视觉与NeRF</a></h1>
+      <blockquote>
+        <p>NeRF用MLP将场景表示为连续的5D辐射场，通过体渲染从任意视角合成照片级真实图像。</p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习+构建 <strong>语言:</strong> Python
+        <strong>前置知识:</strong> Phase 3 (深度学习核心), Phase 4 Lesson 01 (图像基础)
+        <strong>时间:</strong> 约75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>解释NeRF的核心思想：5D辐射场（3D位置+2D视角方向）映射到颜色和密度</li>
+        <li>实现简化的NeRF：位置编码、MLP、体渲染</li>
+        <li>理解NeRF的局限性（训练慢、需要已知相机位姿）和3D Gaussian Splatting如何解决</li>
+        <li>使用nerfstudio进行3D重建</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        3D视觉的核心问题：从2D图像恢复3D场景。传统方法（立体视觉、SfM、MVS）产生稀疏点云或网格，缺少细节和视图依赖效果（反射、透明）。
+      </p>
+      <p>
+        NeRF（Neural Radiance Fields，Mildenhall et al.,
+        2020）用完全不同的方法：不重建显式几何，而是训练一个MLP将5D坐标（3D位置+2D视角方向）映射到颜色和密度。通过体渲染从任意视角合成图像，训练信号是2D图像。结果：照片级真实的新视角合成，包括反射、透明和视图依赖效果。
+      </p>
+      <p>
+        代价：训练一个场景需要数小时到数天，渲染需要秒级。3D Gaussian
+        Splatting（下一课）在2023年解决了这个问题，但NeRF的核心思想——连续辐射场+体渲染——仍然是3D视觉的基础概念。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="5d辐射场"><a href="#5d辐射场">5D辐射场</a></h3>
+      <p>NeRF将场景表示为函数：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>F: (x, y, z, theta, phi) -> (r, g, b, sigma)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>(x, y, z): 3D空间位置</span></span>
+<span class="line"><span>(theta, phi): 视角方向（球坐标）</span></span>
+<span class="line"><span>(r, g, b): 该位置该方向的辐射颜色</span></span>
+<span class="line"><span>sigma: 该位置的体积密度（不透明度）</span></span></code></pre>
+      <p>
+        sigma只依赖位置，不依赖视角——一个点要么有物质要么没有。颜色依赖视角——同一位置从不同方向看可能不同（反射、高光）。
+      </p>
+      <h3 id="体渲染"><a href="#体渲染">体渲染</a></h3>
+      <p>从辐射场渲染像素：从相机发出一条射线，沿射线采样点，累积颜色和密度：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>C(r) = integral_{t_n}^{t_f} T(t) * sigma(t) * c(t) dt</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>T(t) = exp(-integral_{t_n}^{t} sigma(s) ds)  # 累积透射率</span></span></code></pre>
+      <p>离散近似：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>C(r) = sum_{i=1}^{N} T_i * alpha_i * c_i</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>T_i = prod_{j=1}^{i-1} (1 - alpha_j)  # 前面所有点的透射率</span></span>
+<span class="line"><span>alpha_i = 1 - exp(-sigma_i * delta_i)  # 当前点的不透明度</span></span></code></pre>
+      <p>
+        这个积分正是alpha合成——与NeRF无关的图形学标准技术。NeRF的贡献是让这个渲染过程可微，使得从2D图像反向传播到3D场。
+      </p>
+      <h3 id="位置编码"><a href="#位置编码">位置编码</a></h3>
+      <p>MLP难以学习高频信号。NeRF使用位置编码将低维坐标映射到高维：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>gamma(p) = [sin(2^0 * pi * p), cos(2^0 * pi * p), sin(2^1 * pi * p), cos(2^1 * pi * p), ...]</span></span></code></pre>
+      <p>将3D位置编码到高维空间，使MLP能表示高频几何细节。没有位置编码，NeRF产生模糊的结果。</p>
+      <h3 id="分层采样"><a href="#分层采样">分层采样</a></h3>
+      <p>NeRF使用两个MLP：粗网络和细网络。</p>
+      <ol>
+        <li>粗网络在射线上均匀采样，产生粗略的颜色和密度</li>
+        <li>根据粗网络输出，在重要区域（高密度）采样更多点</li>
+        <li>细网络在重新采样的点上评估</li>
+      </ol>
+      <p>这使采样集中在有内容的区域，而非空空间。</p>
+      <h3 id="nerf-vs-3d-gaussian-splatting">
+        <a href="#nerf-vs-3d-gaussian-splatting">NeRF vs 3D Gaussian Splatting</a>
+      </h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>属性</th>
+            <th>NeRF</th>
+            <th>3DGS</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>表示</td>
+            <td>隐式（MLP权重）</td>
+            <td>显式（高斯点云）</td>
+          </tr>
+          <tr>
+            <td>训练时间</td>
+            <td>小时级</td>
+            <td>分钟级</td>
+          </tr>
+          <tr>
+            <td>渲染速度</td>
+            <td>秒级</td>
+            <td>100+ fps</td>
+          </tr>
+          <tr>
+            <td>可编辑性</td>
+            <td>不可编辑</td>
+            <td>直接编辑</td>
+          </tr>
+          <tr>
+            <td>质量</td>
+            <td>照片级</td>
+            <td>照片级</td>
+          </tr>
+          <tr>
+            <td>存储</td>
+            <td>MLP权重（小）</td>
+            <td>数百万高斯（中）</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        3DGS在几乎所有实际方面优于NeRF，但NeRF的概念框架（连续辐射场+可微体渲染）是3DGS的理论基础。
+      </p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤1位置编码"><a href="#步骤1位置编码">步骤1：位置编码</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.nn </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> PositionalEncoding</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">nn</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Module</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, num_frequencies</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        super</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">__init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.num_frequencies </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> num_frequencies</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> forward</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, x):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        freqs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2.0</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> **</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.arange(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.num_frequencies, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">device</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">x.device) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.pi</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x_scaled </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> freqs</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.cat([x_scaled.sin(), x_scaled.cos()], </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).flatten(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>3D位置编码到60维（10频率 _ 2(sin/cos) _ 3坐标）。视角方向编码到24维。</p>
+      <h3 id="步骤2nerf-mlp"><a href="#步骤2nerf-mlp">步骤2：NeRF MLP</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> NeRFMLP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">nn</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Module</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, pos_dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">60</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, dir_dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">24</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, hidden</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">256</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        super</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">__init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 位置分支</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.pos_net </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Sequential(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            nn.Linear(pos_dim, hidden), nn.ReLU(),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            nn.Linear(hidden, hidden), nn.ReLU(),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            nn.Linear(hidden, hidden), nn.ReLU(),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            nn.Linear(hidden, hidden), nn.ReLU(),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        )</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 密度+特征</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.density_net </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(hidden, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.feature_net </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(hidden, hidden)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 颜色分支（依赖视角方向）</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.color_net </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Sequential(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            nn.Linear(hidden </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dir_dim, hidden </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">//</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">), nn.ReLU(),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            nn.Linear(hidden </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">//</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">), nn.Sigmoid(),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        )</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> forward</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, pos_enc, dir_enc):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        h </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.pos_net(pos_enc)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        sigma </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> F.softplus(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.density_net(h))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        feature </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.feature_net(h)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        color </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.color_net(torch.cat([feature, dir_enc], </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> color, sigma.squeeze(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>sigma使用softplus确保非负。颜色使用sigmoid确保[0,1]范围。</p>
+      <h3 id="步骤3体渲染"><a href="#步骤3体渲染">步骤3：体渲染</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> volume_render</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(rgb, sigma, depths, delta):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """体渲染单条射线。</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    rgb: (N_samples, 3)</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    sigma: (N_samples,)</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    depths: (N_samples,) 沿射线的深度</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    delta: (N_samples,) 相邻采样点间距</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    alpha </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1.0</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.exp(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">sigma </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> delta)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    T </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.cumprod(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1.0</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> alpha </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1e-10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    T </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.cat([torch.ones(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">device</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">alpha.device), T[:</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    weights </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> T </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> alpha</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    color </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (weights[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rgb).sum(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    depth </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (weights </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> depths).sum(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> color, depth, weights</span></span></code></pre>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>使用nerfstudio进行3D重建：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pip</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> install</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> nerfstudio</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ns-download-data</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> example</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ns-train</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> nerfacto</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --data</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> path/to/images</span></span></code></pre>
+      <p>
+        nerfacto是nerfstudio的默认NeRF变体，结合了多种改进（Instant-NGP哈希编码、提案网络等），训练时间从小时级降到分钟级。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>本课产出：</p>
+      <ul>
+        <li>
+          <code>outputs/prompt-3d-recon-picker.md</code> — 一个<span
+            class="term-tip"
+            data-term="提示"
+            data-module="cpp"
+            data-def="提示"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提示</abbr></span
+          >，根据场景类型、输入照片数和输出需求选择3D重建方法。
+        </li>
+        <li>
+          <code>outputs/skill-nerf-camera-setup.md</code> — 一个技能，规划NeRF/3DGS捕获的相机<span
+            class="term-tip"
+            data-term="路径"
+            data-module="github"
+            data-def="路径"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">路径</abbr></span
+          >和拍摄<span
+            class="term-tip"
+            data-term="策略"
+            data-module="vue3"
+            data-def="解决问题的策略"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">策略</abbr></span
+          >。
+        </li>
+      </ul>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong
+            >(<span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >)</strong
+          >
+          在合成场景（<span
+            class="term-tip"
+            data-term="单"
+            data-module="github"
+            data-def="单"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">单</abbr></span
+          >个球体）上<span
+            class="term-tip"
+            data-term="训练"
+            data-module="github"
+            data-def="培训"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">训练</abbr></span
+          >简化NeRF。<span
+            class="term-tip"
+            data-term="可视化"
+            data-module="html5"
+            data-def="数据可视化"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">可视化</abbr></span
+          >新<span
+            class="term-tip"
+            data-term="视角"
+            data-module="github"
+            data-def="视角"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">视角</abbr></span
+          >渲染<span
+            class="term-tip"
+            data-term="结果"
+            data-module="c"
+            data-def="函数返回的值"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">结果</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>(中等)</strong> 添加分层采样：先均匀采样，再<span
+            class="term-tip"
+            data-term="根"
+            data-module="vue3"
+            data-def="根节点"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">根</abbr></span
+          >据粗<span
+            class="term-tip"
+            data-term="网络"
+            data-module="github"
+            data-def="网络"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">网络</abbr></span
+          >输出重新采样。<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >渲染<span
+            class="term-tip"
+            data-term="质量"
+            data-module="github"
+            data-def="质量"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">质量</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>(困难)</strong> 用Instant-NGP哈希<span
+            class="term-tip"
+            data-term="编码"
+            data-module="cpp"
+            data-def="编写代码"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编码</abbr></span
+          >替换<span
+            class="term-tip"
+            data-term="位置"
+            data-module="github"
+            data-def="位置"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">位置</abbr></span
+          >编码，<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >训练速<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >和<span
+            class="term-tip"
+            data-term="渲染"
+            data-module="html5"
+            data-def="将代码转为可视内容"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">渲染</abbr></span
+          >质量。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>辐射场</td>
+            <td>”5D函数”</td>
+            <td>
+              将3D位置+2D视角方向<span
+                class="term-tip"
+                data-term="映射"
+                data-module="c"
+                data-def="类型到另一类型的对应关系"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">映射</abbr></span
+              >到<span
+                class="term-tip"
+                data-term="颜色"
+                data-module="cpp"
+                data-def="类型标签"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">颜色</abbr></span
+              >+密<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              体<span
+                class="term-tip"
+                data-term="渲染"
+                data-module="html5"
+                data-def="将代码转为可视内容"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">渲染</abbr></span
+              >
+            </td>
+            <td>”射线积分”</td>
+            <td>
+              沿射线<span
+                class="term-tip"
+                data-term="累积"
+                data-module="vue3"
+                data-def="在处理函数中累积结果"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">累积</abbr></span
+              >颜色和密<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >来<span
+                class="term-tip"
+                data-term="渲染"
+                data-module="html5"
+                data-def="将代码转为可视内容"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">渲染</abbr></span
+              >像素
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="位置"
+                data-module="github"
+                data-def="位置"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位置</abbr></span
+              >编码
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >频<span
+                class="term-tip"
+                data-term="映射"
+                data-module="c"
+                data-def="类型到另一类型的对应关系"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">映射</abbr></span
+              >”
+            </td>
+            <td>
+              将低维坐标<span
+                class="term-tip"
+                data-term="映射"
+                data-module="c"
+                data-def="类型到另一类型的对应关系"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">映射</abbr></span
+              >到<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >维，使MLP能学习<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >频<span
+                class="term-tip"
+                data-term="细节"
+                data-module="github"
+                data-def="细节"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">细节</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="累积"
+                data-module="vue3"
+                data-def="在处理函数中累积结果"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">累积</abbr></span
+              >透射<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >
+            </td>
+            <td>”T值”</td>
+            <td>
+              光线到达当前<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >前未被遮挡的<span
+                class="term-tip"
+                data-term="概率"
+                data-module="github"
+                data-def="概率"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">概率</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>分层采样</td>
+            <td>
+              ”重要<span
+                class="term-tip"
+                data-term="区域"
+                data-module="cpp"
+                data-def="区域"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">区域</abbr></span
+              >多采样”
+            </td>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >密<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >区<span
+                class="term-tip"
+                data-term="域"
+                data-module="discrete-math"
+                data-def="同时满足加法和乘法群性质且满足分配律的代数结构，如有理数域、有限域"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">域</abbr></span
+              >采样更<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >点，提<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >渲染<span
+                class="term-tip"
+                data-term="效率"
+                data-module="cpp"
+                data-def="效率性能"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">效率</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Instant-NGP</td>
+            <td>”快速NeRF”</td>
+            <td>
+              使用<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >分辨<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >哈希<span
+                class="term-tip"
+                data-term="编码"
+                data-module="cpp"
+                data-def="编写代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编码</abbr></span
+              >加速NeRF训练1000倍
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2003.08934">NeRF (Mildenhall et al., 2020)</a> —
+          <span
+            class="term-tip"
+            data-term="原始"
+            data-module="vue3"
+            data-def="原始的、最初的"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">原始</abbr></span
+          >论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2201.05989">Instant-NGP (Muller et al., 2022)</a> —
+          实时NeRF训练
+        </li>
+        <li>
+          <a href="https://docs.nerf.studio/">nerfstudio</a> — 生产NeRF工具<span
+            class="term-tip"
+            data-term="包"
+            data-module="go"
+            data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+            data-slug="go/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">包</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

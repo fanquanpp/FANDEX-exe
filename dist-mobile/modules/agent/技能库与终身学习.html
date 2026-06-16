@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>技能库与终身学习</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">技能库与终身学习</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          Voyager（Wang等人，TMLR
+          2024）将可执行代码视为技能。技能是命名的、可检索的、可组合的，并由环境反馈精炼。这是Claude
+          Agent SDK技能、skillkit和2026年技能库模式的参考架构。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="技能库与终身学习voyager">
+        <a href="#技能库与终身学习voyager">技能库与终身学习（Voyager）</a>
+      </h1>
+      <blockquote>
+        <p>
+          Voyager（Wang等人，TMLR
+          2024）将可执行代码视为技能。技能是命名的、可检索的、可组合的，并由环境反馈精炼。这是Claude
+          Agent SDK技能、skillkit和2026年技能库模式的参考架构。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python (stdlib)
+        <strong>前置条件：</strong> Phase 14 · 07 (MemGPT), Phase 14 · 08 (Letta块)
+        <strong>时间：</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>说出Voyager的三个组件——自动课程、技能库、迭代提示——及各自的作用。</li>
+        <li>解释为什么Voyager将动作空间设为代码而非原始命令。</li>
+        <li>实现一个带注册、检索、组合和失败驱动精炼的stdlib技能库。</li>
+        <li>将Voyager的模式映射到2026年Claude Agent SDK技能和skillkit生态系统。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>在每个会话中从头重建每个能力的Agent做错了三件事：</p>
+      <ol>
+        <li><strong>浪费token。</strong> 每个任务重新引出相同的推理。</li>
+        <li><strong>丢失进展。</strong> 在会话A中学到的纠正不会转移到会话B。</li>
+        <li>
+          <strong>在长时间范围组合上失败。</strong> 复杂任务需要能力层次；一次性提示无法表达它们。
+        </li>
+      </ol>
+      <p>
+        Voyager的回答：将每个可复用能力视为存储在库中的命名代码块，可按相似性检索，可与其他技能组合，并可由执行反馈精炼。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="三个组件"><a href="#三个组件">三个组件</a></h3>
+      <p>Voyager（arXiv:2305.16291）围绕以下结构化Agent：</p>
+      <ol>
+        <li>
+          <strong>自动课程。</strong>
+          基于好奇心的提议器根据Agent当前技能集和环境状态选择下一个任务。探索是自底向上的。
+        </li>
+        <li>
+          <strong>技能库。</strong>
+          每个技能是可执行代码。任务成功时添加新技能。技能按查询到描述的相似性检索。
+        </li>
+        <li>
+          <strong>迭代提示机制。</strong>
+          失败时，Agent接收执行错误、环境反馈和自验证输出，然后精炼技能。
+        </li>
+      </ol>
+      <p>
+        Minecraft评估（Wang等人，2024）：3.3倍更多独特物品，8.5倍更快石制工具，6.4倍更快铁制工具，2.3倍更长地图遍历对比基线。数字是Minecraft特定的，但模式可迁移。
+      </p>
+      <h3 id="动作空间--代码"><a href="#动作空间--代码">动作空间 = 代码</a></h3>
+      <p>大多数Agent发出原始命令。Voyager发出JavaScript函数。一个技能是：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>async function craftIronPickaxe(bot) {</span></span>
+<span class="line"><span>  await mineIron(bot, 3);</span></span>
+<span class="line"><span>  await mineStick(bot, 2);</span></span>
+<span class="line"><span>  await placeCraftingTable(bot);</span></span>
+<span class="line"><span>  await craft(bot, 'iron_pickaxe');</span></span>
+<span class="line"><span>}</span></span></code></pre>
+      <p>由子技能组合。按键描述和嵌入存储。作为程序而非提示检索。</p>
+      <p>这是2026年Claude Agent SDK技能：Agent按需加载的命名、可检索代码块加指令。</p>
+      <h3 id="技能检索"><a href="#技能检索">技能检索</a></h3>
+      <p>新任务”制作钻石镐”。Agent：</p>
+      <ol>
+        <li>嵌入任务描述。</li>
+        <li>查询技能库获取top-k相似技能。</li>
+        <li>
+          检索<code>craftIronPickaxe</code>、<code>mineDiamond</code>、<code>placeCraftingTable</code>等。
+        </li>
+        <li>从检索到的原语 + 新逻辑组合新技能。</li>
+      </ol>
+      <p>
+        这是MCP资源（Phase 13）和Agent
+        SDK技能实现的模式：在知识/代码面上的检索，范围限定到当前任务。
+      </p>
+      <h3 id="迭代精炼"><a href="#迭代精炼">迭代精炼</a></h3>
+      <p>Voyager的反馈循环：</p>
+      <ol>
+        <li>Agent写一个技能。</li>
+        <li>技能针对环境运行。</li>
+        <li>
+          三个信号之一返回：<code>success</code>、<code>error</code>（带堆栈跟踪）、<code
+            >self-verification failure</code
+          >。
+        </li>
+        <li>Agent使用信号作为上下文重写技能。</li>
+        <li>循环直到成功或最大轮次。</li>
+      </ol>
+      <p>
+        这是应用于代码生成的Self-Refine（第05课），带环境接地验证。CRITIC（第05课）是相同模式，以外部工具作为验证器。
+      </p>
+      <h3 id="课程和探索"><a href="#课程和探索">课程和探索</a></h3>
+      <p>
+        Voyager的课程模块根据Agent拥有的和尚未做的提出”在湖边建庇护所”等任务。提议器使用环境状态 +
+        技能清单来选择刚好在当前能力之上的任务——探索的最佳点。
+      </p>
+      <p>
+        对于生产Agent，这转化为”缺什么”操作符：给定当前技能库和领域，我们还没有覆盖哪些技能？团队通常手动实现为课程审查。
+      </p>
+      <h3 id="这个模式哪里会出错"><a href="#这个模式哪里会出错">这个模式哪里会出错</a></h3>
+      <ul>
+        <li>
+          <strong>技能库腐烂。</strong>
+          同一技能以略微不同的描述添加10次。在写入时添加去重；检索只返回一个。
+        </li>
+        <li>
+          <strong>组合技能漂移。</strong>
+          父技能依赖的子技能被精炼了。对技能进行版本控制；固定在v1的父技能不会神奇地采用v3。
+        </li>
+        <li>
+          <strong>检索质量。</strong>
+          技能描述上的向量检索在库增长超过几百个时退化。用标签过滤和硬约束补充（“只有<code>category=tooling</code>的技能”）。
+        </li>
+      </ul>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p><code>code/main.py</code>实现一个stdlib技能库：</p>
+      <ul>
+        <li>
+          <code>Skill</code> — name、description、code（字符串）、version、tags、dependencies。
+        </li>
+        <li>
+          <code>SkillLibrary</code> —
+          register、search（token重叠）、compose（依赖的拓扑排序）和refine（更新时版本提升）。
+        </li>
+        <li>一个脚本Agent注册三个原语技能，组合第四个，遇到失败，并精炼。</li>
+      </ul>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <p>跟踪显示库写入、检索、组合、失败执行和v2精炼——Voyager循环端到端。</p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <ul>
+        <li>
+          <strong>Claude Agent SDK技能</strong>（Anthropic）—
+          2026年参考：每个技能有描述、代码和指令；在Agent会话期间按需加载。
+        </li>
+        <li><strong>skillkit</strong>（npm: skillkit）— 32+ AI编码Agent的跨Agent技能管理。</li>
+        <li>
+          <strong>自定义技能库</strong> —
+          领域特定（数据Agent的SQL技能，基础设施Agent的Terraform技能）。Voyager模式可缩小。
+        </li>
+        <li>
+          <strong>OpenAI Agents SDK <code>tools</code></strong> — 低端；每个工具是一个轻量级技能。
+        </li>
+      </ul>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>
+        <code>outputs/skill-skill-library.md</code
+        >为任何目标运行时生成带注册、检索、版本控制和精炼连接的Voyager形状技能库。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          给<code>compose()</code>添加依赖循环检测器。当技能A依赖B而B依赖A时会发生什么？错误还是警告？
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >每技能版本固定。当父技能组合子<code>crafting@1</code>时，<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          ><code>crafting@2</code>的精炼不得静默升级父技能。
+        </li>
+        <li>
+          用sentence-transformers嵌入（或BM25 stdlib实现）替换<span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >重叠检索。在50技能玩具<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >上测量retrieval@5。
+        </li>
+        <li>
+          添加”课程”Agent：给定当前<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >和<span
+            class="term-tip"
+            data-term="领域"
+            data-module="github"
+            data-def="领域"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">领域</abbr></span
+          >描述，提出5个缺失技能。每周<span
+            class="term-tip"
+            data-term="调用"
+            data-module="github"
+            data-def="调用"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">调用</abbr></span
+          >。
+        </li>
+        <li>
+          阅读Anthropic的Claude Agent SDK技能<span
+            class="term-tip"
+            data-term="文档"
+            data-module="vue3"
+            data-def="代码说明文档"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文档</abbr></span
+          >。将玩具<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >移植到SDK的技能<span
+            class="term-tip"
+            data-term="Schema"
+            data-module="typescript"
+            data-def="类型模式"
+            data-slug="typescript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Schema</abbr></span
+          >。<span
+            class="term-tip"
+            data-term="可发现性"
+            data-module="html5"
+            data-def="搜索引擎发现页面内容"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">可发现性</abbr></span
+          >有什么<span
+            class="term-tip"
+            data-term="变化"
+            data-module="vue3"
+            data-def="状态变更"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">变化</abbr></span
+          >？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们常说的
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>技能</td>
+            <td>”可复用能力”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="命名"
+                data-module="github"
+                data-def="命名"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">命名</abbr></span
+              >代码<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >
+              +
+              <span
+                class="term-tip"
+                data-term="描述"
+                data-module="github"
+                data-def="描述"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">描述</abbr></span
+              >，可按相似性检索
+            </td>
+          </tr>
+          <tr>
+            <td>
+              技能<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+            <td>
+              ”Agent的如何做<span
+                class="term-tip"
+                data-term="记忆"
+                data-module="github"
+                data-def="记忆"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记忆</abbr></span
+              >”
+            </td>
+            <td>
+              技能的持久<span
+                class="term-tip"
+                data-term="存储"
+                data-module="cpp"
+                data-def="存储"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存储</abbr></span
+              >，可<span
+                class="term-tip"
+                data-term="搜索"
+                data-module="cpp"
+                data-def="搜索"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">搜索</abbr></span
+              >可<span
+                class="term-tip"
+                data-term="组合"
+                data-module="cpp"
+                data-def="组合多个值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">组合</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>课程</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >提议器”
+            </td>
+            <td>
+              由当前能力差距驱动的自底向上<span
+                class="term-tip"
+                data-term="目标"
+                data-module="cpp"
+                data-def="目标"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目标</abbr></span
+              >生成器
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="组合"
+                data-module="cpp"
+                data-def="组合多个值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">组合</abbr></span
+              >
+            </td>
+            <td>”技能DAG”</td>
+            <td>
+              技能<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >技能；<span
+                class="term-tip"
+                data-term="执行时"
+                data-module="c"
+                data-def="程序实际运行的阶段"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行时</abbr></span
+              >拓扑<span
+                class="term-tip"
+                data-term="排序"
+                data-module="cpp"
+                data-def="排序"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">排序</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="迭代"
+                data-module="github"
+                data-def="迭代"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">迭代</abbr></span
+              >精炼
+            </td>
+            <td>
+              ”自纠正<span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="环境"
+                data-module="cpp"
+                data-def="运行环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">环境</abbr></span
+              >反馈 +
+              <span
+                class="term-tip"
+                data-term="错误"
+                data-module="cpp"
+                data-def="错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">错误</abbr></span
+              >
+              + 自<span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >折回到下一<span
+                class="term-tip"
+                data-term="版本"
+                data-module="c"
+                data-def="软件的迭代版本"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">版本</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              动作<span
+                class="term-tip"
+                data-term="空间"
+                data-module="cpp"
+                data-def="空间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">空间</abbr></span
+              >即代码
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="程序"
+                data-module="c"
+                data-def="完成特定功能的代码集合"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">程序</abbr></span
+              >化动作”
+            </td>
+            <td>
+              发出<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >而非<span
+                class="term-tip"
+                data-term="原始"
+                data-module="vue3"
+                data-def="原始的、最初的"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">原始</abbr></span
+              >命令，用于<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >扩展<span
+                class="term-tip"
+                data-term="行为"
+                data-module="vue3"
+                data-def="组件或应用的反应"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行为</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="写入"
+                data-module="c"
+                data-def="输出数据到目标"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">写入</abbr></span
+              >时<span
+                class="term-tip"
+                data-term="去重"
+                data-module="data-analysis"
+                data-def="删除数据集中重复记录的操作，Pandas中用drop_duplicates()实现"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">去重</abbr></span
+              >
+            </td>
+            <td>
+              ”技能<span
+                class="term-tip"
+                data-term="合并"
+                data-module="github"
+                data-def="整合不同分支的更改"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">合并</abbr></span
+              >”
+            </td>
+            <td>
+              近<span
+                class="term-tip"
+                data-term="重复"
+                data-module="github"
+                data-def="重复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">重复</abbr></span
+              >描述<span
+                class="term-tip"
+                data-term="合并"
+                data-module="github"
+                data-def="整合不同分支的更改"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">合并</abbr></span
+              >为一个<span
+                class="term-tip"
+                data-term="规范"
+                data-module="html5"
+                data-def="HTML 标准文档"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">规范</abbr></span
+              >技能
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2305.16291">Wang等人, Voyager (arXiv:2305.16291)</a> —
+          <span
+            class="term-tip"
+            data-term="原始"
+            data-module="vue3"
+            data-def="原始的、最初的"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">原始</abbr></span
+          >技能<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >论文
+        </li>
+        <li>
+          <a href="https://platform.claude.com/docs/en/agent-sdk/overview">Claude Agent SDK概述</a>
+          — 技能作为2026年<span
+            class="term-tip"
+            data-term="产品"
+            data-module="github"
+            data-def="产品"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">产品</abbr></span
+          >化
+        </li>
+        <li>
+          <a href="https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk"
+            >Anthropic, Building agents with the Claude Agent SDK</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="实践"
+            data-module="github"
+            data-def="实践"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实践</abbr></span
+          >中的技能和子Agent
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2303.17651">Madaan等人, Self-Refine (arXiv:2303.17651)</a>
+          — Voyager底层的精炼<span
+            class="term-tip"
+            data-term="循环"
+            data-module="c"
+            data-def="重复执行的代码"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">循环</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

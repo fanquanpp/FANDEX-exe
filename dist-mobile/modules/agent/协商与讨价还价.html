@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>协商与讨价还价</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">协商与讨价还价</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            14 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/15
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          Agent 协商资源、价格、任务分配和条款。2026 年基准集很明确：NegotiationArena
+          (arXiv:2402.05863) 显示 LLM 可以通过人格操纵（&quot;绝望&quot;）改善收益约
+          20%；&quot;Measuring Bargaining Abilities&quot; (arXiv:2402....
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="协商与讨价还价"><a href="#协商与讨价还价">协商与讨价还价</a></h1>
+      <blockquote>
+        <p>
+          Agent 协商资源、价格、任务分配和条款。2026 年基准集很明确：NegotiationArena
+          (arXiv:2402.05863) 显示 LLM 可以通过人格操纵（“绝望”）改善收益约 20%；“Measuring
+          Bargaining Abilities” (arXiv:2402.15813) 显示买方比卖方更难且规模无帮助——他们的
+          <strong>OG-Narrator</strong>（确定性报价生成器 + LLM 叙述者）将成交率从 26.67% 推到
+          88.88%；大规模自主协商竞赛 (arXiv:2503.06416) 运行了约 180k
+          次协商，发现<strong>隐藏思维链</strong>的 Agent 通过向对手隐藏推理而获胜；Bhattacharya
+          等人 2025 在哈佛协商项目指标上排名 Llama-3 最有效、Claude-3 最激进、GPT-4
+          最公平。本课程实现合同网协议（FIPA 祖先, Lesson 02）、连接 LLM 风格的买方/卖方、运行
+          OG-Narrator 风格的分解，并测量每种结构选择如何改变成交率。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 + 构建 <strong>语言：</strong> Python (stdlib)
+        <strong>前置条件：</strong> Phase 16 · 02 (FIPA-ACL遗产), Phase 16 · 09 (并行群体网络)
+        <strong>时间：</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        两个 Agent 需要就价格达成一致。让它们自己用纯语言提示，2024-2026 年的 LLM
+        以惊人低的比率成交（arXiv:2402.15813 中约 27%
+        在紧密参数化的讨价还价中）。规模不能修复它：GPT-4 在结构上不比 GPT-3.5
+        更擅长讨价还价；它更擅长讨价还价的<em>语言</em>。
+      </p>
+      <p>
+        根本问题是 LLM 混淆了两个工作——决定报价和叙述报价。OG-Narrator
+        分离了这些：确定性报价生成器计算数值移动；LLM 只叙述。成交率跳到约 89%。
+      </p>
+      <p>
+        这反映了经典多 Agent 发现：将机制与通信层解耦获胜。合同网协议 (FIPA, 1996; Smith, 1980)
+        是参考任务市场机制。将 LLM 插入叙述槽位，你就得到一个现代 LLM 驱动的任务市场。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="合同网一段话概括"><a href="#合同网一段话概括">合同网，一段话概括</a></h3>
+      <p>
+        Smith 1980 年的合同网协议：<strong>管理者</strong>广播<strong>征求提案 (cfp)</strong
+        >；<strong>竞标者</strong>用包含其报价的<strong>提议</strong>消息响应；管理者选择获胜者并向获胜者发送<strong>接受提议</strong>，向失败者发送<strong>拒绝提议</strong>。获胜者执行工作。可选消息：<strong>拒绝</strong>（竞标者拒绝提议）。FIPA
+        将此编码为 <code>fipa-contract-net</code> 交互协议。
+      </p>
+      <h3 id="为什么-og-narrator-胜出">
+        <a href="#为什么-og-narrator-胜出">为什么 OG-Narrator 胜出</a>
+      </h3>
+      <p>“Measuring Bargaining Abilities of Language Models” (arXiv:2402.15813) 观察到：</p>
+      <ul>
+        <li>LLM 经常违反讨价还价规则（以荒谬价格报价、忽略对方的 ZOPA）。</li>
+        <li>它们锚定不佳（接受糟糕的首报价；以象征性而非战略性的金额还价）。</li>
+        <li>仅规模不能修复这些。更大的模型产生更合理的语言但有相似的策略错误。</li>
+      </ul>
+      <p>OG-Narrator 分解：</p>
+      <div class="mermaid-output">
+        <div class="mermaid-svg" data-theme="light"></div>
+        <div class="mermaid-svg" data-theme="dark"></div>
+      </div>
+      <p>
+        报价生成器是经典协商策略：Rubinstein 讨价还价模型、Zeuthen 策略或简单的以牙还牙。LLM
+        叙述。消息包含确定性价格和自然语言框架。
+      </p>
+      <p>成交率跳跃因为：</p>
+      <ul>
+        <li>价格保持在讨价还价区域内。</li>
+        <li>锚点是战略性的，不是情绪性的。</li>
+        <li>LLM 做它擅长的事：写作。</li>
+      </ul>
+      <h3 id="negotiationarena-发现"><a href="#negotiationarena-发现">NegotiationArena 发现</a></h3>
+      <p>arXiv:2402.05863 提供了规范基准。头条发现：</p>
+      <ul>
+        <li>
+          LLM 可以通过采用人格（“我急于在本周五前卖掉这个”）改善收益约 20%——人格操纵是真正的策略。
+        </li>
+        <li>公平/合作的 Agent 被对抗性 Agent 利用；防御需要显式反姿态。</li>
+        <li>对称配对在约 40% 的基准场景上收敛到不公平结果。</li>
+      </ul>
+      <p>这不是”LLM 是糟糕的谈判者。“这是”LLM 太像人类地谈判，包括可利用的部分。“</p>
+      <h3 id="思维链隐藏"><a href="#思维链隐藏">思维链隐藏</a></h3>
+      <p>
+        大规模自主协商竞赛 (arXiv:2503.06416) 跨多种 LLM 策略运行了约 180k
+        次协商。获胜者向对手隐藏了推理：
+      </p>
+      <ul>
+        <li>
+          如果 Agent 在公开可见的草稿本上打印”我只会出到
+          <span class="katex"
+            ><span class="katex-html" aria-hidden="true"
+              ><span class="base"
+                ><span class="strut" style="height: 0.6833em"></span><span class="mord">75</span
+                ><span class="mord cjk_fallback">；我的保留价是</span></span
+              ></span
+            ></span
+          >70”，对手就读到了。
+        </li>
+        <li>获胜者私下计算策略；输出通道只包含报价和最低要求的叙述。</li>
+      </ul>
+      <p>
+        这是经典博弈论 (Aumann 1976 关于理性和信息) 的 2026 年回响：揭示你的私人估值会损失收益。LLM
+        不会直觉这一点，并愉快地在推理追踪中输入它们的保留价，这些追踪对对手变得可见。
+      </p>
+      <p>工程要点：分离私人草稿本上下文和公开消息上下文。不是可选的。</p>
+      <h3 id="bhattacharya-等人-2025--模型排名">
+        <a href="#bhattacharya-等人-2025--模型排名">Bhattacharya 等人 2025 — 模型排名</a>
+      </h3>
+      <p>在哈佛协商项目指标（原则性协商、BATNA 尊重、利益互惠）上：</p>
+      <ul>
+        <li><strong>Llama-3</strong> 在达成交易方面最有效（成交率 + 收益）。</li>
+        <li><strong>Claude-3</strong> 是最激进的谈判者（高锚点、晚让步）。</li>
+        <li><strong>GPT-4</strong> 是最公平的（跨配对的收益方差最小）。</li>
+      </ul>
+      <p>
+        这是 2025 年的快照。重点不是哪个模型在 2026 年 4
+        月获胜——而是不同基础模型有持久的协商风格。异构集成 (Lesson 15) 将此作为多样性来源。
+      </p>
+      <h3 id="通过合同网--llm-进行任务分配">
+        <a href="#通过合同网--llm-进行任务分配">通过合同网 + LLM 进行任务分配</a>
+      </h3>
+      <p>合同网对 LLM 多 Agent 的现代重用：</p>
+      <ol>
+        <li>管理 Agent 将任务分解为单元。</li>
+        <li>向工作者 Agent 广播带任务描述的 <code>cfp</code>。</li>
+        <li>
+          每个工作者返回报价：<code>(price, eta, confidence)</code>，其中 price 可以是
+          token、计算单元或美元。
+        </li>
+        <li>管理者选择获胜者（单个或多个，取决于任务）并授予。</li>
+        <li>被拒绝的工作者可以竞标其他任务。</li>
+      </ol>
+      <p>
+        这可以很好地扩展到 100+ 工作者，因为协调是广播-响应，不是同步聊天。用于生产：Microsoft Agent
+        Framework 的编排模式、一些 LangGraph 实现。
+      </p>
+      <h3 id="叙述-vs-机制规则"><a href="#叙述-vs-机制规则">叙述 vs 机制规则</a></h3>
+      <p>跨所有 2024-2026 协商基准，一致的工程规则是：</p>
+      <blockquote>
+        <p>让 LLM 叙述。不要让 LLM 计算报价。</p>
+      </blockquote>
+      <p>
+        如果报价需要是数字（价格、ETA、数量），从协商状态确定性生成，让 LLM
+        产生框架。如果报价需要是提议结构（任务分解、角色分配），让 LLM 起草，但在发送前对照 Schema
+        和约束检查验证。
+      </p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p><code>code/main.py</code> 实现：</p>
+      <ul>
+        <li>
+          <code>ContractNetManager</code>, <code>ContractNetTask</code>, <code>Bid</code> — 管理者 +
+          竞标者，广播 cfp，收集提议，授予。
+        </li>
+        <li>
+          <code>og_narrator_bargain(state, rng)</code> — OG-Narrator 买方：确定性 Zeuthen
+          风格向中点让步。
+        </li>
+        <li>
+          <code>seller_response(state, rng)</code> — 确定性卖方还价策略（两种风格的结构基础事实）。
+        </li>
+        <li>
+          <code>naive_llm_bargain(state, rng)</code> — 模拟全 LLM 讨价还价者：高方差选择价格，经常在
+          ZOPA 之外。
+        </li>
+        <li>测量：1000 次试验的成交率，每次试验采样新的保留价。</li>
+      </ul>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <p>
+        预期输出：朴素 LLM 成交率约 65-75%；OG-Narrator 成交率约 85-95%；15-25
+        个百分点的差距是分解报价生成和叙述的结构优势。加上一个三个竞标者和一个任务的合同网任务市场分配示例。
+      </p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        <code>outputs/skill-bargainer-designer.md</code> 设计讨价还价协议：谁生成报价（确定性或
+        LLM）、谁叙述、私人草稿本如何与公开消息分离、以及如何监控成交率。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>生产讨价还价检查清单：</p>
+      <ul>
+        <li><strong>分离草稿本。</strong> 私有状态永远不到达对手的上下文。这是不可协商的。</li>
+        <li><strong>确定性报价生成。</strong> 价格、数量、ETA：计算，不要提示。</li>
+        <li><strong>验证所有传入报价</strong>对照 Schema。在协议边界拒绝 ZOPA 外的报价。</li>
+        <li><strong>限制轮次。</strong> 最多 3-5 轮；死锁时升级到调解者。</li>
+        <li>
+          <strong>持续测量成交率和收益方差。</strong>
+          下降的成交率是症状——通常是提示漂移或对手方攻击。
+        </li>
+        <li>
+          <strong>记录所有被拒绝的提议</strong
+          >带确定性理由。对于合同网管理者，失败的竞标者需要理解原因。
+        </li>
+      </ul>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>运行 <code>code/main.py</code>。确认 OG-Narrator 在成交率上击败朴素 LLM。差距多少？</li>
+        <li>
+          实现<strong>基于人格的收益改善</strong> (arXiv:2402.05863) —
+          买方仅在叙述中采用”本周急于购买”的人格，报价生成器不变。成交率或收益变化吗？
+        </li>
+        <li>
+          实现思维链<strong>隐藏</strong>：维护不传递给对手的私人草稿本字符串。如果你意外泄露它（通过交换通道模拟）会怎样？
+        </li>
+        <li>
+          将<span
+            class="term-tip"
+            data-term="合同"
+            data-module="github"
+            data-def="合同"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">合同</abbr></span
+          >网<span
+            class="term-tip"
+            data-term="扩展"
+            data-module="cpp"
+            data-def="添加的功能"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">扩展</abbr></span
+          >为带<span
+            class="term-tip"
+            data-term="保留"
+            data-module="github"
+            data-def="保留"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">保留</abbr></span
+          >价的 N 竞标者拍卖。当所有出价超过<span
+            class="term-tip"
+            data-term="保留"
+            data-module="github"
+            data-def="保留"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">保留</abbr></span
+          >价时，<span
+            class="term-tip"
+            data-term="管理"
+            data-module="github"
+            data-def="管理"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">管理</abbr></span
+          >者如何在最低<span
+            class="term-tip"
+            data-term="价格"
+            data-module="github"
+            data-def="价格"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">价格</abbr></span
+          >和最<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >质量之间决定？你选择哪个授予规则，为什么？
+        </li>
+        <li>
+          阅读 Bhattacharya 等<span
+            class="term-tip"
+            data-term="人"
+            data-module="github"
+            data-def="人"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">人</abbr></span
+          >
+          2025
+          <span
+            class="term-tip"
+            data-term="关于"
+            data-module="github"
+            data-def="关于"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">关于</abbr></span
+          >哈佛协商<span
+            class="term-tip"
+            data-term="项目"
+            data-module="github"
+            data-def="项目"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">项目</abbr></span
+          >指标。<span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >两种不同风<span
+            class="term-tip"
+            data-term="格"
+            data-module="discrete-math"
+            data-def="任意两个元素都有上确界和下确界的偏序集"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">格</abbr></span
+          >的讨价还价者（激进 vs
+          <span
+            class="term-tip"
+            data-term="公平"
+            data-module="github"
+            data-def="公平"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">公平</abbr></span
+          >）。在<span
+            class="term-tip"
+            data-term="对称"
+            data-module="cpp"
+            data-def="对称的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对称</abbr></span
+          >和不<span
+            class="term-tip"
+            data-term="对称"
+            data-module="cpp"
+            data-def="对称的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对称</abbr></span
+          >配<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >下测量收益<span
+            class="term-tip"
+            data-term="方差"
+            data-module="data-analysis"
+            data-def="衡量数据离散程度的统计量，各观测值与均值之差的平方的平均值"
+            data-slug="data-analysis/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">方差</abbr></span
+          >。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="合同"
+                data-module="github"
+                data-def="合同"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">合同</abbr></span
+              >网
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >市场”
+            </td>
+            <td>
+              Smith 1980, FIPA 1996。cfp + propose + accept/reject。<span
+                class="term-tip"
+                data-term="规范"
+                data-module="html5"
+                data-def="HTML 标准文档"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">规范</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >市场。
+            </td>
+          </tr>
+          <tr>
+            <td>ZOPA</td>
+            <td>
+              ”可能<span
+                class="term-tip"
+                data-term="协议"
+                data-module="cpp"
+                data-def="协议"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">协议</abbr></span
+              >区”
+            </td>
+            <td>
+              买方<span
+                class="term-tip"
+                data-term="最大值"
+                data-module="vue3"
+                data-def="最大数量或范围"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最大值</abbr></span
+              >和卖方<span
+                class="term-tip"
+                data-term="最小值"
+                data-module="vue3"
+                data-def="最小数量或范围"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最小值</abbr></span
+              >之间的重叠。之外的<span
+                class="term-tip"
+                data-term="报价"
+                data-module="github"
+                data-def="报价"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">报价</abbr></span
+              >无法成交。
+            </td>
+          </tr>
+          <tr>
+            <td>BATNA</td>
+            <td>
+              ”协商<span
+                class="term-tip"
+                data-term="协议"
+                data-module="cpp"
+                data-def="协议"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">协议</abbr></span
+              >的最佳<span
+                class="term-tip"
+                data-term="替代"
+                data-module="c"
+                data-def="用实参替换形参"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">替代</abbr></span
+              >”
+            </td>
+            <td>
+              如果这笔交易<span
+                class="term-tip"
+                data-term="失败"
+                data-module="github"
+                data-def="失败"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">失败</abbr></span
+              >你的退路。设定你的<span
+                class="term-tip"
+                data-term="保留"
+                data-module="github"
+                data-def="保留"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保留</abbr></span
+              >价。
+            </td>
+          </tr>
+          <tr>
+            <td>OG-Narrator</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="报价"
+                data-module="github"
+                data-def="报价"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">报价</abbr></span
+              >生成器 + 叙述者”
+            </td>
+            <td>
+              分解：确定性<span
+                class="term-tip"
+                data-term="报价"
+                data-module="github"
+                data-def="报价"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">报价</abbr></span
+              >，LLM 叙述。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Zeuthen
+              <span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >
+            </td>
+            <td>
+              ”风险<span
+                class="term-tip"
+                data-term="最小"
+                data-module="github"
+                data-def="最小的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最小</abbr></span
+              >化让步”
+            </td>
+            <td>
+              基于风险<span
+                class="term-tip"
+                data-term="限制"
+                data-module="github"
+                data-def="限制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限制</abbr></span
+              >让步的经典<span
+                class="term-tip"
+                data-term="报价"
+                data-module="github"
+                data-def="报价"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">报价</abbr></span
+              >生成器。
+            </td>
+          </tr>
+          <tr>
+            <td>Rubinstein 讨价还价</td>
+            <td>
+              ”交替<span
+                class="term-tip"
+                data-term="报价"
+                data-module="github"
+                data-def="报价"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">报价</abbr></span
+              >均衡”
+            </td>
+            <td>带折现的无限期讨价还价博弈论模型。</td>
+          </tr>
+          <tr>
+            <td>CoT 隐藏</td>
+            <td>
+              ”隐藏你的<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >”
+            </td>
+            <td>
+              arXiv:2503.06416 的获胜者保持<span
+                class="term-tip"
+                data-term="私人"
+                data-module="github"
+                data-def="私人的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">私人</abbr></span
+              >草稿本；公开<span
+                class="term-tip"
+                data-term="通道"
+                data-module="github"
+                data-def="通道"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通道</abbr></span
+              >只显示<span
+                class="term-tip"
+                data-term="报价"
+                data-module="github"
+                data-def="报价"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">报价</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >格操纵
+            </td>
+            <td>”情绪姿态”</td>
+            <td>
+              arXiv:2402.05863：绝望/紧迫<span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >格约 20% 收益增益。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2402.05863">NegotiationArena</a> — 基准；<span
+            class="term-tip"
+            data-term="人"
+            data-module="github"
+            data-def="人"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">人</abbr></span
+          >格操纵和利用<span
+            class="term-tip"
+            data-term="发现"
+            data-module="github"
+            data-def="发现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发现</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2402.15813"
+            >Measuring Bargaining Abilities of Language Models</a
+          >
+          — OG-Narrator 和买方比卖方更难的<span
+            class="term-tip"
+            data-term="结果"
+            data-module="c"
+            data-def="函数返回的值"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">结果</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2503.06416"
+            >Large-Scale Autonomous Negotiation Competition</a
+          >
+          — 约 180k 次协商；<span
+            class="term-tip"
+            data-term="思维链"
+            data-module="agent"
+            data-def="通过在提示中展示逐步推理过程来引导模型进行复杂推理的技术"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">思维链</abbr></span
+          >隐藏获胜
+        </li>
+        <li>
+          <a
+            href="https://proceedings.neurips.cc/paper_files/paper/2024/file/984dd3db213db2d1454a163b65b84d08-Paper-Datasets_and_Benchmarks_Track.pdf"
+            >LLM-Stakeholders Interactive Negotiation (NeurIPS 2024)</a
+          >
+          — 带秘密效用的<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >方可<span
+            class="term-tip"
+            data-term="评分"
+            data-module="vue3"
+            data-def="计算分数"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">评分</abbr></span
+          >游戏
+        </li>
+        <li>
+          <a href="https://ieeexplore.ieee.org/document/1675516"
+            >Smith 1980 — The Contract Net Protocol</a
+          >
+          — 经典<span
+            class="term-tip"
+            data-term="机制"
+            data-module="github"
+            data-def="机制"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">机制</abbr></span
+          >, IEEE Transactions on Computers
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

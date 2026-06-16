@@ -1,0 +1,1165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MVCC</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">MVCC</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            6 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          SQL多版本并发控制MVCC：版本链、快照读、Read View、可见性判断与垃圾回收机制
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-mvcc-概述"><a href="#1-mvcc-概述">1. MVCC 概述</a></h2>
+      <p>
+        多版本并发控制（Multi-Version Concurrency
+        Control，MVCC）是现代数据库实现高并发读写的核心机制。通过保存数据的多个版本，实现读不阻塞写、写不阻塞读。
+      </p>
+      <h3 id="11-mvcc-核心思想"><a href="#11-mvcc-核心思想">1.1 MVCC 核心思想</a></h3>
+      <span class="katex-display"
+        ><span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.6944em"></span
+              ><span class="mord text"><span class="mord cjk_fallback">读操作</span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">⊥</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.6833em"></span
+              ><span class="mord text"><span class="mord cjk_fallback">写操作</span></span></span
+            ></span
+          ></span
+        ></span
+      >
+      <ul>
+        <li><strong>读操作</strong>：访问数据的历史版本（快照读），不需要加锁</li>
+        <li><strong>写操作</strong>：创建数据的新版本，不影响正在读取旧版本的事务</li>
+      </ul>
+      <h3 id="12-mvcc-vs-锁机制"><a href="#12-mvcc-vs-锁机制">1.2 MVCC vs 锁机制</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>特性</th>
+            <th>MVCC</th>
+            <th>锁机制</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>读写冲突</td>
+            <td>无</td>
+            <td>有</td>
+          </tr>
+          <tr>
+            <td>并发度</td>
+            <td>高</td>
+            <td>低</td>
+          </tr>
+          <tr>
+            <td>存储开销</td>
+            <td>多版本存储</td>
+            <td>锁管理开销</td>
+          </tr>
+          <tr>
+            <td>适用场景</td>
+            <td>读多写少</td>
+            <td>写多</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="2-mvcc-实现原理"><a href="#2-mvcc-实现原理">2. MVCC 实现原理</a></h2>
+      <h3 id="21-版本链"><a href="#21-版本链">2.1 版本链</a></h3>
+      <p>每行数据包含隐藏列，用于构建版本链：</p>
+      <p><strong>InnoDB 隐藏列</strong>：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>列名</th>
+            <th>大小</th>
+            <th>用途</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>DB_TRX_ID</td>
+            <td>6字节</td>
+            <td>最后修改该行的事务ID</td>
+          </tr>
+          <tr>
+            <td>DB_ROLL_PTR</td>
+            <td>7字节</td>
+            <td>回滚指针，指向undo log中的前版本</td>
+          </tr>
+          <tr>
+            <td>DB_ROW_ID</td>
+            <td>6字节</td>
+            <td>隐藏自增ID（无主键时使用）</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>当前行：{data_v3, trx_id=300, roll_ptr → undo_v2}</span></span>
+<span class="line"><span>                                          ↓</span></span>
+<span class="line"><span>undo_v2：{data_v2, trx_id=200, roll_ptr → undo_v1}</span></span>
+<span class="line"><span>                                          ↓</span></span>
+<span class="line"><span>undo_v1：{data_v1, trx_id=100, roll_ptr → NULL}</span></span></code></pre>
+      <h3 id="22-read-view读视图"><a href="#22-read-view读视图">2.2 Read View（读视图）</a></h3>
+      <p>Read View 决定当前事务能看到哪些版本的数据。</p>
+      <p><strong>InnoDB Read View 结构</strong>：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>m_ids</td>
+            <td>创建 Read View 时所有活跃事务ID列表</td>
+          </tr>
+          <tr>
+            <td>min_trx_id</td>
+            <td>活跃事务中最小的事务ID</td>
+          </tr>
+          <tr>
+            <td>max_trx_id</td>
+            <td>下一个将分配的事务ID（最大ID + 1）</td>
+          </tr>
+          <tr>
+            <td>creator_trx_id</td>
+            <td>创建该 Read View 的事务ID</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="23-可见性判断规则"><a href="#23-可见性判断规则">2.3 可见性判断规则</a></h3>
+      <p>对于版本链中某个版本（trx_id）：</p>
+      <span class="katex-display"
+        ><span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 1.06em; vertical-align: -0.31em"></span
+              ><span class="mord text"><span class="mord">visible</span></span
+              ><span class="mopen">(</span><span class="mord mathnormal">t</span
+              ><span class="mord mathnormal" style="margin-right: 0.0278em">r</span
+              ><span class="mord mathnormal">x</span
+              ><span class="mord" style="margin-right: 0.0278em">_</span
+              ><span class="mord mathnormal">i</span><span class="mord mathnormal">d</span
+              ><span class="mclose">)</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 5.76em; vertical-align: -2.63em"></span
+              ><span class="minner"
+                ><span class="mopen"
+                  ><span class="delimsizing mult"
+                    ><span class="vlist-t vlist-t2"
+                      ><span class="vlist-r"
+                        ><span class="vlist" style="height: 2.95em"
+                          ><span style="top: -1.6em"
+                            ><span class="pstrut" style="height: 3.15em"></span
+                            ><span class="delimsizinginner delim-size4"><span>⎩</span></span></span
+                          ><span style="top: -1.592em"
+                            ><span class="pstrut" style="height: 3.15em"></span
+                            ><span style="height: 0.916em; width: 0.8889em"
+                              ><svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="0.8889em"
+                                height="0.916em"
+                                style="width: 0.8889em"
+                                viewBox="0 0 888.89 916"
+                                preserveAspectRatio="xMinYMin"
+                              >
+                                <path
+                                  d="M384 0 H504 V916 H384z M384 0 H504 V916 H384z"
+                                ></path></svg></span></span
+                          ><span style="top: -3.15em"
+                            ><span class="pstrut" style="height: 3.15em"></span
+                            ><span class="delimsizinginner delim-size4"><span>⎨</span></span></span
+                          ><span style="top: -4.292em"
+                            ><span class="pstrut" style="height: 3.15em"></span
+                            ><span style="height: 0.916em; width: 0.8889em"
+                              ><svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="0.8889em"
+                                height="0.916em"
+                                style="width: 0.8889em"
+                                viewBox="0 0 888.89 916"
+                                preserveAspectRatio="xMinYMin"
+                              >
+                                <path
+                                  d="M384 0 H504 V916 H384z M384 0 H504 V916 H384z"
+                                ></path></svg></span></span
+                          ><span style="top: -5.2em"
+                            ><span class="pstrut" style="height: 3.15em"></span
+                            ><span class="delimsizinginner delim-size4"><span>⎧</span></span></span
+                          ></span
+                        ><span class="vlist-s">​</span></span
+                      ><span class="vlist-r"
+                        ><span class="vlist" style="height: 2.45em"
+                          ><span></span></span></span></span></span></span
+                ><span class="mord"
+                  ><span class="mtable"
+                    ><span class="col-align-l"
+                      ><span class="vlist-t vlist-t2"
+                        ><span class="vlist-r"
+                          ><span class="vlist" style="height: 3.13em"
+                            ><span style="top: -5.13em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"
+                                ><span class="mord text"><span class="mord">true</span></span></span
+                              ></span
+                            ><span style="top: -3.69em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"
+                                ><span class="mord text"
+                                  ><span class="mord">false</span></span
+                                ></span
+                              ></span
+                            ><span style="top: -2.25em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"
+                                ><span class="mord text"><span class="mord">true</span></span></span
+                              ></span
+                            ><span style="top: -0.81em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"
+                                ><span class="mord text"
+                                  ><span class="mord">false</span></span
+                                ></span
+                              ></span
+                            ></span
+                          ><span class="vlist-s">​</span></span
+                        ><span class="vlist-r"
+                          ><span class="vlist" style="height: 2.63em"
+                            ><span></span></span></span></span></span
+                    ><span class="arraycolsep" style="width: 1em"></span
+                    ><span class="col-align-l"
+                      ><span class="vlist-t vlist-t2"
+                        ><span class="vlist-r"
+                          ><span class="vlist" style="height: 3.13em"
+                            ><span style="top: -5.13em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"
+                                ><span class="mord text"><span class="mord">if </span></span
+                                ><span class="mord mathnormal">t</span
+                                ><span class="mord mathnormal" style="margin-right: 0.0278em"
+                                  >r</span
+                                ><span class="mord mathnormal">x</span
+                                ><span class="mord" style="margin-right: 0.0278em">_</span
+                                ><span class="mord mathnormal">i</span
+                                ><span class="mord mathnormal">d</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mrel">&#x3C;</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mord text"
+                                  ><span class="mord">min_trx_id</span></span
+                                ></span
+                              ></span
+                            ><span style="top: -3.69em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"
+                                ><span class="mord text"><span class="mord">if </span></span
+                                ><span class="mord text"><span class="mord">min_trx_id</span></span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mrel">≤</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mord mathnormal">t</span
+                                ><span class="mord mathnormal" style="margin-right: 0.0278em"
+                                  >r</span
+                                ><span class="mord mathnormal">x</span
+                                ><span class="mord" style="margin-right: 0.0278em">_</span
+                                ><span class="mord mathnormal">i</span
+                                ><span class="mord mathnormal">d</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mrel">&#x3C;</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mord text"><span class="mord">max_trx_id</span></span
+                                ><span class="mspace" style="margin-right: 0.2222em"></span
+                                ><span class="mbin">∧</span
+                                ><span class="mspace" style="margin-right: 0.2222em"></span
+                                ><span class="mord mathnormal">t</span
+                                ><span class="mord mathnormal" style="margin-right: 0.0278em"
+                                  >r</span
+                                ><span class="mord mathnormal">x</span
+                                ><span class="mord" style="margin-right: 0.0278em">_</span
+                                ><span class="mord mathnormal">i</span
+                                ><span class="mord mathnormal">d</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mrel">∈</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mord text"
+                                  ><span class="mord">m_ids</span></span
+                                ></span
+                              ></span
+                            ><span style="top: -2.25em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"
+                                ><span class="mord text"><span class="mord">if </span></span
+                                ><span class="mord text"><span class="mord">min_trx_id</span></span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mrel">≤</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mord mathnormal">t</span
+                                ><span class="mord mathnormal" style="margin-right: 0.0278em"
+                                  >r</span
+                                ><span class="mord mathnormal">x</span
+                                ><span class="mord" style="margin-right: 0.0278em">_</span
+                                ><span class="mord mathnormal">i</span
+                                ><span class="mord mathnormal">d</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mrel">&#x3C;</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mord text"><span class="mord">max_trx_id</span></span
+                                ><span class="mspace" style="margin-right: 0.2222em"></span
+                                ><span class="mbin">∧</span
+                                ><span class="mspace" style="margin-right: 0.2222em"></span
+                                ><span class="mord mathnormal">t</span
+                                ><span class="mord mathnormal" style="margin-right: 0.0278em"
+                                  >r</span
+                                ><span class="mord mathnormal">x</span
+                                ><span class="mord" style="margin-right: 0.0278em">_</span
+                                ><span class="mord mathnormal">i</span
+                                ><span class="mord mathnormal">d</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mrel"
+                                  ><span class="mord"><span class="mrel">∈</span></span
+                                  ><span class="mord vbox"
+                                    ><span class="thinbox"
+                                      ><span class="llap"
+                                        ><span
+                                          class="strut"
+                                          style="height: 1em; vertical-align: -0.25em"
+                                        ></span
+                                        ><span class="inner"
+                                          ><span class="mord"
+                                            ><span class="mord">/</span
+                                            ><span
+                                              class="mspace"
+                                              style="margin-right: 0.0556em"
+                                            ></span></span></span
+                                        ><span class="fix"></span></span></span></span></span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mord text"
+                                  ><span class="mord">m_ids</span></span
+                                ></span
+                              ></span
+                            ><span style="top: -0.81em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"
+                                ><span class="mord text"><span class="mord">if </span></span
+                                ><span class="mord mathnormal">t</span
+                                ><span class="mord mathnormal" style="margin-right: 0.0278em"
+                                  >r</span
+                                ><span class="mord mathnormal">x</span
+                                ><span class="mord" style="margin-right: 0.0278em">_</span
+                                ><span class="mord mathnormal">i</span
+                                ><span class="mord mathnormal">d</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mrel">≥</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mord text"
+                                  ><span class="mord">max_trx_id</span></span
+                                ></span
+                              ></span
+                            ></span
+                          ><span class="vlist-s">​</span></span
+                        ><span class="vlist-r"
+                          ><span class="vlist" style="height: 2.63em"
+                            ><span></span></span></span></span></span></span></span
+                ><span class="mclose nulldelimiter"></span></span></span></span></span
+      ></span>
+      <p><strong>简化规则</strong>：</p>
+      <ol>
+        <li>版本的事务ID &#x3C; min_trx_id → <strong>可见</strong>（事务已提交）</li>
+        <li>版本的事务ID 在 m_ids 中 → <strong>不可见</strong>（事务未提交）</li>
+        <li>版本的事务ID ≥ max_trx_id → <strong>不可见</strong>（事务在 Read View 创建后开始）</li>
+        <li>版本的事务ID 在 [min, max) 但不在 m_ids 中 → <strong>可见</strong>（事务已提交）</li>
+      </ol>
+      <h3 id="24-版本遍历过程"><a href="#24-版本遍历过程">2.4 版本遍历过程</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. 读取当前行的 trx_id</span></span>
+<span class="line"><span>2. 判断当前版本是否可见</span></span>
+<span class="line"><span>3. 如果不可见，沿 roll_ptr 找到上一个版本</span></span>
+<span class="line"><span>4. 重复步骤2-3，直到找到可见版本或版本链结束</span></span></code></pre>
+      <h2 id="3-不同隔离级别的-mvcc-行为">
+        <a href="#3-不同隔离级别的-mvcc-行为">3. 不同隔离级别的 MVCC 行为</a>
+      </h2>
+      <h3 id="31-read-committed"><a href="#31-read-committed">3.1 READ COMMITTED</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 每次 SELECT 创建新的 Read View</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 创建 Read View 1</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 事务B修改并提交</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 创建 Read View 2，能看到事务B的修改</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="32-repeatable-read"><a href="#32-repeatable-read">3.2 REPEATABLE READ</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 事务开始时创建 Read View，后续复用</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 创建 Read View（唯一）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 事务B修改并提交</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 复用 Read View，看不到事务B的修改</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h2 id="4-postgresql-的-mvcc-实现">
+        <a href="#4-postgresql-的-mvcc-实现">4. PostgreSQL 的 MVCC 实现</a>
+      </h2>
+      <h3 id="41-行头信息"><a href="#41-行头信息">4.1 行头信息</a></h3>
+      <p>PostgreSQL 每行数据包含：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>xmin</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="插入"
+                data-module="mysql"
+                data-def="向表中添加新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">插入</abbr></span
+              >该<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >的事务ID
+            </td>
+          </tr>
+          <tr>
+            <td>xmax</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="删除"
+                data-module="github"
+                data-def="删除"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">删除</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="更新"
+                data-module="c"
+                data-def="修改变量值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">更新</abbr></span
+              >该<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >的事务ID（0表示未<span
+                class="term-tip"
+                data-term="删除"
+                data-module="github"
+                data-def="删除"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">删除</abbr></span
+              >）
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看行版本信息</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> xmin, xmax, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="42-可见性判断"><a href="#42-可见性判断">4.2 可见性判断</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- PostgreSQL 可见性规则（简化）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 行可见当：</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 1. xmin 对应的事务已提交</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 2. xmax 为 0 或 xmax 对应的事务未提交</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 使用 pg_snapshot 理解可见性</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> txid_current();           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 当前事务ID</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> txid_snapshot_current();  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 当前快照</span></span></code></pre>
+      <h3 id="43-update--delete--insert">
+        <a href="#43-update--delete--insert">4.3 UPDATE = DELETE + INSERT</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- PostgreSQL 的 UPDATE 创建新行版本</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> salary </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 60000</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 旧行：xmax = 当前事务ID（标记为已删除）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 新行：xmin = 当前事务ID（新版本）</span></span></code></pre>
+      <h2 id="5-mvcc-与当前读"><a href="#5-mvcc-与当前读">5. MVCC 与当前读</a></h2>
+      <h3 id="51-快照读-vs-当前读"><a href="#51-快照读-vs-当前读">5.1 快照读 vs 当前读</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="类型"
+                data-module="c"
+                data-def="数据的分类"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="语句"
+                data-module="lua"
+                data-def="Lua 程序的基本执行单元，包括赋值、函数调用、控制结构等"
+                data-slug="lua/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语句</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="读取"
+                data-module="c"
+                data-def="从输入获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">读取</abbr></span
+              >内容
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="快照"
+                data-module="github"
+                data-def="快照"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">快照</abbr></span
+              >读
+            </td>
+            <td>
+              普通
+              <span
+                class="term-tip"
+                data-term="SELECT"
+                data-module="mysql"
+                data-def="查询数据的 SQL 语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SELECT</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="MVCC"
+                data-module="mysql"
+                data-def="多版本并发控制"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">MVCC</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="历史"
+                data-module="github"
+                data-def="历史"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">历史</abbr></span
+              >版本
+            </td>
+          </tr>
+          <tr>
+            <td>当前读</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="SELECT"
+                data-module="mysql"
+                data-def="查询数据的 SQL 语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SELECT</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="FOR"
+                data-module="mysql"
+                data-def="循环语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">FOR</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+            </td>
+            <td>
+              最新已<span
+                class="term-tip"
+                data-term="提交"
+                data-module="cpp"
+                data-def="持久化变更"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提交</abbr></span
+              >数据
+            </td>
+          </tr>
+          <tr>
+            <td>当前读</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="SELECT"
+                data-module="mysql"
+                data-def="查询数据的 SQL 语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SELECT</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="LOCK"
+                data-module="mysql"
+                data-def="表锁或行锁"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">LOCK</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="IN"
+                data-module="mysql"
+                data-def="在列表中查询"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">IN</abbr></span
+              >
+              SHARE MODE
+            </td>
+            <td>
+              最新已<span
+                class="term-tip"
+                data-term="提交"
+                data-module="cpp"
+                data-def="持久化变更"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提交</abbr></span
+              >数据
+            </td>
+          </tr>
+          <tr>
+            <td>当前读</td>
+            <td>
+              INSERT,
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >, DELETE
+            </td>
+            <td>
+              最新已<span
+                class="term-tip"
+                data-term="提交"
+                data-module="cpp"
+                data-def="持久化变更"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提交</abbr></span
+              >数据
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 快照读：使用 MVCC</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 当前读：读取最新数据并加锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FOR</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> salary </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 60000</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h2 id="6-mvcc-的空间回收"><a href="#6-mvcc-的空间回收">6. MVCC 的空间回收</a></h2>
+      <h3 id="61-版本堆积问题"><a href="#61-版本堆积问题">6.1 版本堆积问题</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="MVCC"
+          data-module="mysql"
+          data-def="多版本并发控制"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">MVCC</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="保留"
+          data-module="github"
+          data-def="保留"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">保留</abbr></span
+        >历史<span
+          class="term-tip"
+          data-term="版本"
+          data-module="c"
+          data-def="软件的迭代版本"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">版本</abbr></span
+        >，导致<span
+          class="term-tip"
+          data-term="空间"
+          data-module="cpp"
+          data-def="空间"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">空间</abbr></span
+        >不断<span
+          class="term-tip"
+          data-term="增长"
+          data-module="github"
+          data-def="增长"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">增长</abbr></span
+        >：
+      </p>
+      <ul>
+        <li>
+          已<span
+            class="term-tip"
+            data-term="提交"
+            data-module="cpp"
+            data-def="持久化变更"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提交</abbr></span
+          >事务的旧<span
+            class="term-tip"
+            data-term="版本"
+            data-module="c"
+            data-def="软件的迭代版本"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">版本</abbr></span
+          >可能仍被<span
+            class="term-tip"
+            data-term="其他"
+            data-module="github"
+            data-def="其他"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">其他</abbr></span
+          >事务<span
+            class="term-tip"
+            data-term="引用"
+            data-module="c"
+            data-def="变量的别名"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">引用</abbr></span
+          >
+        </li>
+        <li>
+          长<span
+            class="term-tip"
+            data-term="事务"
+            data-module="cpp"
+            data-def="事务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">事务</abbr></span
+          >会阻止旧<span
+            class="term-tip"
+            data-term="版本"
+            data-module="c"
+            data-def="软件的迭代版本"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">版本</abbr></span
+          >清理
+        </li>
+        <li>
+          频繁<span
+            class="term-tip"
+            data-term="更新"
+            data-module="c"
+            data-def="修改变量值"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">更新</abbr></span
+          >导致<span
+            class="term-tip"
+            data-term="表"
+            data-module="cpp"
+            data-def="表"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">表</abbr></span
+          >膨胀
+        </li>
+      </ul>
+      <h3 id="62-清理机制"><a href="#62-清理机制">6.2 清理机制</a></h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="InnoDB"
+            data-module="mysql"
+            data-def="MySQL 默认存储引擎"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">InnoDB</abbr></span
+          ></strong
+        >：
+      </p>
+      <ul>
+        <li>
+          Purge
+          <span
+            class="term-tip"
+            data-term="线程"
+            data-module="c"
+            data-def="执行的最小单位"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">线程</abbr></span
+          >：<span
+            class="term-tip"
+            data-term="清理"
+            data-module="vue3"
+            data-def="释放资源和移除监听"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">清理</abbr></span
+          >不再需要的 undo
+          <span
+            class="term-tip"
+            data-term="log"
+            data-module="c"
+            data-def="自然对数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">log</abbr></span
+          >
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="条件"
+            data-module="github"
+            data-def="条件"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">条件</abbr></span
+          >：该<span
+            class="term-tip"
+            data-term="版本"
+            data-module="c"
+            data-def="软件的迭代版本"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">版本</abbr></span
+          >对所有活跃<span
+            class="term-tip"
+            data-term="事务"
+            data-module="cpp"
+            data-def="事务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">事务</abbr></span
+          >都不可见
+        </li>
+      </ul>
+      <p><strong>PostgreSQL</strong>：</p>
+      <ul>
+        <li>
+          VACUUM：<span
+            class="term-tip"
+            data-term="标记"
+            data-module="c"
+            data-def="标记数据位置的符号"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标记</abbr></span
+          >死<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >空间为<span
+            class="term-tip"
+            data-term="可重用"
+            data-module="vue3"
+            data-def="可复用的"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">可重用</abbr></span
+          >
+        </li>
+        <li>
+          Autovacuum：自动<span
+            class="term-tip"
+            data-term="触发"
+            data-module="javascript"
+            data-def="导致事件发生"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">触发</abbr></span
+          >清理
+        </li>
+        <li>
+          VACUUM FULL：重建<span
+            class="term-tip"
+            data-term="表"
+            data-module="cpp"
+            data-def="表"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">表</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="回收"
+            data-module="github"
+            data-def="回收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">回收</abbr></span
+          >所有<span
+            class="term-tip"
+            data-term="空间"
+            data-module="cpp"
+            data-def="空间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">空间</abbr></span
+          >
+        </li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- PostgreSQL 手动清理</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">VACUUM employees;           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 标记死行空间可重用</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">VACUUM FULL employees;      </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 重建表，回收空间（锁表）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看表膨胀</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> schemaname, relname,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">       pg_size_pretty(pg_total_relation_size(relid)) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> total_size,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">       n_dead_tup</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_stat_user_tables</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> n_dead_tup </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="63-防止版本堆积"><a href="#63-防止版本堆积">6.3 防止版本堆积</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 避免长事务</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pid, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">now</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> xact_start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> duration, query</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_stat_activity</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> xact_start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">IS NOT NULL</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> duration </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 设置事务超时</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> idle_in_transaction_session_timeout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '5min'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- PostgreSQL</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> innodb_kill_idle_transaction </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 60</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;             </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- MySQL</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 定期 VACUUM（PostgreSQL）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 配置 autovacuum 参数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (autovacuum_vacuum_scale_factor </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+    </article>
+  </body>
+</html>

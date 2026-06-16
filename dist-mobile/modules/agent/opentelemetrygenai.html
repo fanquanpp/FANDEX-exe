@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenTelemetry GenAI — Agent可观测性语义约定</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">OpenTelemetry GenAI — Agent可观测性语义约定</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            11 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">OpenTelemetry</span><span class="doc-tag">可观测性</span
+          ><span class="doc-tag">分布式追踪</span><span class="doc-tag">token计量</span
+          ><span class="doc-tag">成本归因</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          掌握OpenTelemetry GenAI语义约定，实现LLM调用的分布式追踪、token计量和成本归因
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="opentelemetry-genai--agent可观测性语义约定">
+        <a href="#opentelemetry-genai--agent可观测性语义约定"
+          >OpenTelemetry GenAI — Agent可观测性语义约定</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          没有可观测性的Agent是黑盒。OpenTelemetry的GenAI语义约定（v1.33.0+，2025年9月稳定）标准化了LLM调用的追踪、token计量和成本归因。本课实现追踪线束，为每个工具调用和LLM补全发出span，并将token计数连接到成本归因管道。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库，OTLP JSON发射器）
+        <strong>前置条件：</strong> Phase 13 · 01（工具接口） <strong>时间：</strong> ~45分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>
+          命名四个GenAI语义约定span类型：<code>gen_ai.client</code>、<code>gen_ai.tool</code>、<code>gen_ai.agent</code>、<code>gen_ai.system</code>。
+        </li>
+        <li>为每个LLM补全和工具调用发出span，带有正确的属性。</li>
+        <li>计算每次调用的token成本并归因给用户/会话。</li>
+        <li>区分追踪（分布式因果）和指标（聚合计数器）。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        生产Agent失败的方式需要调试：错误工具被调用、token预算超支、延迟峰值、循环行为。没有结构化遥测，你只有日志
+        — 非结构化的、难以查询、无法跨服务关联。
+      </p>
+      <p>
+        OpenTelemetry的GenAI语义约定定义了标准属性和span类型，使每个LLM提供商和Agent框架发出相同形状的遥测。Jaeger、Zipkin、Datadog、Honeycomb、Grafana
+        Tempo和New Relic都原生摄取这些span。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="四个span类型"><a href="#四个span类型">四个Span类型</a></h3>
+      <ol>
+        <li>
+          <strong><code>gen_ai.client</code>。</strong>
+          单个LLM补全调用。属性：<code>gen_ai.request.model</code>、<code>gen_ai.response.finish_reasons</code>、<code>gen_ai.usage.input_tokens</code>、<code>gen_ai.usage.output_tokens</code>。
+        </li>
+        <li>
+          <strong><code>gen_ai.tool</code>。</strong>
+          单个工具调用。属性：<code>gen_ai.tool.name</code>、<code>gen_ai.tool.type</code>、<code>gen_ai.tool.call.id</code>。
+        </li>
+        <li>
+          <strong><code>gen_ai.agent</code>。</strong>
+          完整Agent运行。属性：<code>gen_ai.agent.id</code>、<code>gen_ai.agent.name</code>。
+        </li>
+        <li>
+          <strong><code>gen_ai.system</code>。</strong>
+          提供商或框架。属性：<code>gen_ai.system</code>（<code>openai</code>、<code>anthropic</code>、<code>gemini</code>、<code>custom</code>）。
+        </li>
+      </ol>
+      <h3 id="span层次"><a href="#span层次">Span层次</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>gen_ai.agent (root)</span></span>
+<span class="line"><span>  -> gen_ai.client (LLM call 1)</span></span>
+<span class="line"><span>    -> gen_ai.tool (tool call 1)</span></span>
+<span class="line"><span>  -> gen_ai.client (LLM call 2)</span></span>
+<span class="line"><span>    -> gen_ai.tool (tool call 2)</span></span>
+<span class="line"><span>  -> gen_ai.client (LLM call 3, final answer)</span></span></code></pre>
+      <p>
+        每个span携带 <code>trace_id</code> 和 <code>span_id</code>。父子关系通过
+        <code>parent_span_id</code> 链接。这让你在Jaeger或Honeycomb中看到完整的因果链。
+      </p>
+      <h3 id="关键属性"><a href="#关键属性">关键属性</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>属性</th>
+            <th>描述</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>gen_ai.system</code></td>
+            <td>
+              提供商标识符（<code>openai</code>、<code>anthropic</code>、<code>gemini</code>）
+            </td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.request.model</code></td>
+            <td>请求的模型名称</td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.request.max_tokens</code></td>
+            <td>最大token请求</td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.request.temperature</code></td>
+            <td>温度参数</td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.response.finish_reasons</code></td>
+            <td>模型为何停止</td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.response.model</code></td>
+            <td>实际使用的模型</td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.usage.input_tokens</code></td>
+            <td>输入token计数</td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.usage.output_tokens</code></td>
+            <td>输出token计数</td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.tool.name</code></td>
+            <td>工具名称</td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.tool.type</code></td>
+            <td><code>function</code></td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.tool.call.id</code></td>
+            <td>工具调用id</td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.agent.id</code></td>
+            <td>Agent实例标识符</td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.agent.name</code></td>
+            <td>Agent人类可读名称</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="token计量和成本归因"><a href="#token计量和成本归因">Token计量和成本归因</a></h3>
+      <p>每次LLM调用记录input和output token。成本计算：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>cost = (input_tokens * input_price_per_1k / 1000) + (output_tokens * output_price_per_1k / 1000)</span></span></code></pre>
+      <p>
+        价格按提供商和模型发布。归因按 <code>user.id</code> 或
+        <code>session.id</code> span属性分组成本。
+      </p>
+      <h3 id="追踪-vs-指标"><a href="#追踪-vs-指标">追踪 vs 指标</a></h3>
+      <ul>
+        <li><strong>追踪。</strong> 单个请求的因果链。回答”这个特定Agent运行发生了什么？”</li>
+        <li>
+          <strong>指标。</strong>
+          聚合计数器。回答”每小时平均token使用量是多少？“或”工具X的错误率是多少？”
+        </li>
+      </ul>
+      <p>两者都重要。追踪用于调试；指标用于容量规划和警报。</p>
+      <h3 id="otlp导出"><a href="#otlp导出">OTLP导出</a></h3>
+      <p>
+        OpenTelemetry协议（OTLP）是导出格式。本课使用JSON-over-HTTP变体写入文件。生产使用gRPC或HTTP到收集器（Jaeger、Grafana、Datadog）。
+      </p>
+      <h3 id="采样"><a href="#采样">采样</a></h3>
+      <p>高流量Agent系统每秒发出数千span。采样策略：</p>
+      <ul>
+        <li><strong>始终采样错误。</strong> 每个失败span都被保留。</li>
+        <li><strong>概率采样成功。</strong> 10%或1%的成功span。</li>
+        <li><strong>基于延迟采样。</strong> 采样超过P99的span。</li>
+      </ul>
+      <h3 id="敏感数据"><a href="#敏感数据">敏感数据</a></h3>
+      <p>
+        span不得包含用户PII或完整提示/补全文本。使用 <code>gen_ai.content.completion</code> 和
+        <code>gen_ai.content.prompt</code>
+        仅当你有明确用户同意时。默认：仅记录token计数和模型元数据。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code>
+        为第01课的四步工具调用循环实现追踪线束。每个LLM调用和工具调用发出一个span，带有正确的GenAI语义约定属性。span以OTLP
+        JSON写入文件。一个简单的成本计算器按会话聚合token使用。
+      </p>
+      <p>关注点：</p>
+      <ul>
+        <li>Span层次正确链接：agent span包含client span，client span包含tool span。</li>
+        <li>Token计数归因给会话和用户。</li>
+        <li>成本计算使用可配置的每模型定价。</li>
+      </ul>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        本课产生
+        <code>outputs/skill-genai-telemetry.md</code
+        >。给定一个Agent工作流，该技能设计追踪策略：哪些span、哪些属性、采样率和成本归因维度。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            运行 <code>code/main.py</code>。检查OTLP
+            JSON输出。追踪一个完整的Agent运行从根span到叶span。
+          </p>
+        </li>
+        <li>
+          <p>
+            添加一个指标计数器：按工具名称的
+            <code>gen_ai.tool.calls</code>。在10次模拟运行后打印直方图。
+          </p>
+        </li>
+        <li>
+          <p>
+            <span
+              class="term-tip"
+              data-term="实现"
+              data-module="github"
+              data-def="实现"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">实现</abbr></span
+            >基于<span
+              class="term-tip"
+              data-term="延迟"
+              data-module="cpp"
+              data-def="延迟操作"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">延迟</abbr></span
+            >的采样：仅保留超过100ms的span。计算采样率。
+          </p>
+        </li>
+        <li>
+          <p>
+            添加 <code>gen_ai.content.prompt</code> 和 <code>gen_ai.content.completion</code>
+            <span
+              class="term-tip"
+              data-term="属性"
+              data-module="c"
+              data-def="附加在声明上的修饰符"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">属性</abbr></span
+            >，但用 <code>[REDACTED]</code>
+            <span
+              class="term-tip"
+              data-term="替换"
+              data-module="github"
+              data-def="替换"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">替换</abbr></span
+            >任何PII形状<span
+              class="term-tip"
+              data-term="字符串"
+              data-module="cpp"
+              data-def="字符序列"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">字符串</abbr></span
+            >。什么<span
+              class="term-tip"
+              data-term="正则"
+              data-module="github"
+              data-def="正则"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">正则</abbr></span
+            >模式能<span
+              class="term-tip"
+              data-term="捕获"
+              data-module="cpp"
+              data-def="lambda 捕获的变量"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">捕获</abbr></span
+            >常见PII？
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读OpenTelemetry GenAI语义约定<span
+              class="term-tip"
+              data-term="规范"
+              data-module="html5"
+              data-def="HTML 标准文档"
+              data-slug="html5/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">规范</abbr></span
+            >。<span
+              class="term-tip"
+              data-term="识别"
+              data-module="github"
+              data-def="识别"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">识别</abbr></span
+            >本课<span
+              class="term-tip"
+              data-term="未使用"
+              data-module="cpp"
+              data-def="未使用"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">未使用</abbr></span
+            >的一个<span
+              class="term-tip"
+              data-term="属性"
+              data-module="c"
+              data-def="附加在声明上的修饰符"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">属性</abbr></span
+            >。<span
+              class="term-tip"
+              data-term="解释"
+              data-module="github"
+              data-def="解释"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">解释</abbr></span
+            >何时有用。
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Span"
+                data-module="csharp"
+                data-def="提供对连续内存区域的安全且零分配视图的类型，支持栈分配和托管/非托管内存"
+                data-slug="csharp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Span</abbr></span
+              >
+            </td>
+            <td>
+              ”一个<span
+                class="term-tip"
+                data-term="操作"
+                data-module="github"
+                data-def="GitHub Actions 工作流"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">操作</abbr></span
+              >”
+            </td>
+            <td>
+              带有开始<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >、结束<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="属性"
+                data-module="c"
+                data-def="附加在声明上的修饰符"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">属性</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="命名"
+                data-module="github"
+                data-def="命名"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">命名</abbr></span
+              >、计时<span
+                class="term-tip"
+                data-term="操作"
+                data-module="github"
+                data-def="GitHub Actions 工作流"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">操作</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Trace</td>
+            <td>”因果链”</td>
+            <td>
+              由<span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >链接的<span
+                class="term-tip"
+                data-term="完整"
+                data-module="github"
+                data-def="完整"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">完整</abbr></span
+              >请求<span
+                class="term-tip"
+                data-term="路径"
+                data-module="github"
+                data-def="路径"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路径</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.client</code></td>
+            <td>
+              ”LLM调用<span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >个LLM补全
+            </td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.tool</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >调用<span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >个<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >执<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>gen_ai.agent</code></td>
+            <td>
+              ”Agent运行<span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >”
+            </td>
+            <td>
+              完整Agent执<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>OTLP</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="导出"
+                data-module="typescript"
+                data-def="从模块暴露类型或值"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">导出</abbr></span
+              >协议”
+            </td>
+            <td>
+              OpenTelemetry协议，用于<span
+                class="term-tip"
+                data-term="发送"
+                data-module="cpp"
+                data-def="发送"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">发送</abbr></span
+              >遥测
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Token"
+                data-module="agent"
+                data-def="大语言模型处理文本的最小单位，一个 token 约对应 0.75 个英文单词或 0.5-1 个中文字符"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Token</abbr></span
+              >
+              attribution
+            </td>
+            <td>”谁花了什么”</td>
+            <td>
+              按<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="会话"
+                data-module="github"
+                data-def="会话"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">会话</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >成本分组
+            </td>
+          </tr>
+          <tr>
+            <td>Sampling</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="保留"
+                data-module="github"
+                data-def="保留"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保留</abbr></span
+              >哪些<span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="减少"
+                data-module="github"
+                data-def="减少"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">减少</abbr></span
+              >高<span
+                class="term-tip"
+                data-term="流量"
+                data-module="github"
+                data-def="流量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流量</abbr></span
+              >下的遥测量
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Semantic"
+                data-module="typescript"
+                data-def="语义类型"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Semantic</abbr></span
+              >
+              conventions
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="标准"
+                data-module="c"
+                data-def="语言规范文档"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标准</abbr></span
+              >属性名”
+            </td>
+            <td>
+              OTel为GenAI定义的<span
+                class="term-tip"
+                data-term="属性"
+                data-module="c"
+                data-def="附加在声明上的修饰符"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">属性</abbr></span
+              >名
+            </td>
+          </tr>
+          <tr>
+            <td>Cost calculator</td>
+            <td>
+              ”价格x
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >”
+            </td>
+            <td>
+              每次<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >的美<span
+                class="term-tip"
+                data-term="元"
+                data-module="github"
+                data-def="元"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">元</abbr></span
+              >金额
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/"
+            >OpenTelemetry — GenAI semantic conventions</a
+          >
+          — 权威<span
+            class="term-tip"
+            data-term="属性"
+            data-module="c"
+            data-def="附加在声明上的修饰符"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">属性</abbr></span
+          >参考
+        </li>
+        <li>
+          <a href="https://opentelemetry.io/docs/languages/python/">OpenTelemetry — Python SDK</a> —
+          Python工具化<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://www.honeycomb.io/blog/observability-for-llm-apps"
+            >Honeycomb — Observability for LLM apps</a
+          >
+          — 实际GenAI追踪
+        </li>
+        <li>
+          <a href="https://docs.datadoghq.com/llm_observability/">Datadog — LLM Observability</a> —
+          企业GenAI追踪
+        </li>
+        <li>
+          <a href="https://langfuse.com/docs/opentelemetry">Langfuse — OpenTelemetry integration</a>
+          — 开源LLM可观测性
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

@@ -1,0 +1,840 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>群体优化PSO与ACO</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">群体优化PSO与ACO</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            13 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          生物启发优化正在 LLM 领域回归。LMPSO (arXiv:2504.09247) 使用
+          PSO，其中每个粒子的速度是一个提示，LLM
+          生成下一个候选；在结构化序列输出（数学表达式、程序）上效果良好。Model Swarms
+          (arXiv:2410.11163) 将每个 LLM 专家视为模型...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="群体优化--pso-aco"><a href="#群体优化--pso-aco">群体优化 — PSO, ACO</a></h1>
+      <blockquote>
+        <p>
+          生物启发优化正在 LLM 领域回归。<strong>LMPSO</strong> (arXiv:2504.09247) 使用
+          PSO，其中每个粒子的速度是一个提示，LLM
+          生成下一个候选；在结构化序列输出（数学表达式、程序）上效果良好。<strong
+            >Model Swarms</strong
+          >
+          (arXiv:2410.11163) 将每个 LLM 专家视为模型权重流形上的 PSO 粒子，在 9 个数据集上仅用 200
+          个实例就报告了相对 12 个基线的 <strong>13.3% 平均增益</strong>。<strong
+            >SwarmPrompt</strong
+          >
+          (ICAART 2025) 混合 PSO + 灰狼优化用于提示优化。<strong>AMRO-S</strong> (arXiv:2603.12933)
+          是 ACO 启发的信息素专家用于多 Agent LLM 路由——<strong>4.7 倍加速</strong
+          >、可解释的路由证据、质量门控异步更新，将推理与学习解耦。本课程在提示参数空间上实现
+          PSO，在 Agent 路由上实现 ACO，测量这些经典算法为何适合 LLM 时代，以及何时不适合。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 + 构建 <strong>语言：</strong> Python (stdlib)
+        <strong>前置条件：</strong> Phase 16 · 09 (并行群体网络), Phase 16 · 14 (共识与BFT)
+        <strong>时间：</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        你有一个在任务评估上得分 62%
+        的提示。你想改进它。朴素的方法是无梯度的手动调整，扩展性很差。强化学习需要奖励信号和足够的
+        rollout 来训练。通过提示的反向传播并不真正可行——提示是离散字符串，不是可微参数。
+      </p>
+      <p>
+        经典生物启发优化——PSO 用于连续搜索空间，ACO
+        用于路径选择——正是为这种场景设计的：无梯度、基于种群、每次评估成本低。将它们与 LLM
+        配对用于无梯度搜索步骤，你得到一个惊人实用的优化器。
+      </p>
+      <p>
+        相同的模式适用于多 Agent 系统中的 Agent <em>路由</em>。ACO 风格的信息素轨迹记录哪个 Agent
+        在哪种任务类型上效果最好，让路由器利用轨迹，并衰减信息素以便路由可以被重新发现。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="pso-回顾-kennedy--eberhart-1995">
+        <a href="#pso-回顾-kennedy--eberhart-1995">PSO 回顾 (Kennedy &#x26; Eberhart 1995)</a>
+      </h3>
+      <p>
+        粒子群优化：连续搜索空间中的粒子种群。每个粒子有位置 <code>x_i</code> 和速度
+        <code>v_i</code>。每次迭代：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>v_i &#x3C;- w * v_i + c1 * r1 * (p_best_i - x_i) + c2 * r2 * (g_best - x_i)</span></span>
+<span class="line"><span>x_i &#x3C;- x_i + v_i</span></span>
+<span class="line"><span>evaluate fitness(x_i)</span></span>
+<span class="line"><span>update p_best_i if improved</span></span>
+<span class="line"><span>update g_best if global best</span></span></code></pre>
+      <p>
+        其中 <code>p_best</code> 是粒子自身最佳，<code>g_best</code> 是群体最佳，<code
+          >w, c1, c2</code
+        >
+        是惯性 + 认知 + 社会权重，<code>r1, r2</code> 是随机因子。
+      </p>
+      <h3 id="llm-输出上的-pso--lmpso">
+        <a href="#llm-输出上的-pso--lmpso">LLM 输出上的 PSO — LMPSO</a>
+      </h3>
+      <p>
+        arXiv:2504.09247 将 PSO 适配于 LLM
+        生成的结构化输出（数学表达式、程序）。每个粒子是一个候选输出。速度是一个<em>提示</em>，描述如何将当前输出向个人/全局最佳修改。LLM
+        从速度提示生成新输出。速度的”惯性”是一个像”做小的增量修改”的提示。
+      </p>
+      <p>这在以下情况下效果良好：</p>
+      <ul>
+        <li>输出是结构化的（可解析、可评估）。</li>
+        <li>适应度是自动的（测试运行、算术评估）。</li>
+        <li>种群很小（~10-30 个粒子），因此总 LLM 调用保持可管理。</li>
+      </ul>
+      <p>在适应度需要人工审查时效果不佳——每次迭代的成本变得过高。</p>
+      <h3 id="model-swarms"><a href="#model-swarms">Model Swarms</a></h3>
+      <p>
+        arXiv:2410.11163 将 PSO 从输出层移到<em>模型</em>层。每个”粒子”是一个专家
+        LLM（参数）。群体通过无梯度更新将参数移向集体最佳。报告：在 9 个数据集上相对 12 个基线的
+        13.3% 平均增益，每次迭代仅 200 个实例。
+      </p>
+      <p>
+        关键洞察是 LLM 专家模型已经在共享参数流形中彼此接近（适配器权重、LoRA
+        增量）。在这个低维子空间上的 PSO 便宜且有效。
+      </p>
+      <h3 id="aco-回顾-dorigo-1992"><a href="#aco-回顾-dorigo-1992">ACO 回顾 (Dorigo 1992)</a></h3>
+      <p>
+        蚁群优化：蚂蚁遍历图；每条路径有信息素轨迹。蚂蚁移动概率按信息素强度加权。完成任务的蚂蚁按解决方案质量比例沉积信息素。信息素随时间衰减。
+      </p>
+      <h3 id="amro-s--agent-路由的-aco">
+        <a href="#amro-s--agent-路由的-aco">AMRO-S — Agent 路由的 ACO</a>
+      </h3>
+      <p>
+        arXiv:2603.12933 使用 ACO 进行多 Agent 路由。每种任务类型是一个”目的地”；每个 Agent
+        是一条可能的路由。信息素加强产生良好输出的路由。关键贡献：
+      </p>
+      <ul>
+        <li><strong>可解释的路由证据。</strong> 信息素强度是人类可读的信号。</li>
+        <li>
+          <strong>质量门控异步更新。</strong> 信息素只在质量检查通过后更新，将推理与学习解耦。
+        </li>
+        <li><strong>4.7 倍加速</strong>在多 Agent 路由基准上。</li>
+      </ul>
+      <p>质量门很重要：没有它，快速但错误的 Agent 会积累信息素，系统锁定在糟糕的路由上。</p>
+      <h3 id="何时使用-pso--aco-用于-llm">
+        <a href="#何时使用-pso--aco-用于-llm">何时使用 PSO / ACO 用于 LLM</a>
+      </h3>
+      <p><strong>使用 PSO 当：</strong></p>
+      <ul>
+        <li>搜索空间是连续的或映射到连续参数（提示嵌入、LoRA 权重、数值生成参数）。</li>
+        <li>适应度便宜且自动。</li>
+        <li>种群可以很小（10-30）。</li>
+      </ul>
+      <p><strong>使用 ACO 当：</strong></p>
+      <ul>
+        <li>你有路由或路径选择问题。</li>
+        <li>决策随时间加强（相同的任务类型会回来）。</li>
+        <li>你需要路由决策的可解释证据。</li>
+      </ul>
+      <p><strong>两者都不使用当：</strong></p>
+      <ul>
+        <li>适应度需要人工审查（每次迭代太贵）。</li>
+        <li>搜索空间是 PSO 不覆盖的离散组合方式（改用遗传算法）。</li>
+        <li>实时决策需要严格延迟（PSO/ACO 相对单次启发式收敛缓慢）。</li>
+      </ul>
+      <h3 id="为什么生物启发仍然赢"><a href="#为什么生物启发仍然赢">为什么生物启发仍然赢</a></h3>
+      <p>
+        基于梯度的方法需要可微信号。LLM
+        输出和路由决策不是平凡可微的。伪梯度方法（强化学习路由器、DPO
+        风格提示调优器）有效但需要昂贵的训练。
+      </p>
+      <p>
+        PSO 和 ACO
+        只需要一个<em>评估器</em>函数。如果你可以评分候选输出或路由决策，你就可以在空间上优化。这使得适用性门槛低得多。
+      </p>
+      <h3 id="实际限制"><a href="#实际限制">实际限制</a></h3>
+      <ul>
+        <li>
+          <strong>种群预算。</strong> N 个粒子 × T 次迭代 × 每次评估成本。对于约
+          <span class="katex"
+            ><span class="katex-html" aria-hidden="true"
+              ><span class="base"
+                ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+                ><span class="mord">0.02/</span><span class="mord cjk_fallback">调用的</span
+                ><span class="mord mathnormal">LL</span
+                ><span class="mord mathnormal" style="margin-right: 0.109em">M</span
+                ><span class="mord cjk_fallback">评估，</span><span class="mord">20</span
+                ><span class="mord cjk_fallback">粒子</span
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">P</span
+                ><span class="mord mathnormal" style="margin-right: 0.0576em">S</span
+                ><span class="mord mathnormal" style="margin-right: 0.0278em">O</span
+                ><span class="mord cjk_fallback">运行</span><span class="mord">50</span
+                ><span class="mord cjk_fallback">次迭代花费约</span></span
+              ></span
+            ></span
+          >20。相应规划。
+        </li>
+        <li>
+          <strong>探索 vs 利用。</strong> 信息素衰减率和 PSO 惯性权衡；太快衰减 → 忘记解决方案；太慢
+          → 卡在早期局部最优。
+        </li>
+        <li>
+          <strong>灾难性漂移。</strong>
+          如果适应度景观变化（新数据分布），两种算法都可能收敛然后发散。监控最佳适应度稳定性。
+        </li>
+      </ul>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p><code>code/main.py</code> 实现：</p>
+      <ul>
+        <li>
+          <code>LMPSO</code> — 数值提示参数（temperature, top_k 权重）上的 PSO。每个粒子的”LLM
+          生成”被模拟为脚本化适应度函数。运行算法 30 次迭代并显示 g_best 收敛。
+        </li>
+        <li>
+          <code>AMRO_S</code> — ACO 风格路由。3 个 Agent，4 种任务类型，信息素矩阵，100
+          个路由任务。打印 (task_type → Agent 选择) 分布随时间变化以显示轨迹形成。
+        </li>
+        <li>比较：相同任务流上的随机路由 vs ACO 路由。测量质量和延迟。</li>
+      </ul>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <p>预期输出：</p>
+      <ul>
+        <li>LMPSO：g_best 适应度在 30 次迭代中从随机改善到接近最优。</li>
+        <li>
+          AMRO-S：信息素表稳定在每个任务类型的正确 Agent 上；ACO 路由在质量上击败随机约
+          30-40%，也减少延迟（更少重试）。
+        </li>
+      </ul>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        <code>outputs/skill-swarm-optimizer.md</code> 帮助在 LLM / Agent 优化问题的
+        PSO、ACO、遗传算法和基于梯度的优化器之间选择。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <ul>
+        <li>
+          <strong>从小开始。</strong> 10-20 个粒子，20-50
+          次迭代。只有在收敛曲线显示明确增益时才扩展。
+        </li>
+        <li><strong>记录每次迭代的信息素或 g_best。</strong> 没有轨迹调试群体优化器是痛苦的。</li>
+        <li>
+          <strong>质量门控更新。</strong> 特别是 ACO 路由：快速但错误的 Agent 不能积累信息素。
+        </li>
+        <li>
+          <strong>分布偏移时重置衰减。</strong>
+          当评估分布变化时，老化信息素是陈旧的；重置或临时加倍衰减率。
+        </li>
+        <li>
+          <strong>限制每次迭代成本。</strong> 发出每次迭代成本指标。每次迭代花费 $500 且增益 0.5% 的
+          PSO 不可发布。
+        </li>
+      </ul>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          运行 <code>code/main.py</code>。观察 LMPSO 收敛。变化种群大小 5, 10, 20,
+          50。在什么大小时收敛时间饱和？
+        </li>
+        <li>
+          实现”灾难性漂移”实验：第 30 次迭代后，改变适应度函数。PSO 多快适应？重置
+          <code>p_best</code> 有帮助吗？
+        </li>
+        <li>
+          向 AMRO-S 添加质量门：只在评估分数 > 0.7 的运行上沉积信息素。这如何改变收敛 vs
+          无门控版本？
+        </li>
+        <li>
+          阅读 LMPSO
+          (arXiv:2504.09247)。将论文的”速度作为提示”映射回你的数值速度。模拟中丢失了什么，保留了什么？
+        </li>
+        <li>
+          阅读 AMRO-S (arXiv:2603.12933)。<span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >解耦的”<span
+            class="term-tip"
+            data-term="推理"
+            data-module="github"
+            data-def="推理"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">推理</abbr></span
+          >快速路径”与异步信息素更新。这如何改变持续负载下的系统延迟？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>PSO</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="粒子"
+                data-module="github"
+                data-def="粒子"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">粒子</abbr></span
+              >群<span
+                class="term-tip"
+                data-term="优化"
+                data-module="cs-fundamentals"
+                data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">优化</abbr></span
+              >”
+            </td>
+            <td>
+              Kennedy-Eberhart 1995。基于种<span
+                class="term-tip"
+                data-term="群"
+                data-module="discrete-math"
+                data-def="具有封闭性、结合律、单位元和逆元的代数结构，如整数加法群"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">群</abbr></span
+              >的无<span
+                class="term-tip"
+                data-term="梯度"
+                data-module="calculus"
+                data-def="多元函数各偏导数构成的向量 ∇f，指向函数值增长最快的方向"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">梯度</abbr></span
+              >优化器。
+            </td>
+          </tr>
+          <tr>
+            <td>ACO</td>
+            <td>
+              ”蚁<span
+                class="term-tip"
+                data-term="群"
+                data-module="discrete-math"
+                data-def="具有封闭性、结合律、单位元和逆元的代数结构，如整数加法群"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">群</abbr></span
+              >优化”
+            </td>
+            <td>
+              Dorigo 1992。<span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >信息素<span
+                class="term-tip"
+                data-term="轨迹"
+                data-module="html5"
+                data-def="视频字幕轨道"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轨迹</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="路径"
+                data-module="github"
+                data-def="路径"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路径</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="路由"
+                data-module="cs-fundamentals"
+                data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路由</abbr></span
+              >优化。
+            </td>
+          </tr>
+          <tr>
+            <td>LMPSO</td>
+            <td>
+              ”LLM
+              <span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >的 PSO”
+            </td>
+            <td>
+              arXiv:2504.09247。速<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >是<span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >；LLM 产生候选。
+            </td>
+          </tr>
+          <tr>
+            <td>Model Swarms</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="专家"
+                data-module="github"
+                data-def="专家"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">专家</abbr></span
+              >权重上的 PSO”
+            </td>
+            <td>
+              arXiv:2410.11163。模型<span
+                class="term-tip"
+                data-term="参数"
+                data-module="c"
+                data-def="函数定义时的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参数</abbr></span
+              >子<span
+                class="term-tip"
+                data-term="空间"
+                data-module="cpp"
+                data-def="空间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">空间</abbr></span
+              >上的无<span
+                class="term-tip"
+                data-term="梯度"
+                data-module="calculus"
+                data-def="多元函数各偏导数构成的向量 ∇f，指向函数值增长最快的方向"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">梯度</abbr></span
+              >更新。
+            </td>
+          </tr>
+          <tr>
+            <td>AMRO-S</td>
+            <td>
+              ”Agent
+              <span
+                class="term-tip"
+                data-term="路由"
+                data-module="cs-fundamentals"
+                data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路由</abbr></span
+              >的 ACO”
+            </td>
+            <td>
+              arXiv:2603.12933。<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >类型 × Agent 上的<span
+                class="term-tip"
+                data-term="信息"
+                data-module="github"
+                data-def="信息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信息</abbr></span
+              >素矩阵。
+            </td>
+          </tr>
+          <tr>
+            <td>p_best / g_best</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="个人"
+                data-module="github"
+                data-def="个人的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">个人</abbr></span
+              >/全局最佳”
+            </td>
+            <td>
+              迄今找到的每<span
+                class="term-tip"
+                data-term="粒子"
+                data-module="github"
+                data-def="粒子"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">粒子</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="群"
+                data-module="discrete-math"
+                data-def="具有封闭性、结合律、单位元和逆元的代数结构，如整数加法群"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">群</abbr></span
+              >体<span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >的最佳<span
+                class="term-tip"
+                data-term="解决方案"
+                data-module="github"
+                data-def="解决方案"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解决方案</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="信息"
+                data-module="github"
+                data-def="信息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信息</abbr></span
+              >素
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="路由"
+                data-module="cs-fundamentals"
+                data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路由</abbr></span
+              >记忆”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="边"
+                data-module="github"
+                data-def="边"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">边</abbr></span
+              >上的强<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >；随<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >衰减；按<span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >沉积。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >门控<span
+                class="term-tip"
+                data-term="更新"
+                data-module="c"
+                data-def="修改变量值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">更新</abbr></span
+              >
+            </td>
+            <td>
+              ”只从好的运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >学习”
+            </td>
+            <td>
+              以<span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >检查为<span
+                class="term-tip"
+                data-term="条件"
+                data-module="github"
+                data-def="条件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">条件</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="信息"
+                data-module="github"
+                data-def="信息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信息</abbr></span
+              >素沉积。
+            </td>
+          </tr>
+          <tr>
+            <td>灾难性漂移</td>
+            <td>”分布偏移”</td>
+            <td>
+              适应<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >景观<span
+                class="term-tip"
+                data-term="变化"
+                data-module="vue3"
+                data-def="状态变更"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">变化</abbr></span
+              >；旧的 p_best 和<span
+                class="term-tip"
+                data-term="信息"
+                data-module="github"
+                data-def="信息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信息</abbr></span
+              >素变得陈旧。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://ieeexplore.ieee.org/document/488968"
+            >Kennedy &#x26; Eberhart — Particle Swarm Optimization</a
+          >
+          — 1995
+          <span
+            class="term-tip"
+            data-term="年"
+            data-module="cpp"
+            data-def="年"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">年</abbr></span
+          >
+          PSO 论文
+        </li>
+        <li>
+          <a href="https://www.aco-metaheuristic.org/about.html"
+            >Dorigo — Ant Colony Optimization</a
+          >
+          — 1992
+          <span
+            class="term-tip"
+            data-term="年"
+            data-module="cpp"
+            data-def="年"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">年</abbr></span
+          >
+          ACO 基础
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2504.09247"
+            >LMPSO — Language Model Particle Swarm Optimization</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="结构"
+            data-module="cpp"
+            data-def="结构"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">结构</abbr></span
+          >化 LLM
+          <span
+            class="term-tip"
+            data-term="输出"
+            data-module="c"
+            data-def="向外部发送数据"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">输出</abbr></span
+          >的 PSO
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2410.11163"
+            >Model Swarms — gradient-free LLM expert optimization</a
+          >
+          — 模型权重<span
+            class="term-tip"
+            data-term="子"
+            data-module="cpp"
+            data-def="子"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">子</abbr></span
+          >空间上的 PSO
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2603.12933">AMRO-S — ant-colony multi-agent routing</a> —
+          带<span
+            class="term-tip"
+            data-term="质量"
+            data-module="github"
+            data-def="质量"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">质量</abbr></span
+          >门的<span
+            class="term-tip"
+            data-term="信息"
+            data-module="github"
+            data-def="信息"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">信息</abbr></span
+          >素驱动<span
+            class="term-tip"
+            data-term="路由"
+            data-module="cs-fundamentals"
+            data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">路由</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

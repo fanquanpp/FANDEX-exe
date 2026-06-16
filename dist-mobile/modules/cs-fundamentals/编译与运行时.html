@@ -1,0 +1,2586 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>编译与运行时</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">编译与运行时</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            7 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          编译与运行时深度剖析：词法分析自动机构造、语法分析算法、语义分析、中间代码与SSA、优化技术、JIT编译、GC算法、链接与加载。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-词法分析正则到自动机">
+        <a href="#1-词法分析正则到自动机">1. 词法分析：正则到自动机</a>
+      </h2>
+      <h3 id="11-正则表达式到nfa-thompson构造">
+        <a href="#11-正则表达式到nfa-thompson构造">1.1 正则表达式到NFA (Thompson构造)</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>Thompson构造算法:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  基本规则:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  1. 空串 epsilon:</span></span>
+<span class="line"><span>     [s0] --e--> [s1] (s0起始, s1接受)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  2. 单字符 a:</span></span>
+<span class="line"><span>     [s0] --a--> [s1]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  复合规则:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  3. 连接 ab:</span></span>
+<span class="line"><span>     [s0] --a--> [s1] --e--> [s2] --b--> [s3]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  4. 选择 a|b:</span></span>
+<span class="line"><span>          +--e--> [s1] --a--> [s2] --e--+</span></span>
+<span class="line"><span>     [s0]-+                              +->[s5]</span></span>
+<span class="line"><span>          +--e--> [s3] --b--> [s4] --e--+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  5. 闭包 a*:</span></span>
+<span class="line"><span>          +--------e--------+</span></span>
+<span class="line"><span>          |                 v</span></span>
+<span class="line"><span>     [s0]--e-->[s1]--a-->[s2]--e-->[s3]</span></span>
+<span class="line"><span>          ^                 |</span></span>
+<span class="line"><span>          +-------e---------+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  6. 正闭包 a+:</span></span>
+<span class="line"><span>     等价于 a.a*</span></span>
+<span class="line"><span>     [s0] --a--> [s1] --e--> [s2] --a--> [s3] --e--> [s4]</span></span>
+<span class="line"><span>                         ^                      |</span></span>
+<span class="line"><span>                         +----------e-----------+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>示例: 构造 (a|b)*abb 的NFA</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  正则分解: (a|b)* . a . b . b</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Step 1: a|b 的NFA</span></span>
+<span class="line"><span>          +--e--> [2] --a--> [3] --e--+</span></span>
+<span class="line"><span>     [1]-+                            +->[6]</span></span>
+<span class="line"><span>          +--e--> [4] --b--> [5] --e--+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Step 2: (a|b)* 的NFA (加闭包)</span></span>
+<span class="line"><span>     [0] --e--> [1] ... [6] --e--> [7]</span></span>
+<span class="line"><span>      ^                       |</span></span>
+<span class="line"><span>      +----------e------------+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Step 3: 连接 a, b, b</span></span>
+<span class="line"><span>     [7] --e--> [8] --a--> [9] --e--> [10] --b--> [11] --e--> [12] --b--> [13]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Thompson构造的性质:</span></span>
+<span class="line"><span>    - NFA状态数 = O(|r|), |r|为正则表达式长度</span></span>
+<span class="line"><span>    - 每个状态最多2个epsilon转移</span></span>
+<span class="line"><span>    - 构造时间 O(|r|)</span></span></code></pre>
+      <h3 id="12-nfa到dfa-子集构造"><a href="#12-nfa到dfa-子集构造">1.2 NFA到DFA (子集构造)</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>子集构造算法 (Subset Construction):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  核心思想: DFA状态 = NFA状态的集合</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  epsilon闭包:</span></span>
+<span class="line"><span>    epsilon-closure(s) = 从s出发仅通过epsilon转移可达的所有状态</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    epsilon-closure({s0}) = {s0, s1, s7}  (示例)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  子集构造:</span></span>
+<span class="line"><span>    start = epsilon-closure({nfa_start})</span></span>
+<span class="line"><span>    unmarked = {start}</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    while unmarked不为空:</span></span>
+<span class="line"><span>      T = unmarked.pop()</span></span>
+<span class="line"><span>      for each input symbol a:</span></span>
+<span class="line"><span>        U = epsilon-closure(move(T, a))</span></span>
+<span class="line"><span>        if U不为空:</span></span>
+<span class="line"><span>          Dtran[T, a] = U</span></span>
+<span class="line"><span>          if U不在DFA状态中:</span></span>
+<span class="line"><span>            unmarked.add(U)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  示例: (a|b)*abb 的NFA -> DFA</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  NFA状态: {0,1,2,...,13}</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  DFA构造:</span></span>
+<span class="line"><span>    A = e-closure({0}) = {0,1,2,4,7}</span></span>
+<span class="line"><span>      move(A, a) = {3,8} -> e-closure = {1,2,3,4,6,7,8} = B</span></span>
+<span class="line"><span>      move(A, b) = {5}   -> e-closure = {1,2,4,5,6,7}   = C</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    B = {1,2,3,4,6,7,8}</span></span>
+<span class="line"><span>      move(B, a) = {3,8} -> e-closure = {1,2,3,4,6,7,8} = B</span></span>
+<span class="line"><span>      move(B, b) = {5,9} -> e-closure = {1,2,4,5,6,7,9} = D</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    C = {1,2,4,5,6,7}</span></span>
+<span class="line"><span>      move(C, a) = {3,8} -> e-closure = {1,2,3,4,6,7,8} = B</span></span>
+<span class="line"><span>      move(C, b) = {5}   -> e-closure = {1,2,4,5,6,7}   = C</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    D = {1,2,4,5,6,7,9}</span></span>
+<span class="line"><span>      move(D, a) = {3,8} -> e-closure = {1,2,3,4,6,7,8} = B</span></span>
+<span class="line"><span>      move(D, b) = {5,10}-> e-closure = {1,2,4,5,6,7,10}= E</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    E = {1,2,4,5,6,7,10} (包含NFA接受状态10)</span></span>
+<span class="line"><span>      move(E, a) = {3,8} -> e-closure = B</span></span>
+<span class="line"><span>      move(E, b) = {5}   -> e-closure = C</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  DFA转换表:</span></span>
+<span class="line"><span>        |  a  |  b  |</span></span>
+<span class="line"><span>    ----+-----+-----+</span></span>
+<span class="line"><span>    A   |  B  |  C  |</span></span>
+<span class="line"><span>    B   |  B  |  D  |</span></span>
+<span class="line"><span>    C   |  B  |  C  |</span></span>
+<span class="line"><span>    D   |  B  |  E  |</span></span>
+<span class="line"><span>    E*  |  B  |  C  |</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  最坏情况: DFA状态数 = 2^|NFA| (指数爆炸)</span></span>
+<span class="line"><span>  实际中: 通常与NFA状态数接近</span></span></code></pre>
+      <h3 id="13-dfa最小化-hopcroft算法">
+        <a href="#13-dfa最小化-hopcroft算法">1.3 DFA最小化 (Hopcroft算法)</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>DFA最小化 (Hopcroft算法):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  核心思想: 合并等价状态</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  算法:</span></span>
+<span class="line"><span>    1. 初始划分: P = {接受状态, 非接受状态}</span></span>
+<span class="line"><span>    2. 对P中每个组G:</span></span>
+<span class="line"><span>         对每个输入符号a:</span></span>
+<span class="line"><span>           将G分为子组, 使得同一子组中状态经a到达同一组</span></span>
+<span class="line"><span>    3. 重复2直到划分不变</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  示例 (上节DFA):</span></span>
+<span class="line"><span>    初始: P = {{A,B,C,D}, {E}}</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    检查{A,B,C,D}:</span></span>
+<span class="line"><span>      a转移: A->B, B->B, C->B, D->B (都在同一组)</span></span>
+<span class="line"><span>      b转移: A->C, B->D, C->C, D->E</span></span>
+<span class="line"><span>        A,C -> C (在{A,B,C,D})</span></span>
+<span class="line"><span>        B   -> D (在{A,B,C,D})</span></span>
+<span class="line"><span>        D   -> E (在{E})</span></span>
+<span class="line"><span>      分裂: {A,C}, {B}, {D}</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    P = {{A,C}, {B}, {D}, {E}}</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    检查{A,C}:</span></span>
+<span class="line"><span>      a转移: A->B, C->B (同一组{B})</span></span>
+<span class="line"><span>      b转移: A->C, C->C (都在{A,C})</span></span>
+<span class="line"><span>      不分裂</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    最终: {A,C}合并为一个状态</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  最小化DFA:</span></span>
+<span class="line"><span>        |  a  |  b  |</span></span>
+<span class="line"><span>    ----+-----+-----+</span></span>
+<span class="line"><span>    AC  |  B  | AC  |</span></span>
+<span class="line"><span>    B   |  B  |  D  |</span></span>
+<span class="line"><span>    D   |  B  |  E  |</span></span>
+<span class="line"><span>    E*  |  B  | AC  |</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  4个状态 (原5个)</span></span></code></pre>
+      <blockquote>
+        <p>
+          跨模块引用：<a href="compiler">编译原理</a>基础篇介绍了词法分析的基本概念。<a
+            href="encoding"
+            >数制与编码</a
+          >的有限自动机理论是词法分析的数学基础。
+        </p>
+      </blockquote>
+      <hr />
+      <h2 id="2-语法分析算法深度"><a href="#2-语法分析算法深度">2. 语法分析算法深度</a></h2>
+      <h3 id="21-ll分析深入"><a href="#21-ll分析深入">2.1 LL分析深入</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>LL(1)冲突解决:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  FIRST/FOLLOW冲突:</span></span>
+<span class="line"><span>    产生式 A -> alpha | beta</span></span>
+<span class="line"><span>    若 FIRST(alpha) ∩ FIRST(beta) ≠ ∅ -> FIRST冲突</span></span>
+<span class="line"><span>    若 epsilon ∈ FIRST(alpha) 且 FIRST(beta) ∩ FOLLOW(A) ≠ ∅ -> FOLLOW冲突</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  消除左递归:</span></span>
+<span class="line"><span>    直接左递归: A -> A alpha | beta</span></span>
+<span class="line"><span>    改写: A -> beta A'</span></span>
+<span class="line"><span>          A' -> alpha A' | epsilon</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    间接左递归: A -> B alpha, B -> A beta</span></span>
+<span class="line"><span>    通过代入消除</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  提取左公因子:</span></span>
+<span class="line"><span>    A -> alpha beta1 | alpha beta2</span></span>
+<span class="line"><span>    改写: A -> alpha A'</span></span>
+<span class="line"><span>          A' -> beta1 | beta2</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>LL(*)分析 (ANTLR4):</span></span>
+<span class="line"><span>  不限于1个向前看符号</span></span>
+<span class="line"><span>  使用DFA进行语法预测</span></span>
+<span class="line"><span>  对每个决策点构建预测DFA</span></span>
+<span class="line"><span>  可处理LL(1)无法处理的文法</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  例:</span></span>
+<span class="line"><span>    expr : ID '(' exprList ')'    // 函数调用</span></span>
+<span class="line"><span>         | ID '=' expr            // 赋值</span></span>
+<span class="line"><span>         ;</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    LL(1)冲突: ID后可能是'('或'='</span></span>
+<span class="line"><span>    LL(*): 向前看任意多符号直到能区分</span></span></code></pre>
+      <h3 id="22-lr分析深入"><a href="#22-lr分析深入">2.2 LR分析深入</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>LR(0)项目集族构造:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  增广文法: 添加 S' -> S</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  closure(I):</span></span>
+<span class="line"><span>    若 A -> alpha . B beta 在 I 中:</span></span>
+<span class="line"><span>      将 B -> .gamma 的所有项目加入I</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  goto(I, X):</span></span>
+<span class="line"><span>    J = { A -> alpha X . beta | A -> alpha . X beta 在 I 中 }</span></span>
+<span class="line"><span>    return closure(J)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  构造项目集族:</span></span>
+<span class="line"><span>    C = { closure({S' -> .S}) }</span></span>
+<span class="line"><span>    对C中每个项目集I和每个文法符号X:</span></span>
+<span class="line"><span>      若 goto(I, X) 非空且不在C中:</span></span>
+<span class="line"><span>        将 goto(I, X) 加入C</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>SLR(1)分析表构造:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  移入: 若 A -> alpha . a beta 在I中, 且 goto(I,a)=J</span></span>
+<span class="line"><span>        则 action[I, a] = shift J</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  归约: 若 A -> alpha . 在I中</span></span>
+<span class="line"><span>        则对所有 a ∈ FOLLOW(A): action[I, a] = reduce A -> alpha</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  接受: 若 S' -> S . 在I中</span></span>
+<span class="line"><span>        则 action[I, $] = accept</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>SLR(1)的问题:</span></span>
+<span class="line"><span>  仅用FOLLOW集合判断归约, 过于宽松</span></span>
+<span class="line"><span>  可能产生移入-归约冲突</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>LR(1)分析:</span></span>
+<span class="line"><span>  项目: [A -> alpha . beta, a]</span></span>
+<span class="line"><span>  a: 向前看符号 (lookahead)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  closure(I):</span></span>
+<span class="line"><span>    若 [A -> alpha . B beta, a] 在I中:</span></span>
+<span class="line"><span>      对B的每个产生式 B -> gamma:</span></span>
+<span class="line"><span>        对 FIRST(beta a) 中每个终结符b:</span></span>
+<span class="line"><span>          将 [B -> . gamma, b] 加入I</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  LR(1)状态数远多于SLR(1) (可能指数增长)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>LALR(1)分析:</span></span>
+<span class="line"><span>  合并同心项目集 (核心相同, 向前看符号不同)</span></span>
+<span class="line"><span>  状态数与SLR(1)相同</span></span>
+<span class="line"><span>  分析能力介于SLR(1)和LR(1)之间</span></span>
+<span class="line"><span>  Yacc/Bison使用LALR(1)</span></span></code></pre>
+      <p><strong>LR分析表构造示例</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>文法: E -> E + T | T, T -> T * F | F, F -> ( E ) | id</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>SLR(1)分析表 (部分):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>       |  id   |  +   |  *   |  (   |  )   |  $   |  E  |  T  |  F  |</span></span>
+<span class="line"><span>  -----+-------+------+------+------+------+------+-----+-----+-----+</span></span>
+<span class="line"><span>   0   | s5    |      |      | s4   |      |      | 1   | 2   | 3   |</span></span>
+<span class="line"><span>   1   |       | s6   |      |      |      | acc  |     |     |     |</span></span>
+<span class="line"><span>   2   |       | r2   | s7   |      | r2   | r2   |     |     |     |</span></span>
+<span class="line"><span>   3   |       | r4   | r4   |      | r4   | r4   |     |     |     |</span></span>
+<span class="line"><span>   4   | s5    |      |      | s4   |      |      | 8   | 2   | 3   |</span></span>
+<span class="line"><span>   5   |       | r6   | r6   |      | r6   | r6   |     |     |     |</span></span>
+<span class="line"><span>   6   | s5    |      |      | s4   |      |      |     | 9   | 3   |</span></span>
+<span class="line"><span>   7   | s5    |      |      | s4   |      |      |     |     | 10  |</span></span>
+<span class="line"><span>   8   |       | s6   |      |      | s11  |      |     |     |     |</span></span>
+<span class="line"><span>   9   |       | r1   | s7   |      | r1   | r1   |     |     |     |</span></span>
+<span class="line"><span>   10  |       | r3   | r3   |      | r3   | r3   |     |     |     |</span></span>
+<span class="line"><span>   11  |       | r5   | r5   |      | r5   | r5   |     |     |     |</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  sn = shift并转到状态n</span></span>
+<span class="line"><span>  rn = 用第n条产生式归约</span></span>
+<span class="line"><span>  acc = 接受</span></span></code></pre>
+      <h3 id="23-错误恢复"><a href="#23-错误恢复">2.3 错误恢复</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>语法错误恢复策略:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>1. 恐慌模式 (Panic Mode):</span></span>
+<span class="line"><span>   发现错误时, 跳过输入符号直到遇到同步词法单元</span></span>
+<span class="line"><span>   同步词法单元 = FOLLOW(A)中的符号</span></span>
+<span class="line"><span>   简单有效, 但可能跳过大量输入</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>2. 短语级恢复:</span></span>
+<span class="line"><span>   对常见错误模式进行局部修正</span></span>
+<span class="line"><span>   例: 缺少分号 -> 插入分号</span></span>
+<span class="line"><span>       多余逗号 -> 删除逗号</span></span>
+<span class="line"><span>   需要精心设计错误模式</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>3. 错误产生式:</span></span>
+<span class="line"><span>   在文法中添加常见错误的产生式</span></span>
+<span class="line"><span>   例: E -> E + + T  (两个加号)</span></span>
+<span class="line"><span>   编译器可给出精确的错误信息</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>4. 全局最小修正:</span></span>
+<span class="line"><span>   找到最少修改使输入合法</span></span>
+<span class="line"><span>   理论最优, 但计算复杂度高</span></span></code></pre>
+      <blockquote>
+        <p>
+          跨模块引用：<a href="compiler">编译原理</a>基础篇介绍了语法分析的基本概念。<a
+            href="discrete-math"
+            >离散数学</a
+          >的形式语言理论是语法分析的数学基础。
+        </p>
+      </blockquote>
+      <hr />
+      <h2 id="3-语义分析"><a href="#3-语义分析">3. 语义分析</a></h2>
+      <h3 id="31-类型系统深入"><a href="#31-类型系统深入">3.1 类型系统深入</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>类型系统分类:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  静态类型 vs 动态类型:</span></span>
+<span class="line"><span>    静态: 编译期检查 (C/C++/Java/Rust)</span></span>
+<span class="line"><span>    动态: 运行期检查 (Python/JavaScript/Ruby)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  强类型 vs 弱类型:</span></span>
+<span class="line"><span>    强: 不允许隐式类型转换 (Python/Java/Rust)</span></span>
+<span class="line"><span>    弱: 允许隐式类型转换 (C/JavaScript)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  类型推断:</span></span>
+<span class="line"><span>    Hindley-Milner类型系统 (ML/Haskell)</span></span>
+<span class="line"><span>    从使用上下文推断类型</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    fun f(x) = x + 1</span></span>
+<span class="line"><span>    推断: x : int, f : int -> int</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    fun g(x, y) = if x then y else 0</span></span>
+<span class="line"><span>    推断: x : bool, y : int, g : bool -> int -> int</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  子类型 (Subtyping):</span></span>
+<span class="line"><span>    若 S &#x3C;: T (S是T的子类型), 则S可出现在T的位置</span></span>
+<span class="line"><span>    里氏替换原则 (LSP)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    例: Cat &#x3C;: Animal</span></span>
+<span class="line"><span>    函数 f(Animal a) 可接受 Cat</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  协变与逆变:</span></span>
+<span class="line"><span>    协变 (Covariant): 子类型关系保持方向</span></span>
+<span class="line"><span>      List&#x3C;Cat> &#x3C;: List&#x3C;Animal>  (Java数组, 不安全!)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    逆变 (Contravariant): 子类型关系反转</span></span>
+<span class="line"><span>      Function&#x3C;Animal, R> &#x3C;: Function&#x3C;Cat, R></span></span>
+<span class="line"><span>      (能处理Animal的函数当然能处理Cat)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    不变 (Invariant): 无子类型关系</span></span>
+<span class="line"><span>      Java泛型: List&#x3C;Cat> 与 List&#x3C;Animal> 无关</span></span></code></pre>
+      <h3 id="32-符号表实现"><a href="#32-符号表实现">3.2 符号表实现</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>符号表高效实现:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>1. 哈希表 + 作用域链:</span></span>
+<span class="line"><span>   全局哈希表, 每个条目包含作用域深度</span></span>
+<span class="line"><span>   查找: 匹配名字且scope_level &#x3C;= 当前level的最小scope</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   struct Symbol {</span></span>
+<span class="line"><span>       string name;</span></span>
+<span class="line"><span>       Type   type;</span></span>
+<span class="line"><span>       int    scope_level;</span></span>
+<span class="line"><span>       Symbol* next_in_scope;  // 同作用域链表</span></span>
+<span class="line"><span>   };</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   HashMap&#x3C;string, Symbol*> symbol_table;</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   插入:</span></span>
+<span class="line"><span>     sym.scope_level = current_scope;</span></span>
+<span class="line"><span>     sym.next_in_scope = scope_stack[current_scope];</span></span>
+<span class="line"><span>     scope_stack[current_scope] = sym;</span></span>
+<span class="line"><span>     symbol_table[name] = sym;</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   查找:</span></span>
+<span class="line"><span>     sym = symbol_table[name];</span></span>
+<span class="line"><span>     while (sym &#x26;&#x26; sym.scope_level > current_scope) {</span></span>
+<span class="line"><span>       sym = sym.next;  // 查找可见的同名符号</span></span>
+<span class="line"><span>     }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>2. 树形作用域:</span></span>
+<span class="line"><span>   每个作用域一个符号表</span></span>
+<span class="line"><span>   子作用域指向父作用域</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   Global Scope</span></span>
+<span class="line"><span>     |-> Function A Scope</span></span>
+<span class="line"><span>     |      |-> Block Scope</span></span>
+<span class="line"><span>     |-> Function B Scope</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   查找: 当前作用域 -> 父作用域 -> ... -> 全局作用域</span></span>
+<span class="line"><span>   退出作用域: 直接丢弃子表</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>3. LLVM符号表:</span></span>
+<span class="line"><span>   使用Value/ValueMap</span></span>
+<span class="line"><span>   每个Value有唯一Name和Type</span></span>
+<span class="line"><span>   Module级 + Function级符号表</span></span></code></pre>
+      <h3 id="33-属性文法"><a href="#33-属性文法">3.3 属性文法</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>属性文法 (Attribute Grammar):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  综合属性 (Synthesized):</span></span>
+<span class="line"><span>    从子节点向父节点传递</span></span>
+<span class="line"><span>    在归约时计算</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  继承属性 (Inherited):</span></span>
+<span class="line"><span>    从父节点/兄弟节点向子节点传递</span></span>
+<span class="line"><span>    在推导时计算</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  S-属性文法: 仅使用综合属性</span></span>
+<span class="line"><span>    可在LR分析中自底向上计算</span></span>
+<span class="line"><span>    使用栈存储属性值</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  L-属性文法: 综合属性 + 受限继承属性</span></span>
+<span class="line"><span>    继承属性仅依赖:</span></span>
+<span class="line"><span>      - 父节点的继承属性</span></span>
+<span class="line"><span>      - 左侧兄弟节点的属性</span></span>
+<span class="line"><span>    可在LL分析中自顶向下计算</span></span>
+<span class="line"><span>    可在LR分析中模拟(嵌入动作)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  示例: 声明的类型传播</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  产生式                    语义规则</span></span>
+<span class="line"><span>  D  -> T L                L.type = T.type (继承属性)</span></span>
+<span class="line"><span>  T  -> int                T.type = integer</span></span>
+<span class="line"><span>  T  -> float              T.type = real</span></span>
+<span class="line"><span>  L  -> L1 , id            L1.type = L.type (继承属性)</span></span>
+<span class="line"><span>                            add_type(id.entry, L.type)</span></span>
+<span class="line"><span>  L  -> id                 add_type(id.entry, L.type)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  输入: int a, b, c</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  D</span></span>
+<span class="line"><span>  |- T (type=integer)</span></span>
+<span class="line"><span>  |  |- int</span></span>
+<span class="line"><span>  |- L (type=integer, 从T继承)</span></span>
+<span class="line"><span>     |- L1 (type=integer, 从L继承)</span></span>
+<span class="line"><span>     |  |- L2 (type=integer, 从L1继承)</span></span>
+<span class="line"><span>     |  |  |- id(c) add_type(c, integer)</span></span>
+<span class="line"><span>     |  |- ,</span></span>
+<span class="line"><span>     |  |- id(b) add_type(b, integer)</span></span>
+<span class="line"><span>     |- ,</span></span>
+<span class="line"><span>     |- id(a) add_type(a, integer)</span></span></code></pre>
+      <blockquote>
+        <p>
+          跨模块引用：<a href="compiler">编译原理</a>基础篇介绍了语义分析的基本概念。<a
+            href="software-engineering"
+            >软件工程</a
+          >的类型安全设计依赖类型系统理论。
+        </p>
+      </blockquote>
+      <hr />
+      <h2 id="4-中间代码与ssa"><a href="#4-中间代码与ssa">4. 中间代码与SSA</a></h2>
+      <h3 id="41-三地址码深入"><a href="#41-三地址码深入">4.1 三地址码深入</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>三地址码 (TAC) 指令集:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  赋值:     x = y op z    (二元运算)</span></span>
+<span class="line"><span>            x = op y      (一元运算)</span></span>
+<span class="line"><span>            x = y         (复制)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  跳转:     goto L        (无条件)</span></span>
+<span class="line"><span>            if x relop y goto L  (条件)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  索引:     x = y[i]</span></span>
+<span class="line"><span>            x[i] = y</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  地址:     x = &#x26;y</span></span>
+<span class="line"><span>            x = *y</span></span>
+<span class="line"><span>            *x = y</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  调用:     param x       (设置参数)</span></span>
+<span class="line"><span>            call p, n     (调用函数p, n个参数)</span></span>
+<span class="line"><span>            x = call p, n (有返回值的调用)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  返回:     return x</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>四元组表示:</span></span>
+<span class="line"><span>  (op, arg1, arg2, result)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  a = b + c  ->  (+, b, c, t1)</span></span>
+<span class="line"><span>  a = -b     ->  (uminus, b, -, t2)</span></span>
+<span class="line"><span>  if a &#x3C; b goto L -> (&#x3C;, a, b, L)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>三元组表示:</span></span>
+<span class="line"><span>  (op, arg1, arg2)</span></span>
+<span class="line"><span>  用位置引用结果</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  0: (+, b, c)     // t0 = b + c</span></span>
+<span class="line"><span>  1: (=, a, (0))   // a = t0</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  问题: 移动指令时需更新所有引用</span></span></code></pre>
+      <h3 id="42-ssa-静态单赋值"><a href="#42-ssa-静态单赋值">4.2 SSA (静态单赋值)</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>SSA (Static Single Assignment):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  核心规则: 每个变量只被赋值一次</span></span>
+<span class="line"><span>  控制流汇合处使用 phi 函数</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  转换前:</span></span>
+<span class="line"><span>    x = 1</span></span>
+<span class="line"><span>    if (cond) {</span></span>
+<span class="line"><span>      x = 2</span></span>
+<span class="line"><span>    }</span></span>
+<span class="line"><span>    y = x + 1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  转换后:</span></span>
+<span class="line"><span>    x1 = 1</span></span>
+<span class="line"><span>    if (cond) {</span></span>
+<span class="line"><span>      x2 = 2</span></span>
+<span class="line"><span>    }</span></span>
+<span class="line"><span>    x3 = phi(x1, x2)   // 根据来源基本块选择值</span></span>
+<span class="line"><span>    y1 = x3 + 1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>SSA构造算法:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  1. 插入phi函数:</span></span>
+<span class="line"><span>     对每个变量v:</span></span>
+<span class="line"><span>       计算v的定值基本块集合 DefBlocks(v)</span></span>
+<span class="line"><span>       计算迭代支配边界 IDF(DefBlocks(v))</span></span>
+<span class="line"><span>       在IDF中的每个基本块入口插入 phi(v)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  支配边界 (Dominance Frontier):</span></span>
+<span class="line"><span>     节点n的支配边界DF(n):</span></span>
+<span class="line"><span>       n支配某个节点的前驱, 但不严格支配该节点</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>     例:</span></span>
+<span class="line"><span>       B1 -> B2 -> B3 -> B5</span></span>
+<span class="line"><span>            |         ^</span></span>
+<span class="line"><span>            v         |</span></span>
+<span class="line"><span>            B4 -------+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>       DF(B2) = {B5}  (B2支配B4, B4是B5的前驱)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  2. 变量重命名:</span></span>
+<span class="line"><span>     深度优先遍历支配树</span></span>
+<span class="line"><span>     每次赋值递增版本号</span></span>
+<span class="line"><span>     phi函数的参数根据前驱基本块填充</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>SSA的优势:</span></span>
+<span class="line"><span>  - 简化数据流分析 (def-use链显式)</span></span>
+<span class="line"><span>  - 便于发现优化机会 (常量传播更有效)</span></span>
+<span class="line"><span>  - 支持稀疏条件常量传播</span></span>
+<span class="line"><span>  - 寄存器分配更简单 (变量不重叠)</span></span></code></pre>
+      <p><strong>SSA构造伪代码</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> insert_phi_functions</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cfg, variables):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    phi_nodes </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> var </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> variables:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        def_blocks </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {block </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> block </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cfg.blocks </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> var </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> block.defs}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        worklist </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> list</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(def_blocks)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        placed </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> worklist:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            block </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> worklist.pop()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> df_block </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dominance_frontier(block):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> df_block </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">not</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> placed:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">                    # 在df_block入口插入phi(var)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    phi_nodes.setdefault(df_block, []).append(var)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    placed.add(df_block)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> df_block </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">not</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> def_blocks:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                        worklist.append(df_block)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> phi_nodes</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> rename_variables</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cfg, phi_nodes):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    counter </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 变量 -> 当前版本号</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    stack </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}    </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 变量 -> 版本号栈</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> new_version</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(var):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        v </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> counter.get(var, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        counter[var] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> v </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        stack.setdefault(var, []).append(v)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">var</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">_</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">v</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> rename_block</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(block):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> block.instructions:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 替换使用为当前版本</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> use </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instr.uses:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stack.get(use):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    instr.replace_use(use, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">use</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">_</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">stack[use][</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 替换定义为新版本</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> var </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instr.defs:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                new_name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_version(var)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                instr.replace_def(var, new_name)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 处理phi函数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> succ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cfg.successors(block):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> var </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> phi_nodes.get(succ, []):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">var</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">_</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">stack[var][</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                succ.add_phi_arg(var, block, current)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 递归处理支配树子节点</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> child </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dom_tree_children(block):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            rename_block(child)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 弹出版本号栈</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> var </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> block.defs:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            stack[var].pop()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    rename_block(cfg.entry)</span></span></code></pre>
+      <h3 id="43-llvm-ir"><a href="#43-llvm-ir">4.3 LLVM IR</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>LLVM IR示例:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  源代码:</span></span>
+<span class="line"><span>    int add(int a, int b) {</span></span>
+<span class="line"><span>        int result = a + b;</span></span>
+<span class="line"><span>        return result;</span></span>
+<span class="line"><span>    }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  LLVM IR:</span></span>
+<span class="line"><span>    define i32 @add(i32 %a, i32 %b) {</span></span>
+<span class="line"><span>    entry:</span></span>
+<span class="line"><span>      %result = add i32 %a, %b</span></span>
+<span class="line"><span>      ret i32 %result</span></span>
+<span class="line"><span>    }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  更复杂的示例:</span></span>
+<span class="line"><span>    int sum(int n) {</span></span>
+<span class="line"><span>        int s = 0;</span></span>
+<span class="line"><span>        for (int i = 0; i &#x3C; n; i++)</span></span>
+<span class="line"><span>            s += i;</span></span>
+<span class="line"><span>        return s;</span></span>
+<span class="line"><span>    }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  LLVM IR:</span></span>
+<span class="line"><span>    define i32 @sum(i32 %n) {</span></span>
+<span class="line"><span>    entry:</span></span>
+<span class="line"><span>      br label %loop.cond</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    loop.cond:</span></span>
+<span class="line"><span>      %i = phi i32 [0, %entry], [%i.next, %loop.body]</span></span>
+<span class="line"><span>      %s = phi i32 [0, %entry], [%s.next, %loop.body]</span></span>
+<span class="line"><span>      %cmp = icmp slt i32 %i, %n</span></span>
+<span class="line"><span>      br i1 %cmp, label %loop.body, label %loop.end</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    loop.body:</span></span>
+<span class="line"><span>      %s.next = add i32 %s, %i</span></span>
+<span class="line"><span>      %i.next = add i32 %i, 1</span></span>
+<span class="line"><span>      br label %loop.cond</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    loop.end:</span></span>
+<span class="line"><span>      ret i32 %s</span></span>
+<span class="line"><span>    }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  LLVM IR特性:</span></span>
+<span class="line"><span>    - SSA形式 (每个值定义一次)</span></span>
+<span class="line"><span>    - 类型显式 (i32, i64, float, pointer)</span></span>
+<span class="line"><span>    - 无限虚拟寄存器 (%0, %1, ..., %n)</span></span>
+<span class="line"><span>    - 显式控制流 (基本块 + 跳转)</span></span>
+<span class="line"><span>    - phi函数在基本块入口</span></span></code></pre>
+      <blockquote>
+        <p>
+          跨模块引用：<a href="compiler">编译原理</a>基础篇介绍了中间代码生成的基本概念。<a
+            href="os"
+            >操作系统</a
+          >的虚拟内存管理影响代码布局优化。
+        </p>
+      </blockquote>
+      <hr />
+      <h2 id="5-优化技术深度"><a href="#5-优化技术深度">5. 优化技术深度</a></h2>
+      <h3 id="51-常量折叠与传播"><a href="#51-常量折叠与传播">5.1 常量折叠与传播</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>常量折叠 (Constant Folding):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  编译期计算常量表达式</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  x = 3 + 5       ->  x = 8</span></span>
+<span class="line"><span>  x = 2 * 3.14    ->  x = 6.28</span></span>
+<span class="line"><span>  x = "hello" + " world" -> x = "hello world"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  注意: 浮点数折叠需考虑精度</span></span>
+<span class="line"><span>  Java: 严格浮点模式 (strictfp) 保证跨平台一致</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>常量传播 (Constant Propagation):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  跟踪变量的常量值, 替换使用处</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  优化前:</span></span>
+<span class="line"><span>    x = 5</span></span>
+<span class="line"><span>    y = x + 3</span></span>
+<span class="line"><span>    z = y * 2</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  优化后:</span></span>
+<span class="line"><span>    x = 5</span></span>
+<span class="line"><span>    y = 8       // x=5传播, 5+3=8</span></span>
+<span class="line"><span>    z = 16      // y=8传播, 8*2=16</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>稀疏条件常量传播 (SCCP):</span></span>
+<span class="line"><span>  结合常量传播和死代码消除</span></span>
+<span class="line"><span>  在SSA上操作, 高效</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  状态: TOP(未定义), CONST(常量值), BOTTOM(非常量)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  x = input()       // x = BOTTOM</span></span>
+<span class="line"><span>  y = 5             // y = CONST(5)</span></span>
+<span class="line"><span>  z = x + y         // z = BOTTOM (x非常量)</span></span>
+<span class="line"><span>  w = y + 3         // w = CONST(8)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  if (false) {      // 条件为常量false</span></span>
+<span class="line"><span>    dead_code()     // 死代码, 可消除</span></span>
+<span class="line"><span>  }</span></span></code></pre>
+      <h3 id="52-死代码消除"><a href="#52-死代码消除">5.2 死代码消除</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>死代码消除 (Dead Code Elimination, DCE):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>1. 严格死代码:</span></span>
+<span class="line"><span>   定义后从未使用的变量</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   x = compute()    // x从未使用</span></span>
+<span class="line"><span>   => (删除)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>2. 死存储消除:</span></span>
+<span class="line"><span>   写入后未读取就再次写入</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   *p = 1           // 死存储</span></span>
+<span class="line"><span>   *p = 2           // 最终值</span></span>
+<span class="line"><span>   => 删除 *p = 1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>3. 不可达代码消除:</span></span>
+<span class="line"><span>   永远不会执行的基本块</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   if (false) {</span></span>
+<span class="line"><span>     this_is_dead();  // 不可达</span></span>
+<span class="line"><span>   }</span></span>
+<span class="line"><span>   => 删除整个基本块</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>4. 激进死代码消除 (ADCE):</span></span>
+<span class="line"><span>   从出口反向追踪, 标记所有可达指令</span></span>
+<span class="line"><span>   未标记的指令全部删除</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   优化前:</span></span>
+<span class="line"><span>     a = 1        // 死 (a未使用)</span></span>
+<span class="line"><span>     b = 2        // 活 (b被print使用)</span></span>
+<span class="line"><span>     c = a + b    // c死, 但b活</span></span>
+<span class="line"><span>     print(b)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   ADCE后:</span></span>
+<span class="line"><span>     b = 2</span></span>
+<span class="line"><span>     print(b)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   注意: a=1和c=a+b被删除, 因为它们的结果未使用</span></span>
+<span class="line"><span>   但c=a+b中的b使用不应导致a=1保留 (a仅被c使用, c本身死)</span></span></code></pre>
+      <h3 id="53-循环优化"><a href="#53-循环优化">5.3 循环优化</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. 循环不变量外提 (LICM - Loop Invariant Code Motion):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   识别循环中不变的计算, 移到循环外</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   优化前:</span></span>
+<span class="line"><span>     for (i = 0; i &#x3C; n; i++) {</span></span>
+<span class="line"><span>       t = a * b;         // a, b不变</span></span>
+<span class="line"><span>       c[i] = t + i;</span></span>
+<span class="line"><span>     }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   优化后:</span></span>
+<span class="line"><span>     t = a * b;           // 外提</span></span>
+<span class="line"><span>     for (i = 0; i &#x3C; n; i++) {</span></span>
+<span class="line"><span>       c[i] = t + i;</span></span>
+<span class="line"><span>     }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   判断循环不变量的条件:</span></span>
+<span class="line"><span>     - 所有到达定义都在循环外</span></span>
+<span class="line"><span>     - 或所有到达定义都是循环不变量</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>2. 强度削弱 (Strength Reduction):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   替换昂贵运算为廉价运算</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   乘法 -> 加法:</span></span>
+<span class="line"><span>     for (i = 0; i &#x3C; n; i++) {</span></span>
+<span class="line"><span>       a[i] = base + i * 4;   // 乘法</span></span>
+<span class="line"><span>     }</span></span>
+<span class="line"><span>     =></span></span>
+<span class="line"><span>     t = base;</span></span>
+<span class="line"><span>     for (i = 0; i &#x3C; n; i++) {</span></span>
+<span class="line"><span>       a[i] = t;              // 无乘法</span></span>
+<span class="line"><span>       t = t + 4;             // 加法</span></span>
+<span class="line"><span>     }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   除法为2的幂 -> 移位:</span></span>
+<span class="line"><span>     x / 4  ->  x >> 2</span></span>
+<span class="line"><span>     x % 8  ->  x &#x26; 7</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>3. 循环展开 (Loop Unrolling):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   减少循环控制开销, 增加指令级并行</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   优化前:</span></span>
+<span class="line"><span>     for (i = 0; i &#x3C; 4; i++) {</span></span>
+<span class="line"><span>       a[i] = b[i] + c[i];</span></span>
+<span class="line"><span>     }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   完全展开:</span></span>
+<span class="line"><span>     a[0] = b[0] + c[0];</span></span>
+<span class="line"><span>     a[1] = b[1] + c[1];</span></span>
+<span class="line"><span>     a[2] = b[2] + c[2];</span></span>
+<span class="line"><span>     a[3] = b[3] + c[3];</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   部分展开 (factor=2):</span></span>
+<span class="line"><span>     for (i = 0; i &#x3C; 4; i += 2) {</span></span>
+<span class="line"><span>       a[i]   = b[i]   + c[i];</span></span>
+<span class="line"><span>       a[i+1] = b[i+1] + c[i+1];</span></span>
+<span class="line"><span>     }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   代价: 增加代码大小, 可能影响指令缓存</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>4. 循环交换 (Loop Interchange):</span></span>
+<span class="line"><span>   改变嵌套循环顺序, 提高缓存命中率</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   优化前 (列优先访问, 缓存不友好):</span></span>
+<span class="line"><span>     for (i = 0; i &#x3C; N; i++)</span></span>
+<span class="line"><span>       for (j = 0; j &#x3C; M; j++)</span></span>
+<span class="line"><span>         a[j][i] = ...;    // 列优先</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   优化后 (行优先访问, 缓存友好):</span></span>
+<span class="line"><span>     for (j = 0; j &#x3C; M; j++)</span></span>
+<span class="line"><span>       for (i = 0; i &#x3C; N; i++)</span></span>
+<span class="line"><span>         a[j][i] = ...;    // 行优先</span></span></code></pre>
+      <blockquote>
+        <p>
+          跨模块引用：<a href="compiler">编译原理</a>基础篇介绍了基本优化技术。<a
+            href="architecture"
+            >计算机体系结构</a
+          >的流水线和缓存特性影响优化策略的选择。
+        </p>
+      </blockquote>
+      <hr />
+      <h2 id="6-目标代码生成"><a href="#6-目标代码生成">6. 目标代码生成</a></h2>
+      <h3 id="61-指令选择"><a href="#61-指令选择">6.1 指令选择</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>指令选择: 将IR映射到目标机器指令</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>树模式匹配 (Tree Pattern Matching):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  IR树:           目标指令模式:</span></span>
+<span class="line"><span>       +              ADD r1, r2</span></span>
+<span class="line"><span>      / \</span></span>
+<span class="line"><span>     a   *            MUL r3, r4</span></span>
+<span class="line"><span>        / \</span></span>
+<span class="line"><span>       b   c</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  最小代价覆盖:</span></span>
+<span class="line"><span>    方案1: MUL + ADD = 2条指令</span></span>
+<span class="line"><span>    方案2 (ARM): MLA r0, r1, r2, r3 = 1条指令 (乘加)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  动态规划指令选择:</span></span>
+<span class="line"><span>    对每个树节点计算最小代价</span></span>
+<span class="line"><span>    自底向上, 每个节点记录最优指令选择</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    cost(node, rule) = rule.cost + sum(cost(child, best_rule))</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  DAG指令选择:</span></span>
+<span class="line"><span>    公共子表达式在DAG中共享</span></span>
+<span class="line"><span>    避免重复选择</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  考虑因素:</span></span>
+<span class="line"><span>    - 指令延迟 (latency)</span></span>
+<span class="line"><span>    - 指令吞吐率 (throughput)</span></span>
+<span class="line"><span>    - 寄存器约束 (某些指令固定寄存器)</span></span>
+<span class="line"><span>    - 地址模式 (立即数/寄存器/偏移)</span></span></code></pre>
+      <h3 id="62-寄存器分配"><a href="#62-寄存器分配">6.2 寄存器分配</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>图着色寄存器分配 (详细):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Step 1: 活跃变量分析</span></span>
+<span class="line"><span>    计算每个程序点哪些变量活跃</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Step 2: 构建干涉图</span></span>
+<span class="line"><span>    若两个变量在同一程序点同时活跃 -> 干涉</span></span>
+<span class="line"><span>    干涉图中连一条边</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Step 3: 简化 (Simplify)</span></span>
+<span class="line"><span>    反复移除度数 &#x3C; K 的节点, 压入栈</span></span>
+<span class="line"><span>    K = 可用物理寄存器数</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Step 4: 选择 (Select)</span></span>
+<span class="line"><span>    弹栈, 为每个节点分配颜色(寄存器)</span></span>
+<span class="line"><span>    若无可用颜色 -> 溢出(spill)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Step 5: 溢出处理</span></span>
+<span class="line"><span>    选择溢出候选 (最不频繁使用的变量)</span></span>
+<span class="line"><span>    在溢出点插入 load/store 指令</span></span>
+<span class="line"><span>    重新进行寄存器分配</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  示例 (K=3):</span></span>
+<span class="line"><span>    代码:</span></span>
+<span class="line"><span>      a = 1</span></span>
+<span class="line"><span>      b = 2</span></span>
+<span class="line"><span>      c = a + b</span></span>
+<span class="line"><span>      d = c - a</span></span>
+<span class="line"><span>      e = d + b</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    活跃分析:</span></span>
+<span class="line"><span>      a: [1,3,4]  b: [2,3,5]  c: [3,4]</span></span>
+<span class="line"><span>      d: [4,5]    e: [5]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    干涉图:</span></span>
+<span class="line"><span>      a --- b --- c</span></span>
+<span class="line"><span>      |           |</span></span>
+<span class="line"><span>      +-----d-----+</span></span>
+<span class="line"><span>            |</span></span>
+<span class="line"><span>            e</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    简化: e(度1) -> d(度2) -> c(度2) -> a(度1) -> b(度0)</span></span>
+<span class="line"><span>    选择: b=R0, a=R1, c=R0, d=R2, e=R1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>线性扫描寄存器分配:</span></span>
+<span class="line"><span>  适用于JIT编译 (需要快速分配)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  1. 计算每个变量的活跃区间 [start, end]</span></span>
+<span class="line"><span>  2. 按start排序</span></span>
+<span class="line"><span>  3. 扫描活跃区间:</span></span>
+<span class="line"><span>     - 变量开始: 分配空闲寄存器</span></span>
+<span class="line"><span>     - 变量结束: 释放寄存器</span></span>
+<span class="line"><span>     - 无空闲寄存器: 溢出结束最晚的活跃变量</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  优点: O(n)时间复杂度</span></span>
+<span class="line"><span>  缺点: 分配质量不如图着色</span></span></code></pre>
+      <h3 id="63-指令调度"><a href="#63-指令调度">6.3 指令调度</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>指令调度 (Instruction Scheduling):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  目标: 重排指令顺序, 减少流水线停顿</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  列表调度算法:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  1. 构建依赖图 (DAG):</span></span>
+<span class="line"><span>     节点 = 指令</span></span>
+<span class="line"><span>     边 = 数据依赖/资源依赖</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  2. 计算优先级:</span></span>
+<span class="line"><span>     关键路径长度 (从该指令到出口的最长路径)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  3. 逐周期调度:</span></span>
+<span class="line"><span>     每个周期选择优先级最高且依赖满足的指令</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  示例:</span></span>
+<span class="line"><span>    依赖图:</span></span>
+<span class="line"><span>      LOAD r1, [a]     (延迟3周期)</span></span>
+<span class="line"><span>      LOAD r2, [b]     (延迟3周期)</span></span>
+<span class="line"><span>      ADD  r3, r1, r2  (依赖r1, r2)</span></span>
+<span class="line"><span>      MUL  r4, r3, 2   (依赖r3)</span></span>
+<span class="line"><span>      STORE [c], r4    (依赖r4)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  未调度:</span></span>
+<span class="line"><span>    C0: LOAD r1, [a]</span></span>
+<span class="line"><span>    C1: LOAD r2, [b]</span></span>
+<span class="line"><span>    C2: (stall)</span></span>
+<span class="line"><span>    C3: (stall)</span></span>
+<span class="line"><span>    C4: ADD r3, r1, r2</span></span>
+<span class="line"><span>    C5: MUL r4, r3, 2</span></span>
+<span class="line"><span>    C6: STORE [c], r4</span></span>
+<span class="line"><span>    总计: 7周期</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  调度后:</span></span>
+<span class="line"><span>    C0: LOAD r1, [a]</span></span>
+<span class="line"><span>    C1: LOAD r2, [b]</span></span>
+<span class="line"><span>    C2: (其他无关指令可插入)</span></span>
+<span class="line"><span>    C3: (其他无关指令可插入)</span></span>
+<span class="line"><span>    C4: ADD r3, r1, r2</span></span>
+<span class="line"><span>    C5: MUL r4, r3, 2</span></span>
+<span class="line"><span>    C6: STORE [c], r4</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  若有独立指令可填充C2-C3, 则可减少总周期</span></span></code></pre>
+      <blockquote>
+        <p>
+          跨模块引用：<a href="compiler">编译原理</a>基础篇介绍了代码生成的基本概念。<a
+            href="architecture"
+            >计算机体系结构</a
+          >的指令集和流水线设计决定了指令选择和调度的策略。
+        </p>
+      </blockquote>
+      <hr />
+      <h2 id="7-jit编译"><a href="#7-jit编译">7. JIT编译</a></h2>
+      <h3 id="71-jit编译原理"><a href="#71-jit编译原理">7.1 JIT编译原理</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>JIT (Just-In-Time) 编译:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  AOT (Ahead-Of-Time): 编译 -> 执行</span></span>
+<span class="line"><span>  JIT:                  运行时编译 -> 执行</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  混合模式执行:</span></span>
+<span class="line"><span>    源代码 -> 字节码 -> 解释执行</span></span>
+<span class="line"><span>                      -> JIT编译 -> 机器码执行</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  两种JIT策略:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  1. 方法JIT (Method JIT):</span></span>
+<span class="line"><span>     首次调用方法时编译</span></span>
+<span class="line"><span>     例: Oracle HotSpot C1编译器 (Client模式)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  2. 追踪JIT (Trace JIT):</span></span>
+<span class="line"><span>     记录热路径 (hot trace)</span></span>
+<span class="line"><span>     仅编译热路径</span></span>
+<span class="line"><span>     例: LuaJIT, 早期V8</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  JIT的优势:</span></span>
+<span class="line"><span>    - 运行时类型信息 (去虚化, 内联)</span></span>
+<span class="line"><span>    - 运行时性能数据 (分支预测, 优化)</span></span>
+<span class="line"><span>    - 动态代码生成 (生成专门化的代码)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  JIT的劣势:</span></span>
+<span class="line"><span>    - 启动延迟 (编译时间)</span></span>
+<span class="line"><span>    - 内存占用 (编译后的代码)</span></span>
+<span class="line"><span>    - 代码缓存失效 (动态加载/卸载)</span></span></code></pre>
+      <h3 id="72-hotspot分层编译"><a href="#72-hotspot分层编译">7.2 HotSpot分层编译</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>HotSpot JVM分层编译:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Level 0: 解释执行</span></span>
+<span class="line"><span>    收集性能分析数据 (方法调用次数, 分支频率, 类型信息)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Level 1: C1编译 (简单编译)</span></span>
+<span class="line"><span>    快速编译, 简单优化</span></span>
+<span class="line"><span>    适用于启动阶段</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Level 2: C1编译 (有限C2性能数据)</span></span>
+<span class="line"><span>    C1编译 + 有限的性能数据引导优化</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Level 3: C1编译 (完整C2性能数据)</span></span>
+<span class="line"><span>    C1编译 + 完整的性能数据收集</span></span>
+<span class="line"><span>    为C2编译做准备</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Level 4: C2编译 (完全优化)</span></span>
+<span class="line"><span>    激进优化, 编译时间长</span></span>
+<span class="line"><span>    适用于热点代码</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  分层策略:</span></span>
+<span class="line"><span>    冷代码: Level 0 (解释)</span></span>
+<span class="line"><span>    温代码: Level 1-3 (C1编译)</span></span>
+<span class="line"><span>    热代码: Level 4 (C2编译)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  逆优化 (Deoptimization):</span></span>
+<span class="line"><span>    C2编译的假设可能失效 (如类型假设)</span></span>
+<span class="line"><span>    失效时回退到解释执行</span></span>
+<span class="line"><span>    重新收集数据, 可能重新编译</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  例:</span></span>
+<span class="line"><span>    方法f()假设参数总是Integer</span></span>
+<span class="line"><span>    C2编译生成Integer专用代码</span></span>
+<span class="line"><span>    某次调用传入String -> 逆优化</span></span>
+<span class="line"><span>    回退到解释执行, 重新编译为通用代码</span></span></code></pre>
+      <h3 id="73-jit优化技术"><a href="#73-jit优化技术">7.3 JIT优化技术</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>JIT特有优化:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>1. 内联缓存 (Inline Cache):</span></span>
+<span class="line"><span>   记录虚方法调用的历史接收者类型</span></span>
+<span class="line"><span>   生成类型检查 + 直接调用</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   优化前 (虚调用):</span></span>
+<span class="line"><span>     obj.foo()  -> 查虚方法表, 间接调用</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   优化后 (内联缓存):</span></span>
+<span class="line"><span>     if (obj.getClass() == CachedClass) {</span></span>
+<span class="line"><span>       CachedClass.foo(obj);  // 直接调用, 可内联</span></span>
+<span class="line"><span>     } else {</span></span>
+<span class="line"><span>       vtable_lookup(obj, "foo");  // 回退</span></span>
+<span class="line"><span>     }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>2. 逃逸分析 (Escape Analysis):</span></span>
+<span class="line"><span>   判断对象是否逃逸出方法/线程</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   未逃逸 -> 栈上分配 (替代堆分配)</span></span>
+<span class="line"><span>   未逃逸 -> 标量替换 (拆解为基本类型)</span></span>
+<span class="line"><span>   未逃逸 -> 锁消除 (去除不必要的同步)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   例:</span></span>
+<span class="line"><span>     void foo() {</span></span>
+<span class="line"><span>       Point p = new Point(1, 2);  // p未逃逸</span></span>
+<span class="line"><span>       return p.x + p.y;</span></span>
+<span class="line"><span>     }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   优化后:</span></span>
+<span class="line"><span>     void foo() {</span></span>
+<span class="line"><span>       int p_x = 1;  // 标量替换</span></span>
+<span class="line"><span>       int p_y = 2;</span></span>
+<span class="line"><span>       return p_x + p_y;  // 无堆分配, 无GC压力</span></span>
+<span class="line"><span>     }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>3. 分支频率引导优化:</span></span>
+<span class="line"><span>   根据运行时统计优化分支布局</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   if (rare_condition) {  // 1%概率</span></span>
+<span class="line"><span>     cold_path();</span></span>
+<span class="line"><span>   } else {</span></span>
+<span class="line"><span>     hot_path();          // 99%概率</span></span>
+<span class="line"><span>   }</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   优化: 将hot_path放在fall-through位置</span></span>
+<span class="line"><span>   减少分支预测失败</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>4. 去虚化 (Devirtualization):</span></span>
+<span class="line"><span>   将虚调用转为直接调用</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>   类型已知 -> 直接调用</span></span>
+<span class="line"><span>   只有一个实现 -> 直接调用</span></span>
+<span class="line"><span>   内联缓存命中 -> 直接调用</span></span></code></pre>
+      <blockquote>
+        <p>
+          跨模块引用：<a href="compiler">编译原理</a>基础篇介绍了编译器的基本优化。<a
+            href="java/overview"
+            >Java</a
+          >的HotSpot JVM是JIT编译的典型实现。
+        </p>
+      </blockquote>
+      <hr />
+      <h2 id="8-gc算法"><a href="#8-gc算法">8. GC算法</a></h2>
+      <h3 id="81-标记-清除-mark-sweep">
+        <a href="#81-标记-清除-mark-sweep">8.1 标记-清除 (Mark-Sweep)</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>标记-清除算法:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  阶段1: 标记 (Mark)</span></span>
+<span class="line"><span>    从根集合(GC Roots)出发, 遍历所有可达对象, 标记为存活</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  阶段2: 清除 (Sweep)</span></span>
+<span class="line"><span>    扫描整个堆, 回收未标记的对象</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  +------------------------------------------+</span></span>
+<span class="line"><span>  |  堆内存                                   |</span></span>
+<span class="line"><span>  |  [A*][B ][C*][D ][E*][F ][G*][H ]        |</span></span>
+<span class="line"><span>  |                                          |</span></span>
+<span class="line"><span>  |  * = 已标记 (存活)                        |</span></span>
+<span class="line"><span>  |    = 未标记 (垃圾)                        |</span></span>
+<span class="line"><span>  +------------------------------------------+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  标记后清除:</span></span>
+<span class="line"><span>  [A*][  ][C*][  ][E*][  ][G*][  ]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  优点: 实现简单</span></span>
+<span class="line"><span>  缺点:</span></span>
+<span class="line"><span>    1. 内存碎片 (空闲块不连续)</span></span>
+<span class="line"><span>    2. 分配效率低 (需维护空闲链表)</span></span>
+<span class="line"><span>    3. STW (Stop-The-World) 暂停</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  空闲链表:</span></span>
+<span class="line"><span>    free_list -> [B,8B] -> [D,16B] -> [F,8B] -> [H,8B]</span></span>
+<span class="line"><span>    分配时搜索足够大的空闲块 (First-Fit / Best-Fit)</span></span></code></pre>
+      <h3 id="82-复制算法-copying"><a href="#82-复制算法-copying">8.2 复制算法 (Copying)</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>复制算法 (Cheney算法):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  将堆分为两个半区: From空间和To空间</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  分配: 在From空间指针递增分配 (bump pointer)</span></span>
+<span class="line"><span>  GC: 将存活对象从From复制到To, 交换两空间</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  +-------------------+-------------------+</span></span>
+<span class="line"><span>  |  From Space       |  To Space          |</span></span>
+<span class="line"><span>  |  [A][B][C][D][E]  |                    |</span></span>
+<span class="line"><span>  +-------------------+-------------------+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  GC后:</span></span>
+<span class="line"><span>  +-------------------+-------------------+</span></span>
+<span class="line"><span>  |  From Space       |  To Space          |</span></span>
+<span class="line"><span>  |                   |  [A][C][E]         |</span></span>
+<span class="line"><span>  +-------------------+-------------------+</span></span>
+<span class="line"><span>                      交换</span></span>
+<span class="line"><span>  +-------------------+-------------------+</span></span>
+<span class="line"><span>  |  From Space       |  To Space          |</span></span>
+<span class="line"><span>  |  [A][C][E]        |                    |</span></span>
+<span class="line"><span>  +-------------------+-------------------+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  优点:</span></span>
+<span class="line"><span>    1. 无碎片 (对象紧凑排列)</span></span>
+<span class="line"><span>    2. 分配极快 (bump pointer)</span></span>
+<span class="line"><span>    3. 只遍历存活对象 (与垃圾量成正比)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  缺点:</span></span>
+<span class="line"><span>    1. 空间利用率50% (需要双倍空间)</span></span>
+<span class="line"><span>    2. 复制开销 (存活对象多时慢)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  适用于: 存活对象少的场景 (年轻代)</span></span></code></pre>
+      <h3 id="83-分代gc"><a href="#83-分代gc">8.3 分代GC</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>分代假说 (Generational Hypothesis):</span></span>
+<span class="line"><span>  弱分代假说: 绝大多数对象朝生夕死</span></span>
+<span class="line"><span>  强分代假说: 熬过越多次GC的对象越不容易死亡</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>分代GC设计:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  +------------------------------------------+</span></span>
+<span class="line"><span>  |  Young Generation (年轻代)                |</span></span>
+<span class="line"><span>  |  +------------------+--------------------+</span></span>
+<span class="line"><span>  |  | Eden | Survivor0 | Survivor1          |</span></span>
+<span class="line"><span>  |  +------------------+--------------------+</span></span>
+<span class="line"><span>  |  新对象分配在Eden                       |</span></span>
+<span class="line"><span>  |  GC后存活对象复制到Survivor             |</span></span>
+<span class="line"><span>  |  两次GC后仍存活 -> 晋升到老年代         |</span></span>
+<span class="line"><span>  +------------------------------------------+</span></span>
+<span class="line"><span>  |  Old Generation (老年代)                  |</span></span>
+<span class="line"><span>  |  长期存活对象                            |</span></span>
+<span class="line"><span>  |  使用标记-清除/标记-压缩                 |</span></span>
+<span class="line"><span>  +------------------------------------------+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Minor GC: 只回收年轻代 (频率高, 速度快)</span></span>
+<span class="line"><span>  Major GC: 只回收老年代</span></span>
+<span class="line"><span>  Full GC:  回收整个堆 (频率低, 速度慢)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  HotSpot GC实现:</span></span>
+<span class="line"><span>    Serial GC:     单线程, 串行GC</span></span>
+<span class="line"><span>    Parallel GC:   多线程, 吞吐量优先</span></span>
+<span class="line"><span>    CMS:           并发标记清除, 低延迟</span></span>
+<span class="line"><span>    G1:            分区收集, 可预测暂停</span></span>
+<span class="line"><span>    ZGC:           着色指针, 亚毫秒暂停</span></span>
+<span class="line"><span>    Shenandoah:    Brooks指针, 低延迟</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  G1 (Garbage-First):</span></span>
+<span class="line"><span>    将堆划分为等大Region (1-32MB)</span></span>
+<span class="line"><span>    每个Region可以是Eden/Survivor/Old/Humongous</span></span>
+<span class="line"><span>    优先回收垃圾最多的Region (Garbage-First)</span></span>
+<span class="line"><span>    可设定目标暂停时间</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    +---+---+---+---+---+---+---+---+</span></span>
+<span class="line"><span>    | E | S | O | E | O | H | E | F |</span></span>
+<span class="line"><span>    +---+---+---+---+---+---+---+---+</span></span>
+<span class="line"><span>    E=Eden S=Survivor O=Old H=Humongous F=Free</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  ZGC:</span></span>
+<span class="line"><span>    着色指针 (Colored Pointers):</span></span>
+<span class="line"><span>      在64位指针中嵌入GC元数据</span></span>
+<span class="line"><span>      无需读屏障即可判断对象状态</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    读屏障 (Load Barrier):</span></span>
+<span class="line"><span>      加载引用时检查是否需要修正</span></span>
+<span class="line"><span>      允许并发整理 (对象移动时应用仍可访问)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    暂停时间 &#x3C; 1ms (与堆大小无关)</span></span></code></pre>
+      <h3 id="84-引用计数与rc优化"><a href="#84-引用计数与rc优化">8.4 引用计数与RC优化</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>引用计数 (Reference Counting):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  每个对象维护引用计数</span></span>
+<span class="line"><span>  引用增加: count++</span></span>
+<span class="line"><span>  引用减少: count--</span></span>
+<span class="line"><span>  count=0: 立即回收</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  优点:</span></span>
+<span class="line"><span>    - 无STW暂停</span></span>
+<span class="line"><span>    - 内存及时回收</span></span>
+<span class="line"><span>    - 实现简单</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  缺点:</span></span>
+<span class="line"><span>    - 循环引用无法回收</span></span>
+<span class="line"><span>    - 计数更新开销大 (每次赋值)</span></span>
+<span class="line"><span>    - 非原子操作不安全 (多线程)</span></span>
+<span class="line"><span>    - 缓存局部性差 (计数分散)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  循环引用:</span></span>
+<span class="line"><span>    A -> B -> C -> A  (三者count均>0, 但整体不可达)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  解决:</span></span>
+<span class="line"><span>    1. 弱引用 (weak reference): 不增加计数</span></span>
+<span class="line"><span>    2. 辅助追踪式GC: 定期运行追踪GC回收循环</span></span>
+<span class="line"><span>    3. 试探式回收: Python的gc模块</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  优化: 延迟引用计数 (Deferred RC)</span></span>
+<span class="line"><span>    局部变量的引用计数更新延迟到函数退出</span></span>
+<span class="line"><span>    减少栈上引用的频繁更新</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  优化: 缓冲引用计数 (Buffered RC)</span></span>
+<span class="line"><span>    引用计数更新先缓冲, 批量处理</span></span>
+<span class="line"><span>    减少内存写操作</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  Swift ARC (Automatic Reference Counting):</span></span>
+<span class="line"><span>    编译器自动插入retain/release</span></span>
+<span class="line"><span>    强引用 + 弱引用 + 无主引用(unowned)</span></span>
+<span class="line"><span>    无GC暂停, 但需手动处理循环引用</span></span></code></pre>
+      <blockquote>
+        <p>
+          跨模块引用：<a href="os">操作系统</a>的内存管理是GC的基础。<a href="compiler">编译原理</a
+          >的逃逸分析影响GC压力。
+        </p>
+      </blockquote>
+      <hr />
+      <h2 id="9-链接与加载"><a href="#9-链接与加载">9. 链接与加载</a></h2>
+      <h3 id="91-静态链接"><a href="#91-静态链接">9.1 静态链接</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>静态链接:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  将多个目标文件合并为一个可执行文件</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  符号解析:</span></span>
+<span class="line"><span>    强符号: 函数定义, 已初始化全局变量</span></span>
+<span class="line"><span>    弱符号: 未初始化全局变量, __attribute__((weak))</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    规则:</span></span>
+<span class="line"><span>      1. 不允许两个强符号同名</span></span>
+<span class="line"><span>      2. 一个强+一个弱 -> 选强</span></span>
+<span class="line"><span>      3. 两个弱 -> 任选一个 (可能产生难以调试的bug)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  重定位:</span></span>
+<span class="line"><span>    修改代码和数据中的地址引用</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    R_X86_64_32:   绝对地址 (32位)</span></span>
+<span class="line"><span>    R_X86_64_PC32: PC相对地址 (32位)</span></span>
+<span class="line"><span>    R_X86_64_64:   绝对地址 (64位)</span></span>
+<span class="line"><span>    R_X86_64_PLT32: 通过PLT的函数调用</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  静态链接示例:</span></span>
+<span class="line"><span>    gcc -static main.o utils.o -o program</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    可执行文件 = main.o + utils.o + libc.a</span></span>
+<span class="line"><span>    所有库代码被复制到可执行文件中</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    缺点:</span></span>
+<span class="line"><span>      - 可执行文件大</span></span>
+<span class="line"><span>      - 库更新需重新链接</span></span>
+<span class="line"><span>      - 多个进程加载相同库 -> 内存浪费</span></span></code></pre>
+      <h3 id="92-动态链接"><a href="#92-动态链接">9.2 动态链接</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>动态链接 (Dynamic Linking):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  运行时加载共享库 (.so / .dll)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  编译时:</span></span>
+<span class="line"><span>    gcc -fPIC -shared -o libutils.so utils.c</span></span>
+<span class="line"><span>    gcc main.c -lutils -o program</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  -fPIC (Position Independent Code):</span></span>
+<span class="line"><span>    生成位置无关代码</span></span>
+<span class="line"><span>    代码段可在任意地址加载, 无需重定位</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    实现:</span></span>
+<span class="line"><span>      全局变量: 通过GOT (Global Offset Table)间接访问</span></span>
+<span class="line"><span>      函数调用: 通过PLT (Procedure Linkage Table)间接调用</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  GOT/PLT工作原理:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    首次调用 foo():</span></span>
+<span class="line"><span>      call foo@plt          // 跳到PLT条目</span></span>
+<span class="line"><span>      -> jmp *GOT[foo]      // GOT[foo]初始指向plt[0]</span></span>
+<span class="line"><span>      -> push reloc_index   // 压入重定位索引</span></span>
+<span class="line"><span>      -> jmp resolver       // 调用动态链接器</span></span>
+<span class="line"><span>      -> 解析foo的实际地址</span></span>
+<span class="line"><span>      -> 写入GOT[foo]       // 更新GOT</span></span>
+<span class="line"><span>      -> 跳转到foo()</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    后续调用 foo():</span></span>
+<span class="line"><span>      call foo@plt</span></span>
+<span class="line"><span>      -> jmp *GOT[foo]      // GOT[foo]已是实际地址</span></span>
+<span class="line"><span>      -> 直接跳转 (无额外开销)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  延迟绑定 (Lazy Binding):</span></span>
+<span class="line"><span>    函数地址在首次调用时才解析</span></span>
+<span class="line"><span>    减少启动时间</span></span>
+<span class="line"><span>    可通过LD_BIND_NOW=1禁用 (立即解析所有符号)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  动态链接的优点:</span></span>
+<span class="line"><span>    - 可执行文件小</span></span>
+<span class="line"><span>    - 库更新无需重新编译</span></span>
+<span class="line"><span>    - 多进程共享库代码 (节省内存)</span></span></code></pre>
+      <h3 id="93-程序加载"><a href="#93-程序加载">9.3 程序加载</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>程序加载流程 (Linux execve):</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  1. execve() 系统调用</span></span>
+<span class="line"><span>     参数: 可执行文件路径, 命令行参数, 环境变量</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  2. 内核操作:</span></span>
+<span class="line"><span>     a. 检查文件格式 (ELF magic: 0x7f 'E' 'L' 'F')</span></span>
+<span class="line"><span>     b. 读取ELF头和程序头表 (Program Headers)</span></span>
+<span class="line"><span>     c. 创建新的地址空间 (新进程)</span></span>
+<span class="line"><span>     d. 映射段到虚拟地址:</span></span>
+<span class="line"><span>        - .text段: PROT_READ | PROT_EXEC</span></span>
+<span class="line"><span>        - .data段: PROT_READ | PROT_WRITE</span></span>
+<span class="line"><span>        - .bss段:  匿名映射, 清零</span></span>
+<span class="line"><span>     e. 设置栈 (压入argc, argv, envp, auxv)</span></span>
+<span class="line"><span>     f. 设置堆 (brk起始地址)</span></span>
+<span class="line"><span>     g. 映射动态链接器 (ld-linux.so)</span></span>
+<span class="line"><span>     h. 跳转到动态链接器入口</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  3. 动态链接器 (ld-linux.so):</span></span>
+<span class="line"><span>     a. 加载所有依赖的共享库 (BFS遍历依赖图)</span></span>
+<span class="line"><span>     b. 符号解析</span></span>
+<span class="line"><span>     c. 重定位</span></span>
+<span class="line"><span>     d. 执行初始化函数 (.init_array)</span></span>
+<span class="line"><span>     e. 跳转到程序入口 (e_entry)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  ELF加载视图:</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  虚拟地址空间:</span></span>
+<span class="line"><span>  +---------------------------+ 高地址</span></span>
+<span class="line"><span>  |  Stack                    |</span></span>
+<span class="line"><span>  |  v (向下增长)              |</span></span>
+<span class="line"><span>  |                           |</span></span>
+<span class="line"><span>  |  Shared Libraries         |</span></span>
+<span class="line"><span>  |  (ld-linux.so, libc.so)   |</span></span>
+<span class="line"><span>  |                           |</span></span>
+<span class="line"><span>  |  ^ (向上增长)              |</span></span>
+<span class="line"><span>  |  Heap                     |</span></span>
+<span class="line"><span>  +---------------------------+</span></span>
+<span class="line"><span>  |  .bss (未初始化数据)       |</span></span>
+<span class="line"><span>  |  .data (已初始化数据)      |</span></span>
+<span class="line"><span>  |  .text (代码)              |</span></span>
+<span class="line"><span>  +---------------------------+ 低地址</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  位置无关可执行文件 (PIE):</span></span>
+<span class="line"><span>    可执行文件本身也是位置无关的</span></span>
+<span class="line"><span>    可加载到任意基址</span></span>
+<span class="line"><span>    ASLR (Address Space Layout Randomization) 安全特性</span></span>
+<span class="line"><span>    gcc -pie -fPIE 默认开启 (现代Linux)</span></span></code></pre>
+      <blockquote>
+        <p>
+          跨模块引用：<a href="os">操作系统</a>的进程创建和虚拟内存是程序加载的基础。<a
+            href="compiler"
+            >编译原理</a
+          >基础篇介绍了链接的基本概念。
+        </p>
+      </blockquote>
+      <hr />
+      <h2 id="10-速查表"><a href="#10-速查表">10. 速查表</a></h2>
+      <h3 id="101-编译阶段速查"><a href="#101-编译阶段速查">10.1 编译阶段速查</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>阶段</th>
+            <th>输入</th>
+            <th>输出</th>
+            <th>核心算法</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>词法分析</td>
+            <td>字符流</td>
+            <td>Token流</td>
+            <td>Thompson构造+子集构造</td>
+          </tr>
+          <tr>
+            <td>语法分析</td>
+            <td>Token流</td>
+            <td>AST</td>
+            <td>LL/LR/LALR分析</td>
+          </tr>
+          <tr>
+            <td>语义分析</td>
+            <td>AST</td>
+            <td>标注AST</td>
+            <td>类型检查+属性文法</td>
+          </tr>
+          <tr>
+            <td>IR生成</td>
+            <td>标注AST</td>
+            <td>SSA IR</td>
+            <td>语法制导翻译</td>
+          </tr>
+          <tr>
+            <td>优化</td>
+            <td>SSA IR</td>
+            <td>优化IR</td>
+            <td>数据流分析+循环优化</td>
+          </tr>
+          <tr>
+            <td>代码生成</td>
+            <td>优化IR</td>
+            <td>目标代码</td>
+            <td>指令选择+寄存器分配</td>
+          </tr>
+          <tr>
+            <td>链接</td>
+            <td>目标文件</td>
+            <td>可执行</td>
+            <td>符号解析+重定位</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="102-分析方法速查"><a href="#102-分析方法速查">10.2 分析方法速查</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>方法</th>
+            <th>方向</th>
+            <th>能力</th>
+            <th>向前看</th>
+            <th>冲突处理</th>
+            <th>工具</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>LL(1)</td>
+            <td>自顶向下</td>
+            <td>弱</td>
+            <td>1</td>
+            <td>提取公因子</td>
+            <td>递归下降</td>
+          </tr>
+          <tr>
+            <td>LL(*)</td>
+            <td>自顶向下</td>
+            <td>中</td>
+            <td>无限</td>
+            <td>预测DFA</td>
+            <td>ANTLR4</td>
+          </tr>
+          <tr>
+            <td>SLR(1)</td>
+            <td>自底向上</td>
+            <td>中弱</td>
+            <td>1</td>
+            <td>FOLLOW集</td>
+            <td>-</td>
+          </tr>
+          <tr>
+            <td>LALR(1)</td>
+            <td>自底向上</td>
+            <td>中</td>
+            <td>1</td>
+            <td>合并同心集</td>
+            <td>Yacc/Bison</td>
+          </tr>
+          <tr>
+            <td>LR(1)</td>
+            <td>自底向上</td>
+            <td>强</td>
+            <td>1</td>
+            <td>精确向前看</td>
+            <td>-</td>
+          </tr>
+          <tr>
+            <td>GLR</td>
+            <td>自底向上</td>
+            <td>最强</td>
+            <td>-</td>
+            <td>并行分析</td>
+            <td>Elkhound</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="103-gc算法速查"><a href="#103-gc算法速查">10.3 GC算法速查</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>算法</th>
+            <th>碎片</th>
+            <th>暂停</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="空间"
+                data-module="cpp"
+                data-def="空间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">空间</abbr></span
+              >开销
+            </th>
+            <th>适用场景</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >-清除
+            </td>
+            <td>有</td>
+            <td>STW</td>
+            <td>低</td>
+            <td>
+              老<span
+                class="term-tip"
+                data-term="年"
+                data-module="cpp"
+                data-def="年"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">年</abbr></span
+              >代
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="复制"
+                data-module="github"
+                data-def="复制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">复制</abbr></span
+              >
+            </td>
+            <td>无</td>
+            <td>STW</td>
+            <td>50%</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="年"
+                data-module="cpp"
+                data-def="年"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">年</abbr></span
+              >轻代
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >-<span
+                class="term-tip"
+                data-term="压缩"
+                data-module="html5"
+                data-def="GZIP、Brotli 资源压缩"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">压缩</abbr></span
+              >
+            </td>
+            <td>无</td>
+            <td>STW</td>
+            <td>低</td>
+            <td>
+              老<span
+                class="term-tip"
+                data-term="年"
+                data-module="cpp"
+                data-def="年"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">年</abbr></span
+              >代
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="引用计数"
+                data-module="javascript"
+                data-def="跟踪对象被引用次数的垃圾回收策略"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">引用计数</abbr></span
+              >
+            </td>
+            <td>有</td>
+            <td>无</td>
+            <td>低</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="实时"
+                data-module="cpp"
+                data-def="实时"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">实时</abbr></span
+              >系统
+            </td>
+          </tr>
+          <tr>
+            <td>分代</td>
+            <td>少</td>
+            <td>短</td>
+            <td>中</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="通用"
+                data-module="cpp"
+                data-def="通用"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通用</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>ZGC</td>
+            <td>无</td>
+            <td>&#x3C;1ms</td>
+            <td>中</td>
+            <td>
+              低<span
+                class="term-tip"
+                data-term="延迟"
+                data-module="cpp"
+                data-def="延迟操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">延迟</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="104-优化技术速查"><a href="#104-优化技术速查">10.4 优化技术速查</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="优化"
+                data-module="cs-fundamentals"
+                data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">优化</abbr></span
+              >
+            </th>
+            <th>作用</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="阶段"
+                data-module="github"
+                data-def="阶段"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">阶段</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="依赖"
+                data-module="c"
+                data-def="两个计算之间的顺序关系"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">依赖</abbr></span
+              >分析
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="常量"
+                data-module="c"
+                data-def="程序中不可改变的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">常量</abbr></span
+              >折叠
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="编译期计算"
+                data-module="cpp"
+                data-def="编译时执行的计算"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编译期计算</abbr></span
+              >
+            </td>
+            <td>局部</td>
+            <td>无</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="常量"
+                data-module="c"
+                data-def="程序中不可改变的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">常量</abbr></span
+              >传播
+            </td>
+            <td>
+              传播已知<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >
+            </td>
+            <td>全局</td>
+            <td>
+              到达<span
+                class="term-tip"
+                data-term="定义"
+                data-module="c"
+                data-def="创建变量或函数的实体"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">定义</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="死代码"
+                data-module="c"
+                data-def="永远不会被执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">死代码</abbr></span
+              >消除
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="删除"
+                data-module="github"
+                data-def="删除"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">删除</abbr></span
+              >无用代码
+            </td>
+            <td>全局</td>
+            <td>
+              活跃<span
+                class="term-tip"
+                data-term="变量"
+                data-module="c"
+                data-def="存储数据的命名位置"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">变量</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>CSE</td>
+            <td>
+              消除<span
+                class="term-tip"
+                data-term="重复"
+                data-module="github"
+                data-def="重复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">重复</abbr></span
+              >计算
+            </td>
+            <td>局部/全局</td>
+            <td>
+              可用<span
+                class="term-tip"
+                data-term="表达式"
+                data-module="c"
+                data-def="求值后产生结果的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表达式</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>LICM</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >不<span
+                class="term-tip"
+                data-term="变量"
+                data-module="c"
+                data-def="存储数据的命名位置"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">变量</abbr></span
+              >外提
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >不<span
+                class="term-tip"
+                data-term="变量"
+                data-module="c"
+                data-def="存储数据的命名位置"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">变量</abbr></span
+              >检测
+            </td>
+          </tr>
+          <tr>
+            <td>
+              强<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >削<span
+                class="term-tip"
+                data-term="弱"
+                data-module="cpp"
+                data-def="弱"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">弱</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="替换"
+                data-module="github"
+                data-def="替换"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">替换</abbr></span
+              >昂贵<span
+                class="term-tip"
+                data-term="操作"
+                data-module="github"
+                data-def="GitHub Actions 工作流"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">操作</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >
+            </td>
+            <td>
+              归纳<span
+                class="term-tip"
+                data-term="变量"
+                data-module="c"
+                data-def="存储数据的命名位置"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">变量</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="内联"
+                data-module="c"
+                data-def="请求编译器内联展开"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内联</abbr></span
+              >
+            </td>
+            <td>
+              消除<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >开销
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="过程"
+                data-module="c"
+                data-def="执行特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">过程</abbr></span
+              >间
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >图
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="尾调用优化"
+                data-module="c"
+                data-def="消除尾调用的栈帧"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">尾调用优化</abbr></span
+              >
+            </td>
+            <td>
+              复用<span
+                class="term-tip"
+                data-term="栈帧"
+                data-module="c"
+                data-def="函数调用的栈区域"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">栈帧</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="过程"
+                data-module="c"
+                data-def="执行特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">过程</abbr></span
+              >间
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="控制流"
+                data-module="c"
+                data-def="程序执行顺序的控制"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">控制流</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="逃逸分析"
+                data-module="cpp"
+                data-def="分析变量逃逸"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">逃逸分析</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="栈"
+                data-module="c"
+                data-def="后进先出的数据结构"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">栈</abbr></span
+              >上<span
+                class="term-tip"
+                data-term="分配"
+                data-module="github"
+                data-def="将 Issue 指派给某人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分配</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="JIT"
+                data-module="java"
+                data-def="即时编译器，将热点字节码编译为本地机器码以提升性能"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JIT</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="数据流"
+                data-module="java"
+                data-def="&#x60;DataInputStream&#x60;/&#x60;DataOutputStream&#x60;，以机器无关方式读写基本类型数据"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">数据流</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <hr />
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <em>Compilers: Principles, Techniques, and Tools</em> (2nd Edition) — Aho, Lam, Sethi,
+          Ullman (龙书)
+        </li>
+        <li><em>Advanced Compiler Design and Implementation</em> — Steven Muchnick</li>
+        <li><em>Engineering a Compiler</em> (3rd Edition) — Cooper &#x26; Torczon</li>
+        <li>
+          <em
+            >The Garbage
+            <span
+              class="term-tip"
+              data-term="Collection"
+              data-module="java"
+              data-def="所有单列集合的根接口，定义 &#x60;add&#x60;、&#x60;remove&#x60;、&#x60;contains&#x60;、&#x60;size&#x60; 等基本操作"
+              data-slug="java/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">Collection</abbr></span
+            >
+            Handbook</em
+          >
+          — Jones, Hosking, Moss
+        </li>
+        <li><em>Linkers and Loaders</em> — John R. Levine</li>
+        <li><em>LLVM Cookbook</em> — Mayur Pandey, Suyog Sarda</li>
+      </ul>
+    </article>
+  </body>
+</html>

@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>实时音频处理</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">实时音频处理</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">实时音频</span><span class="doc-tag">流式处理</span
+          ><span class="doc-tag">VAD</span><span class="doc-tag">WebRTC</span
+          ><span class="doc-tag">延迟</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解实时音频的延迟预算、环形缓冲区、VAD门控和中断处理</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="实时音频处理"><a href="#实时音频处理">实时音频处理</a></h1>
+      <blockquote>
+        <p>
+          批量流水线处理文件。实时流水线在下20毫秒到达之前处理这20毫秒。每个对话AI、广播工作室和电话机器人的生死都取决于这个延迟预算。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 6
+        · 02（频谱图），Phase 6 · 04（ASR），Phase 6 · 07（TTS） <strong>时间:</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        你想要一个感觉有生命的语音助手。人类对话轮换延迟约230 ms（静音到响应）。超过500
+        ms感觉像机器人；超过1500 ms感觉坏了。2026年完整的<strong>听 → 理解 → 回应 → 说</strong
+        >循环预算：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>阶段</th>
+            <th>预算</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>麦克风 → 缓冲</td>
+            <td>20 ms</td>
+          </tr>
+          <tr>
+            <td>VAD</td>
+            <td>10 ms</td>
+          </tr>
+          <tr>
+            <td>ASR（流式）</td>
+            <td>150 ms</td>
+          </tr>
+          <tr>
+            <td>LLM（首token）</td>
+            <td>100 ms</td>
+          </tr>
+          <tr>
+            <td>TTS（首块）</td>
+            <td>100 ms</td>
+          </tr>
+          <tr>
+            <td>渲染 → 扬声器</td>
+            <td>20 ms</td>
+          </tr>
+          <tr>
+            <td><strong>总计</strong></td>
+            <td><strong>~400 ms</strong></td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Moshi（Kyutai，2024）实现了200 ms全双工。GPT-4o-realtime（2024）约320
+        ms。2022年的级联流水线延迟2500 ms。10倍改进来自三项技术：(1) 全面流式化，(2)
+        带部分结果的异步流水线，(3) 可中断生成。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <p>
+        <strong>帧/块/窗口。</strong> 实时音频以固定大小块流动。常见选择：20 ms（16
+        kHz下320个样本）。下游所有环节必须跟上这个节奏。
+      </p>
+      <p>
+        <strong>环形缓冲区。</strong>
+        固定大小循环缓冲区。生产者线程写入新帧，消费者线程读取。防止热路径上的内存分配。大小约等于最大延迟
+        × 采样率；2秒16 kHz环形 = 32,000个样本。
+      </p>
+      <p>
+        <strong>VAD（语音活动检测）。</strong> 没人说话时门控下游工作。Silero VAD 4.0 (2024)
+        在CPU上每30 ms帧运行&#x3C;1 ms。<code>webrtcvad</code>是较老的替代方案。
+      </p>
+      <p>
+        <strong>流式ASR。</strong>
+        音频到达时输出部分转录的模型。Parakeet-CTC-0.6B在流式模式下（NeMo，2024）以320
+        ms延迟达到2-5% WER。Whisper-Streaming（Macháček等，2023）分块Whisper实现近流式，延迟约2秒。
+      </p>
+      <p>
+        <strong>中断。</strong>
+        当用户在助手说话时说话，你必须(a)检测打断，(b)停止TTS，(c)丢弃剩余LLM输出。所有这些在100
+        ms内完成，否则用户感觉助手是聋的。
+      </p>
+      <p>
+        <strong>WebRTC Opus传输。</strong> 20 ms帧，48 kHz，自适应比特率8-128
+        kbps。浏览器和移动端的标准。LiveKit、Daily.co、Pion是2026年构建语音应用的技术栈。
+      </p>
+      <p>
+        <strong>抖动缓冲区。</strong> 网络数据包乱序/延迟到达。抖动缓冲区重新排序和平滑；太小 →
+        可听间隙，太大 → 延迟。典型60-80 ms。
+      </p>
+      <h3 id="常见问题"><a href="#常见问题">常见问题</a></h3>
+      <ul>
+        <li>
+          <strong>线程竞争。</strong> Python的GIL +
+          重型模型可能饿死音频线程。使用C回调音频库（sounddevice、PortAudio），让Python远离热路径。
+        </li>
+        <li>
+          <strong>采样率转换延迟。</strong> 流水线内重采样增加5-20
+          ms。要么预先重采样，要么使用零延迟重采样器（PolyPhase、<code>soxr_hq</code>）。
+        </li>
+        <li>
+          <strong>TTS预热。</strong> 即使是快速的TTS如Kokoro，首次请求也有100-200 ms预热。缓存模型 +
+          在第一次真实轮次前用虚拟运行预热。
+        </li>
+        <li>
+          <strong>回声消除。</strong>
+          没有AEC，TTS输出重新进入麦克风并触发ASR识别机器人自己的声音。WebRTC AEC3是开源默认。
+        </li>
+      </ul>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1环形缓冲区"><a href="#步骤-1环形缓冲区">步骤 1：环形缓冲区</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> collections</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> RingBuffer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, capacity):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.buf </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> collections.deque(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">maxlen</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">capacity)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> write</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, frame):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.buf.extend(frame)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> read</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, n):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.buf.popleft() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">min</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.buf)))]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> level</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.buf)</span></span></code></pre>
+      <p>容量决定最大缓冲延迟。16 kHz下32,000个样本 = 2秒。</p>
+      <h3 id="步骤-2vad门控"><a href="#步骤-2vad门控">步骤 2：VAD门控</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> simple_energy_vad</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(frame, threshold</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.01</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> frame) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(frame) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> threshold </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">**</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span></span></code></pre>
+      <p>生产环境替换为Silero VAD：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">vad, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.hub.load(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"snakers4/silero-vad"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"silero_vad"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">is_speech </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vad(torch.tensor(frame), </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">16000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).item() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.5</span></span></code></pre>
+      <h3 id="步骤-3流式asr"><a href="#步骤-3流式asr">步骤 3：流式ASR</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 通过NeMo的Parakeet-CTC-0.6B流式</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nemo.collections.asr.models </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EncDecCTCModelBPE</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">asr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EncDecCTCModelBPE.from_pretrained(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"nvidia/parakeet-ctc-0.6b"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># chunk_ms=320 ms, look_ahead_ms=80 ms</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chunk </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> audio_stream():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    partial_text </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> asr.transcribe_streaming(chunk)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(partial_text, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">end</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\r</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="步骤-4中断处理器"><a href="#步骤-4中断处理器">步骤 4：中断处理器</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Dialog</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.tts_task </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> None</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> on_user_speech</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, frame):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.tts_task </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.tts_task.done():</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">            self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.tts_task.cancel()   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 打断</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 然后送入流式ASR</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> on_final_user_utterance</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, text):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.tts_task </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> asyncio.create_task(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.reply(text))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    async</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> reply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, text):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        async</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tts_chunk </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> llm_then_tts(text):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            speaker.write(tts_chunk)</span></span></code></pre>
+      <p>取决于异步I/O和可取消的TTS流。WebRTC peerconnection.stop()在音频轨道上是标准方式。</p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>2026年技术栈：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>层</th>
+            <th>选择</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>传输</td>
+            <td>LiveKit (WebRTC) 或 Pion (Go)</td>
+          </tr>
+          <tr>
+            <td>VAD</td>
+            <td>Silero VAD 4.0</td>
+          </tr>
+          <tr>
+            <td>流式ASR</td>
+            <td>Parakeet-CTC-0.6B或Whisper-Streaming</td>
+          </tr>
+          <tr>
+            <td>LLM首token</td>
+            <td>Groq、Cerebras、vLLM-streaming</td>
+          </tr>
+          <tr>
+            <td>流式TTS</td>
+            <td>Kokoro或ElevenLabs Turbo v2.5</td>
+          </tr>
+          <tr>
+            <td>回声消除</td>
+            <td>WebRTC AEC3</td>
+          </tr>
+          <tr>
+            <td>端到端原生</td>
+            <td>OpenAI Realtime API或Moshi</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="陷阱"><a href="#陷阱">陷阱</a></h2>
+      <ul>
+        <li><strong>缓冲500 ms以求安全。</strong> 缓冲区<em>就是</em>你的延迟下限。缩小它。</li>
+        <li><strong>未固定线程。</strong> 音频回调在优先级低于UI的线程上 = 负载下出现故障。</li>
+        <li><strong>TTS块太小。</strong> 小于200 ms的块使声码器伪影可听。320 ms块是最佳点。</li>
+        <li><strong>没有抖动缓冲区。</strong> 真实网络有抖动；没有平滑会出现爆音。</li>
+        <li><strong>单次错误处理。</strong> 音频流水线必须防崩溃。一个异常就杀死会话。</li>
+      </ul>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>
+        将<span
+          class="term-tip"
+          data-term="结果"
+          data-module="c"
+          data-def="函数返回的值"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结果</abbr></span
+        >保存为 <code>outputs/skill-realtime-designer.md</code>。<span
+          class="term-tip"
+          data-term="设计"
+          data-module="github"
+          data-def="设计"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">设计</abbr></span
+        >带每<span
+          class="term-tip"
+          data-term="阶段"
+          data-module="github"
+          data-def="阶段"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">阶段</abbr></span
+        >具体<span
+          class="term-tip"
+          data-term="延迟"
+          data-module="cpp"
+          data-def="延迟操作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">延迟</abbr></span
+        >预算的<span
+          class="term-tip"
+          data-term="实时"
+          data-module="cpp"
+          data-def="实时"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">实时</abbr></span
+        >音频<span
+          class="term-tip"
+          data-term="流水线"
+          data-module="cs-fundamentals"
+          data-def="将指令执行分为取指、译码、执行、访存、写回等阶段重叠执行的技术"
+          data-slug="cs-fundamentals/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">流水线</abbr></span
+        >。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >。</strong
+          >
+          运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >
+          <code>code/main.py</code>。<span
+            class="term-tip"
+            data-term="模拟"
+            data-module="cpp"
+            data-def="模拟"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模拟</abbr></span
+          >环形<span
+            class="term-tip"
+            data-term="缓冲区"
+            data-module="c"
+            data-def="临时存储数据的内存区域"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">缓冲区</abbr></span
+          >
+          + 能量VAD；<span
+            class="term-tip"
+            data-term="打印"
+            data-module="github"
+            data-def="打印"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">打印</abbr></span
+          >假10秒<span
+            class="term-tip"
+            data-term="流"
+            data-module="cpp"
+            data-def="数据输入输出的抽象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">流</abbr></span
+          >的每<span
+            class="term-tip"
+            data-term="阶段"
+            data-module="github"
+            data-def="阶段"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">阶段</abbr></span
+          >延迟。
+        </li>
+        <li>
+          <strong>中等。</strong> 使用 <code>sounddevice</code>，构建一个以20 ms帧<span
+            class="term-tip"
+            data-term="处理"
+            data-module="cpp"
+            data-def="处理"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">处理</abbr></span
+          >麦克风并<span
+            class="term-tip"
+            data-term="打印"
+            data-module="github"
+            data-def="打印"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">打印</abbr></span
+          >每帧VAD状态的直通<span
+            class="term-tip"
+            data-term="循环"
+            data-module="c"
+            data-def="重复执行的代码"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">循环</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>困难。</strong> 用 <code>aiortc</code> 构建全双工回声<span
+            class="term-tip"
+            data-term="测试"
+            data-module="cpp"
+            data-def="测试"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">测试</abbr></span
+          >：<span
+            class="term-tip"
+            data-term="浏览器"
+            data-module="cpp"
+            data-def="浏览实体"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">浏览器</abbr></span
+          >
+          →
+          <span
+            class="term-tip"
+            data-term="WebRTC"
+            data-module="html5"
+            data-def="Web 实时通信，支持浏览器间音视频和数据点对点传输"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">WebRTC</abbr></span
+          >
+          → Python →
+          <span
+            class="term-tip"
+            data-term="WebRTC"
+            data-module="html5"
+            data-def="Web 实时通信，支持浏览器间音视频和数据点对点传输"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">WebRTC</abbr></span
+          >
+          →
+          <span
+            class="term-tip"
+            data-term="浏览器"
+            data-module="cpp"
+            data-def="浏览实体"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">浏览器</abbr></span
+          >。用1 kHz脉冲测量<span
+            class="term-tip"
+            data-term="端到端"
+            data-module="cpp"
+            data-def="端到端"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">端到端</abbr></span
+          >延迟。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="环"
+                data-module="discrete-math"
+                data-def="具有加法群和乘法半群结构且满足分配律的代数系统"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">环</abbr></span
+              >形<span
+                class="term-tip"
+                data-term="缓冲区"
+                data-module="c"
+                data-def="临时存储数据的内存区域"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓冲区</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >队列
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="固定大小"
+                data-module="cpp"
+                data-def="固定大小"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">固定大小</abbr></span
+              >、无<span
+                class="term-tip"
+                data-term="锁"
+                data-module="python"
+                data-def="线程同步原语，同一时刻只允许一个线程持有"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">锁</abbr></span
+              >（或SPSC锁）的音频帧FIFO。
+            </td>
+          </tr>
+          <tr>
+            <td>VAD</td>
+            <td>
+              静音<span
+                class="term-tip"
+                data-term="门"
+                data-module="cs-fundamentals"
+                data-def="实现布尔运算的基本数字电路元件，包括与门、或门、非门等"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">门</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >语音vs非语音的模型或启发式。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="流"
+                data-module="cpp"
+                data-def="数据输入输出的抽象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流</abbr></span
+              >式ASR
+            </td>
+            <td>实时STT</td>
+            <td>
+              音频到达时<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >部分<span
+                class="term-tip"
+                data-term="文本"
+                data-module="cpp"
+                data-def="文本"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文本</abbr></span
+              >；有界前瞻。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              抖动<span
+                class="term-tip"
+                data-term="缓冲区"
+                data-module="c"
+                data-def="临时存储数据的内存区域"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓冲区</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="网络"
+                data-module="github"
+                data-def="网络"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网络</abbr></span
+              >平滑器
+            </td>
+            <td>
+              重新<span
+                class="term-tip"
+                data-term="排序"
+                data-module="cpp"
+                data-def="排序"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">排序</abbr></span
+              >乱序数据<span
+                class="term-tip"
+                data-term="包"
+                data-module="go"
+                data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+                data-slug="go/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">包</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="队列"
+                data-module="c"
+                data-def="先进先出的数据结构"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">队列</abbr></span
+              >；典型60-80 ms。
+            </td>
+          </tr>
+          <tr>
+            <td>AEC</td>
+            <td>回声消除</td>
+            <td>
+              减去扬声器到麦克风的<span
+                class="term-tip"
+                data-term="反馈"
+                data-module="cpp"
+                data-def="反馈信息"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">反馈</abbr></span
+              >路径。
+            </td>
+          </tr>
+          <tr>
+            <td>打断</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >中断
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="系统"
+                data-module="cpp"
+                data-def="系统"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">系统</abbr></span
+              >在TTS中间<span
+                class="term-tip"
+                data-term="检测"
+                data-module="github"
+                data-def="检测"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检测</abbr></span
+              >到<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >语音；必须<span
+                class="term-tip"
+                data-term="取消"
+                data-module="vue3"
+                data-def="撤销操作"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">取消</abbr></span
+              >播放。
+            </td>
+          </tr>
+          <tr>
+            <td>全双工</td>
+            <td>双向同时</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="机器"
+                data-module="github"
+                data-def="机器"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">机器</abbr></span
+              >人可以同时说话；Moshi是全双工。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2307.14743">Macháček et al. (2023). Whisper-Streaming</a> —
+          分<span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >近<span
+            class="term-tip"
+            data-term="流"
+            data-module="cpp"
+            data-def="数据输入输出的抽象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">流</abbr></span
+          >式Whisper。
+        </li>
+        <li>
+          <a href="https://kyutai.org/Moshi.pdf">Kyutai (2024). Moshi</a> — 全双工200 ms延迟。
+        </li>
+        <li>
+          <a href="https://docs.livekit.io/agents/">LiveKit Agents框架 (2024)</a> —
+          <span
+            class="term-tip"
+            data-term="生产"
+            data-module="github"
+            data-def="生产"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产</abbr></span
+          >级音频<span
+            class="term-tip"
+            data-term="代理"
+            data-module="cpp"
+            data-def="代理对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">代理</abbr></span
+          >编排。
+        </li>
+        <li>
+          <a href="https://github.com/snakers4/silero-vad">Silero VAD仓库</a> — 亚毫秒VAD，Apache
+          2.0。
+        </li>
+        <li>
+          <a href="https://webrtc.googlesource.com/src/+/main/modules/audio_processing/aec3/"
+            >WebRTC AEC3论文</a
+          >
+          — 开<span
+            class="term-tip"
+            data-term="源"
+            data-module="cpp"
+            data-def="源"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">源</abbr></span
+          >回声消除。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

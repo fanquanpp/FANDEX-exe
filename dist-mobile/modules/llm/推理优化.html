@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>推理优化</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">推理优化</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">inference</span><span class="doc-tag">KV cache</span
+          ><span class="doc-tag">Flash Attention</span><span class="doc-tag">推测解码</span
+          ><span class="doc-tag">vLLM</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          理解 LLM 推理优化技术，包括 KV Cache、Flash Attention、推测解码和连续批处理
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="推理优化"><a href="#推理优化">推理优化</a></h1>
+      <blockquote>
+        <p>
+          LLM 推理的瓶颈不是计算，而是内存带宽。一个 70B 模型生成一个 token 需要读取 140GB
+          的权重，但只做一次矩阵乘法。优化推理就是优化内存访问模式。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 概念 <strong>语言：</strong> Python
+        <strong>前置条件：</strong> Phase 10 Lesson 04（预训练 Mini-GPT）
+        <strong>预计时间：</strong> ~60 分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>理解自回归推理的两个阶段：预填充（prefill）和解码（decode）</li>
+        <li>掌握 KV Cache 的原理和实现</li>
+        <li>理解 Flash Attention 的核心思想</li>
+        <li>了解推测解码和连续批处理</li>
+      </ul>
+      <h2 id="推理的两个阶段"><a href="#推理的两个阶段">推理的两个阶段</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>阶段</th>
+            <th>操作</th>
+            <th>特点</th>
+            <th>瓶颈</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>预填充</td>
+            <td>并行处理所有输入 token</td>
+            <td>计算密集</td>
+            <td>GPU 计算</td>
+          </tr>
+          <tr>
+            <td>解码</td>
+            <td>逐个生成输出 token</td>
+            <td>内存带宽密集</td>
+            <td>内存带宽</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>Prefill:  [t1, t2, t3, t4, t5] → KV Cache</span></span>
+<span class="line"><span>Decode:   [t6] → t7 (使用 KV Cache)</span></span>
+<span class="line"><span>          [t7] → t8 (使用 KV Cache)</span></span>
+<span class="line"><span>          ...</span></span></code></pre>
+      <h2 id="kv-cache"><a href="#kv-cache">KV Cache</a></h2>
+      <p>
+        自回归生成中，每个新 token 的注意力计算需要所有之前 token 的 K 和 V。KV Cache
+        缓存这些值，避免重复计算。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> KVCache</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """KV Cache 实现"""</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, n_layers, n_heads, d_head, max_seq_len</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2048</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, dtype</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">torch.float16):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.n_layers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> n_layers</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.dtype </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dtype</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 预分配缓存</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.k_cache </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.zeros(n_layers, max_seq_len, n_heads, d_head, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dtype</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">dtype)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.v_cache </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.zeros(n_layers, max_seq_len, n_heads, d_head, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dtype</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">dtype)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.seq_len </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> update</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, layer_idx, new_k, new_v):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        """更新缓存"""</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pos </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.seq_len</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.k_cache[layer_idx, pos:pos </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_k.shape[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_k</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.v_cache[layer_idx, pos:pos </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_v.shape[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_v</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, layer_idx):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        """获取缓存"""</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">            self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.k_cache[layer_idx, :</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.seq_len],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">            self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.v_cache[layer_idx, :</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.seq_len],</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        )</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> advance</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, num_tokens</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        """前进指针"""</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.seq_len </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> num_tokens</span></span></code></pre>
+      <p>KV Cache 的内存开销：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>模型</th>
+            <th>参数量</th>
+            <th>KV Cache 大小（FP16，2048 序列）</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>LLaMA-7B</td>
+            <td>7B</td>
+            <td>~512 MB</td>
+          </tr>
+          <tr>
+            <td>LLaMA-13B</td>
+            <td>13B</td>
+            <td>~1 GB</td>
+          </tr>
+          <tr>
+            <td>LLaMA-70B</td>
+            <td>70B</td>
+            <td>~2.5 GB</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="flash-attention"><a href="#flash-attention">Flash Attention</a></h2>
+      <p>Flash Attention 通过分块计算（tiling）减少 HBM（高带宽内存）访问次数：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>标准注意力：</span></span>
+<span class="line"><span>  Q, K, V ∈ HBM → S = QK^T ∈ HBM → P = softmax(S) ∈ HBM → O = PV ∈ HBM</span></span>
+<span class="line"><span>  访问次数：O(N^2)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>Flash Attention：</span></span>
+<span class="line"><span>  分块加载 Q, K, V → SRAM 中计算 → 写回 O</span></span>
+<span class="line"><span>  访问次数：O(N^2 d^2 / M)，其中 M 是 SRAM 大小</span></span></code></pre>
+      <p>Flash Attention 不改变计算结果，但显著减少了内存访问，在长序列上可达 2-4x 加速。</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 使用 Flash Attention 2</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> transformers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoModelForCausalLM</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoModelForCausalLM.from_pretrained(</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "meta-llama/Llama-2-7b-hf"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    torch_dtype</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">torch.float16,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    attn_implementation</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"flash_attention_2"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 启用 Flash Attention 2</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h2 id="推测解码"><a href="#推测解码">推测解码</a></h2>
+      <p>推测解码使用一个小模型快速生成候选 token，大模型并行验证：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>小模型生成: [t1, t2, t3, t4, t5]  ← 快速但可能不准确</span></span>
+<span class="line"><span>大模型验证: [t1, t2, t3] [通过] [t4] [拒绝]  ← 并行验证</span></span>
+<span class="line"><span>输出: [t1, t2, t3, t4']  ← 从 t4 开始重新采样</span></span></code></pre>
+      <p>推测解码的优势：</p>
+      <ul>
+        <li>
+          不改变<span
+            class="term-tip"
+            data-term="输出"
+            data-module="c"
+            data-def="向外部发送数据"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">输出</abbr></span
+          >分布（与大模型自回归<span
+            class="term-tip"
+            data-term="生成"
+            data-module="vue3"
+            data-def="创建代码或数据"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生成</abbr></span
+          >等价）
+        </li>
+        <li>
+          如果小模型 n 个
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >
+          全部被接受，速<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >提升 n 倍
+        </li>
+        <li>
+          实际加速比取决于<span
+            class="term-tip"
+            data-term="大小"
+            data-module="github"
+            data-def="大小"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">大小</abbr></span
+          >模型的<span
+            class="term-tip"
+            data-term="一致性"
+            data-module="github"
+            data-def="一致性"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">一致性</abbr></span
+          >
+        </li>
+      </ul>
+      <h2 id="连续批处理"><a href="#连续批处理">连续批处理</a></h2>
+      <p>
+        <span
+          class="term-tip"
+          data-term="传统"
+          data-module="cpp"
+          data-def="传统的"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">传统</abbr></span
+        >批<span
+          class="term-tip"
+          data-term="处理"
+          data-module="cpp"
+          data-def="处理"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">处理</abbr></span
+        >等待所有<span
+          class="term-tip"
+          data-term="序列"
+          data-module="github"
+          data-def="序列"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">序列</abbr></span
+        >完成才开始新<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >。<span
+          class="term-tip"
+          data-term="连续"
+          data-module="calculus"
+          data-def="函数在某点的极限值等于函数值，图像在该点无间断"
+          data-slug="calculus/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">连续</abbr></span
+        >批<span
+          class="term-tip"
+          data-term="处理"
+          data-module="cpp"
+          data-def="处理"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">处理</abbr></span
+        >在<span
+          class="term-tip"
+          data-term="序列"
+          data-module="github"
+          data-def="序列"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">序列</abbr></span
+        >完成后立即填入新<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># vLLM 的连续批处理</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vllm </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> LLM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, SamplingParams</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">llm </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> LLM(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">model</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"meta-llama/Llama-2-7b-hf"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">params </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> SamplingParams(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">max_tokens</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">128</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">temperature</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.7</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># vLLM 自动进行连续批处理</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">outputs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> llm.generate(prompts, params)</span></span></code></pre>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>KV Cache</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >注意力”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >自回归<span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >中已<span
+                class="term-tip"
+                data-term="计算"
+                data-module="cpp"
+                data-def="计算过程"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">计算</abbr></span
+              >的 Key 和
+              <span
+                class="term-tip"
+                data-term="Value"
+                data-module="typescript"
+                data-def="值"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Value</abbr></span
+              >，避免<span
+                class="term-tip"
+                data-term="重复"
+                data-module="github"
+                data-def="重复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">重复</abbr></span
+              >计算
+            </td>
+          </tr>
+          <tr>
+            <td>Flash Attention</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="快速"
+                data-module="github"
+                data-def="快速的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">快速</abbr></span
+              >注意力”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >分<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >计算<span
+                class="term-tip"
+                data-term="减少"
+                data-module="github"
+                data-def="减少"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">减少</abbr></span
+              >内存访问的<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力<span
+                class="term-tip"
+                data-term="实现"
+                data-module="github"
+                data-def="实现"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">实现</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              推测<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >
+            </td>
+            <td>
+              ”猜然后<span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >”
+            </td>
+            <td>
+              用小模型<span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >候选
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >，大模型<span
+                class="term-tip"
+                data-term="并行"
+                data-module="github"
+                data-def="并行的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">并行</abbr></span
+              >验证的加速<span
+                class="term-tip"
+                data-term="方法"
+                data-module="c"
+                data-def="关联到对象的函数"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">方法</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="连续"
+                data-module="calculus"
+                data-def="函数在某点的极限值等于函数值，图像在该点无间断"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连续</abbr></span
+              >批<span
+                class="term-tip"
+                data-term="处理"
+                data-module="cpp"
+                data-def="处理"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">处理</abbr></span
+              >
+            </td>
+            <td>
+              ”不停顿<span
+                class="term-tip"
+                data-term="批处理"
+                data-module="vue3"
+                data-def="将更新合并执行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">批处理</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="序列"
+                data-module="github"
+                data-def="序列"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">序列</abbr></span
+              >完成后立即填入新<span
+                class="term-tip"
+                data-term="请求"
+                data-module="vue3"
+                data-def="HTTP 请求"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">请求</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="批处理"
+                data-module="vue3"
+                data-def="将更新合并执行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">批处理</abbr></span
+              >策略
+            </td>
+          </tr>
+          <tr>
+            <td>Prefill</td>
+            <td>
+              ”预<span
+                class="term-tip"
+                data-term="填充"
+                data-module="html5"
+                data-def="SVG 填充属性"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">填充</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="并行"
+                data-module="github"
+                data-def="并行的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">并行</abbr></span
+              >处理所有<span
+                class="term-tip"
+                data-term="输入"
+                data-module="c"
+                data-def="从外部获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输入</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+              的<span
+                class="term-tip"
+                data-term="阶段"
+                data-module="github"
+                data-def="阶段"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">阶段</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Decode</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >”
+            </td>
+            <td>
+              逐个<span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >输出
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+              的<span
+                class="term-tip"
+                data-term="阶段"
+                data-module="github"
+                data-def="阶段"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">阶段</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2205.14135"
+            >Dao et al., 2022 — “FlashAttention: Fast and Memory-Efficient Exact Attention with
+            IO-Awareness”</a
+          >
+          — Flash Attention 论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2211.17192"
+            >Leviathan et al., 2023 — “Fast Inference from Transformers via Speculative Decoding”</a
+          >
+          — 推测<span
+            class="term-tip"
+            data-term="解码"
+            data-module="javascript"
+            data-def="将编码数据还原为原始形式"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解码</abbr></span
+          >论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2309.06180"
+            >Kwon et al., 2023 — “Efficient Memory Management for Large Language Model Serving with
+            PagedAttention”</a
+          >
+          — vLLM/PagedAttention 论文
+        </li>
+        <li>
+          <a href="https://docs.vllm.ai/">vLLM 文档</a> —
+          <span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >性能 LLM
+          <span
+            class="term-tip"
+            data-term="推理"
+            data-module="github"
+            data-def="推理"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">推理</abbr></span
+          >引擎
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

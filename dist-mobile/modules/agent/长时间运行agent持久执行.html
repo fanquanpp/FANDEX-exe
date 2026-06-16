@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>长时间运行Agent持久执行</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">长时间运行Agent持久执行</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            11 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          生产长时间范围 Agent 不在 while True 中运行。每个 LLM
+          调用成为带检查点、重试和重放的活动。Temporal 的 OpenAI Agents SDK 集成于 2026 年 3 月
+          GA。Claude Code Routines (Anthropic) 运行调度的 Clau...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="长时间运行后台-agent持久执行">
+        <a href="#长时间运行后台-agent持久执行">长时间运行后台 Agent：持久执行</a>
+      </h1>
+      <blockquote>
+        <p>
+          生产长时间范围 Agent 不在 <code>while True</code> 中运行。每个 LLM
+          调用成为带检查点、重试和重放的活动。Temporal 的 OpenAI Agents SDK 集成于 2026 年 3 月
+          GA。Claude Code Routines (Anthropic) 运行调度的 Claude Code
+          调用而无需持久本地进程。会话在人工输入时暂停、在部署中存活、从以
+          <code>thread_id</code>
+          为键的最新检查点恢复。在新人体工学背后是一个旧模式——工作流编排——带一个新输入：LLM
+          调用作为必须在恢复时确定性重放的非确定性活动。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 <strong>语言：</strong> Python (stdlib, 最小持久执行状态机)
+        <strong>前置条件：</strong> Phase 15 · 10 (权限模式), Phase 15 · 01 (长时间范围Agent)
+        <strong>时间：</strong> ~60 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        考虑一个运行四小时的 Agent。它调用三个工具、两次提示用户、进行四十次 LLM
+        调用。中途，运行它的主机重启。会发生什么？
+      </p>
+      <ul>
+        <li>
+          在朴素
+          <code>while True</code>
+          循环中：一切丢失。运行从头重启。三个工具调用（有真实副作用）再次执行。用户再次被提示已批准的事情。四十次
+          LLM 调用重新计费。
+        </li>
+        <li>
+          有持久执行：运行从最近检查点恢复。已完成的活动不重新执行；其结果从持久日志重放。用户不重新批准已批准的事情。已进行的
+          LLM 调用不重新计费。
+        </li>
+      </ul>
+      <p>
+        这是工作流引擎十年来发布的相同模式 (Temporal, Cadence, Uber 的 Cherami)。新的是 LLM
+        调用现在是一种活动——非确定性、昂贵、有副作用——它们干净地适配此模式。
+      </p>
+      <p>
+        课程主题：长时间范围可靠性衰减（METR 观察到”35
+        分钟退化”——成功率随范围大致二次方下降）。持久执行使运行比可靠性概况支持的更长，如果设计正确这是安全失败的新方式，如果设计错误则是不安全的方式。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="活动工作流和重放"><a href="#活动工作流和重放">活动、工作流和重放</a></h3>
+      <ul>
+        <li>
+          <strong>工作流</strong
+          >：确定性编排代码。定义活动序列、分支、等待。必须确定性，以便可以从事件日志重放而不会出现意外分歧。
+        </li>
+        <li>
+          <strong>活动</strong>：非确定性、可能失败的工作单元。LLM 调用、工具调用、文件写入、HTTP
+          请求。每个活动记录其输入和（一旦完成）其输出。
+        </li>
+        <li>
+          <strong>事件日志</strong
+          >：持久后端存储。每个活动开始、完成、失败、重试，以及每个工作流决策都被记录。
+        </li>
+        <li>
+          <strong>重放</strong
+          >：恢复时，工作流代码从头重新运行；每个已完成的活动返回其记录结果而不重新执行。只有未完成的活动才实际运行。
+        </li>
+      </ul>
+      <p>
+        这与 React 对虚拟 DOM 重新渲染，或 Git
+        从提交重建工作树形状相同。编排器中的确定性是使持久性便宜的原因。
+      </p>
+      <h3 id="为什么-llm-调用适配模式">
+        <a href="#为什么-llm-调用适配模式">为什么 LLM 调用适配模式</a>
+      </h3>
+      <p>LLM 调用是：</p>
+      <ul>
+        <li>非确定性（temperature > 0；即使 temperature 0 跨模型版本漂移）。</li>
+        <li>昂贵（金钱和延迟）。</li>
+        <li>可能失败（速率限制、超时）。</li>
+        <li>有副作用（如果它们调用工具）。</li>
+      </ul>
+      <p>
+        这正是活动概况。将每个 LLM
+        调用包装为活动给你带指数退避的重试、跨重启的检查点和用于调试的可重放追踪。
+      </p>
+      <h3 id="以-thread_id-为键的检查点">
+        <a href="#以-thread_id-为键的检查点">以 <code>thread_id</code> 为键的检查点</a>
+      </h3>
+      <p>
+        LangGraph、Microsoft Agent Framework、Cloudflare Durable Objects 和 Claude Code Routines
+        都收敛到相同的 API
+        形状：<code>thread_id</code>（或等价物）标识会话；每个状态转换持久化到后端（PostgreSQL
+        默认，SQLite 用于开发，Redis 用于缓存）；恢复读取最新检查点。
+      </p>
+      <p>后端选择重要：</p>
+      <ul>
+        <li><strong>PostgreSQL</strong>：持久、可查询、在部署中存活。LangGraph 默认。</li>
+        <li><strong>SQLite</strong>：仅本地开发；跨主机丢失数据。</li>
+        <li><strong>Redis</strong>：快但短暂，除非配置 AOF/快照。</li>
+        <li>
+          <strong>Cloudflare Durable Objects</strong
+          >：透明分布式；以唯一键为范围；存活数小时到数周。
+        </li>
+      </ul>
+      <h3 id="人工输入作为一等状态"><a href="#人工输入作为一等状态">人工输入作为一等状态</a></h3>
+      <p>
+        先提议后提交 (Lesson 15)
+        需要持久的”等待人工”状态。工作流暂停，外部队列持有待处理请求，批准从该点精确恢复。没有持久性这是尽力而为；有了它，隔夜批准到达，工作流在早上继续。
+      </p>
+      <h3 id="35-分钟退化"><a href="#35-分钟退化">35 分钟退化</a></h3>
+      <p>
+        METR 观察到每个测量的 Agent 类别在约 35
+        分钟连续操作后显示可靠性衰减。任务持续时间翻倍大致使失败率翻四倍。持久执行不修复此问题；它让你运行比可靠性概况支持的更长。安全模式是将持久性与重入时需要新
+        HITL 的检查点结合，以及限制总计算而不论挂钟时间的预算终止开关 (Lesson 13)。
+      </p>
+      <h3 id="持久执行何时是错误答案">
+        <a href="#持久执行何时是错误答案">持久执行何时是错误答案</a>
+      </h3>
+      <ul>
+        <li>运行短于几分钟且无人工输入。开销 > 收益。</li>
+        <li>严格只读信息检索。</li>
+        <li>正确性需要在单个上下文窗口内端到端的任务（某些推理任务；某些一次性生成）。</li>
+      </ul>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p><code>code/main.py</code> 在 stdlib Python 中实现最小持久执行引擎。它支持：</p>
+      <ul>
+        <li><code>@activity</code> 装饰器，将输入和输出记录到 JSON 事件日志。</li>
+        <li>排序活动的工作流函数。</li>
+        <li><code>run_or_replay(workflow, event_log)</code> 函数，重放已完成活动而不重新执行。</li>
+      </ul>
+      <p>
+        驱动器模拟三活动工作流，中途崩溃，显示 (a) 朴素重试重新执行一切 vs (b) 重放仅运行缺失活动。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>
+        <code>outputs/skill-durable-execution-review.md</code> 审查提议的长时间运行 Agent
+        部署的正确持久执行形状：活动、确定性、检查点后端、人工输入状态和重入时 HITL 策略。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            运行
+            <code>code/main.py</code
+            >。观察朴素重试和重放之间的活动执行计数差异。更改崩溃点并显示重放计数相应变化。
+          </p>
+        </li>
+        <li>
+          <p>
+            将玩具引擎转换为显式使用
+            <code>thread_id</code>。模拟两个共享引擎的并发会话，确认它们的事件日志不冲突。
+          </p>
+        </li>
+        <li>
+          <p>
+            取玩具引擎中的一个活动。引入非确定性（工作流决策内的挂钟时间戳）。演示重放时的分歧。解释真实引擎如何处理此问题（副作用注册、<code
+              >Workflow.now()</code
+            >
+            API）。
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读 LangChain “Runtime behind production deep agents”
+            帖子。列出运行时持久化的每个状态，命名每个覆盖的失败模式。
+          </p>
+        </li>
+        <li>
+          <p>
+            为 6
+            <span
+              class="term-tip"
+              data-term="小时"
+              data-module="github"
+              data-def="小时"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">小时</abbr></span
+            >自主<span
+              class="term-tip"
+              data-term="编码"
+              data-module="cpp"
+              data-def="编写代码"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">编码</abbr></span
+            >任务<span
+              class="term-tip"
+              data-term="设计"
+              data-module="github"
+              data-def="设计"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">设计</abbr></span
+            >检查<span
+              class="term-tip"
+              data-term="点"
+              data-module="github"
+              data-def="点"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">点</abbr></span
+            >策略。你在哪里<span
+              class="term-tip"
+              data-term="检查点"
+              data-module="github"
+              data-def="检查点"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">检查点</abbr></span
+            >？崩溃后恢复看起来如何？什么需要新 HITL？
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="工作流"
+                data-module="github"
+                data-def="工作流程"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工作流</abbr></span
+              >
+            </td>
+            <td>
+              ”Agent 的<span
+                class="term-tip"
+                data-term="脚本"
+                data-module="python"
+                data-def="可直接运行的 Python 程序文件"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">脚本</abbr></span
+              >”
+            </td>
+            <td>
+              确定性<span
+                class="term-tip"
+                data-term="编排"
+                data-module="devops"
+                data-def="自动化管理多个容器和服务的部署、扩缩、网络和生命周期的过程"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编排</abbr></span
+              >代码；可从<span
+                class="term-tip"
+                data-term="事件"
+                data-module="cpp"
+                data-def="事件对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">事件</abbr></span
+              >日志重放
+            </td>
+          </tr>
+          <tr>
+            <td>活动</td>
+            <td>
+              ”一个<span
+                class="term-tip"
+                data-term="步骤"
+                data-module="vue3"
+                data-def="处理步骤"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">步骤</abbr></span
+              >”
+            </td>
+            <td>
+              非确定性<span
+                class="term-tip"
+                data-term="单元"
+                data-module="c"
+                data-def="编译的基本单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单元</abbr></span
+              >（LLM
+              <span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >调用）；前后<span
+                class="term-tip"
+                data-term="记录"
+                data-module="github"
+                data-def="记录"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记录</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="事件"
+                data-module="cpp"
+                data-def="事件对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">事件</abbr></span
+              >日志
+            </td>
+            <td>
+              ”后端<span
+                class="term-tip"
+                data-term="存储"
+                data-module="cpp"
+                data-def="存储"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存储</abbr></span
+              >”
+            </td>
+            <td>
+              每个<span
+                class="term-tip"
+                data-term="状态"
+                data-module="cpp"
+                data-def="状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">状态</abbr></span
+              >转换的持久<span
+                class="term-tip"
+                data-term="记录"
+                data-module="github"
+                data-def="记录"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记录</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>重放</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="恢复"
+                data-module="github"
+                data-def="恢复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">恢复</abbr></span
+              >”
+            </td>
+            <td>
+              重新运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >工作<span
+                class="term-tip"
+                data-term="流"
+                data-module="cpp"
+                data-def="数据输入输出的抽象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流</abbr></span
+              >；已<span
+                class="term-tip"
+                data-term="完成"
+                data-module="github"
+                data-def="完成"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">完成</abbr></span
+              >活动<span
+                class="term-tip"
+                data-term="返回"
+                data-module="vue3"
+                data-def="返回值"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">返回</abbr></span
+              >记录<span
+                class="term-tip"
+                data-term="结果"
+                data-module="c"
+                data-def="函数返回的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结果</abbr></span
+              >不重新<span
+                class="term-tip"
+                data-term="执行"
+                data-module="github"
+                data-def="执行"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="检查点"
+                data-module="github"
+                data-def="检查点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检查点</abbr></span
+              >
+            </td>
+            <td>
+              ”保存<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >”
+            </td>
+            <td>
+              以 thread_id 为键的<span
+                class="term-tip"
+                data-term="持久状态"
+                data-module="vue3"
+                data-def="保存的状态"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">持久状态</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="恢复"
+                data-module="github"
+                data-def="恢复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">恢复</abbr></span
+              >时最新胜出
+            </td>
+          </tr>
+          <tr>
+            <td>thread_id</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="会话"
+                data-module="github"
+                data-def="会话"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">会话</abbr></span
+              >键”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >化<span
+                class="term-tip"
+                data-term="持久状态"
+                data-module="vue3"
+                data-def="保存的状态"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">持久状态</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="标识符"
+                data-module="c"
+                data-def="变量、函数、标签的名字"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标识符</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              35
+              <span
+                class="term-tip"
+                data-term="分钟"
+                data-module="github"
+                data-def="分钟"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分钟</abbr></span
+              >退化
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="可靠性"
+                data-module="cpp"
+                data-def="可靠性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">可靠性</abbr></span
+              >衰减”
+            </td>
+            <td>
+              METR：成功<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >随<span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >约二次方下降
+            </td>
+          </tr>
+          <tr>
+            <td>非确定性</td>
+            <td>”重放时漂移”</td>
+            <td>
+              挂钟、<span
+                class="term-tip"
+                data-term="随机"
+                data-module="github"
+                data-def="随机的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">随机</abbr></span
+              >、LLM
+              <span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >；必须<span
+                class="term-tip"
+                data-term="注册"
+                data-module="github"
+                data-def="注册"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注册</abbr></span
+              >为<span
+                class="term-tip"
+                data-term="副作用"
+                data-module="c"
+                data-def="修改外部状态"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">副作用</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://code.claude.com/docs/en/agent-sdk/agent-loop"
+            >Anthropic — Claude Code Agent SDK: agent loop</a
+          >
+          — 预算、<span
+            class="term-tip"
+            data-term="轮"
+            data-module="github"
+            data-def="轮"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">轮</abbr></span
+          >次和<span
+            class="term-tip"
+            data-term="恢复"
+            data-module="github"
+            data-def="恢复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">恢复</abbr></span
+          >语义
+        </li>
+        <li>
+          <a href="https://learn.microsoft.com/en-us/agent-framework/workflows/human-in-the-loop"
+            >Microsoft — Agent Framework: human-in-the-loop and checkpointing</a
+          >
+          — RequestInfoEvent
+          <span
+            class="term-tip"
+            data-term="形状"
+            data-module="github"
+            data-def="形状"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">形状</abbr></span
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.langchain.com/conceptual-guides/runtime-behind-production-deep-agents"
+            >LangChain — The Runtime Behind Production Deep Agents</a
+          >
+          — 具体<span
+            class="term-tip"
+            data-term="运行时"
+            data-module="c"
+            data-def="程序执行的阶段"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">运行时</abbr></span
+          >要求
+        </li>
+        <li>
+          <a href="https://trigger.dev">OpenAI Agents SDK + Temporal integration</a> — LLM
+          <span
+            class="term-tip"
+            data-term="调用"
+            data-module="github"
+            data-def="调用"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">调用</abbr></span
+          >的活动<span
+            class="term-tip"
+            data-term="形状"
+            data-module="github"
+            data-def="形状"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">形状</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://www.anthropic.com/research/measuring-agent-autonomy"
+            >Anthropic — Measuring agent autonomy in practice</a
+          >
+          — 35
+          <span
+            class="term-tip"
+            data-term="分钟"
+            data-module="github"
+            data-def="分钟"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分钟</abbr></span
+          >退化<span
+            class="term-tip"
+            data-term="参考"
+            data-module="github"
+            data-def="参考"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参考</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

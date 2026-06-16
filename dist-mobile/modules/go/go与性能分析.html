@@ -1,0 +1,1027 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Go与性能分析</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Go与性能分析</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">pprof与性能调优</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        性能分析是找出程序性能瓶颈的过程。Go 标准库内置了 pprof 工具，可以分析 CPU
+        使用、内存分配、Goroutine 阻塞等情况。通过 pprof，开发者可以精确定位哪些函数消耗了最多的 CPU
+        时间，哪些代码分配了最多的内存，从而有针对性地优化。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <p>在开始编码之前，需要理解性能分析的几个核心概念：</p>
+      <ul>
+        <li><strong>pprof</strong>：Go 内置的性能分析工具，采集和展示性能数据。</li>
+        <li><strong>Profile</strong>：性能分析数据文件，记录了程序运行时的采样信息。</li>
+        <li><strong>CPU Profile</strong>：CPU 使用分析，记录哪些函数占用了最多的 CPU 时间。</li>
+        <li><strong>Memory Profile</strong>：内存分配分析，记录哪些代码分配了最多的内存。</li>
+        <li><strong>Goroutine Profile</strong>：Goroutine 分析，记录所有 Goroutine 的调用栈。</li>
+        <li>
+          <strong>火焰图（Flame Graph）</strong
+          >：一种可视化性能数据的图表，直观展示函数调用关系和耗时占比。
+        </li>
+      </ul>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <p>
+        最<span
+          class="term-tip"
+          data-term="简单"
+          data-module="github"
+          data-def="简单"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">简单</abbr></span
+        >的 CPU
+        <span
+          class="term-tip"
+          data-term="性能分析"
+          data-module="vue3"
+          data-def="分析性能问题"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">性能分析</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">package</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">os</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">runtime/pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 创建 CPU Profile 文件</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    f, err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> os.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Create</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"cpu.prof"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        panic</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(err)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> f.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 开始 CPU 采样</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">StartCPUProfile</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(f)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">StopCPUProfile</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 运行需要分析的代码</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    heavyWork</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> heavyWork</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 模拟耗时计算</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        <span
+          class="term-tip"
+          data-term="分析"
+          data-module="cpp"
+          data-def="分析过程"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">分析</abbr></span
+        >
+        Profile
+        <span
+          class="term-tip"
+          data-term="文件"
+          data-module="github"
+          data-def="文件"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">文件</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 使用 go tool pprof 分析</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu.prof</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 常用命令（在 pprof 交互界面中）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># top10    - 查看 CPU 占用最高的 10 个函数</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># list 函数名 - 查看函数的逐行分析</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># web      - 生成调用图（需要安装 graphviz）</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="1-cpu-性能分析"><a href="#1-cpu-性能分析">1. CPU 性能分析</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">runtime/pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 方式1：写入文件</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">f, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> os.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Create</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"cpu.prof"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">StartCPUProfile</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(f)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// ... 运行代码</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">StopCPUProfile</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">f.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 方式2：写入任意 io.Writer</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> buf </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">bytes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Buffer</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">StartCPUProfile</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">buf)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// ... 运行代码</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">StopCPUProfile</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span></code></pre>
+      <h3 id="2-内存性能分析"><a href="#2-内存性能分析">2. 内存性能分析</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">runtime/pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 运行需要分析的代码</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">heavyMemoryWork</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 写入内存 Profile</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">f, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> os.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Create</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"mem.prof"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> f.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// runtime.GC() // 可选：先触发 GC，只记录存活对象</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WriteHeapProfile</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(f)</span></span></code></pre>
+      <h3 id="3-goroutine-分析"><a href="#3-goroutine-分析">3. Goroutine 分析</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 获取当前所有 Goroutine 的调用栈</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">f, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> os.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Create</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"goroutine.prof"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> f.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Lookup</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"goroutine"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WriteTo</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(f, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="4-http-服务集成"><a href="#4-http-服务集成">4. HTTP 服务集成</a></h3>
+      <p>
+        在线上<span
+          class="term-tip"
+          data-term="服务"
+          data-module="cpp"
+          data-def="服务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">服务</abbr></span
+        >中<span
+          class="term-tip"
+          data-term="通过"
+          data-module="github"
+          data-def="通过"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">通过</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="HTTP"
+          data-module="cs-fundamentals"
+          data-def="Web应用层协议，基于请求-响应模型，定义了资源获取和提交的方式"
+          data-slug="cs-fundamentals/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">HTTP</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="端点"
+          data-module="cpp"
+          data-def="端点"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">端点</abbr></span
+        >暴露 pprof 数据：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _ </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">net/http/pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // pprof 自动注册到默认 ServeMux</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 访问 http://localhost:8080/debug/pprof/ 查看</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    go</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ListenAndServe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">":8080"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 你的服务逻辑</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    startServer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        可用的 pprof
+        <span
+          class="term-tip"
+          data-term="端点"
+          data-module="cpp"
+          data-def="端点"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">端点</abbr></span
+        >：
+      </p>
+      <ul>
+        <li>
+          <code>/debug/pprof/</code> - 概览<span
+            class="term-tip"
+            data-term="页面"
+            data-module="github"
+            data-def="分页"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">页面</abbr></span
+          >
+        </li>
+        <li><code>/debug/pprof/profile?seconds=30</code> - CPU Profile（采样 30 秒）</li>
+        <li><code>/debug/pprof/heap</code> - 内存 Profile</li>
+        <li><code>/debug/pprof/goroutine</code> - Goroutine Profile</li>
+        <li>
+          <code>/debug/pprof/block</code> - 阻塞<span
+            class="term-tip"
+            data-term="分析"
+            data-module="cpp"
+            data-def="分析过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分析</abbr></span
+          >
+        </li>
+        <li>
+          <code>/debug/pprof/mutex</code> -
+          <span
+            class="term-tip"
+            data-term="锁"
+            data-module="python"
+            data-def="线程同步原语，同一时刻只允许一个线程持有"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">锁</abbr></span
+          >竞争<span
+            class="term-tip"
+            data-term="分析"
+            data-module="cpp"
+            data-def="分析过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分析</abbr></span
+          >
+        </li>
+      </ul>
+      <p>
+        <span
+          class="term-tip"
+          data-term="远程"
+          data-module="cpp"
+          data-def="远程"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">远程</abbr></span
+        >分析：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 直接分析远程服务的 CPU</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://localhost:8080/debug/pprof/profile?seconds=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">30</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 分析远程服务的内存</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://localhost:8080/debug/pprof/heap</span></span></code></pre>
+      <h3 id="5-阻塞分析"><a href="#5-阻塞分析">5. 阻塞分析</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="分析"
+          data-module="cpp"
+          data-def="分析过程"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">分析</abbr></span
+        >
+        Goroutine 阻塞在哪些<span
+          class="term-tip"
+          data-term="操作"
+          data-module="github"
+          data-def="GitHub Actions 工作流"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">操作</abbr></span
+        >上：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 需要先启用阻塞分析</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">runtime.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">SetBlockProfileRate</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 记录所有阻塞事件</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 访问 /debug/pprof/block 获取数据</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 或手动写入</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">f, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> os.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Create</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"block.prof"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Lookup</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"block"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WriteTo</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(f, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="6-锁竞争分析"><a href="#6-锁竞争分析">6. 锁竞争分析</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="分析"
+          data-module="cpp"
+          data-def="分析过程"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">分析</abbr></span
+        >哪些<span
+          class="term-tip"
+          data-term="锁"
+          data-module="python"
+          data-def="线程同步原语，同一时刻只允许一个线程持有"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">锁</abbr></span
+        >导致了最<span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >的竞争：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 启用互斥锁分析</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">runtime.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">SetMutexProfileFraction</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 访问 /debug/pprof/mutex 获取数据</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">f, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> os.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Create</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"mutex.prof"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Lookup</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"mutex"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WriteTo</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(f, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="7-使用-go-test-进行基准测试">
+        <a href="#7-使用-go-test-进行基准测试">7. 使用 go test 进行基准测试</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 编写基准测试</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> BenchmarkProcess</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">b</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">testing</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">B</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b.N; i</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        process</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 运行基准测试并生成 CPU Profile</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> test</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -bench=.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -cpuprofile=cpu.prof</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 运行基准测试并生成内存 Profile</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> test</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -bench=.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -memprofile=mem.prof</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 分析结果</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu.prof</span></span></code></pre>
+      <h3 id="8-火焰图"><a href="#8-火焰图">8. 火焰图</a></h3>
+      <p>
+        使用 go tool pprof 的 Web 界<span
+          class="term-tip"
+          data-term="面"
+          data-module="cpp"
+          data-def="面对象"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">面</abbr></span
+        >查看火焰<span
+          class="term-tip"
+          data-term="图"
+          data-module="algorithm"
+          data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">图</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 启动 Web 界面（Go 1.24+ 内置火焰图）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -http=:8080</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu.prof</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 在浏览器中打开 http://localhost:8080/ui/flamegraph</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="场景一cpu-热点分析"><a href="#场景一cpu-热点分析">场景一：CPU 热点分析</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 1. 采集 CPU Profile</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://localhost:8080/debug/pprof/profile?seconds=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">30</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 2. 在交互界面中</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pprof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">top10</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 查看 CPU 占用最高的函数</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pprof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">list</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> funcName</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看函数的逐行耗时</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pprof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">web</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">          # 生成调用图</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 3. 找到热点后优化代码</span></span></code></pre>
+      <h3 id="场景二内存泄漏排查"><a href="#场景二内存泄漏排查">场景二：内存泄漏排查</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 1. 采集内存 Profile</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://localhost:8080/debug/pprof/heap</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 2. 查看内存分配最多的位置</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pprof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">top</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pprof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">list</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> funcName</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 3. 对比两次采样的差异</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -base</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> heap1.prof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> heap2.prof</span></span></code></pre>
+      <h3 id="场景三goroutine-泄漏"><a href="#场景三goroutine-泄漏">场景三：Goroutine 泄漏</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 查看 Goroutine 数量</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">curl</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://localhost:8080/debug/pprof/goroutine?debug=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 分析 Goroutine 调用栈</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://localhost:8080/debug/pprof/goroutine</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pprof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">top</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pprof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">traces</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 查看调用栈</span></span></code></pre>
+      <h2 id="注意事项与常见错误"><a href="#注意事项与常见错误">注意事项与常见错误</a></h2>
+      <ol>
+        <li>
+          <p>
+            <strong>采样有开销</strong>：CPU Profile 采样有约 1-5% 的<span
+              class="term-tip"
+              data-term="性能"
+              data-module="github"
+              data-def="性能"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">性能</abbr></span
+            >开销。内存 Profile 在<span
+              class="term-tip"
+              data-term="写入"
+              data-module="c"
+              data-def="输出数据到目标"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">写入</abbr></span
+            >时有短暂暂停。<span
+              class="term-tip"
+              data-term="生产环境"
+              data-module="vue3"
+              data-def="线上环境"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">生产环境</abbr></span
+            >可以短<span
+              class="term-tip"
+              data-term="时间"
+              data-module="cpp"
+              data-def="时间"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">时间</abbr></span
+            >开启。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >采样<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >要足够长</strong
+            >：CPU Profile 至少采样 30 秒，否则数据不够准确。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >内存 Profile 不<span
+                class="term-tip"
+                data-term="等于"
+                data-module="github"
+                data-def="等于"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">等于</abbr></span
+              >内存泄漏</strong
+            >：内存 Profile 显示的是当前存活<span
+              class="term-tip"
+              data-term="对象"
+              data-module="cpp"
+              data-def="类的实例"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对象</abbr></span
+            >的<span
+              class="term-tip"
+              data-term="分配"
+              data-module="github"
+              data-def="将 Issue 指派给某人"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">分配</abbr></span
+            >位置，不一定是泄漏。需要<span
+              class="term-tip"
+              data-term="对"
+              data-module="github"
+              data-def="对"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对</abbr></span
+            >比<span
+              class="term-tip"
+              data-term="多"
+              data-module="github"
+              data-def="多个的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">多</abbr></span
+            >次采样。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >pprof
+              <span
+                class="term-tip"
+                data-term="端点"
+                data-module="cpp"
+                data-def="端点"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">端点</abbr></span
+              >安全</strong
+            >：<span
+              class="term-tip"
+              data-term="生产环境"
+              data-module="vue3"
+              data-def="线上环境"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">生产环境</abbr></span
+            >的 <code>/debug/pprof/</code>
+            <span
+              class="term-tip"
+              data-term="端点"
+              data-module="cpp"
+              data-def="端点"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">端点</abbr></span
+            >不应该<span
+              class="term-tip"
+              data-term="对"
+              data-module="github"
+              data-def="对"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对</abbr></span
+            >外<span
+              class="term-tip"
+              data-term="暴露"
+              data-module="vue3"
+              data-def="用 &#x60;defineExpose&#x60; 向父组件暴露子组件的属性和方法"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">暴露</abbr></span
+            >。使用<span
+              class="term-tip"
+              data-term="中间件"
+              data-module="github"
+              data-def="中间人"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">中间件</abbr></span
+            >限制访问：
+          </p>
+        </li>
+      </ol>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 只允许内网访问 pprof</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">mux.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandleFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"/debug/"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> !</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">isInternalIP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(r.RemoteAddr) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Error</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"禁止访问"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, http.StatusForbidden)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 转发给 pprof handler</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">})</span></span></code></pre>
+      <ol start="5">
+        <li>
+          <p>
+            <strong>block 和 mutex 默认不开启</strong>：<code>SetBlockProfileRate</code> 和
+            <code>SetMutexProfileFraction</code> 默认为 0，需要手动<span
+              class="term-tip"
+              data-term="设置"
+              data-module="cpp"
+              data-def="设置"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">设置</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong>benchmark 的 b.N</strong>：<code>b.N</code> 由<span
+              class="term-tip"
+              data-term="测试框架"
+              data-module="c"
+              data-def="辅助测试的工具"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">测试框架</abbr></span
+            >自动调整，不要手动修改。<span
+              class="term-tip"
+              data-term="框架"
+              data-module="cpp"
+              data-def="框架"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">框架</abbr></span
+            >会运<span
+              class="term-tip"
+              data-term="行"
+              data-module="vue3"
+              data-def="数据行"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行</abbr></span
+            >足够<span
+              class="term-tip"
+              data-term="多"
+              data-module="github"
+              data-def="多个的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">多</abbr></span
+            >次以获得<span
+              class="term-tip"
+              data-term="稳定"
+              data-module="github"
+              data-def="稳定"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">稳定</abbr></span
+            >结果。
+          </p>
+        </li>
+      </ol>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="trace-工具"><a href="#trace-工具">trace 工具</a></h3>
+      <p>
+        Go 的 trace
+        <span
+          class="term-tip"
+          data-term="工具"
+          data-module="cpp"
+          data-def="工具"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">工具</abbr></span
+        >可以<span
+          class="term-tip"
+          data-term="分析"
+          data-module="cpp"
+          data-def="分析过程"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">分析</abbr></span
+        >程序的<span
+          class="term-tip"
+          data-term="时间线"
+          data-module="cpp"
+          data-def="时间线"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">时间线</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="包"
+          data-module="go"
+          data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+          data-slug="go/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">包</abbr></span
+        >括 Goroutine
+        <span
+          class="term-tip"
+          data-term="调度"
+          data-module="c"
+          data-def="分配 CPU 时间给线程"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">调度</abbr></span
+        >、GC、<span
+          class="term-tip"
+          data-term="网络"
+          data-module="github"
+          data-def="网络"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">网络</abbr></span
+        >等<span
+          class="term-tip"
+          data-term="事件"
+          data-module="cpp"
+          data-def="事件对象"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">事件</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">runtime/trace</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">f, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> os.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Create</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"trace.out"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">trace.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Start</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(f)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// ... 运行代码</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">trace.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Stop</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">f.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span></code></pre>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 分析 trace</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> trace</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> trace.out</span></span></code></pre>
+      <h3 id="自定义-profile"><a href="#自定义-profile">自定义 Profile</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 创建自定义 Profile</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> myProfile </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pprof.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewProfile</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"myapp.custom"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 记录自定义事件</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> trackOperation</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    myProfile.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Add</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"operation"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> myProfile.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Remove</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"operation"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 执行操作</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 写入自定义 Profile</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">myProfile.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WriteTo</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(os.Stdout, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="使用-benchmark-比较性能">
+        <a href="#使用-benchmark-比较性能">使用 benchmark 比较性能</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 保存基准结果</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> test</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -bench=.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -benchmem</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ></span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> old.txt</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 优化代码后再次测试</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> test</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -bench=.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -benchmem</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ></span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> new.txt</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 比较差异</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> install</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> golang.org/x/perf/cmd/benchstat@latest</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">benchstat</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> old.txt</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> new.txt</span></span></code></pre>
+    </article>
+  </body>
+</html>

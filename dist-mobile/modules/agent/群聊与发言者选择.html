@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>群聊与发言者选择</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">群聊与发言者选择</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/15
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          AutoGen GroupChat 和 AG2 GroupChat 在 N 个 Agent
+          之间共享一个对话；选择器函数（LLM、轮询或自定义）选择下一个发言者。这是涌现式多 Agent
+          对话的原型——Agent 不知道自己在静态图中的角色，它们只是对共享池做出反应。AutoGen v0.2 ...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="群聊与发言者选择"><a href="#群聊与发言者选择">群聊与发言者选择</a></h1>
+      <blockquote>
+        <p>
+          AutoGen GroupChat 和 AG2 GroupChat 在 N 个 Agent
+          之间共享一个对话；选择器函数（LLM、轮询或自定义）选择下一个发言者。这是涌现式多 Agent
+          对话的原型——Agent 不知道自己在静态图中的角色，它们只是对共享池做出反应。AutoGen v0.2 的
+          GroupChat 语义在 AG2 分支中保留；AutoGen v0.4 将其重写为事件驱动 Actor 模型。Microsoft 于
+          2026 年 2 月将 AutoGen 置于维护模式，并与 Semantic Kernel 合并为 Microsoft Agent Framework
+          (RC 2026 年 2 月)。GroupChat 原语在 AG2 和 Microsoft Agent Framework
+          中都存活——学一次，到处用。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 + 构建 <strong>语言：</strong> Python (stdlib)
+        <strong>前置条件：</strong> Phase 16 · 04 (原语模型) <strong>时间：</strong> ~60 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        静态图 (LangGraph)
+        在工作流已知时很好。真实对话不是静态的：有时编码者问审查员，有时问研究员，有时问作者。硬编码每个可能的交接会产生边爆炸。你想要<em
+          >Agent 对共享池做出反应</em
+        >，由某个函数决定谁下一个发言。
+      </p>
+      <p>这正是 AutoGen GroupChat 所做的。</p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="形状"><a href="#形状">形状</a></h3>
+      <div class="mermaid-output">
+        <div class="mermaid-svg" data-theme="light"></div>
+        <div class="mermaid-svg" data-theme="dark"></div>
+      </div>
+      <p>每个 Agent 看到每条消息。每轮调用选择器函数选择下一个发言者。</p>
+      <h3 id="三种选择器风格"><a href="#三种选择器风格">三种选择器风格</a></h3>
+      <p>
+        <strong>轮询。</strong> 固定循环。确定性。按 N
+        线性扩展但忽略上下文——即使主题是法律审查，编码者也获得发言权。
+      </p>
+      <p>
+        <strong>LLM 选择。</strong> 调用 LLM
+        读取最近的池并返回最佳下一个发言者。上下文感知但慢：每轮增加一次 LLM 调用。AutoGen 的默认。
+      </p>
+      <p>
+        <strong>自定义。</strong> 带有任何你想要的逻辑的 Python 函数。典型：LLM
+        选择带回退规则（例如，“编码者之后总是给验证者发言权”）。
+      </p>
+      <h3 id="conversableagent-api"><a href="#conversableagent-api">ConversableAgent API</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>agent = ConversableAgent(</span></span>
+<span class="line"><span>    name="coder",</span></span>
+<span class="line"><span>    system_message="You write Python.",</span></span>
+<span class="line"><span>    llm_config={...},</span></span>
+<span class="line"><span>)</span></span>
+<span class="line"><span>chat = GroupChat(agents=[coder, reviewer, tester], messages=[])</span></span>
+<span class="line"><span>manager = GroupChatManager(groupchat=chat, llm_config={...})</span></span></code></pre>
+      <p>
+        <code>GroupChatManager</code> 持有选择器。当 Agent 完成一轮时，管理器调用选择器，返回下一个
+        Agent。循环继续直到终止条件。
+      </p>
+      <h3 id="终止"><a href="#终止">终止</a></h3>
+      <p>三种常见模式：</p>
+      <ul>
+        <li><strong>最大轮次。</strong> 总轮次的硬上限。</li>
+        <li>
+          <strong>“TERMINATE” 令牌。</strong> Agent 可以发出哨兵消息；管理器在出现一个时停止。
+        </li>
+        <li><strong>目标达成检查。</strong> 轻量级验证者每轮运行，完成时停止聊天。</li>
+      </ul>
+      <h3 id="autogen--ag2-分裂和-microsoft-agent-framework-合并">
+        <a href="#autogen--ag2-分裂和-microsoft-agent-framework-合并"
+          >AutoGen → AG2 分裂和 Microsoft Agent Framework 合并</a
+        >
+      </h3>
+      <p>
+        2025 年初，Microsoft 开始围绕事件驱动 Actor 模型对 AutoGen (v0.4) 进行重大重写。社区将
+        AutoGen v0.2 的 GroupChat 语义分支为 AG2，保留了早期采用者已集成的 API。
+      </p>
+      <p>
+        2026 年 2 月，Microsoft 宣布 AutoGen 进入维护模式，事件驱动 Actor 模型合并到
+        <strong>Microsoft Agent Framework</strong> (RC 2026 年 2 月，现已与 Semantic Kernel
+        合并)。GroupChat 概念在两条路径中都存活；实现细节不同。AG2 是 v0.2 兼容代码的首选上游。
+      </p>
+      <h3 id="群聊何时适合"><a href="#群聊何时适合">群聊何时适合</a></h3>
+      <ul>
+        <li><strong>涌现式对话。</strong> 你不想预连线每个可能的下一个发言者。</li>
+        <li>
+          <strong>角色混合任务。</strong> 编码者问研究员，研究员问档案员，档案员问回编码者。流不是
+          DAG。
+        </li>
+        <li><strong>探索性问题解决。</strong> 想象”头脑风暴会议”，不是”装配线”。</li>
+      </ul>
+      <h3 id="何时失败"><a href="#何时失败">何时失败</a></h3>
+      <ul>
+        <li>
+          <strong>严格确定性。</strong> LLM 选择器可能不一致。相同提示，不同运行，不同下一个发言者。
+        </li>
+        <li><strong>谄媚级联。</strong> Agent 服从说话最自信的人。显式对抗提示。</li>
+        <li>
+          <strong>上下文膨胀。</strong> 每个 Agent 读取每条消息；10 轮后上下文巨大。使用投影 (Lesson
+          15) 来限定视图。
+        </li>
+        <li>
+          <strong>热门发言者。</strong> 一个 Agent
+          主导对话，因为选择器偏向其专业。引入发言者平衡作为选择器特性。
+        </li>
+      </ul>
+      <h3 id="群聊-vs-监督者"><a href="#群聊-vs-监督者">群聊 vs 监督者</a></h3>
+      <p>相同原语，不同默认：</p>
+      <ul>
+        <li>监督者：一个 Agent 规划，其他执行。选择器是”问规划者做什么。”</li>
+        <li>群聊：所有 Agent 是对等的；选择器是共享池上的函数。</li>
+      </ul>
+      <p>两者都使用 Lesson 04 的四个原语。群聊默认为 LLM 选择的编排和全池共享状态。</p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p>
+        <code>code/main.py</code> 用 stdlib 从头实现 GroupChat。三个
+        Agent（编码者、审查者、管理者），轮询和 LLM 选择变体，以及在
+        <code>TERMINATE</code> 令牌上终止。
+      </p>
+      <p>演示打印对话转录以及两种变体的选择器决策追踪。</p>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        <code>outputs/skill-groupchat-selector.md</code> 为给定任务配置 GroupChat 选择器——轮询 vs
+        LLM 选择 vs 自定义，以及使用什么选择器输入（最近消息、Agent 专业、轮次计数）。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>检查清单：</p>
+      <ul>
+        <li><strong>最大轮次上限。</strong> 始终设置。典型任务 10-20 轮。</li>
+        <li><strong>发言者平衡指标。</strong> 追踪每个 Agent 的轮次；不平衡超过阈值时告警。</li>
+        <li><strong>终止令牌。</strong> <code>TERMINATE</code> 或专用验证者 Agent。</li>
+        <li>
+          <strong>投影或限定内存。</strong> 约 10 条消息后，考虑给每个 Agent
+          限定视图以防止上下文膨胀。
+        </li>
+        <li>
+          <strong>选择器日志。</strong> 对于 LLM 选择变体，记录选择器的输入和选择。否则调试不可能。
+        </li>
+      </ul>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          运行 <code>code/main.py</code>。比较轮询 vs LLM 选择下的对话。哪个 Agent
+          在每种模式下主导？
+        </li>
+        <li>在选择器中添加”每个 Agent 最大发言次数”规则。它如何影响转录？</li>
+        <li>实现目标达成终止：当审查者返回”approved”时停止。它在轮次上限前多久触发？</li>
+        <li>
+          阅读 AutoGen 稳定文档关于 GroupChat (<a
+            href="https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/design-patterns/group-chat.html)%E3%80%82%E8%AF%86%E5%88%AB"
+            >https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/design-patterns/group-chat.html)。识别</a
+          >
+          <code>GroupChatManager</code> 使用的默认选择器。
+        </li>
+        <li>
+          阅读 AG2
+          <span
+            class="term-tip"
+            data-term="仓库"
+            data-module="git"
+            data-def="仓库是 Git 存储项目历史和元数据的目录，包含所有文件的完整历史记录。"
+            data-slug="git/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">仓库</abbr></span
+          >
+          (<a href="https://github.com/ag2ai/ag2">https://github.com/ag2ai/ag2</a>) 并<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >其 v0.2 GroupChat 与 v0.4
+          <span
+            class="term-tip"
+            data-term="事件驱动"
+            data-module="cpp"
+            data-def="事件驱动"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">事件驱动</abbr></span
+          >版本。v0.4 添加了什么具体<span
+            class="term-tip"
+            data-term="属性"
+            data-module="c"
+            data-def="附加在声明上的修饰符"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">属性</abbr></span
+          >（<span
+            class="term-tip"
+            data-term="吞吐量"
+            data-module="cpp"
+            data-def="吞吐量"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">吞吐量</abbr></span
+          >、容错、可<span
+            class="term-tip"
+            data-term="组合"
+            data-module="cpp"
+            data-def="组合多个值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">组合</abbr></span
+          >性）？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GroupChat</td>
+            <td>”一个聊天室里的 Agent”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="共享"
+                data-module="cpp"
+                data-def="共享"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">共享</abbr></span
+              >消息<span
+                class="term-tip"
+                data-term="池"
+                data-module="github"
+                data-def="池"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">池</abbr></span
+              >
+              +
+              <span
+                class="term-tip"
+                data-term="选择器"
+                data-module="cpp"
+                data-def="选择器"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择器</abbr></span
+              >函数。AutoGen / AG2 原语。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              发言者<span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >
+            </td>
+            <td>”谁下一个说话”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >下一个 Agent 的<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >。<span
+                class="term-tip"
+                data-term="轮询"
+                data-module="github"
+                data-def="轮询"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轮询</abbr></span
+              >、LLM
+              <span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >或<span
+                class="term-tip"
+                data-term="自定义"
+                data-module="github"
+                data-def="自定义"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">自定义</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>GroupChatManager</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="会议"
+                data-module="github"
+                data-def="会议"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">会议</abbr></span
+              >主持<span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >”
+            </td>
+            <td>
+              拥有<span
+                class="term-tip"
+                data-term="选择器"
+                data-module="cpp"
+                data-def="选择器"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择器</abbr></span
+              >并<span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >轮次的 AutoGen
+              <span
+                class="term-tip"
+                data-term="组件"
+                data-module="cpp"
+                data-def="组成整体的部分"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">组件</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>ConversableAgent</td>
+            <td>”基础 Agent”</td>
+            <td>
+              AutoGen 基<span
+                class="term-tip"
+                data-term="类"
+                data-module="cpp"
+                data-def="定义对象的结构和行为"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类</abbr></span
+              >；可以<span
+                class="term-tip"
+                data-term="发送"
+                data-module="cpp"
+                data-def="发送"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">发送</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="接收"
+                data-module="github"
+                data-def="接收"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">接收</abbr></span
+              >消息的 Agent。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="终止"
+                data-module="cpp"
+                data-def="终止"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">终止</abbr></span
+              >令牌
+            </td>
+            <td>“‘停止’词”</td>
+            <td>
+              结束聊天的哨兵<span
+                class="term-tip"
+                data-term="字符串"
+                data-module="cpp"
+                data-def="字符序列"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字符串</abbr></span
+              >（通常是 <code>TERMINATE</code>）。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="热门"
+                data-module="github"
+                data-def="热门的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">热门</abbr></span
+              >发言者
+            </td>
+            <td>”一个 Agent 主导”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="选择器"
+                data-module="cpp"
+                data-def="选择器"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择器</abbr></span
+              >持续<span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >同一 Agent 的<span
+                class="term-tip"
+                data-term="失败"
+                data-module="github"
+                data-def="失败"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">失败</abbr></span
+              >模式。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >膨胀
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="池"
+                data-module="github"
+                data-def="池"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">池</abbr></span
+              >无限<span
+                class="term-tip"
+                data-term="增长"
+                data-module="github"
+                data-def="增长"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">增长</abbr></span
+              >”
+            </td>
+            <td>
+              每个 Agent
+              <span
+                class="term-tip"
+                data-term="读取"
+                data-module="c"
+                data-def="从输入获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">读取</abbr></span
+              >每条先前<span
+                class="term-tip"
+                data-term="消息"
+                data-module="github"
+                data-def="消息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">消息</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >随<span
+                class="term-tip"
+                data-term="轮"
+                data-module="github"
+                data-def="轮"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轮</abbr></span
+              >次<span
+                class="term-tip"
+                data-term="增长"
+                data-module="github"
+                data-def="增长"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">增长</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="投影"
+                data-module="c"
+                data-def="提取类型的部分属性"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">投影</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="限定"
+                data-module="cpp"
+                data-def="限定"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限定</abbr></span
+              >视<span
+                class="term-tip"
+                data-term="图"
+                data-module="algorithm"
+                data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="共享"
+                data-module="cpp"
+                data-def="共享"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">共享</abbr></span
+              >池中<span
+                class="term-tip"
+                data-term="角色"
+                data-module="html5"
+                data-def="ARIA 元素角色"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">角色</abbr></span
+              >特定的<span
+                class="term-tip"
+                data-term="视图"
+                data-module="cpp"
+                data-def="视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">视图</abbr></span
+              >，防止<span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >膨胀。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a
+            href="https://microsoft.github.io/autogen/stable/user-guide/core-user-guide/design-patterns/group-chat.html"
+            >AutoGen group chat docs</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="参考"
+            data-module="github"
+            data-def="参考"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参考</abbr></span
+          >实现
+        </li>
+        <li><a href="https://github.com/ag2ai/ag2">AG2 repo</a> — 社区 AutoGen v0.2 延续</li>
+        <li>
+          <a href="https://microsoft.github.io/agent-framework/">Microsoft Agent Framework docs</a>
+          —
+          <span
+            class="term-tip"
+            data-term="合并"
+            data-module="github"
+            data-def="整合不同分支的更改"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">合并</abbr></span
+          >后的继任者, RC 2026
+          <span
+            class="term-tip"
+            data-term="年"
+            data-module="cpp"
+            data-def="年"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">年</abbr></span
+          >
+          2 月
+        </li>
+        <li>
+          <a href="https://microsoft.github.io/autogen/stable/">AutoGen v0.4 release notes</a> —
+          <span
+            class="term-tip"
+            data-term="事件驱动"
+            data-module="cpp"
+            data-def="事件驱动"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">事件驱动</abbr></span
+          >
+          Actor 模型<span
+            class="term-tip"
+            data-term="重写"
+            data-module="c"
+            data-def="覆盖原有数据"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">重写</abbr></span
+          >详情
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

@@ -2,7 +2,7 @@
  * FANDEX 内容质量审计脚本
  *
  * 功能概述：
- * 扫描 src/content/docs 下所有 .md 文件，检查 frontmatter 完整性、
+ * 扫描 content 下所有 .md 文件，检查 frontmatter 完整性、
  * 正文质量、过时关键词、内部链接格式、Wiki 链接使用等问题。
  * 按严重程度（high/medium/low）分类输出审计报告，
  * 存在 high 级别问题时以非零退出码退出。
@@ -21,7 +21,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** 文档根目录 */
-const DOCS = 'src/content/docs';
+const DOCS = 'content';
 /** 问题收集数组 */
 const issues = [];
 

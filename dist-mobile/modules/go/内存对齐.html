@@ -1,0 +1,1008 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>内存对齐</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">内存对齐</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">结构体对齐与内存布局</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        内存对齐是编译器将数据放置在特定地址边界上的行为。CPU
+        访问对齐的内存比访问未对齐的内存更快，某些架构甚至不支持未对齐访问。理解内存对齐有助于编写更高效的数据结构，减少内存浪费，避免性能陷阱。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <p>在开始深入了解之前，需要理解内存对齐的几个核心概念：</p>
+      <ul>
+        <li>
+          <strong>对齐（Alignment）</strong>：数据在内存中的起始地址必须是其对齐值的倍数。如 int64
+          的对齐值为 8，其地址必须是 8 的倍数。
+        </li>
+        <li>
+          <strong>填充（Padding）</strong
+          >：编译器在字段之间插入的空白字节，确保每个字段满足对齐要求。
+        </li>
+        <li>
+          <strong>结构体对齐</strong
+          >：结构体的对齐值等于其最大字段的对齐值。结构体的大小是其对齐值的倍数。
+        </li>
+        <li>
+          <strong>伪共享（False Sharing）</strong>：多核 CPU
+          中，不同核心修改同一缓存行的不同变量，导致缓存频繁失效。
+        </li>
+      </ul>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <p>使用 <code>unsafe.Sizeof</code> 查看类型大小：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">package</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">fmt</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unsafe</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 基本类型大小</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"bool:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">false</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)))     </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 1</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"int8:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int8</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)))         </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 1</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"int16:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int16</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)))       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 2</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"int32:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int32</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)))       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 4</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"int64:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)))       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"int:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)))           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 8（64位系统）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"float64:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">float64</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)))   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"string:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"hello"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 16（指针8+长度8）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"slice:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}))        </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 24（指针8+长度8+容量8）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 结构体大小受字段顺序影响</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Bad</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 1字节 + 7字节填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 8字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 1字节 + 7字节填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // Bad 总大小: 24字节</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Good</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 8字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 1字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 1字节 + 6字节填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // Good 总大小: 16字节</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Bad:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Bad</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}))   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 24</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Good:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Good</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 16</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="1-对齐规则"><a href="#1-对齐规则">1. 对齐规则</a></h3>
+      <p>Go 的内存对齐遵循以下规则：</p>
+      <ol>
+        <li>每个类型的对齐值等于其大小（基本类型），或其最大字段的对齐值（结构体）。</li>
+        <li>结构体中每个字段的偏移量必须是其对齐值的倍数。</li>
+        <li>结构体的总大小必须是其对齐值的倍数。</li>
+      </ol>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 64位系统上的对齐值</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// bool:    1</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// int8:    1</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// int16:   2</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// int32:   4</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// int64:   8</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// float32: 4</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// float64: 8</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// string:  8（包含指针）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// slice:   8（包含指针）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 指针:    8</span></span></code></pre>
+      <h3 id="2-字段顺序影响大小"><a href="#2-字段顺序影响大小">2. 字段顺序影响大小</a></h3>
+      <p>同样的字段，不同的排列顺序会导致不同的结构体大小：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 浪费内存的排列</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Wasteful</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1字节，偏移0</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">              // 7字节填充（为了对齐 b）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">float64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 8字节，偏移8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1字节，偏移16</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">              // 7字节填充（结构体大小必须是8的倍数）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 总大小: 24字节</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 优化的排列</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Optimized</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">float64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 8字节，偏移0</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1字节，偏移8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1字节，偏移9</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">              // 6字节填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 总大小: 16字节</span></span></code></pre>
+      <h3 id="3-使用-unsafe-分析结构体">
+        <a href="#3-使用-unsafe-分析结构体">3. 使用 unsafe 分析结构体</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> User</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 16字节（指针8+长度8）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Age  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 8字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Active </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 1字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> analyzeStructure</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> u </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">User</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    t </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> reflect.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TypeOf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(u)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"结构体大小: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(u))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"结构体对齐: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Alignof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(u))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NumField</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); i</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        field </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Field</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(i)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"字段 </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">: 大小=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 偏移=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 对齐=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            field.Name,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(reflect.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">New</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(field.Type).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Elem</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Offsetof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(u),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Alignof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(reflect.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">New</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(field.Type).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Elem</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        )</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="4-空结构体"><a href="#4-空结构体">4. 空结构体</a></h3>
+      <p>空结构体 <code>struct{}</code> 不占用内存：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(s)) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 0</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 常见用途：channel 信号</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">done </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">chan</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(done)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 用作 Set 类型</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Set</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> map</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">set </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">set[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"apple"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}{}</span></span></code></pre>
+      <p>
+        注意：当空结构体是结构体的最后一个字段时，可能需要 1 字节填充，防止结构体外的内存被误访问。
+      </p>
+      <h3 id="5-字段对齐优化实践"><a href="#5-字段对齐优化实践">5. 字段对齐优化实践</a></h3>
+      <p>将字段按大小从大到小排列，减少填充：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 优化前：32字节</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Before</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1 + 7填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   // 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int32</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   // 4</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1 + 3填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    e </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   // 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 优化后：24字节</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> After</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   // 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    e </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   // 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int32</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   // 4</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1 + 2填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="6-64位原子操作对齐"><a href="#6-64位原子操作对齐">6. 64位原子操作对齐</a></h3>
+      <p>
+        在 32 位系统上，64 位原子操作要求 8 字节对齐。如果结构体中的 int64 字段没有 8
+        字节对齐，原子操作会 panic：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 可能出问题的结构体</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Counter</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Flag </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">     // 1字节 + 7字节填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   // 8字节（在32位系统上可能不对齐）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 修复：将 int64 放在前面</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> CounterFixed</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   // 8字节，保证对齐</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Flag  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 或者使用 padding 强制对齐</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> CounterPadded</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Flag  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    _     [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">7</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 显式填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="7-伪共享false-sharing">
+        <a href="#7-伪共享false-sharing">7. 伪共享（False Sharing）</a>
+      </h3>
+      <p>
+        多核 CPU 中，缓存行通常为 64
+        字节。如果两个频繁修改的变量在同一缓存行中，会导致缓存频繁失效：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 伪共享问题</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Counters</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    A </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 与 B 在同一缓存行</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    B </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 修改 B 会使 A 的缓存失效</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 解决：添加填充，确保不同缓存行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> CountersFixed</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    A </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    _ [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">56</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 填充到 64 字节缓存行</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    B </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 更优雅的方式</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> PaddedInt64</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    _     [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">7</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 填充到 64 字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="场景一高性能数据结构"><a href="#场景一高性能数据结构">场景一：高性能数据结构</a></h3>
+      <p>在内存敏感的场景（如高频交易、游戏服务器）中，优化结构体大小：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 优化前：每个对象 32 字节</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Entity</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Active  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">     // 1 + 7填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ID      </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   // 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    X       </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">float64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Y       </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">float64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 优化后：每个对象 24 字节</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Entity</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ID      </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   // 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    X       </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">float64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Y       </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">float64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Active  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">     // 1（最后一个字段，填充更少）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 100万个对象节省 8MB</span></span></code></pre>
+      <h3 id="场景二并发计数器"><a href="#场景二并发计数器">场景二：并发计数器</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 每个核独立的计数器，避免伪共享</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> PerCPUCounter</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    counters [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">8</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">PaddedInt64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 8个核，每个有独立缓存行</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> PaddedInt64</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    _     [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">7</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 56字节填充，总共64字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">PerCPUCounter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Increment</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">cpu</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    atomic.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">AddInt64</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">c.counters[cpu].Value, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="场景三内存池优化"><a href="#场景三内存池优化">场景三：内存池优化</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 确保内存池中的对象大小是缓存行的倍数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> CacheLineSize</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 64</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> PoolObject</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Data [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">48</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 实际数据</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    _    [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">16</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 填充到 64 字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="注意事项与常见错误"><a href="#注意事项与常见错误">注意事项与常见错误</a></h2>
+      <ol>
+        <li>
+          <p>
+            <strong>不同平台对齐不同</strong>：32
+            <span
+              class="term-tip"
+              data-term="位"
+              data-module="c"
+              data-def="二进制数字，基本存储单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">位</abbr></span
+            >和 64
+            <span
+              class="term-tip"
+              data-term="位"
+              data-module="c"
+              data-def="二进制数字，基本存储单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">位</abbr></span
+            >系统的<span
+              class="term-tip"
+              data-term="对齐"
+              data-module="agent"
+              data-def="确保 AI 系统的行为与人类价值观和意图一致的技术和治理方法"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对齐</abbr></span
+            >值不同。<span
+              class="term-tip"
+              data-term="int"
+              data-module="cpp"
+              data-def="整数类型"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">int</abbr></span
+            >
+            在 32
+            <span
+              class="term-tip"
+              data-term="位"
+              data-module="c"
+              data-def="二进制数字，基本存储单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">位</abbr></span
+            >系统上是 4
+            <span
+              class="term-tip"
+              data-term="字节"
+              data-module="c"
+              data-def="8 位组成的数据单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">字节</abbr></span
+            >，64 位系统上是 8 字节。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >不要盲目<span
+                class="term-tip"
+                data-term="优化"
+                data-module="cs-fundamentals"
+                data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">优化</abbr></span
+              ></strong
+            >：大<span
+              class="term-tip"
+              data-term="多"
+              data-module="github"
+              data-def="多个的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">多</abbr></span
+            >数<span
+              class="term-tip"
+              data-term="应用"
+              data-module="github"
+              data-def="GitHub 应用程序"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">应用</abbr></span
+            >不需要手动<span
+              class="term-tip"
+              data-term="优化"
+              data-module="cs-fundamentals"
+              data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+              data-slug="cs-fundamentals/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">优化</abbr></span
+            >内存<span
+              class="term-tip"
+              data-term="对齐"
+              data-module="agent"
+              data-def="确保 AI 系统的行为与人类价值观和意图一致的技术和治理方法"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对齐</abbr></span
+            >。只有在<span
+              class="term-tip"
+              data-term="对"
+              data-module="github"
+              data-def="对"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对</abbr></span
+            >性能或内存有严<span
+              class="term-tip"
+              data-term="格"
+              data-module="discrete-math"
+              data-def="任意两个元素都有上确界和下确界的偏序集"
+              data-slug="discrete-math/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">格</abbr></span
+            >要求时才需要。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              ><span
+                class="term-tip"
+                data-term="编译器"
+                data-module="c"
+                data-def="将 C 代码转换为机器码的程序"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编译器</abbr></span
+              >可能<span
+                class="term-tip"
+                data-term="重排"
+                data-module="cpp"
+                data-def="重排"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">重排</abbr></span
+              >字<span
+                class="term-tip"
+                data-term="段"
+                data-module="vue3"
+                data-def="URL 的一段"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">段</abbr></span
+              ></strong
+            >：Go
+            <span
+              class="term-tip"
+              data-term="规范"
+              data-module="html5"
+              data-def="HTML 标准文档"
+              data-slug="html5/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">规范</abbr></span
+            >不<span
+              class="term-tip"
+              data-term="保证"
+              data-module="github"
+              data-def="保证"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">保证</abbr></span
+            >结构体<span
+              class="term-tip"
+              data-term="字段"
+              data-module="cpp"
+              data-def="字段"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">字段</abbr></span
+            >的内存顺序与<span
+              class="term-tip"
+              data-term="声明"
+              data-module="c"
+              data-def="引入变量或函数"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">声明</abbr></span
+            >顺序一致。但当前 Go
+            <span
+              class="term-tip"
+              data-term="编译器"
+              data-module="c"
+              data-def="将 C 代码转换为机器码的程序"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">编译器</abbr></span
+            >确实按<span
+              class="term-tip"
+              data-term="声明"
+              data-module="c"
+              data-def="引入变量或函数"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">声明</abbr></span
+            >顺序排列。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >使用 fieldalignment
+              <span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              ></strong
+            >：Go 官方<span
+              class="term-tip"
+              data-term="提供"
+              data-module="github"
+              data-def="提供"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">提供</abbr></span
+            >了<span
+              class="term-tip"
+              data-term="结构体"
+              data-module="c"
+              data-def="组合不同类型的数据"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">结构体</abbr></span
+            >对齐<span
+              class="term-tip"
+              data-term="检查"
+              data-module="cpp"
+              data-def="验证条件"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">检查</abbr></span
+            >工具：
+          </p>
+        </li>
+      </ol>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 安装</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> install</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment@latest</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 检查</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">fieldalignment</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ./...</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 自动修复</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">fieldalignment</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -fix</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ./...</span></span></code></pre>
+      <ol start="5">
+        <li>
+          <p>
+            <strong
+              >空<span
+                class="term-tip"
+                data-term="接口"
+                data-module="c"
+                data-def="与其他代码交互的方式"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">接口</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="大小"
+                data-module="github"
+                data-def="大小"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">大小</abbr></span
+              ></strong
+            >：<code>interface{}</code> 占 16
+            <span
+              class="term-tip"
+              data-term="字节"
+              data-module="c"
+              data-def="8 位组成的数据单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">字节</abbr></span
+            >（<span
+              class="term-tip"
+              data-term="类型"
+              data-module="c"
+              data-def="数据的分类"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">类型</abbr></span
+            >指针8 + 数据指针8），不是 0
+            <span
+              class="term-tip"
+              data-term="字节"
+              data-module="c"
+              data-def="8 位组成的数据单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">字节</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >string 和
+              <span
+                class="term-tip"
+                data-term="slice"
+                data-module="cpp"
+                data-def="数组切片"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">slice</abbr></span
+              >
+              的内部<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              ></strong
+            >：string 是 <code>{ptr, len}</code> 共 16
+            <span
+              class="term-tip"
+              data-term="字节"
+              data-module="c"
+              data-def="8 位组成的数据单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">字节</abbr></span
+            >，<span
+              class="term-tip"
+              data-term="slice"
+              data-module="cpp"
+              data-def="数组切片"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">slice</abbr></span
+            >
+            是 <code>{ptr, len, cap}</code> 共 24
+            <span
+              class="term-tip"
+              data-term="字节"
+              data-module="c"
+              data-def="8 位组成的数据单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">字节</abbr></span
+            >。
+          </p>
+        </li>
+      </ol>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="使用-go-vet-检查"><a href="#使用-go-vet-检查">使用 go vet 检查</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 检查结构体中 64 位原子操作的对齐问题</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> vet</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -copylocks</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ./...</span></span></code></pre>
+      <h3 id="使用-reflect-分析任意类型">
+        <a href="#使用-reflect-分析任意类型">使用 reflect 分析任意类型</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> AnalyzeType</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">t</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> reflect</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Type</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Kind</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> reflect.Struct {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">: 大小=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 对齐=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(), t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Size</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(), t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Align</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"结构体 </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">: 大小=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 对齐=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(), t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Size</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(), t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Align</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> totalPadding </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    prevEnd </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NumField</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); i</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        field </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Field</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(i)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        offset </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(field.Offset)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        size </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(field.Type.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Size</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        padding </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> offset </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> prevEnd</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        totalPadding </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> padding</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"  </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">: 偏移=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 大小=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 填充=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            field.Name, offset, size, padding)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        prevEnd </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> offset </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> size</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 末尾填充</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    endPadding </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Size</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> prevEnd</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    totalPadding </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> endPadding</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"  末尾填充=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 总填充=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%.1f%%</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">)</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        endPadding, totalPadding,</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        float64</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(totalPadding)</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/float64</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(t.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Size</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="内存分配器与对齐"><a href="#内存分配器与对齐">内存分配器与对齐</a></h3>
+      <p>
+        Go 的<span
+          class="term-tip"
+          data-term="内存分配器"
+          data-module="c"
+          data-def="管理内存分配和释放"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">内存分配器</abbr></span
+        >（tcmalloc 风<span
+          class="term-tip"
+          data-term="格"
+          data-module="discrete-math"
+          data-def="任意两个元素都有上确界和下确界的偏序集"
+          data-slug="discrete-math/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">格</abbr></span
+        >）按<span
+          class="term-tip"
+          data-term="大小"
+          data-module="github"
+          data-def="大小"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">大小</abbr></span
+        >类别<span
+          class="term-tip"
+          data-term="分配"
+          data-module="github"
+          data-def="将 Issue 指派给某人"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">分配</abbr></span
+        >内存。了解<span
+          class="term-tip"
+          data-term="对齐"
+          data-module="agent"
+          data-def="确保 AI 系统的行为与人类价值观和意图一致的技术和治理方法"
+          data-slug="agent/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对齐</abbr></span
+        >有助于理解<span
+          class="term-tip"
+          data-term="分配"
+          data-module="github"
+          data-def="将 Issue 指派给某人"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">分配</abbr></span
+        >行为：
+      </p>
+      <ul>
+        <li>
+          小<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >（&#x3C;=16KB）：按<span
+            class="term-tip"
+            data-term="大小"
+            data-module="github"
+            data-def="大小"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">大小</abbr></span
+          >类别<span
+            class="term-tip"
+            data-term="分配"
+            data-module="github"
+            data-def="将 Issue 指派给某人"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分配</abbr></span
+          >，浪费<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >约 12.5%
+        </li>
+        <li>
+          大<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >（>16KB）：<span
+            class="term-tip"
+            data-term="直接"
+            data-module="github"
+            data-def="直接的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">直接</abbr></span
+          >从<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >分配，按页<span
+            class="term-tip"
+            data-term="对齐"
+            data-module="agent"
+            data-def="确保 AI 系统的行为与人类价值观和意图一致的技术和治理方法"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对齐</abbr></span
+          >（8KB）
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

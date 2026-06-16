@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>vLLM生产栈与LMCache KV卸载</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">vLLM生产栈与LMCache KV卸载</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">vLLM生产栈</span><span class="doc-tag">LMCache</span
+          ><span class="doc-tag">KV卸载</span><span class="doc-tag">CPU卸载</span
+          ><span class="doc-tag">Kubernetes部署</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解vLLM生产栈参考部署和LMCache跨引擎KV缓存复用</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="vllm生产栈与lmcache-kv卸载">
+        <a href="#vllm生产栈与lmcache-kv卸载">vLLM生产栈与LMCache KV卸载</a>
+      </h1>
+      <blockquote>
+        <p>
+          vLLM的production-stack是参考Kubernetes部署——路由器、引擎和可观测性连接在一起。LMCache是KV卸载层，将KV缓存从GPU内存提取出来跨查询和引擎复用(CPU
+          DRAM，然后磁盘/Ceph)。vLLM 0.11.0
+          KV卸载连接器(2026年1月)通过连接器API(v0.9.0+)使其异步和可插拔。卸载延迟不对用户可见。LMCache即使没有共享前缀也有价值——当GPU耗尽KV槽时，抢占的请求可以从CPU恢复而非重新计算预填充。在16x
+          H100(80GB
+          HBM)跨4个a3-highgpu-4g上的发布基准：当KV缓存超过HBM时，原生CPU卸载和LMCache都大幅改善吞吐；在低KV占用时，所有配置匹配基线带小开销。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib, toy KV溢出模拟器)
+        <strong>前置知识:</strong> Phase 17 · 04 (vLLM服务内部), Phase 17 · 06
+        (SGLang/RadixAttention) <strong>时间:</strong> ~60分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>描述vLLM生产栈组件：路由器、引擎、可观测性。</li>
+        <li>解释LMCache KV卸载：GPU→CPU→磁盘层次和跨引擎复用。</li>
+        <li>
+          说出LMCache即使没有<span
+            class="term-tip"
+            data-term="共享"
+            data-module="cpp"
+            data-def="共享"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">共享</abbr></span
+          >前缀也有价<span
+            class="term-tip"
+            data-term="值"
+            data-module="cpp"
+            data-def="值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">值</abbr></span
+          >的场景(GPU KV槽耗尽时抢占<span
+            class="term-tip"
+            data-term="恢复"
+            data-module="github"
+            data-def="恢复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">恢复</abbr></span
+          >)。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >原生CPU卸载和LMCache在不同KV占用下。
+        </li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        vLLM的KV缓存在GPU HBM中。当HBM满时，新<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >必须等旧<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >完成释放KV槽。如果等待<span
+          class="term-tip"
+          data-term="时间"
+          data-module="cpp"
+          data-def="时间"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">时间</abbr></span
+        >太长，<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >超时。LMCache通过将冷KV缓存<span
+          class="term-tip"
+          data-term="卸载"
+          data-module="react"
+          data-def="组件实例从 DOM 树中移除的过程，执行清理操作如取消订阅"
+          data-slug="react/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">卸载</abbr></span
+        >到CPU DRAM(然后磁盘)<span
+          class="term-tip"
+          data-term="解决"
+          data-module="github"
+          data-def="解决"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">解决</abbr></span
+        >，释放GPU槽给新<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="vllm生产栈"><a href="#vllm生产栈">vLLM生产栈</a></h3>
+      <p>
+        参考<span
+          class="term-tip"
+          data-term="Kubernetes"
+          data-module="github"
+          data-def="容器编排平台"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Kubernetes</abbr></span
+        >部署：
+      </p>
+      <ul>
+        <li>
+          <span
+            class="term-tip"
+            data-term="路由器"
+            data-module="vue3"
+            data-def="管理路由的对象"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">路由器</abbr></span
+          >：<span
+            class="term-tip"
+            data-term="请求"
+            data-module="vue3"
+            data-def="HTTP 请求"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">请求</abbr></span
+          >路由和<span
+            class="term-tip"
+            data-term="负载均衡"
+            data-module="github"
+            data-def="负载均衡"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">负载均衡</abbr></span
+          >。
+        </li>
+        <li>引擎：vLLM实例，每个GPU一个。</li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="可观测性"
+            data-module="devops"
+            data-def="通过日志、指标和链路追踪三支柱理解系统内部状态的能力"
+            data-slug="devops/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">可观测性</abbr></span
+          >：<span
+            class="term-tip"
+            data-term="指标"
+            data-module="github"
+            data-def="指标"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">指标</abbr></span
+          >、<span
+            class="term-tip"
+            data-term="追踪"
+            data-module="c"
+            data-def="记录程序执行"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">追踪</abbr></span
+          >、<span
+            class="term-tip"
+            data-term="日志"
+            data-module="github"
+            data-def="日志"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">日志</abbr></span
+          >。
+        </li>
+      </ul>
+      <h3 id="lmcache"><a href="#lmcache">LMCache</a></h3>
+      <p>KV卸载层：</p>
+      <ol>
+        <li>GPU HBM → CPU DRAM(异步，非阻塞)。</li>
+        <li>
+          CPU DRAM → 磁盘/Ceph(<span
+            class="term-tip"
+            data-term="长期"
+            data-module="github"
+            data-def="长期的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">长期</abbr></span
+          >存储)。
+        </li>
+        <li>跨引擎复用：引擎A卸载的KV缓存可被引擎B加载。</li>
+      </ol>
+      <h3 id="抢占恢复"><a href="#抢占恢复">抢占恢复</a></h3>
+      <p>
+        没有LMCache：GPU KV槽满时，抢占的<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >必须重新预<span
+          class="term-tip"
+          data-term="填充"
+          data-module="html5"
+          data-def="SVG 填充属性"
+          data-slug="html5/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">填充</abbr></span
+        >(<span
+          class="term-tip"
+          data-term="完整"
+          data-module="github"
+          data-def="完整"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">完整</abbr></span
+        >成本)。 有LMCache：抢占的请求KV缓存在CPU DRAM中，<span
+          class="term-tip"
+          data-term="恢复"
+          data-module="github"
+          data-def="恢复"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">恢复</abbr></span
+        >时<span
+          class="term-tip"
+          data-term="直接"
+          data-module="github"
+          data-def="直接的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">直接</abbr></span
+        >加载(低成本)。
+      </p>
+      <h3 id="性能"><a href="#性能">性能</a></h3>
+      <p>在16x H100上：</p>
+      <ul>
+        <li>
+          低KV占用(远低于HBM)：所有<span
+            class="term-tip"
+            data-term="配置"
+            data-module="cpp"
+            data-def="配置参数"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">配置</abbr></span
+          >匹配<span
+            class="term-tip"
+            data-term="基线"
+            data-module="html5"
+            data-def="文本基线对齐线"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">基线</abbr></span
+          >带小开销。
+        </li>
+        <li>
+          高KV占用(超过HBM)：LMCache大幅改善吞吐因为避免重新预<span
+            class="term-tip"
+            data-term="填充"
+            data-module="html5"
+            data-def="SVG 填充属性"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">填充</abbr></span
+          >。
+        </li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code>模拟KV溢出场景和LMCache恢复。</p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-lmcache-auditor.md</code>。给定<span
+          class="term-tip"
+          data-term="部署"
+          data-module="cpp"
+          data-def="部署应用"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">部署</abbr></span
+        >规模和<span
+          class="term-tip"
+          data-term="工作"
+          data-module="cpp"
+          data-def="工作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">工作</abbr></span
+        >负载，审计LMCache是否<span
+          class="term-tip"
+          data-term="值"
+          data-module="cpp"
+          data-def="值"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">值</abbr></span
+        >得以及<span
+          class="term-tip"
+          data-term="配置"
+          data-module="cpp"
+          data-def="配置参数"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">配置</abbr></span
+        >建议。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          计算H100(80GB)上70B FP8模型的KV缓存<span
+            class="term-tip"
+            data-term="容量"
+            data-module="github"
+            data-def="容量"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">容量</abbr></span
+          >。在128并发、2048
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >时KV缓存超过HBM吗？
+        </li>
+        <li>
+          为什么LMCache卸载<span
+            class="term-tip"
+            data-term="延迟"
+            data-module="cpp"
+            data-def="延迟操作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">延迟</abbr></span
+          >不<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >用户可见？
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >原生CPU卸载和LMCache在功能上。
+        </li>
+        <li>
+          阅读LMCache
+          <span
+            class="term-tip"
+            data-term="GitHub"
+            data-module="github"
+            data-def="代码托管和协作平台"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">GitHub</abbr></span
+          >。<span
+            class="term-tip"
+            data-term="描述"
+            data-module="github"
+            data-def="描述"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">描述</abbr></span
+          >连接器API。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="设计"
+            data-module="github"
+            data-def="设计"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设计</abbr></span
+          >部署：8x H100，<span
+            class="term-tip"
+            data-term="混合"
+            data-module="github"
+            data-def="混合"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">混合</abbr></span
+          >长短prompt工作<span
+            class="term-tip"
+            data-term="负载"
+            data-module="github"
+            data-def="负载"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">负载</abbr></span
+          >。LMCache值得吗？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="生产"
+                data-module="github"
+                data-def="生产"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生产</abbr></span
+              >栈
+            </td>
+            <td>”参考K8s部署”</td>
+            <td>
+              vLLM的<span
+                class="term-tip"
+                data-term="Kubernetes"
+                data-module="github"
+                data-def="容器编排平台"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Kubernetes</abbr></span
+              >参考<span
+                class="term-tip"
+                data-term="部署"
+                data-module="cpp"
+                data-def="部署应用"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">部署</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>LMCache</td>
+            <td>”KV卸载层”</td>
+            <td>GPU→CPU→磁盘KV缓存层次</td>
+          </tr>
+          <tr>
+            <td>
+              抢占<span
+                class="term-tip"
+                data-term="恢复"
+                data-module="github"
+                data-def="恢复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">恢复</abbr></span
+              >
+            </td>
+            <td>”从CPU恢复”</td>
+            <td>
+              从CPU DRAM恢复被抢占<span
+                class="term-tip"
+                data-term="请求"
+                data-module="vue3"
+                data-def="HTTP 请求"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">请求</abbr></span
+              >的KV缓存
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="连接"
+                data-module="cpp"
+                data-def="连接关系"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连接</abbr></span
+              >器API
+            </td>
+            <td>
+              ”v0.9.0+<span
+                class="term-tip"
+                data-term="插件"
+                data-module="github"
+                data-def="插件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">插件</abbr></span
+              >”
+            </td>
+            <td>
+              vLLM的可插拔KV卸载<span
+                class="term-tip"
+                data-term="接口"
+                data-module="c"
+                data-def="与其他代码交互的方式"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">接口</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://github.com/vllm-project/production-stack"
+            >vLLM Production Stack GitHub</a
+          >
+        </li>
+        <li><a href="https://github.com/LMCache/LMCache">LMCache GitHub</a></li>
+      </ul>
+    </article>
+  </body>
+</html>

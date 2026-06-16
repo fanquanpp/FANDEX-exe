@@ -1,0 +1,711 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GPU与云计算</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">GPU与云计算</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-beginner"> Beginner </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">GPU</span><span class="doc-tag">CUDA</span
+          ><span class="doc-tag">云计算</span><span class="doc-tag">Google Colab</span
+          ><span class="doc-tag">性能基准</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          验证本地 GPU 可用性，配置 Google Colab T4 GPU，基准测试 CPU vs GPU 矩阵乘法，估算 VRAM
+          可容纳的最大模型
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="gpu-与云计算"><a href="#gpu-与云计算">GPU 与云计算</a></h1>
+      <blockquote>
+        <p>用 CPU 训练用于学习没问题。真正的训练需要 GPU。</p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python <strong>前置条件：</strong> 阶段
+        0，第 01 课 <strong>预计时间：</strong> ~45 分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>使用 <code>nvidia-smi</code> 和 PyTorch 的 CUDA API 验证本地 GPU 可用性</li>
+        <li>配置 Google Colab 的 T4 GPU 进行免费云端实验</li>
+        <li>对 CPU 和 GPU 的矩阵乘法进行基准测试并测量加速比</li>
+        <li>使用 fp16 经验法则估算 VRAM 可容纳的最大模型</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        <span
+          class="term-tip"
+          data-term="阶段"
+          data-module="github"
+          data-def="阶段"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">阶段</abbr></span
+        >
+        1-3 的大<span
+          class="term-tip"
+          data-term="部分"
+          data-module="github"
+          data-def="部分的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">部分</abbr></span
+        >课程在 CPU 上运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >良好。但一旦你开始<span
+          class="term-tip"
+          data-term="训练"
+          data-module="github"
+          data-def="培训"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">训练</abbr></span
+        >
+        CNN、Transformer 或 LLM（<span
+          class="term-tip"
+          data-term="阶段"
+          data-module="github"
+          data-def="阶段"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">阶段</abbr></span
+        >
+        4+），就需要 GPU 加速。在 CPU 上需要 8
+        <span
+          class="term-tip"
+          data-term="小时"
+          data-module="github"
+          data-def="小时"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">小时</abbr></span
+        >的<span
+          class="term-tip"
+          data-term="训练"
+          data-module="github"
+          data-def="培训"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">训练</abbr></span
+        >，在 GPU 上只需 10 分钟。
+      </p>
+      <p>
+        你有三个<span
+          class="term-tip"
+          data-term="选择"
+          data-module="cpp"
+          data-def="选择"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">选择</abbr></span
+        >：<span
+          class="term-tip"
+          data-term="本地"
+          data-module="github"
+          data-def="本地"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">本地</abbr></span
+        >
+        GPU、云 GPU 或 Google Colab（免费）。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>你的选择：</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>1. 本地 NVIDIA GPU</span></span>
+<span class="line"><span>   成本：$0（你已经有了）</span></span>
+<span class="line"><span>   配置：安装 CUDA + cuDNN</span></span>
+<span class="line"><span>   适用于：日常使用，大数据集</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>2. Google Colab（免费版）</span></span>
+<span class="line"><span>   成本：$0</span></span>
+<span class="line"><span>   配置：无</span></span>
+<span class="line"><span>   适用于：快速实验，家里没有 GPU</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>3. 云 GPU（Lambda, RunPod, Vast.ai）</span></span>
+<span class="line"><span>   成本：$0.20-2.00/小时</span></span>
+<span class="line"><span>   配置：SSH + 安装</span></span>
+<span class="line"><span>   适用于：正式训练，大模型</span></span></code></pre>
+      <h2 id="动手构建"><a href="#动手构建">动手构建</a></h2>
+      <h3 id="选项-1本地-nvidia-gpu">
+        <a href="#选项-1本地-nvidia-gpu">选项 1：本地 NVIDIA GPU</a>
+      </h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="检查"
+          data-module="cpp"
+          data-def="验证条件"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">检查</abbr></span
+        >你是否有 GPU：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">nvidia-smi</span></span></code></pre>
+      <p>
+        安装<span
+          class="term-tip"
+          data-term="支持"
+          data-module="cpp"
+          data-def="支持"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">支持</abbr></span
+        >
+        CUDA 的 PyTorch：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"CUDA available: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">torch.cuda.is_available()</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"CUDA version: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">torch.version.cuda</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.cuda.is_available():</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"GPU: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">torch.cuda.get_device_name(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Memory: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">torch.cuda.get_device_properties(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).total_memory </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1e9</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.1f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> GB"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="选项-2google-colab"><a href="#选项-2google-colab">选项 2：Google Colab</a></h3>
+      <ol>
+        <li>访问 <a href="https://colab.research.google.com">colab.research.google.com</a></li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="运行时"
+            data-module="c"
+            data-def="程序执行的阶段"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">运行时</abbr></span
+          >
+          > 更改<span
+            class="term-tip"
+            data-term="运行时类型"
+            data-module="javascript"
+            data-def="实际类型"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">运行时类型</abbr></span
+          >
+          > T4 GPU
+        </li>
+        <li>
+          运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >
+          <code>!nvidia-smi</code>
+          <span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >
+        </li>
+      </ol>
+      <p>
+        将本课程的笔记本<span
+          class="term-tip"
+          data-term="直接"
+          data-module="github"
+          data-def="直接的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">直接</abbr></span
+        >上传到 Colab。
+      </p>
+      <h3 id="选项-3云-gpu"><a href="#选项-3云-gpu">选项 3：云 GPU</a></h3>
+      <p>使用 Lambda Labs、RunPod 或 Vast.ai：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ssh</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user@your-gpu-instance</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pip</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> install</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> torch</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> torchvision</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> torchaudio</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">python</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -c</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "import torch; print(torch.cuda.get_device_name(0))"</span></span></code></pre>
+      <h3 id="没有-gpu没问题"><a href="#没有-gpu没问题">没有 GPU？没问题</a></h3>
+      <p>
+        大<span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >数课程在 CPU 上可以运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >。需要 GPU 的课程会特别说明，并<span
+          class="term-tip"
+          data-term="提供"
+          data-module="github"
+          data-def="提供"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">提供</abbr></span
+        >
+        Colab
+        <span
+          class="term-tip"
+          data-term="链接"
+          data-module="c"
+          data-def="合并目标文件生成可执行文件"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">链接</abbr></span
+        >。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">device </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.device(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"cuda"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.cuda.is_available() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">else</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "cpu"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Using: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">device</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h2 id="动手构建gpu-vs-cpu-基准测试">
+        <a href="#动手构建gpu-vs-cpu-基准测试">动手构建：GPU vs CPU 基准测试</a>
+      </h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">size </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 5000</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">a_cpu </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.randn(size, size)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">b_cpu </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.randn(size, size)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.time()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">c_cpu </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a_cpu </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">@</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b_cpu</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">cpu_time </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.time() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> start</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"CPU: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">cpu_time</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.3f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">s"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.cuda.is_available():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    a_gpu </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a_cpu.to(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"cuda"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    b_gpu </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b_cpu.to(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"cuda"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    torch.cuda.synchronize()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.time()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    c_gpu </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a_gpu </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">@</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b_gpu</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    torch.cuda.synchronize()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    gpu_time </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.time() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> start</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"GPU: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">gpu_time</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.3f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">s"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Speedup: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">cpu_time </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> gpu_time</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.0f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">x"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >上<span
+            class="term-tip"
+            data-term="面"
+            data-module="cpp"
+            data-def="面对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">面</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="基准测试"
+            data-module="vue3"
+            data-def="测量性能的测试"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">基准测试</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >
+          CPU 和 GPU 的<span
+            class="term-tip"
+            data-term="时间"
+            data-module="cpp"
+            data-def="时间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">时间</abbr></span
+          >
+        </li>
+        <li>
+          如果你没有 GPU，在 Google Colab 上运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >并<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="检查"
+            data-module="cpp"
+            data-def="验证条件"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检查</abbr></span
+          >你的 GPU 显存<span
+            class="term-tip"
+            data-term="大小"
+            data-module="github"
+            data-def="大小"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">大小</abbr></span
+          >，估算能容纳的最大模型（<span
+            class="term-tip"
+            data-term="经验"
+            data-module="github"
+            data-def="经验"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">经验</abbr></span
+          >法则：fp16 每个<span
+            class="term-tip"
+            data-term="参数"
+            data-module="c"
+            data-def="函数定义时的变量"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参数</abbr></span
+          >
+          2
+          <span
+            class="term-tip"
+            data-term="字节"
+            data-module="c"
+            data-def="8 位组成的数据单位"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">字节</abbr></span
+          >）
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>CUDA</td>
+            <td>
+              ”GPU
+              <span
+                class="term-tip"
+                data-term="编程"
+                data-module="github"
+                data-def="编程"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编程</abbr></span
+              >”
+            </td>
+            <td>
+              NVIDIA 的<span
+                class="term-tip"
+                data-term="并行"
+                data-module="github"
+                data-def="并行的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">并行</abbr></span
+              >计算<span
+                class="term-tip"
+                data-term="平台"
+                data-module="github"
+                data-def="GitHub 平台"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">平台</abbr></span
+              >，让你在 GPU 上运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >代码
+            </td>
+          </tr>
+          <tr>
+            <td>VRAM</td>
+            <td>”GPU 内存”</td>
+            <td>
+              GPU 上的视频内存，与<span
+                class="term-tip"
+                data-term="系统"
+                data-module="cpp"
+                data-def="系统"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">系统</abbr></span
+              >内存独立。<span
+                class="term-tip"
+                data-term="限制"
+                data-module="github"
+                data-def="限制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限制</abbr></span
+              >模型<span
+                class="term-tip"
+                data-term="大小"
+                data-module="github"
+                data-def="大小"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">大小</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>fp16</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="半"
+                data-module="github"
+                data-def="半"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">半</abbr></span
+              >精<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >”
+            </td>
+            <td>
+              16
+              <span
+                class="term-tip"
+                data-term="位"
+                data-module="c"
+                data-def="二进制数字，基本存储单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位</abbr></span
+              >浮<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >数，使用 fp32 一<span
+                class="term-tip"
+                data-term="半"
+                data-module="github"
+                data-def="半"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">半</abbr></span
+              >的内存，精<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >损失极小
+            </td>
+          </tr>
+          <tr>
+            <td>Tensor Core</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="快速"
+                data-module="github"
+                data-def="快速的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">快速</abbr></span
+              >矩阵<span
+                class="term-tip"
+                data-term="硬件"
+                data-module="github"
+                data-def="硬件设备"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">硬件</abbr></span
+              >”
+            </td>
+            <td>
+              GPU 上专<span
+                class="term-tip"
+                data-term="门"
+                data-module="cs-fundamentals"
+                data-def="实现布尔运算的基本数字电路元件，包括与门、或门、非门等"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">门</abbr></span
+              >用于矩阵乘法的<span
+                class="term-tip"
+                data-term="核"
+                data-module="data-analysis"
+                data-def="KDE中用于平滑估计的窗口函数，常用高斯核"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">核</abbr></span
+              >心，比普通<span
+                class="term-tip"
+                data-term="核"
+                data-module="data-analysis"
+                data-def="KDE中用于平滑估计的窗口函数，常用高斯核"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">核</abbr></span
+              >心快 4-8 倍
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </article>
+  </body>
+</html>

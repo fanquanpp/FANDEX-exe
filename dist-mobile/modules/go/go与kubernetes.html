@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Go与Kubernetes</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Go与Kubernetes</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">client-go与K8s开发</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        Kubernetes（简称 K8s）是当前最流行的容器编排平台，用于自动化部署、扩展和管理容器化应用。Go
+        是 Kubernetes 的开发语言，Kubernetes 官方提供了 client-go 库，让 Go 程序可以方便地与
+        Kubernetes API 交互，实现自定义控制器、Operator 和管理工具。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <p>在开始编码之前，需要理解 Kubernetes 编程的几个核心概念：</p>
+      <ul>
+        <li>
+          <strong>client-go</strong>：Kubernetes 官方 Go 客户端库，提供了类型安全的 API 调用。
+        </li>
+        <li>
+          <strong>Clientset</strong>：一组预生成的客户端，用于操作 Kubernetes 内置资源（Pod、Service
+          等）。
+        </li>
+        <li>
+          <strong>CRD（Custom Resource Definition）</strong>：自定义资源定义，扩展 Kubernetes API。
+        </li>
+        <li>
+          <strong>Controller</strong>：控制器模式，监听资源变化并执行相应操作，是 Kubernetes
+          的核心编程模式。
+        </li>
+        <li>
+          <strong>Informer</strong>：client-go 提供的缓存机制，本地缓存资源数据，减少 API Server
+          压力。
+        </li>
+        <li>
+          <strong>Operator</strong>：使用 CRD + Controller 模式管理应用的模式，如数据库 Operator。
+        </li>
+      </ul>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <p>首先安装 client-go：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> get</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> k8s.io/client-go@latest</span></span></code></pre>
+      <p>最简单的示例 — 列出集群中的 Pod：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">package</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">context</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">fmt</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">log</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    metav1 </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">k8s.io/apimachinery/pkg/apis/meta/v1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">k8s.io/client-go/kubernetes</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">k8s.io/client-go/tools/clientcmd</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 从 kubeconfig 文件创建配置</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    config, err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> clientcmd.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BuildConfigFromFlags</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">""</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, clientcmd.RecommendedHomeFile)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Fatal</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(err)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 创建 Clientset</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    clientset, err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> kubernetes.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewForConfig</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(config)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Fatal</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(err)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 列出 default 命名空间的 Pod</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    pods, err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> clientset.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CoreV1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pods</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"default"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">List</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(context.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TODO</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(), </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ListOptions</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Fatal</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(err)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _, pod </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pods.Items {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Pod: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 状态: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, pod.Name, pod.Status.Phase)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="1-连接配置"><a href="#1-连接配置">1. 连接配置</a></h3>
+      <p>根据运行环境选择不同的配置方式：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">k8s.io/client-go/tools/clientcmd</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 方式1：从 kubeconfig 文件读取（开发环境）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">config, err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> clientcmd.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BuildConfigFromFlags</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">""</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, clientcmd.RecommendedHomeFile)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 方式2：从集群内部读取（Pod 内运行时）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">config, err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rest.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">InClusterConfig</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 方式3：手动配置</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">config </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x26;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">rest</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Config</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Host:        </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://k8s-api.example.com:6443"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    BearerToken: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"your-token"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    TLSClientConfig: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">rest</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TLSClientConfig</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        Insecure: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">true</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 仅开发环境</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="2-操作内置资源"><a href="#2-操作内置资源">2. 操作内置资源</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 创建 Clientset</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">clientset, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> kubernetes.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewForConfig</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(config)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// --- Pod 操作 ---</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 列出 Pod</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pods, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> clientset.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CoreV1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pods</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"default"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">List</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ListOptions</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 获取单个 Pod</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pod, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> clientset.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CoreV1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pods</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"default"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my-pod"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GetOptions</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 删除 Pod</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">clientset.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CoreV1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pods</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"default"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Delete</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my-pod"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">DeleteOptions</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// --- Deployment 操作 ---</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 创建 Deployment</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">deployment </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x26;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">appsv1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Deployment</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ObjectMeta: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ObjectMeta</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{Name: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my-app"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Spec: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">appsv1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">DeploymentSpec</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        Replicas: ptr.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">To</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int32</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        Selector: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">LabelSelector</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            MatchLabels: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">map</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"app"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my-app"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        Template: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">corev1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">PodTemplateSpec</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            ObjectMeta: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ObjectMeta</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                Labels: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">map</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"app"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my-app"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            Spec: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">corev1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">PodSpec</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                Containers: []</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">corev1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Container</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    Name:  </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my-app"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    Image: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my-app:1.0"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    Ports: []</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">corev1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ContainerPort</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{{ContainerPort: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">8080</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                }},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">clientset.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">AppsV1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Deployments</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"default"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Create</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, deployment, </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CreateOptions</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// --- Service 操作 ---</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">svc, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> clientset.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CoreV1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Services</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"default"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my-service"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GetOptions</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"ClusterIP: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, svc.Spec.ClusterIP)</span></span></code></pre>
+      <h3 id="3-使用-informer-监听资源变化">
+        <a href="#3-使用-informer-监听资源变化">3. 使用 Informer 监听资源变化</a>
+      </h3>
+      <p>Informer 提供了本地缓存和事件通知机制：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">k8s.io/client-go/informers</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">k8s.io/client-go/tools/cache</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 创建 SharedInformerFactory</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">factory </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> informers.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewSharedInformerFactory</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(clientset, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">30</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">time.Second)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">podInformer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> factory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Core</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">V1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pods</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Informer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 注册事件处理器</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">podInformer.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">AddEventHandler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">cache</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResourceEventHandlerFuncs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    AddFunc: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">obj</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pod </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> obj.(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">corev1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pod</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Pod 新增: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, pod.Name)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    UpdateFunc: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">oldObj</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">newObj</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        oldPod </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> oldObj.(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">corev1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pod</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        newPod </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> newObj.(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">corev1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pod</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> oldPod.Status.Phase </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> newPod.Status.Phase {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Pod 状态变更: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> %s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> -> </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                newPod.Name, oldPod.Status.Phase, newPod.Status.Phase)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    DeleteFunc: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">obj</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pod </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> obj.(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">corev1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pod</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Pod 删除: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, pod.Name)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">})</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 启动 Informer</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ctx, cancel </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> context.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WithCancel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(context.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Background</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">defer</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> cancel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">factory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Start</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Done</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">factory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WaitForCacheSync</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Done</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 阻塞等待</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">select</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}</span></span></code></pre>
+      <h3 id="4-自定义资源crd"><a href="#4-自定义资源crd">4. 自定义资源（CRD）</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="操作"
+          data-module="github"
+          data-def="GitHub Actions 工作流"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">操作</abbr></span
+        >自<span
+          class="term-tip"
+          data-term="定义"
+          data-module="c"
+          data-def="创建变量或函数的实体"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">定义</abbr></span
+        >资<span
+          class="term-tip"
+          data-term="源"
+          data-module="cpp"
+          data-def="源"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">源</abbr></span
+        >需要使用 Dynamic Client：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">k8s.io/client-go/dynamic</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">k8s.io/apimachinery/pkg/runtime/schema</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 创建 Dynamic Client</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">dynamicClient, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dynamic.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewForConfig</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(config)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 定义 CRD 的 GVR（Group/Version/Resource）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">gvr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> schema</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GroupVersionResource</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Group:    </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"myapp.example.com"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Version:  </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"v1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Resource: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"widgets"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 列出自定义资源</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">list, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dynamicClient.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Resource</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(gvr).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Namespace</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"default"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">List</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ListOptions</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _, item </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> list.Items {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Widget: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, item.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GetName</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 创建自定义资源</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">widget </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x26;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unstructured</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Unstructured</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Object: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">map</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}{</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        "apiVersion"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"myapp.example.com/v1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        "kind"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:       </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Widget"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        "metadata"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">map</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}{</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">            "name"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my-widget"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        },</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        "spec"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">map</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}{</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">            "size"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:  </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">            "color"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"blue"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">dynamicClient.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Resource</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(gvr).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Namespace</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"default"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Create</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, widget, </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CreateOptions</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="场景一自定义控制器"><a href="#场景一自定义控制器">场景一：自定义控制器</a></h3>
+      <p>
+        监听 CRD
+        <span
+          class="term-tip"
+          data-term="变化"
+          data-module="vue3"
+          data-def="状态变更"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">变化</abbr></span
+        >并<span
+          class="term-tip"
+          data-term="执行"
+          data-module="github"
+          data-def="执行"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">执行</abbr></span
+        >相应<span
+          class="term-tip"
+          data-term="操作"
+          data-module="github"
+          data-def="GitHub Actions 工作流"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">操作</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> RunController</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ctx</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> context</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Context</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">clientset</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">kubernetes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Clientset</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dynamicClient</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> dynamic</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    gvr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> schema</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GroupVersionResource</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        Group: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"myapp.example.com"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, Version: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"v1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, Resource: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"widgets"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    factory </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dynamicinformer.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewFilteredDynamicSharedInformerFactory</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        dynamicClient, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">30</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">time.Second, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"default"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    )</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    informer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> factory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ForResource</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(gvr).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Informer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    informer.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">AddEventHandler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">cache</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResourceEventHandlerFuncs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        AddFunc: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">obj</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            widget </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> obj.(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unstructured</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Unstructured</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            // 创建对应的 Deployment 或其他资源</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            reconcileWidget</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, clientset, widget)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        UpdateFunc: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">_</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">newObj</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            widget </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> newObj.(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unstructured</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Unstructured</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            reconcileWidget</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, clientset, widget)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    })</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    factory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Start</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Done</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    factory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WaitForCacheSync</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Done</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    select</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="场景二健康检查工具"><a href="#场景二健康检查工具">场景二：健康检查工具</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="检查"
+          data-module="cpp"
+          data-def="验证条件"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">检查</abbr></span
+        >集<span
+          class="term-tip"
+          data-term="群"
+          data-module="discrete-math"
+          data-def="具有封闭性、结合律、单位元和逆元的代数结构，如整数加法群"
+          data-slug="discrete-math/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">群</abbr></span
+        >中所有 Pod 的<span
+          class="term-tip"
+          data-term="状态"
+          data-module="cpp"
+          data-def="状态"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">状态</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> CheckPodHealth</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ctx</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> context</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Context</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">clientset</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">kubernetes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Clientset</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    pods, err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> clientset.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CoreV1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pods</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">""</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">List</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">metav1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ListOptions</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Fatal</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(err)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _, pod </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pods.Items {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _, cs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pod.Status.ContainerStatuses {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> !</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">cs.Ready {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"不健康的容器: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> (重启次数: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">)</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    pod.Namespace, cs.Name, cs.RestartCount)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="场景三配置热更新"><a href="#场景三配置热更新">场景三：配置热更新</a></h3>
+      <p>
+        监听 ConfigMap
+        <span
+          class="term-tip"
+          data-term="变化"
+          data-module="vue3"
+          data-def="状态变更"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">变化</abbr></span
+        >并<span
+          class="term-tip"
+          data-term="通知"
+          data-module="github"
+          data-def="关于活动更新的提醒"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">通知</abbr></span
+        >应用重新加载：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">cmInformer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> factory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Core</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">V1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ConfigMaps</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Informer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">cmInformer.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">AddEventHandler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">cache</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResourceEventHandlerFuncs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    UpdateFunc: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">_</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">newObj</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> interface</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        cm </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> newObj.(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">corev1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ConfigMap</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cm.Name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "app-config"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            // 通知应用重新加载配置</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            notifyConfigReload</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cm.Data)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">})</span></span></code></pre>
+      <h2 id="注意事项与常见错误"><a href="#注意事项与常见错误">注意事项与常见错误</a></h2>
+      <ol>
+        <li>
+          <p>
+            <strong
+              >InClusterConfig 仅在 Pod 内<span
+                class="term-tip"
+                data-term="有效"
+                data-module="cpp"
+                data-def="有效的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">有效</abbr></span
+              ></strong
+            >：在集<span
+              class="term-tip"
+              data-term="群"
+              data-module="discrete-math"
+              data-def="具有封闭性、结合律、单位元和逆元的代数结构，如整数加法群"
+              data-slug="discrete-math/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">群</abbr></span
+            >外<span
+              class="term-tip"
+              data-term="开发"
+              data-module="github"
+              data-def="开发"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">开发</abbr></span
+            >时使用 kubeconfig，在 Pod 内<span
+              class="term-tip"
+              data-term="运行时"
+              data-module="c"
+              data-def="程序执行的阶段"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">运行时</abbr></span
+            >使用 InClusterConfig。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >API
+              <span
+                class="term-tip"
+                data-term="版本"
+                data-module="c"
+                data-def="软件的迭代版本"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">版本</abbr></span
+              >选择</strong
+            >：<span
+              class="term-tip"
+              data-term="Kubernetes"
+              data-module="github"
+              data-def="容器编排平台"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">Kubernetes</abbr></span
+            >
+            API 有<span
+              class="term-tip"
+              data-term="多"
+              data-module="github"
+              data-def="多个的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">多</abbr></span
+            >个<span
+              class="term-tip"
+              data-term="版本"
+              data-module="c"
+              data-def="软件的迭代版本"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">版本</abbr></span
+            >（v1、apps/v1 等），使用正确的 API
+            <span
+              class="term-tip"
+              data-term="版本"
+              data-module="c"
+              data-def="软件的迭代版本"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">版本</abbr></span
+            >。<code>kubectl api-resources</code> 可以查看。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >RBAC
+              <span
+                class="term-tip"
+                data-term="权限"
+                data-module="github"
+                data-def="权限"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">权限</abbr></span
+              ></strong
+            >：Pod 访问
+            <span
+              class="term-tip"
+              data-term="Kubernetes"
+              data-module="github"
+              data-def="容器编排平台"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">Kubernetes</abbr></span
+            >
+            API 需要<span
+              class="term-tip"
+              data-term="配置"
+              data-module="cpp"
+              data-def="配置参数"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">配置</abbr></span
+            >
+            ServiceAccount 和 RBAC
+            <span
+              class="term-tip"
+              data-term="规则"
+              data-module="cpp"
+              data-def="规则"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">规则</abbr></span
+            >，否则会<span
+              class="term-tip"
+              data-term="返回"
+              data-module="vue3"
+              data-def="返回值"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">返回</abbr></span
+            >
+            403。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong>Informer 的 Resync</strong>：Informer 的 resync
+            <span
+              class="term-tip"
+              data-term="间隔"
+              data-module="github"
+              data-def="间隔"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">间隔</abbr></span
+            >不是重新从 API Server
+            <span
+              class="term-tip"
+              data-term="拉取"
+              data-module="github"
+              data-def="获取并合并远程更改"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">拉取</abbr></span
+            >数据，而是重新<span
+              class="term-tip"
+              data-term="触发"
+              data-module="javascript"
+              data-def="导致事件发生"
+              data-slug="javascript/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">触发</abbr></span
+            >
+            Update
+            <span
+              class="term-tip"
+              data-term="事件"
+              data-module="cpp"
+              data-def="事件对象"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">事件</abbr></span
+            >，确保<span
+              class="term-tip"
+              data-term="控制"
+              data-module="github"
+              data-def="控制"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">控制</abbr></span
+            >器<span
+              class="term-tip"
+              data-term="状态"
+              data-module="cpp"
+              data-def="状态"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">状态</abbr></span
+            >同步。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >不要频繁<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="List"
+                data-module="java"
+                data-def="有序集合接口，允许重复元素，支持索引访问"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">List</abbr></span
+              >/Get</strong
+            >：<span
+              class="term-tip"
+              data-term="直接"
+              data-module="github"
+              data-def="直接的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">直接</abbr></span
+            >调用 API 会<span
+              class="term-tip"
+              data-term="增加"
+              data-module="github"
+              data-def="增加"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">增加</abbr></span
+            >
+            API Server
+            <span
+              class="term-tip"
+              data-term="压力"
+              data-module="github"
+              data-def="压力"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">压力</abbr></span
+            >。使用 Informer 的 Lister 从<span
+              class="term-tip"
+              data-term="本地"
+              data-module="github"
+              data-def="本地"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">本地</abbr></span
+            >缓存<span
+              class="term-tip"
+              data-term="读取"
+              data-module="c"
+              data-def="从输入获取数据"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">读取</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              ><span
+                class="term-tip"
+                data-term="资源"
+                data-module="github"
+                data-def="资源"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">资源</abbr></span
+              >版本冲突</strong
+            >：<span
+              class="term-tip"
+              data-term="更新"
+              data-module="c"
+              data-def="修改变量值"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">更新</abbr></span
+            >资<span
+              class="term-tip"
+              data-term="源"
+              data-module="cpp"
+              data-def="源"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">源</abbr></span
+            >时可能遇到<span
+              class="term-tip"
+              data-term="版本"
+              data-module="c"
+              data-def="软件的迭代版本"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">版本</abbr></span
+            >冲突（Optimistic Locking），需要重新<span
+              class="term-tip"
+              data-term="获取"
+              data-module="github"
+              data-def="下载远程数据不合并"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">获取</abbr></span
+            >最新<span
+              class="term-tip"
+              data-term="版本"
+              data-module="c"
+              data-def="软件的迭代版本"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">版本</abbr></span
+            >后再<span
+              class="term-tip"
+              data-term="更新"
+              data-module="c"
+              data-def="修改变量值"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">更新</abbr></span
+            >。
+          </p>
+        </li>
+      </ol>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="operator-框架"><a href="#operator-框架">Operator 框架</a></h3>
+      <p>
+        使用 Kubebuilder 或 Operator SDK
+        <span
+          class="term-tip"
+          data-term="快速"
+          data-module="github"
+          data-def="快速的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">快速</abbr></span
+        >创建 Operator：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 使用 Kubebuilder 初始化项目</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">kubebuilder</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> init</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --domain</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> myapp.example.com</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">kubebuilder</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> create</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> api</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --group</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> myapp</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --version</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> v1</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --kind</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> Widget</span></span></code></pre>
+      <h3 id="leader-election"><a href="#leader-election">Leader Election</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >实例<span
+          class="term-tip"
+          data-term="部署"
+          data-module="cpp"
+          data-def="部署应用"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">部署</abbr></span
+        >时，只有一个<span
+          class="term-tip"
+          data-term="实例"
+          data-module="github"
+          data-def="实例"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">实例</abbr></span
+        >运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >控制器：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">k8s.io/client-go/tools/leaderelection</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">leaderElection, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> leaderelection.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewLeaderElector</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">leaderelection</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">LeaderElectionConfig</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Lock:          lock,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    LeaseDuration: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">15</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.Second,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    RenewDeadline: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.Second,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    RetryPeriod:   </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.Second,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Callbacks: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">leaderelection</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">LeaderCallbacks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        OnStartedLeading: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ctx</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> context</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Context</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            // 当选为 Leader，启动控制器</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            RunController</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        OnStoppedLeading: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            // 不再是 Leader</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">})</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">leaderElection.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Run</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx)</span></span></code></pre>
+    </article>
+  </body>
+</html>

@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MCP根目录与诱导 — 作用域与飞行中用户输入</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">MCP根目录与诱导 — 作用域与飞行中用户输入</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            12 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">MCP根目录</span><span class="doc-tag">elicitation</span
+          ><span class="doc-tag">作用域</span><span class="doc-tag">用户输入</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          掌握roots作用域限制和elicitation中途用户输入机制，解决路径假设和参数歧义问题
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="mcp根目录与诱导--作用域与飞行中用户输入">
+        <a href="#mcp根目录与诱导--作用域与飞行中用户输入"
+          >MCP根目录与诱导 — 作用域与飞行中用户输入</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          硬编码路径在用户打开不同项目时立即失效。预填充工具参数在用户规格不足时失效。Roots将服务器范围限定在用户控制的URI集合；elicitation在工具调用中途暂停以通过表单或URL向用户请求结构化输入。两个客户端原语，两个常见MCP失败模式的修复。SEP-1036（URL模式elicitation，2025-11-25）在2026年上半年之前是实验性的
+          — 在依赖它之前检查SDK版本。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库，roots +
+        elicitation演示） <strong>前置条件：</strong> Phase 13 · 07（MCP服务器）
+        <strong>时间：</strong> ~45分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>声明 <code>roots</code> 并响应 <code>notifications/roots/list_changed</code>。</li>
+        <li>将服务器文件操作限制在声明的根集内的URI。</li>
+        <li>使用 <code>elicitation/create</code> 在工具调用中途向用户请求确认或结构化输入。</li>
+        <li>在表单模式和URL模式elicitation之间选择（后者是实验性的；漂移风险已注明）。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>笔记MCP服务器在生产中遇到的两个具体失败。</p>
+      <p>
+        <strong>路径假设断裂。</strong> 服务器针对 <code>~/notes</code> 编写。另一台机器上笔记在
+        <code>~/Documents/Notes</code>
+        的用户得到静默失败的调用（找不到文件）或更糟，写入了错误位置。
+      </p>
+      <p>
+        <strong>缺少用户会知道的参数。</strong> 用户说”删除旧的TPS报告笔记”。模型调用
+        <code>notes_delete(title: "TPS report")</code>
+        但有三个匹配的笔记来自2023、2024和2025。工具无法猜测。用”模糊”失败很烦人；对三个都运行是灾难性的。
+      </p>
+      <p>
+        Roots修复第一个：客户端在
+        <code>initialize</code>
+        声明服务器可以触碰的URI集合。Elicitation修复第二个：服务器暂停工具调用并发送
+        <code>elicitation/create</code> 让用户选择哪一个。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="roots"><a href="#roots">Roots</a></h3>
+      <p>客户端在 <code>initialize</code> 声明根列表：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "capabilities"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"roots"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"listChanged"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">true</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> } }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>服务器然后可以调用 <code>roots/list</code>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{ </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"roots"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [{ </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"uri"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"file:///Users/alice/Documents/Notes"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"name"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Notes"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> }] }</span></span></code></pre>
+      <p>
+        服务器必须将roots视为边界：根集之外的任何文件读写都被拒绝。这不是由客户端强制执行的（服务器仍然是用户信任的代码），但符合规范的服务器遵守它。
+      </p>
+      <p>
+        当用户添加或移除root时，客户端发送
+        <code>notifications/roots/list_changed</code>。服务器重新调用
+        <code>roots/list</code> 并更新其边界。
+      </p>
+      <h3 id="为什么roots是客户端原语">
+        <a href="#为什么roots是客户端原语">为什么roots是客户端原语</a>
+      </h3>
+      <p>
+        Roots由客户端声明，因为它们代表用户的同意模型。用户告诉Claude
+        Desktop”给这个笔记服务器访问这两个目录”。服务器不能扩大该范围。
+      </p>
+      <h3 id="elicitation表单模式默认">
+        <a href="#elicitation表单模式默认">Elicitation：表单模式默认</a>
+      </h3>
+      <p><code>elicitation/create</code> 接受表单模式和自然语言提示：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "method"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"elicitation/create"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "message"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Delete 'TPS report'? Multiple notes match; pick one."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "requestedSchema"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">      "type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"object"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">      "properties"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        "note_id"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">          "type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"string"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">          "enum"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"note-3"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"note-7"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"note-14"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        },</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        "confirm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"boolean"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">      },</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">      "required"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"note_id"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"confirm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>客户端渲染表单，收集用户答案，返回：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "action"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"accept"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "content"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"note_id"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"note-14"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"confirm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">true</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        三种可能的动作：<code>accept</code>（用户填写了）、<code>decline</code>（用户关闭了）、<code>cancel</code>（用户中止了整个工具调用）。
+      </p>
+      <p>表单模式是扁平的 — v1不支持嵌套对象。SDK通常拒绝比单层更复杂的任何东西。</p>
+      <h3 id="elicitationurl模式sep-1036实验性">
+        <a href="#elicitationurl模式sep-1036实验性">Elicitation：URL模式（SEP-1036，实验性）</a>
+      </h3>
+      <p>2025-11-25新增。服务器不发送模式，而是发送URL：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "method"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"elicitation/create"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "message"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Sign in to GitHub"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "url"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://github.com/login/oauth/authorize?client_id=..."</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        客户端在浏览器中打开URL，等待完成，用户回来时返回。适用于OAuth流程、支付授权和文档签署，表单不足以胜任的场景。
+      </p>
+      <p>
+        漂移风险提示：SEP-1036响应形状仍在稳定中；一些SDK返回回调URL，其他返回完成token。在生产中使用URL模式之前阅读SDK的发布说明。
+      </p>
+      <h3 id="何时elicitation是正确的工具">
+        <a href="#何时elicitation是正确的工具">何时elicitation是正确的工具</a>
+      </h3>
+      <ul>
+        <li>破坏性动作前的用户确认（destructive hint + elicitation）。</li>
+        <li>消歧（从N个匹配中选择一个）。</li>
+        <li>首次运行设置（API密钥、目录、偏好）。</li>
+        <li>OAuth风格流程（URL模式）。</li>
+      </ul>
+      <h3 id="何时elicitation是错误的">
+        <a href="#何时elicitation是错误的">何时elicitation是错误的</a>
+      </h3>
+      <ul>
+        <li>填充模型本可以用散文询问的工具必需参数。使用正常重新提示，不是elicitation对话框。</li>
+        <li>高频调用。Elicitation中断对话；不要在循环内触发它。</li>
+        <li>服务器可以事后验证的任何东西。验证，返回错误，让模型用文本询问用户。</li>
+      </ul>
+      <h3 id="人在回路桥"><a href="#人在回路桥">人在回路桥</a></h3>
+      <p>
+        Elicitation加上sampling一起启用MCP的”人在回路”模型。服务器的Agent循环可以暂停以获取用户输入（elicitation）或模型推理（sampling）。Phase
+        13 · 11涵盖了sampling；本课涵盖elicitation。将它们组合以获得完整的循环中控制。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code> 用以下内容扩展笔记服务器：</p>
+      <ul>
+        <li><code>roots/list</code> 响应，服务器在root-list-changed通知后重新查询。</li>
+        <li>
+          一个 <code>notes_delete</code> 工具，当多个笔记匹配时使用
+          <code>elicitation/create</code> 消歧。
+        </li>
+        <li>
+          一个 <code>notes_setup</code> 工具，使用URL模式elicitation打开首次运行配置页面（模拟）。
+        </li>
+        <li>一个边界检查，拒绝在声明的roots之外的URI上的操作。</li>
+      </ul>
+      <p>
+        演示运行三个场景：正常路径（一个匹配）、消歧（三个匹配，elicitation触发）、根外写入（被拒绝）。
+      </p>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        本课产生
+        <code>outputs/skill-elicitation-form-designer.md</code
+        >。给定一个可能需要用户确认或消歧的工具，该技能设计elicitation表单模式和消息模板。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>运行 <code>code/main.py</code>。触发消歧路径；确认模拟用户答案被路由回工具。</p>
+        </li>
+        <li>
+          <p>
+            添加一个每次都需要elicitation确认的新工具 <code>notes_archive</code>（destructive
+            hint）。检查UX：这与模型用文本重新询问相比如何？
+          </p>
+        </li>
+        <li>
+          <p>为首次运行OAuth流程实现URL模式elicitation。注意漂移风险并添加SDK版本守卫。</p>
+        </li>
+        <li>
+          <p>
+            扩展 <code>roots/list</code>
+            <span
+              class="term-tip"
+              data-term="处理"
+              data-module="cpp"
+              data-def="处理"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">处理</abbr></span
+            >：当<span
+              class="term-tip"
+              data-term="通知"
+              data-module="github"
+              data-def="关于活动更新的提醒"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">通知</abbr></span
+            >到达时，<span
+              class="term-tip"
+              data-term="服务器"
+              data-module="javascript"
+              data-def="提供服务的后端程序"
+              data-slug="javascript/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">服务器</abbr></span
+            >应原子性地重新读取并重新扫描可能现在超出范围的打开文件句柄。
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读<span
+              class="term-tip"
+              data-term="GitHub"
+              data-module="github"
+              data-def="代码托管和协作平台"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">GitHub</abbr></span
+            >上的SEP-1036问题讨论<span
+              class="term-tip"
+              data-term="线程"
+              data-module="c"
+              data-def="执行的最小单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">线程</abbr></span
+            >。<span
+              class="term-tip"
+              data-term="识别"
+              data-module="github"
+              data-def="识别"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">识别</abbr></span
+            >一个<span
+              class="term-tip"
+              data-term="影响"
+              data-module="github"
+              data-def="影响"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">影响</abbr></span
+            >服务器应如何处理<span
+              class="term-tip"
+              data-term="URL"
+              data-module="javascript"
+              data-def="URL 处理对象"
+              data-slug="javascript/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">URL</abbr></span
+            >模式<span
+              class="term-tip"
+              data-term="回调"
+              data-module="python"
+              data-def="作为参数传递的函数，在特定事件发生时被调用"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">回调</abbr></span
+            >的<span
+              class="term-tip"
+              data-term="开放"
+              data-module="github"
+              data-def="正在活跃的 Issue 或 PR"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">开放</abbr></span
+            >问题。
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Root</td>
+            <td>
+              ”同意<span
+                class="term-tip"
+                data-term="边界"
+                data-module="java"
+                data-def="泛型类型参数的约束，上界 &#x60;extends&#x60;、下界 &#x60;super&#x60;"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">边界</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >允许<span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >触碰的URI
+            </td>
+          </tr>
+          <tr>
+            <td><code>roots/list</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >请求<span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >返回当前<span
+                class="term-tip"
+                data-term="根"
+                data-module="vue3"
+                data-def="根节点"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">根</abbr></span
+              >集
+            </td>
+          </tr>
+          <tr>
+            <td><code>notifications/roots/list_changed</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >更改了<span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >信号<span
+                class="term-tip"
+                data-term="根"
+                data-module="vue3"
+                data-def="根节点"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">根</abbr></span
+              >集已<span
+                class="term-tip"
+                data-term="变化"
+                data-module="vue3"
+                data-def="状态变更"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">变化</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Elicitation</td>
+            <td>
+              ”在<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >中询问<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >发起的<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >化<span
+                class="term-tip"
+                data-term="用户输入"
+                data-module="vue3"
+                data-def="用户输入"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户输入</abbr></span
+              >请求
+            </td>
+          </tr>
+          <tr>
+            <td><code>elicitation/create</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="方法"
+                data-module="c"
+                data-def="关联到对象的函数"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">方法</abbr></span
+              >”
+            </td>
+            <td>
+              elicitation请求的<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >-RPC方法
+            </td>
+          </tr>
+          <tr>
+            <td>Form mode</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >驱动<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >单”
+            </td>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="客户"
+                data-module="cpp"
+                data-def="客户代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户</abbr></span
+              >端UI中<span
+                class="term-tip"
+                data-term="渲染"
+                data-module="html5"
+                data-def="将代码转为可视内容"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">渲染</abbr></span
+              >为<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >单的扁平<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="Schema"
+                data-module="typescript"
+                data-def="类型模式"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Schema</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="URL"
+                data-module="javascript"
+                data-def="URL 处理对象"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">URL</abbr></span
+              >
+              mode
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="浏览器"
+                data-module="cpp"
+                data-def="浏览实体"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">浏览器</abbr></span
+              >重定向”
+            </td>
+            <td>
+              SEP-1036实验性；打开<span
+                class="term-tip"
+                data-term="URL"
+                data-module="javascript"
+                data-def="URL 处理对象"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">URL</abbr></span
+              >并等待
+            </td>
+          </tr>
+          <tr>
+            <td><code>accept</code> / <code>decline</code> / <code>cancel</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >响应<span
+                class="term-tip"
+                data-term="结果"
+                data-module="c"
+                data-def="函数返回的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结果</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >处理的三个<span
+                class="term-tip"
+                data-term="分支"
+                data-module="git"
+                data-def="分支是指向提交对象的可变指针，Git 的分支是轻量级且高效的，允许在同一仓库中并行开发。"
+                data-slug="git/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分支</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Disambiguation</td>
+            <td>”选一个”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >有N个候<span
+                class="term-tip"
+                data-term="选项"
+                data-module="github"
+                data-def="选项"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选项</abbr></span
+              >时的常见elicitation用例
+            </td>
+          </tr>
+          <tr>
+            <td>Flat form</td>
+            <td>
+              ”仅顶层<span
+                class="term-tip"
+                data-term="属性"
+                data-module="c"
+                data-def="附加在声明上的修饰符"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">属性</abbr></span
+              >”
+            </td>
+            <td>
+              Elicitation模式不能<span
+                class="term-tip"
+                data-term="嵌套"
+                data-module="typescript"
+                data-def="嵌套在其他类型中的类型"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">嵌套</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://modelcontextprotocol.io/specification/draft/client/roots"
+            >MCP — Client roots spec</a
+          >
+          — 权威roots参考
+        </li>
+        <li>
+          <a href="https://modelcontextprotocol.io/specification/draft/client/elicitation"
+            >MCP — Client elicitation spec</a
+          >
+          — 权威elicitation参考
+        </li>
+        <li>
+          <a
+            href="https://blogs.cisco.com/developer/whats-new-in-mcp-elicitation-structured-content-and-oauth-enhancements"
+            >Cisco — What’s new in MCP elicitation, structured content, OAuth enhancements</a
+          >
+          — 2025-11-25新增<span
+            class="term-tip"
+            data-term="内容"
+            data-module="cpp"
+            data-def="内容部分"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">内容</abbr></span
+          >演练
+        </li>
+        <li>
+          <a href="https://github.com/modelcontextprotocol/modelcontextprotocol"
+            >MCP — GitHub SEP-1036</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="URL"
+            data-module="javascript"
+            data-def="URL 处理对象"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">URL</abbr></span
+          >模式elicitation提案（实验性，漂移风险）
+        </li>
+        <li>
+          <a
+            href="https://thenewstack.io/how-elicitation-in-mcp-brings-human-in-the-loop-to-ai-tools/"
+            >The New Stack — How elicitation brings human-in-the-loop to AI tools</a
+          >
+          — UX演练
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

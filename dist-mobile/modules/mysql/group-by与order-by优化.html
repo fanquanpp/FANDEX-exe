@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GROUP-BY与ORDER-BY优化</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">GROUP-BY与ORDER-BY优化</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            1 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          MySQL GROUP BY与ORDER BY优化：松散索引扫描、紧凑索引扫描、临时表与filesort优化
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-group-by-优化"><a href="#1-group-by-优化">1. GROUP BY 优化</a></h2>
+      <h3 id="11-使用索引避免临时表">
+        <a href="#11-使用索引避免临时表">1.1 使用索引避免临时表</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 索引 (dept_id, name)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- GROUP BY 可以利用索引排序</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">COUNT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">GROUP BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Extra: Using index</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 无索引时需要临时表</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Extra: Using temporary; Using filesort</span></span></code></pre>
+      <h3 id="12-松散索引扫描loose-index-scan">
+        <a href="#12-松散索引扫描loose-index-scan">1.2 松散索引扫描（Loose Index Scan）</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 适用于：GROUP BY 列有索引，且 MIN/MAX 聚合</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 索引 (dept_id, salary)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">MIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(salary) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">GROUP BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Extra: Using index for group-by</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 松散索引扫描跳过索引中不需要的条目</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 只读取每个 dept_id 的第一条（MIN）或最后一条（MAX）</span></span></code></pre>
+      <h3 id="13-紧凑索引扫描"><a href="#13-紧凑索引扫描">1.3 紧凑索引扫描</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 索引 (dept_id, name)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- WHERE 条件和 GROUP BY 一起使用索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">COUNT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 5</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">GROUP BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 扫描索引的 dept_id > 5 部分</span></span></code></pre>
+      <h2 id="2-order-by-优化"><a href="#2-order-by-优化">2. ORDER BY 优化</a></h2>
+      <h3 id="21-使用索引排序"><a href="#21-使用索引排序">2.1 使用索引排序</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 索引 (dept_id, salary)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ORDER BY 与索引顺序一致</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 5</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> salary;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Extra: Using index condition（无需 filesort）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ORDER BY 与索引顺序不一致</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> salary;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Extra: Using filesort</span></span></code></pre>
+      <h3 id="22-filesort-算法"><a href="#22-filesort-算法">2.2 filesort 算法</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>算法</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              双路<span
+                class="term-tip"
+                data-term="排序"
+                data-module="cpp"
+                data-def="排序"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">排序</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="读取"
+                data-module="c"
+                data-def="从输入获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">读取</abbr></span
+              >行<span
+                class="term-tip"
+                data-term="指针"
+                data-module="c"
+                data-def="存储内存地址的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指针</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="排序"
+                data-module="cpp"
+                data-def="排序"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">排序</abbr></span
+              >列，<span
+                class="term-tip"
+                data-term="排序"
+                data-module="cpp"
+                data-def="排序"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">排序</abbr></span
+              >后回<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >获取数据
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >路<span
+                class="term-tip"
+                data-term="排序"
+                data-module="cpp"
+                data-def="排序"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">排序</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="读取"
+                data-module="c"
+                data-def="从输入获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">读取</abbr></span
+              >所有需要的列到内存，<span
+                class="term-tip"
+                data-term="排序"
+                data-module="cpp"
+                data-def="排序"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">排序</abbr></span
+              >后<span
+                class="term-tip"
+                data-term="直接"
+                data-module="github"
+                data-def="直接的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">直接</abbr></span
+              >输出
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 控制 filesort 缓冲区</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> max_length_for_sort_data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 4096</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 超过此值使用双路排序</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sort_buffer_size </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 262144</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;        </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 排序缓冲区大小</span></span></code></pre>
+      <h2 id="3-group-by--order-by-组合优化">
+        <a href="#3-group-by--order-by-组合优化">3. GROUP BY + ORDER BY 组合优化</a>
+      </h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 索引 (dept_id, created_at)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- GROUP BY + ORDER BY 使用同一索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">COUNT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cnt</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">GROUP BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Extra: Using index</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- GROUP BY 和 ORDER BY 列不同</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">COUNT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cnt</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">GROUP BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cnt </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Extra: Using temporary; Using filesort</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 需要临时表 + 额外排序</span></span></code></pre>
+    </article>
+  </body>
+</html>

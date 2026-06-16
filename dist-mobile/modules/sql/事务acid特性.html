@@ -1,0 +1,1269 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>事务ACID特性</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">事务ACID特性</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            4 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          SQL事务ACID特性：原子性、一致性、隔离性、持久性的原理、实现机制与保证
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-事务概述"><a href="#1-事务概述">1. 事务概述</a></h2>
+      <p>事务（Transaction）是数据库操作的逻辑单元，由一组 SQL 语句组成，具有 ACID 四大特性。</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 典型事务：银行转账</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 扣款</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 入账</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h2 id="2-原子性atomicity"><a href="#2-原子性atomicity">2. 原子性（Atomicity）</a></h2>
+      <h3 id="21-定义"><a href="#21-定义">2.1 定义</a></h3>
+      <p>事务中的所有操作要么全部成功，要么全部回滚，不存在部分执行的状态。</p>
+      <span class="katex-display"
+        ><span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.6833em"></span
+              ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mopen">{</span><span class="mord mathnormal">o</span
+              ><span class="mord"
+                ><span class="mord mathnormal">p</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3011em"
+                        ><span style="top: -2.55em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">1</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mpunct">,</span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="mord mathnormal">o</span
+              ><span class="mord"
+                ><span class="mord mathnormal">p</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3011em"
+                        ><span style="top: -2.55em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">2</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mpunct">,</span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="minner">…</span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="mpunct">,</span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="mord mathnormal">o</span
+              ><span class="mord"
+                ><span class="mord mathnormal">p</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">n</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mclose">}</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">⟹</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.8333em; vertical-align: -0.15em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3361em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0278em"
+                                >r</span
+                              ><span class="mord mathnormal mtight">es</span
+                              ><span class="mord mathnormal mtight">u</span
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0197em"
+                                >l</span
+                              ><span class="mord mathnormal mtight">t</span></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">∈</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mopen">{</span
+              ><span class="mord text"><span class="mord">ALL</span></span
+              ><span class="mpunct">,</span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="mord text"><span class="mord">NONE</span></span
+              ><span class="mclose">}</span></span
+            ></span
+          ></span
+        ></span
+      >
+      <h3 id="22-实现机制"><a href="#22-实现机制">2.2 实现机制</a></h3>
+      <p><strong>Undo Log（回滚日志）</strong>：</p>
+      <ul>
+        <li>事务修改数据前，先将旧值写入 undo log</li>
+        <li>事务回滚时，根据 undo log 恢复原始数据</li>
+        <li>事务提交后，undo log 可以被清理</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>事务执行流程：</span></span>
+<span class="line"><span>1. 读取原始值 → 写入 undo log</span></span>
+<span class="line"><span>2. 修改数据页</span></span>
+<span class="line"><span>3. 如果 COMMIT：标记事务完成</span></span>
+<span class="line"><span>4. 如果 ROLLBACK：根据 undo log 逆向恢复</span></span></code></pre>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 原子性保证：转账事务</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 操作1：扣款</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 操作2：入账（如果失败，操作1也会回滚）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 如果操作2失败，整个事务回滚，操作1的修改被撤销</span></span></code></pre>
+      <h3 id="23-原子性的边界"><a href="#23-原子性的边界">2.3 原子性的边界</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 单条 SQL 也是原子的</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DELETE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> large_table </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> condition;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 要么全部删除，要么一条不删</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- DDL 语句的原子性（PostgreSQL）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DROP</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table_a, table_b, table_c;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 三个表要么全部删除，要么全部保留</span></span></code></pre>
+      <h2 id="3-一致性consistency"><a href="#3-一致性consistency">3. 一致性（Consistency）</a></h2>
+      <h3 id="31-定义"><a href="#31-定义">3.1 定义</a></h3>
+      <p>事务执行前后，数据库从一个一致状态转变为另一个一致状态，不违反任何完整性约束。</p>
+      <span class="katex-display"
+        ><span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 1.3864em; vertical-align: -0.2861em"></span
+              ><span class="mord"
+                ><span class="mord text"><span class="mord">State</span></span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3361em"
+                        ><span style="top: -2.55em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mathnormal mtight">b</span
+                              ><span class="mord mathnormal mtight">e</span
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.1076em"
+                                >f</span
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0278em"
+                                >or</span
+                              ><span class="mord mathnormal mtight">e</span></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span
+              ><span class="mrel x-arrow"
+                ><span class="vlist-t vlist-t2"
+                  ><span class="vlist-r"
+                    ><span class="vlist" style="height: 1.1003em"
+                      ><span style="top: -3.322em"
+                        ><span class="pstrut" style="height: 2.7em"></span
+                        ><span class="sizing reset-size6 size3 mtight x-arrow-pad"
+                          ><span class="mord mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.1389em"
+                              >T</span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="svg-align" style="top: -2.689em"
+                        ><span class="pstrut" style="height: 2.7em"></span
+                        ><span class="hide-tail" style="height: 0.522em; min-width: 1.469em"
+                          ><svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="400em"
+                            height="0.522em"
+                            viewBox="0 0 400000 522"
+                            preserveAspectRatio="xMaxYMin slice"
+                          >
+                            <path
+                              d="M0 241v40h399891c-47.3 35.3-84 78-110 128
+-16.7 32-27.7 63.7-33 95 0 1.3-.2 2.7-.5 4-.3 1.3-.5 2.3-.5 3 0 7.3 6.7 11 20
+ 11 8 0 13.2-.8 15.5-2.5 2.3-1.7 4.2-5.5 5.5-11.5 2-13.3 5.7-27 11-41 14.7-44.7
+ 39-84.5 73-119.5s73.7-60.2 119-75.5c6-2 9-5.7 9-11s-3-9-9-11c-45.3-15.3-85
+-40.5-119-75.5s-58.3-74.8-73-119.5c-4.7-14-8.3-27.3-11-40-1.3-6.7-3.2-10.8-5.5
+-12.5-2.3-1.7-7.5-2.5-15.5-2.5-14 0-21 3.7-21 11 0 2 2 10.3 6 25 20.7 83.3 67
+ 151.7 139 205zm0 0v40h399900v-40z"
+                            ></path></svg></span></span></span
+                    ><span class="vlist-s">​</span></span
+                  ><span class="vlist-r"
+                    ><span class="vlist" style="height: 0.011em"
+                      ><span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1.0361em; vertical-align: -0.2861em"></span
+              ><span class="mord"
+                ><span class="mord text"><span class="mord">State</span></span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3361em"
+                        ><span style="top: -2.55em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mathnormal mtight">a</span
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.1076em"
+                                >f</span
+                              ><span class="mord mathnormal mtight">t</span
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0278em"
+                                >er</span
+                              ></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mpunct">,</span><span class="mspace" style="margin-right: 1em"></span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="mord text"><span class="mord">constraints</span></span
+              ><span class="mopen">(</span
+              ><span class="mord"
+                ><span class="mord text"><span class="mord">State</span></span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3361em"
+                        ><span style="top: -2.55em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mathnormal mtight">a</span
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.1076em"
+                                >f</span
+                              ><span class="mord mathnormal mtight">t</span
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0278em"
+                                >er</span
+                              ></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mclose">)</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.6151em"></span
+              ><span class="mord text"><span class="mord">true</span></span></span
+            ></span
+          ></span
+        ></span
+      >
+      <h3 id="32-一致性保证"><a href="#32-一致性保证">3.2 一致性保证</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 主键约束</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INSERT INTO</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users (id, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">VALUES</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'Alice'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INSERT INTO</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users (id, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">VALUES</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'Bob'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 违反主键约束，事务回滚</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 外键约束</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DELETE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 如果 employees 表中有 dept_id = 5 的记录，且外键为 RESTRICT</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 事务将被拒绝</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- CHECK 约束</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INSERT INTO</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> products (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, price) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">VALUES</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'item'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 违反 CHECK (price > 0)，事务回滚</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 唯一约束</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INSERT INTO</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users (email) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">VALUES</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'test@example.com'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INSERT INTO</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users (email) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">VALUES</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'test@example.com'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 违反唯一约束</span></span></code></pre>
+      <h3 id="33-一致性的层次"><a href="#33-一致性的层次">3.3 一致性的层次</a></h3>
+      <ul>
+        <li><strong>数据库层一致性</strong>：由约束、触发器、级联规则保证</li>
+        <li><strong>应用层一致性</strong>：由业务逻辑保证（数据库无法自动验证）</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 应用层一致性示例：库存不能为负</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 数据库约束只能保证单行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CHECK</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 跨行一致性需要应用逻辑或可串行化隔离级别</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ISOLATION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEVEL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SERIALIZABLE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> inventory </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> product_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 应用检查 stock >= quantity</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> inventory </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quantity </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> product_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h2 id="4-隔离性isolation"><a href="#4-隔离性isolation">4. 隔离性（Isolation）</a></h2>
+      <h3 id="41-定义"><a href="#41-定义">4.1 定义</a></h3>
+      <p>
+        并发<span
+          class="term-tip"
+          data-term="执行"
+          data-module="github"
+          data-def="执行"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">执行</abbr></span
+        >的事务之间互不干扰，每个事务感觉不到其他事务的存在。
+      </p>
+      <span class="katex-display"
+        ><span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3011em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">1</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mord">∥</span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3011em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">2</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">≡</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.8778em; vertical-align: -0.1944em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3011em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">1</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mpunct">;</span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3011em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">2</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mord text"
+                ><span class="mord"> </span><span class="mord cjk_fallback">或</span
+                ><span class="mord"> </span></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3011em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">2</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mpunct">;</span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3011em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">1</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span></span></span></span
+      ></span>
+      <h3 id="42-隔离级别"><a href="#42-隔离级别">4.2 隔离级别</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="隔离级别"
+                data-module="mysql"
+                data-def="并发事务的隔离程度"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">隔离级别</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="脏读"
+                data-module="mysql"
+                data-def="读取未提交的数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">脏读</abbr></span
+              >
+            </th>
+            <th>
+              不可<span
+                class="term-tip"
+                data-term="重复读"
+                data-module="mysql"
+                data-def="事务期间读取一致"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">重复读</abbr></span
+              >
+            </th>
+            <th>幻读</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="READ UNCOMMITTED"
+                data-module="mysql"
+                data-def="读取未提交"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">READ UNCOMMITTED</abbr></span
+              >
+            </td>
+            <td>可能</td>
+            <td>可能</td>
+            <td>可能</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="READ COMMITTED"
+                data-module="mysql"
+                data-def="读取已提交"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">READ COMMITTED</abbr></span
+              >
+            </td>
+            <td>不可能</td>
+            <td>可能</td>
+            <td>可能</td>
+          </tr>
+          <tr>
+            <td>
+              REPEATABLE
+              <span
+                class="term-tip"
+                data-term="READ"
+                data-module="mysql"
+                data-def="读取锁"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">READ</abbr></span
+              >
+            </td>
+            <td>不可能</td>
+            <td>不可能</td>
+            <td>可能</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="SERIALIZABLE"
+                data-module="mysql"
+                data-def="可串行化隔离级别"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SERIALIZABLE</abbr></span
+              >
+            </td>
+            <td>不可能</td>
+            <td>不可能</td>
+            <td>不可能</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 设置隔离级别</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ISOLATION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEVEL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> READ</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> COMMITTED</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ISOLATION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEVEL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> REPEATABLE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> READ</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ISOLATION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEVEL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SERIALIZABLE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="43-隔离性的实现"><a href="#43-隔离性的实现">4.3 隔离性的实现</a></h3>
+      <ul>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="锁"
+              data-module="python"
+              data-def="线程同步原语，同一时刻只允许一个线程持有"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">锁</abbr></span
+            >机制</strong
+          >：<span
+            class="term-tip"
+            data-term="共享锁"
+            data-module="cpp"
+            data-def="共享锁"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">共享锁</abbr></span
+          >、排他<span
+            class="term-tip"
+            data-term="锁"
+            data-module="python"
+            data-def="线程同步原语，同一时刻只允许一个线程持有"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">锁</abbr></span
+          >、意向<span
+            class="term-tip"
+            data-term="锁"
+            data-module="python"
+            data-def="线程同步原语，同一时刻只允许一个线程持有"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">锁</abbr></span
+          >等
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="MVCC"
+              data-module="mysql"
+              data-def="多版本并发控制"
+              data-slug="mysql/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">MVCC</abbr></span
+            ></strong
+          >：<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >版本并发<span
+            class="term-tip"
+            data-term="控制"
+            data-module="github"
+            data-def="控制"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">控制</abbr></span
+          >，读写互不阻塞
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="串行化"
+              data-module="javascript"
+              data-def="对象转字符串"
+              data-slug="javascript/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">串行化</abbr></span
+            ></strong
+          >：严<span
+            class="term-tip"
+            data-term="格"
+            data-module="discrete-math"
+            data-def="任意两个元素都有上确界和下确界的偏序集"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">格</abbr></span
+          >的两<span
+            class="term-tip"
+            data-term="阶段"
+            data-module="github"
+            data-def="阶段"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">阶段</abbr></span
+          >锁或可<span
+            class="term-tip"
+            data-term="串行化"
+            data-module="javascript"
+            data-def="对象转字符串"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">串行化</abbr></span
+          >快照隔离
+        </li>
+      </ul>
+      <h2 id="5-持久性durability"><a href="#5-持久性durability">5. 持久性（Durability）</a></h2>
+      <h3 id="51-定义"><a href="#51-定义">5.1 定义</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="事务"
+          data-module="cpp"
+          data-def="事务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">事务</abbr></span
+        >一旦<span
+          class="term-tip"
+          data-term="提交"
+          data-module="cpp"
+          data-def="持久化变更"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">提交</abbr></span
+        >，其修改<span
+          class="term-tip"
+          data-term="永久"
+          data-module="vue3"
+          data-def="持久不变的"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">永久</abbr></span
+        >保存，即使<span
+          class="term-tip"
+          data-term="系统"
+          data-module="cpp"
+          data-def="系统"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">系统</abbr></span
+        >崩溃也不会丢失。
+      </p>
+      <span class="katex-display"
+        ><span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord text"><span class="mord">COMMIT</span></span
+              ><span class="mopen">(</span
+              ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+              ><span class="mclose">)</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">⟹</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord text"><span class="mord">Persistent</span></span
+              ><span class="mopen">(</span
+              ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+              ><span class="mclose">)</span
+              ><span class="mord text"><span class="mord"> even after crash</span></span></span
+            ></span
+          ></span
+        ></span
+      >
+      <h3 id="52-实现机制"><a href="#52-实现机制">5.2 实现机制</a></h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="Redo Log"
+            data-module="mysql"
+            data-def="重做日志，确保持久性"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Redo Log</abbr></span
+          >（<span
+            class="term-tip"
+            data-term="重做"
+            data-module="vue3"
+            data-def="恢复撤销的操作"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">重做</abbr></span
+          >日志）</strong
+        >：
+      </p>
+      <ul>
+        <li>
+          <span
+            class="term-tip"
+            data-term="事务"
+            data-module="cpp"
+            data-def="事务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">事务</abbr></span
+          >修改数据时，先将<span
+            class="term-tip"
+            data-term="变更"
+            data-module="github"
+            data-def="代码修改"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">变更</abbr></span
+          >写入 redo
+          <span
+            class="term-tip"
+            data-term="log"
+            data-module="c"
+            data-def="自然对数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">log</abbr></span
+          >（WAL
+          <span
+            class="term-tip"
+            data-term="机制"
+            data-module="github"
+            data-def="机制"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">机制</abbr></span
+          >）
+        </li>
+        <li>
+          Redo
+          <span
+            class="term-tip"
+            data-term="log"
+            data-module="c"
+            data-def="自然对数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">log</abbr></span
+          >
+          是顺序<span
+            class="term-tip"
+            data-term="写入"
+            data-module="c"
+            data-def="输出数据到目标"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">写入</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="性能"
+            data-module="github"
+            data-def="性能"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">性能</abbr></span
+          >高
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="提交"
+            data-module="cpp"
+            data-def="持久化变更"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提交</abbr></span
+          >时确保 redo
+          <span
+            class="term-tip"
+            data-term="log"
+            data-module="c"
+            data-def="自然对数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">log</abbr></span
+          >
+          刷盘（fsync）
+        </li>
+        <li>
+          崩溃<span
+            class="term-tip"
+            data-term="恢复"
+            data-module="github"
+            data-def="恢复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">恢复</abbr></span
+          >时，重放 redo
+          <span
+            class="term-tip"
+            data-term="log"
+            data-module="c"
+            data-def="自然对数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">log</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="恢复"
+            data-module="github"
+            data-def="恢复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">恢复</abbr></span
+          >已<span
+            class="term-tip"
+            data-term="提交"
+            data-module="cpp"
+            data-def="持久化变更"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提交</abbr></span
+          >事务
+        </li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>事务提交流程：</span></span>
+<span class="line"><span>1. 修改数据页（Buffer Pool 中）</span></span>
+<span class="line"><span>2. 写入 redo log buffer</span></span>
+<span class="line"><span>3. redo log buffer 刷盘（fsync）  ← 提交点</span></span>
+<span class="line"><span>4. 返回提交成功</span></span>
+<span class="line"><span>5. 数据页异步刷盘（checkpoint）</span></span></code></pre>
+      <h3 id="53-持久性的权衡"><a href="#53-持久性的权衡">5.3 持久性的权衡</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- MySQL：控制刷盘策略</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- innodb_flush_log_at_trx_commit</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- = 1：每次提交 fsync（最安全，最慢）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- = 2：每次提交写入OS缓存，每秒 fsync（折中）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- = 0：每秒写入并 fsync（最快，可能丢失1秒数据）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- PostgreSQL：控制 WAL 同步</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- synchronous_commit = on（默认，最安全）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- synchronous_commit = off（异步提交，可能丢失少量事务）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- fsync = on（确保WAL刷盘）</span></span></code></pre>
+      <h3 id="54-崩溃恢复"><a href="#54-崩溃恢复">5.4 崩溃恢复</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>崩溃恢复流程：</span></span>
+<span class="line"><span>1. 从最后一个 checkpoint 开始扫描 redo log</span></span>
+<span class="line"><span>2. 重做（REDO）：重放所有已提交事务的修改</span></span>
+<span class="line"><span>3. 撤销（UNDO）：回滚所有未提交事务的修改</span></span>
+<span class="line"><span>4. 恢复完成，数据库进入一致状态</span></span></code></pre>
+      <h2 id="6-acid-的权衡"><a href="#6-acid-的权衡">6. ACID 的权衡</a></h2>
+      <h3 id="61-acid-vs-base"><a href="#61-acid-vs-base">6.1 ACID vs BASE</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="特性"
+                data-module="cpp"
+                data-def="特性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特性</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="ACID"
+                data-module="mysql"
+                data-def="原子性、一致性、隔离性、持久性"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ACID</abbr></span
+              >
+            </th>
+            <th>BASE</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="一致性"
+                data-module="github"
+                data-def="一致性"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">一致性</abbr></span
+              >
+            </td>
+            <td>
+              强<span
+                class="term-tip"
+                data-term="一致性"
+                data-module="github"
+                data-def="一致性"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">一致性</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="最终"
+                data-module="cpp"
+                data-def="最终的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最终</abbr></span
+              >一致性
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="可用性"
+                data-module="vue3"
+                data-def="系统可用的程度"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">可用性</abbr></span
+              >
+            </td>
+            <td>可能牺牲</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >可用
+            </td>
+          </tr>
+          <tr>
+            <td>隔离性</td>
+            <td>
+              严<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >隔离
+            </td>
+            <td>松散隔离</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="性能"
+                data-module="github"
+                data-def="性能"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">性能</abbr></span
+              >
+            </td>
+            <td>较低</td>
+            <td>
+              较<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>适用场景</td>
+            <td>金融、交易</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="社交"
+                data-module="github"
+                data-def="社交的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">社交</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="日志"
+                data-module="github"
+                data-def="日志"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">日志</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="62-实践中的权衡"><a href="#62-实践中的权衡">6.2 实践中的权衡</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 降低隔离级别提升并发</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ISOLATION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEVEL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> READ</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> COMMITTED</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 比 SERIALIZABLE 更快</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 异步提交提升吞吐</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> synchronous_commit</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> off</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- PostgreSQL</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 批量提交减少 fsync 开销</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INSERT INTO</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> logs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">VALUES</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (...);  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 多条</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INSERT INTO</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> logs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">VALUES</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (...);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 一次 fsync</span></span></code></pre>
+    </article>
+  </body>
+</html>

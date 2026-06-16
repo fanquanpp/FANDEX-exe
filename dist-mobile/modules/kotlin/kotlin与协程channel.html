@@ -1,0 +1,1076 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kotlin与协程Channel</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Kotlin与协程Channel</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">Channel热数据流</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        Channel 是 Kotlin 协程中用于协程之间传递数据的并发原语。与 Flow 的冷流不同，Channel
+        是热通道：发送方发送的数据会立刻传递给接收方，如果没有接收方，发送方会挂起等待。Channel
+        类似于阻塞队列（BlockingQueue），但所有操作都是非阻塞的挂起函数。
+      </p>
+      <p>Channel 适用于生产者-消费者模式、协程间通信、事件总线等场景。</p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <ul>
+        <li><strong>Channel</strong>：协程间传递数据的管道，支持多个发送方和接收方</li>
+        <li><strong>SendChannel</strong>：发送端的接口，提供 send 和 trySend 方法</li>
+        <li>
+          <strong>ReceiveChannel</strong>：<span
+            class="term-tip"
+            data-term="接收"
+            data-module="github"
+            data-def="接收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">接收</abbr></span
+          >端的接口，提供 receive 和 tryReceive 方法
+        </li>
+        <li>
+          <strong>Buffer</strong>：<span
+            class="term-tip"
+            data-term="Channel"
+            data-module="kotlin"
+            data-def="协程间用于热数据流的通信原语，支持多生产者多消费者模式"
+            data-slug="kotlin/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Channel</abbr></span
+          >
+          的<span
+            class="term-tip"
+            data-term="缓冲区"
+            data-module="c"
+            data-def="临时存储数据的内存区域"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">缓冲区</abbr></span
+          >大小，决定了<span
+            class="term-tip"
+            data-term="发送"
+            data-module="cpp"
+            data-def="发送"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发送</abbr></span
+          >方何时挂起
+        </li>
+        <li>
+          <strong>Rendezvous</strong>：默认<span
+            class="term-tip"
+            data-term="模式"
+            data-module="github"
+            data-def="模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模式</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="缓冲区"
+            data-module="c"
+            data-def="临时存储数据的内存区域"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">缓冲区</abbr></span
+          >为 0，<span
+            class="term-tip"
+            data-term="发送"
+            data-module="cpp"
+            data-def="发送"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发送</abbr></span
+          >方和<span
+            class="term-tip"
+            data-term="接收"
+            data-module="github"
+            data-def="接收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">接收</abbr></span
+          >方必须”会合”才能<span
+            class="term-tip"
+            data-term="完成"
+            data-module="github"
+            data-def="完成"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">完成</abbr></span
+          >传输
+        </li>
+      </ul>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 创建一个 Channel</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 启动发送协程</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"消息1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"消息2"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"消息3"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 关闭通道，表示不再发送</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 接收所有消息</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (msg </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"收到: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$msg</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"通道已关闭"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="channel-的不同类型"><a href="#channel-的不同类型">Channel 的不同类型</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> channelTypes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1. RendezvousChannel（默认）：缓冲区为0，发送和接收必须同时就绪</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rendezvous </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>()  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 等价于 Channel&#x3C;Int>(0)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 2. UnlimitedChannel：缓冲区无限大，send 永远不会挂起</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> unlimited </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>(Channel.UNLIMITED)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 3. BufferedChannel：指定缓冲区大小</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> buffered </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 缓冲区大小为10</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 4. ConflatedChannel：只保留最新值，旧值会被覆盖</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> conflated </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>(Channel.CONFLATED)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 演示 ConflatedChannel</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        conflated.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        conflated.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        conflated.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 只有3会被保留</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(conflated.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">tryReceive</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">getOrNull</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 3</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="发送和接收"><a href="#发送和接收">发送和接收</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> sendReceiveDemo</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // send：挂起函数，缓冲区满时挂起</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // receive：挂起函数，没有数据时挂起</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">receive</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 1</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">receive</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 2</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">receive</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 3</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // tryReceive：非挂起函数，立即返回结果</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">tryReceive</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(result.isClosed)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// true（通道已关闭）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 使用 for 循环接收</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>()</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel2.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"A"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel2.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"B"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel2.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (item </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel2) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(item)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="produce-和-consumeeach">
+        <a href="#produce-和-consumeeach">produce 和 consumeEach</a>
+      </h3>
+      <p>
+        Kotlin
+        <span
+          class="term-tip"
+          data-term="提供"
+          data-module="github"
+          data-def="提供"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">提供</abbr></span
+        >了便捷的<span
+          class="term-tip"
+          data-term="构建器"
+          data-module="python"
+          data-def="创建者模式，将复杂对象构建与表示分离"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">构建器</abbr></span
+        >来创建<span
+          class="term-tip"
+          data-term="生产者"
+          data-module="cpp"
+          data-def="生产者"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生产者</abbr></span
+        >协程：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> produceDemo</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // produce：创建一个生产者协程，返回 ReceiveChannel</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> numbers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> produce</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(i)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // consumeEach：消费所有接收到的元素</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    numbers.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">consumeEach</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { num </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-></span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"收到: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$num</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 带过滤的生产者</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> CoroutineScope</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">produceEvens</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> produce</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">%</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(i)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> evens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> produceEvens</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    evens.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">consumeEach</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(it) }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 输出: 2, 4, 6, 8, 10</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="管道模式"><a href="#管道模式">管道模式</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >个
+        <span
+          class="term-tip"
+          data-term="Channel"
+          data-module="kotlin"
+          data-def="协程间用于热数据流的通信原语，支持多生产者多消费者模式"
+          data-slug="kotlin/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Channel</abbr></span
+        >
+        可以串联形成<span
+          class="term-tip"
+          data-term="管道"
+          data-module="go"
+          data-def="通过 channel 将多个 goroutine 串联形成的数据处理流水线模式"
+          data-slug="go/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">管道</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> CoroutineScope</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">produceNumbers</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> produce</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">true</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> CoroutineScope</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">squareNumbers</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(channel: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ReceiveChannel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> produce</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> numbers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> produceNumbers</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> squares </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> squareNumbers</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(numbers)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 只取前5个结果</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    repeat</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(squares.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">receive</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"完成"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 取消所有协程</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    coroutineContext.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">cancelChildren</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="多个协程共享-channel"><a href="#多个协程共享-channel">多个协程共享 Channel</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 多个发送方</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> senders </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> List</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) { senderId </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-></span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            repeat</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"发送方</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$senderId</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> - 消息</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$it</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">                delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 多个接收方</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> receivers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> List</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) { receiverId </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-></span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (msg </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">                println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"接收方</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$receiverId</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 收到: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$msg</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 等待所有发送完成</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    senders.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">forEach</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { it.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">join</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">500</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    coroutineContext.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">cancelChildren</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="broadcastchannel已废弃使用-sharedflow-替代">
+        <a href="#broadcastchannel已废弃使用-sharedflow-替代"
+          >BroadcastChannel（已废弃，使用 SharedFlow 替代）</a
+        >
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.flow.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 现在推荐使用 SharedFlow 替代 BroadcastChannel</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> sharedFlowDemo</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 创建 SharedFlow，类似广播</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sharedFlow </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> MutableSharedFlow</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 多个收集者</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> collector1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        sharedFlow.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">collect</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"收集者1: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$it</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> collector2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        sharedFlow.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">collect</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"收集者2: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$it</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 发送事件，所有收集者都会收到</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    sharedFlow.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">emit</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"事件1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    sharedFlow.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">emit</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"事件2"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    collector1.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">cancel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    collector2.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">cancel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="生产者-消费者模式"><a href="#生产者-消费者模式">生产者-消费者模式</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Order</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 生产者：接收订单</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        repeat</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) { i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-></span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> order </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Order</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i, item </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "商品</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$i</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(order)</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"下单: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$order</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">200</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 消费者：处理订单</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (order </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"处理: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$order</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">500</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 处理比下单慢</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"所有订单处理完成"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">data</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Order</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> item: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="事件总线"><a href="#事件总线">事件总线</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> EventBus</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    private</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Event</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>(Channel.UNLIMITED)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 发布事件</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    suspend</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> publish</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(event: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Event</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(event)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 订阅事件</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> subscribe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(): </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ReceiveChannel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Event</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">> </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 关闭</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">data</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Event</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> type: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">val</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> data</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> bus </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> EventBus</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 订阅者</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        bus.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">subscribe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">consumeEach</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { event </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-></span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"收到事件: ${event.type} - ${event.</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">data</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">}"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 发布事件</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    bus.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">publish</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Event</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"click"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"按钮A"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    bus.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">publish</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Event</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"scroll"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"页面1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">500</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    bus.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="限流器"><a href="#限流器">限流器</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> RateLimiter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">private</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> maxRequests: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">private</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> windowMs: </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Long</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    private</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Unit</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>(maxRequests)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    suspend</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> acquire</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Unit)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> release</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">tryReceive</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> limiter </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> RateLimiter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> jobs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> List</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) { i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-></span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        async</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            limiter.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">acquire</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"请求 </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$i</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 开始处理"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">500</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"请求 </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$i</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 完成"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            limiter.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">release</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    jobs.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">awaitAll</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="注意事项"><a href="#注意事项">注意事项</a></h2>
+      <ul>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="Channel"
+              data-module="kotlin"
+              data-def="协程间用于热数据流的通信原语，支持多生产者多消费者模式"
+              data-slug="kotlin/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">Channel</abbr></span
+            >
+            是热的</strong
+          >：<span
+            class="term-tip"
+            data-term="发送"
+            data-module="cpp"
+            data-def="发送"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发送</abbr></span
+          >的数据如果没有<span
+            class="term-tip"
+            data-term="接收"
+            data-module="github"
+            data-def="接收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">接收</abbr></span
+          >者，<span
+            class="term-tip"
+            data-term="发送"
+            data-module="cpp"
+            data-def="发送"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发送</abbr></span
+          >方会挂起（除非有<span
+            class="term-tip"
+            data-term="缓冲区"
+            data-module="c"
+            data-def="临时存储数据的内存区域"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">缓冲区</abbr></span
+          >）
+        </li>
+        <li>
+          <strong
+            >必须<span
+              class="term-tip"
+              data-term="关闭"
+              data-module="github"
+              data-def="结束 Issue 或 PR"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">关闭</abbr></span
+            >
+            <span
+              class="term-tip"
+              data-term="Channel"
+              data-module="kotlin"
+              data-def="协程间用于热数据流的通信原语，支持多生产者多消费者模式"
+              data-slug="kotlin/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">Channel</abbr></span
+            ></strong
+          >：不<span
+            class="term-tip"
+            data-term="关闭"
+            data-module="github"
+            data-def="结束 Issue 或 PR"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">关闭</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="Channel"
+            data-module="kotlin"
+            data-def="协程间用于热数据流的通信原语，支持多生产者多消费者模式"
+            data-slug="kotlin/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Channel</abbr></span
+          >
+          会导致<span
+            class="term-tip"
+            data-term="接收"
+            data-module="github"
+            data-def="接收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">接收</abbr></span
+          >方永远等待，使用 <code>close()</code> 或<span
+            class="term-tip"
+            data-term="取消"
+            data-module="vue3"
+            data-def="撤销操作"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">取消</abbr></span
+          >协程
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="Channel"
+              data-module="kotlin"
+              data-def="协程间用于热数据流的通信原语，支持多生产者多消费者模式"
+              data-slug="kotlin/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">Channel</abbr></span
+            >
+            是有损的</strong
+          >：ConflatedChannel 会丢弃旧<span
+            class="term-tip"
+            data-term="值"
+            data-module="cpp"
+            data-def="值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">值</abbr></span
+          >，RendezvousChannel 在没有<span
+            class="term-tip"
+            data-term="接收"
+            data-module="github"
+            data-def="接收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">接收</abbr></span
+          >者时<span
+            class="term-tip"
+            data-term="发送"
+            data-module="cpp"
+            data-def="发送"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发送</abbr></span
+          >会挂起
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="异常处理"
+              data-module="java"
+              data-def="使用 &#x60;try&#x60;、&#x60;catch&#x60;、&#x60;finally&#x60;、&#x60;throw&#x60;、&#x60;throws&#x60; 处理异常的机制"
+              data-slug="java/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">异常处理</abbr></span
+            ></strong
+          >：<span
+            class="term-tip"
+            data-term="Channel"
+            data-module="kotlin"
+            data-def="协程间用于热数据流的通信原语，支持多生产者多消费者模式"
+            data-slug="kotlin/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Channel</abbr></span
+          >
+          的<span
+            class="term-tip"
+            data-term="发送"
+            data-module="cpp"
+            data-def="发送"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发送</abbr></span
+          >和<span
+            class="term-tip"
+            data-term="接收"
+            data-module="github"
+            data-def="接收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">接收</abbr></span
+          >都可能<span
+            class="term-tip"
+            data-term="抛出"
+            data-module="javascript"
+            data-def="产生异常，中断代码执行"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">抛出</abbr></span
+          >异常，需要妥善<span
+            class="term-tip"
+            data-term="处理"
+            data-module="cpp"
+            data-def="处理"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">处理</abbr></span
+          >
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="Channel"
+              data-module="kotlin"
+              data-def="协程间用于热数据流的通信原语，支持多生产者多消费者模式"
+              data-slug="kotlin/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">Channel</abbr></span
+            >
+            vs
+            <span
+              class="term-tip"
+              data-term="Flow"
+              data-module="kotlin"
+              data-def="Kotlin 协程中的冷数据流 API，支持背压和生命周期感知的异步数据流处理"
+              data-slug="kotlin/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">Flow</abbr></span
+            ></strong
+          >：<span
+            class="term-tip"
+            data-term="Channel"
+            data-module="kotlin"
+            data-def="协程间用于热数据流的通信原语，支持多生产者多消费者模式"
+            data-slug="kotlin/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Channel</abbr></span
+          >
+          适合<span
+            class="term-tip"
+            data-term="协程"
+            data-module="c"
+            data-def="可暂停和恢复的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协程</abbr></span
+          >间<span
+            class="term-tip"
+            data-term="通信"
+            data-module="github"
+            data-def="通信"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">通信</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="Flow"
+            data-module="kotlin"
+            data-def="Kotlin 协程中的冷数据流 API，支持背压和生命周期感知的异步数据流处理"
+            data-slug="kotlin/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Flow</abbr></span
+          >
+          适合<span
+            class="term-tip"
+            data-term="数据流"
+            data-module="java"
+            data-def="&#x60;DataInputStream&#x60;/&#x60;DataOutputStream&#x60;，以机器无关方式读写基本类型数据"
+            data-slug="java/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">数据流</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="转换"
+            data-module="cpp"
+            data-def="转换"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">转换</abbr></span
+          >和收集。大<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >数场景优先使用
+          <span
+            class="term-tip"
+            data-term="Flow"
+            data-module="kotlin"
+            data-def="Kotlin 协程中的冷数据流 API，支持背压和生命周期感知的异步数据流处理"
+            data-slug="kotlin/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Flow</abbr></span
+          >
+        </li>
+      </ul>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="select-表达式"><a href="#select-表达式">select 表达式</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="select"
+          data-module="go"
+          data-def="同时监听多个 channel 操作的控制结构，随机执行就绪的 case 分支"
+          data-slug="go/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">select</abbr></span
+        >
+        可以同时等待<span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >个
+        <span
+          class="term-tip"
+          data-term="Channel"
+          data-module="kotlin"
+          data-def="协程间用于热数据流的通信原语，支持多生产者多消费者模式"
+          data-slug="kotlin/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Channel</abbr></span
+        >
+        的<span
+          class="term-tip"
+          data-term="结果"
+          data-module="c"
+          data-def="函数返回的值"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结果</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.selects.select</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel1.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"来自通道1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">50</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel2.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"来自通道2"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // select：哪个通道先有数据就处理哪个</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> select</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel1.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">onReceive</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { it }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        channel2.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">onReceive</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { it }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"最快收到: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$result</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 来自通道2</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    channel1.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">cancel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    channel2.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">cancel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="channel-与-flow-互转"><a href="#channel-与-flow-互转">Channel 与 Flow 互转</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.flow.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // Channel 转 Flow</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Channel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> flow </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">receiveAsFlow</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    launch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        flow.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">collect</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Flow收到: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$it</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">send</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    channel.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // Flow 转 Channel</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> flow2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> flowOf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">20</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">30</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> flow2.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">produceIn</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">this</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    channel2.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">consumeEach</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Channel收到: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">$it</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="ticker-channel"><a href="#ticker-channel">Ticker Channel</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="kotlin"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> kotlinx.coroutines.channels.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">*</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">fun</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> runBlocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 创建定时通道，每秒发送一次</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    val</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ticker </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ticker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (tick </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ticker) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"第${</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">count}次触发: ${System.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">currentTimeMillis</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">()}"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">break</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ticker.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">cancel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+    </article>
+  </body>
+</html>

@@ -1,0 +1,899 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MVCC快照读与当前读</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">MVCC快照读与当前读</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          MySQL InnoDB MVCC 机制详解：快照读与当前读的区别、ReadView 创建时机、Undo Log
+          版本链与一致性非锁定读原理。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-mvcc-基础概念"><a href="#1-mvcc-基础概念">1. MVCC 基础概念</a></h2>
+      <h3 id="11-什么是-mvcc"><a href="#11-什么是-mvcc">1.1 什么是 MVCC</a></h3>
+      <p>
+        MVCC（Multi-Version Concurrency Control，多版本并发控制）是 InnoDB
+        实现高并发读写的核心机制。其核心思想是：<strong>读不阻塞写，写不阻塞读</strong>。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>传统锁机制：读 → 加共享锁 → 阻塞写</span></span>
+<span class="line"><span>MVCC机制：  读 → 访问历史版本 → 不阻塞写</span></span></code></pre>
+      <h3 id="12-mvcc-的核心组件"><a href="#12-mvcc-的核心组件">1.2 MVCC 的核心组件</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>组件</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>隐藏列</td>
+            <td><code>DB_TRX_ID</code>（事务ID）、<code>DB_ROLL_PTR</code>（回滚指针）</td>
+          </tr>
+          <tr>
+            <td>Undo Log 版本链</td>
+            <td>通过 <code>DB_ROLL_PTR</code> 串联的历史版本</td>
+          </tr>
+          <tr>
+            <td>ReadView</td>
+            <td>决定当前事务能看到哪个版本</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="13-隐藏列结构"><a href="#13-隐藏列结构">1.3 隐藏列结构</a></h3>
+      <p>每行数据包含两个隐藏列：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>┌──────────┬───────────┬──────────────┬─────────────┐</span></span>
+<span class="line"><span>│ 数据列    │ DB_TRX_ID │ DB_ROLL_PTR  │ DB_ROW_ID   │</span></span>
+<span class="line"><span>│ (用户数据) │ (6字节)   │ (7字节)      │ (6字节)     │</span></span>
+<span class="line"><span>└──────────┴───────────┴──────────────┴─────────────┘</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>DB_TRX_ID:  最后修改该行的事务ID</span></span>
+<span class="line"><span>DB_ROLL_PTR: 指向 Undo Log 中该行的上一个版本</span></span>
+<span class="line"><span>DB_ROW_ID:  隐藏自增ID（无主键时自动生成）</span></span></code></pre>
+      <h2 id="2-undo-log-版本链"><a href="#2-undo-log-版本链">2. Undo Log 版本链</a></h2>
+      <h3 id="21-版本链构建"><a href="#21-版本链构建">2.1 版本链构建</a></h3>
+      <p>当一行数据被多次修改时，每次修改前的旧版本通过 <code>DB_ROLL_PTR</code> 串联成链表：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>当前行: {data='C', trx_id=303, roll_ptr→undo_C}</span></span>
+<span class="line"><span>                                         ↓</span></span>
+<span class="line"><span>Undo版本: {data='B', trx_id=202, roll_ptr→undo_B}</span></span>
+<span class="line"><span>                                         ↓</span></span>
+<span class="line"><span>Undo版本: {data='A', trx_id=101, roll_ptr→NULL}</span></span></code></pre>
+      <h3 id="22-版本链遍历"><a href="#22-版本链遍历">2.2 版本链遍历</a></h3>
+      <p>
+        当<span
+          class="term-tip"
+          data-term="事务"
+          data-module="cpp"
+          data-def="事务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">事务</abbr></span
+        >需要读取数据时，从当前行开始沿版本链向前遍历，找到第一个对当前事务可见的版本。
+      </p>
+      <h2 id="3-readview-机制"><a href="#3-readview-机制">3. ReadView 机制</a></h2>
+      <h3 id="31-readview-结构"><a href="#31-readview-结构">3.1 ReadView 结构</a></h3>
+      <p>
+        ReadView 是<span
+          class="term-tip"
+          data-term="事务"
+          data-module="cpp"
+          data-def="事务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">事务</abbr></span
+        >进<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >快照读时创建的”<span
+          class="term-tip"
+          data-term="可见性"
+          data-module="cpp"
+          data-def="可见性"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">可见性</abbr></span
+        >判断<span
+          class="term-tip"
+          data-term="规则"
+          data-module="cpp"
+          data-def="规则"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">规则</abbr></span
+        >”，<span
+          class="term-tip"
+          data-term="包"
+          data-module="go"
+          data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+          data-slug="go/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">包</abbr></span
+        >含四个<span
+          class="term-tip"
+          data-term="关键字"
+          data-module="c"
+          data-def="语言保留的特殊单词"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">关键字</abbr></span
+        >段：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>ReadView {</span></span>
+<span class="line"><span>    m_ids:        [201, 302]          -- 创建时所有活跃（未提交）事务ID列表</span></span>
+<span class="line"><span>    min_trx_id:   201                 -- m_ids 中的最小值</span></span>
+<span class="line"><span>    max_trx_id:   401                 -- 下一个将分配的事务ID（当前最大事务ID+1）</span></span>
+<span class="line"><span>    creator_trx_id: 303               -- 创建该 ReadView 的事务ID</span></span>
+<span class="line"><span>}</span></span></code></pre>
+      <h3 id="32-可见性判断规则"><a href="#32-可见性判断规则">3.2 可见性判断规则</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="对"
+          data-module="github"
+          data-def="对"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对</abbr></span
+        >于<span
+          class="term-tip"
+          data-term="版本"
+          data-module="c"
+          data-def="软件的迭代版本"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">版本</abbr></span
+        >链中某个<span
+          class="term-tip"
+          data-term="版本"
+          data-module="c"
+          data-def="软件的迭代版本"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">版本</abbr></span
+        >的 <code>trx_id</code>：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. trx_id == creator_trx_id → 可见（自己修改的）</span></span>
+<span class="line"><span>2. trx_id &#x3C; min_trx_id      → 可见（该事务在 ReadView 创建前已提交）</span></span>
+<span class="line"><span>3. trx_id >= max_trx_id     → 不可见（该事务在 ReadView 创建后才开始）</span></span>
+<span class="line"><span>4. min_trx_id &#x3C;= trx_id &#x3C; max_trx_id:</span></span>
+<span class="line"><span>   - trx_id 在 m_ids 中 → 不可见（该事务未提交）</span></span>
+<span class="line"><span>   - trx_id 不在 m_ids 中 → 可见（该事务已提交）</span></span></code></pre>
+      <h3 id="33-可见性判断流程图"><a href="#33-可见性判断流程图">3.3 可见性判断流程图</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>                    trx_id == creator_trx_id?</span></span>
+<span class="line"><span>                    /                    \</span></span>
+<span class="line"><span>                  YES                    NO</span></span>
+<span class="line"><span>                  ↓                       ↓</span></span>
+<span class="line"><span>               可见              trx_id &#x3C; min_trx_id?</span></span>
+<span class="line"><span>                                /                \</span></span>
+<span class="line"><span>                              YES                NO</span></span>
+<span class="line"><span>                              ↓                  ↓</span></span>
+<span class="line"><span>                            可见        trx_id >= max_trx_id?</span></span>
+<span class="line"><span>                                      /                \</span></span>
+<span class="line"><span>                                    YES                NO</span></span>
+<span class="line"><span>                                    ↓                  ↓</span></span>
+<span class="line"><span>                                 不可见       trx_id ∈ m_ids?</span></span>
+<span class="line"><span>                                            /          \</span></span>
+<span class="line"><span>                                          YES          NO</span></span>
+<span class="line"><span>                                          ↓            ↓</span></span>
+<span class="line"><span>                                        不可见        可见</span></span></code></pre>
+      <h2 id="4-快照读与当前读"><a href="#4-快照读与当前读">4. 快照读与当前读</a></h2>
+      <h3 id="41-快照读snapshot-read">
+        <a href="#41-快照读snapshot-read">4.1 快照读（Snapshot Read）</a>
+      </h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="快照"
+          data-module="github"
+          data-def="快照"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">快照</abbr></span
+        >读<span
+          class="term-tip"
+          data-term="读取"
+          data-module="c"
+          data-def="从输入获取数据"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">读取</abbr></span
+        >的是数据的<strong
+          ><span
+            class="term-tip"
+            data-term="历史"
+            data-module="github"
+            data-def="历史"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">历史</abbr></span
+          >版本</strong
+        >，不加<span
+          class="term-tip"
+          data-term="锁"
+          data-module="python"
+          data-def="线程同步原语，同一时刻只允许一个线程持有"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">锁</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="通过"
+          data-module="github"
+          data-def="通过"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">通过</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="MVCC"
+          data-module="mysql"
+          data-def="多版本并发控制"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">MVCC</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="实现"
+          data-module="github"
+          data-def="实现"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">实现</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 普通 SELECT 都是快照读</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <p>
+        <strong
+          >RC
+          <span
+            class="term-tip"
+            data-term="隔离级别"
+            data-module="mysql"
+            data-def="并发事务的隔离程度"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">隔离级别</abbr></span
+          ></strong
+        >：每次
+        <span
+          class="term-tip"
+          data-term="SELECT"
+          data-module="mysql"
+          data-def="查询数据的 SQL 语句"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">SELECT</abbr></span
+        >
+        都创建新的 ReadView
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>事务A (trx_id=300):</span></span>
+<span class="line"><span>  SELECT * FROM users WHERE id=1;  -- 创建 ReadView_1</span></span>
+<span class="line"><span>  -- 此时事务B修改了 id=1 并提交</span></span>
+<span class="line"><span>  SELECT * FROM users WHERE id=1;  -- 创建 ReadView_2，能看到事务B的修改</span></span></code></pre>
+      <p>
+        <strong
+          >RR
+          <span
+            class="term-tip"
+            data-term="隔离级别"
+            data-module="mysql"
+            data-def="并发事务的隔离程度"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">隔离级别</abbr></span
+          ></strong
+        >：只在第一次
+        <span
+          class="term-tip"
+          data-term="SELECT"
+          data-module="mysql"
+          data-def="查询数据的 SQL 语句"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">SELECT</abbr></span
+        >
+        时创建 ReadView，后续复用
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>事务A (trx_id=300):</span></span>
+<span class="line"><span>  SELECT * FROM users WHERE id=1;  -- 创建 ReadView_1</span></span>
+<span class="line"><span>  -- 此时事务B修改了 id=1 并提交</span></span>
+<span class="line"><span>  SELECT * FROM users WHERE id=1;  -- 复用 ReadView_1，看不到事务B的修改</span></span></code></pre>
+      <h3 id="42-当前读current-read">
+        <a href="#42-当前读current-read">4.2 当前读（Current Read）</a>
+      </h3>
+      <p>
+        当前读<span
+          class="term-tip"
+          data-term="读取"
+          data-module="c"
+          data-def="从输入获取数据"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">读取</abbr></span
+        >的是数据的<strong
+          >最新<span
+            class="term-tip"
+            data-term="版本"
+            data-module="c"
+            data-def="软件的迭代版本"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">版本</abbr></span
+          ></strong
+        >，并加<span
+          class="term-tip"
+          data-term="锁"
+          data-module="python"
+          data-def="线程同步原语，同一时刻只允许一个线程持有"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">锁</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 当前读语句</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FOR</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;      </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 排他锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> LOCK </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">IN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> SHARE MODE; </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 共享锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'new'</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;        </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 排他锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DELETE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;                     </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 排他锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INSERT INTO</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">VALUES</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'new'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);                </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 插入锁</span></span></code></pre>
+      <h3 id="43-快照读与当前读对比">
+        <a href="#43-快照读与当前读对比">4.3 快照读与当前读对比</a>
+      </h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="维度"
+                data-module="cpp"
+                data-def="维度数量"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">维度</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="快照"
+                data-module="github"
+                data-def="快照"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">快照</abbr></span
+              >读
+            </th>
+            <th>当前读</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="读取"
+                data-module="c"
+                data-def="从输入获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">读取</abbr></span
+              >版本
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="历史"
+                data-module="github"
+                data-def="历史"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">历史</abbr></span
+              >版本
+            </td>
+            <td>
+              最新<span
+                class="term-tip"
+                data-term="版本"
+                data-module="c"
+                data-def="软件的迭代版本"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">版本</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              加<span
+                class="term-tip"
+                data-term="锁"
+                data-module="python"
+                data-def="线程同步原语，同一时刻只允许一个线程持有"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">锁</abbr></span
+              >
+            </td>
+            <td>
+              不加<span
+                class="term-tip"
+                data-term="锁"
+                data-module="python"
+                data-def="线程同步原语，同一时刻只允许一个线程持有"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">锁</abbr></span
+              >
+            </td>
+            <td>
+              加<span
+                class="term-tip"
+                data-term="行锁"
+                data-module="mysql"
+                data-def="行级别的锁"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行锁</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="间隙锁"
+                data-module="mysql"
+                data-def="索引间隙上的锁"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">间隙锁</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>ReadView</td>
+            <td>创建/复用</td>
+            <td>不使用</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="语句"
+                data-module="lua"
+                data-def="Lua 程序的基本执行单元，包括赋值、函数调用、控制结构等"
+                data-slug="lua/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语句</abbr></span
+              >
+            </td>
+            <td>
+              普通
+              <span
+                class="term-tip"
+                data-term="SELECT"
+                data-module="mysql"
+                data-def="查询数据的 SQL 语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SELECT</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="FOR"
+                data-module="mysql"
+                data-def="循环语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">FOR</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+              / DML
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="一致性"
+                data-module="github"
+                data-def="一致性"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">一致性</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="一致性"
+                data-module="github"
+                data-def="一致性"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">一致性</abbr></span
+              >视<span
+                class="term-tip"
+                data-term="图"
+                data-module="algorithm"
+                data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="实时"
+                data-module="cpp"
+                data-def="实时"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">实时</abbr></span
+              >数据
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="44-快照读与当前读混合的陷阱">
+        <a href="#44-快照读与当前读混合的陷阱">4.4 快照读与当前读混合的陷阱</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- RR 隔离级别下的经典问题</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 快照读：读取 stock=10</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> products </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- stock=10</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 当前读：读取最新 stock</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> products </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FOR</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- stock=8（已被其他事务修改）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 快照读：仍然读取旧值</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> products </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- stock=10（ReadView 未更新）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- UPDATE 是当前读，基于最新版本</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> products </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 基于 stock=8</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h2 id="5-不同隔离级别的-mvcc-行为">
+        <a href="#5-不同隔离级别的-mvcc-行为">5. 不同隔离级别的 MVCC 行为</a>
+      </h2>
+      <h3 id="51-read-uncommitted"><a href="#51-read-uncommitted">5.1 READ UNCOMMITTED</a></h3>
+      <p>
+        不使用
+        <span
+          class="term-tip"
+          data-term="MVCC"
+          data-module="mysql"
+          data-def="多版本并发控制"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">MVCC</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="直接"
+          data-module="github"
+          data-def="直接的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">直接</abbr></span
+        >读取最新数据（可能读到未<span
+          class="term-tip"
+          data-term="提交"
+          data-module="cpp"
+          data-def="持久化变更"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">提交</abbr></span
+        >数据）。
+      </p>
+      <h3 id="52-read-committed"><a href="#52-read-committed">5.2 READ COMMITTED</a></h3>
+      <p>
+        每次
+        <span
+          class="term-tip"
+          data-term="SELECT"
+          data-module="mysql"
+          data-def="查询数据的 SQL 语句"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">SELECT</abbr></span
+        >
+        创建新 ReadView：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>时间线:  T1        T2        T3        T4</span></span>
+<span class="line"><span>事务A:   BEGIN     SELECT→RV1           SELECT→RV2</span></span>
+<span class="line"><span>事务B:             BEGIN     UPDATE    COMMIT</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>T2: SELECT 创建 RV1，看到事务B修改前的数据</span></span>
+<span class="line"><span>T4: SELECT 创建 RV2，看到事务B已提交的修改</span></span></code></pre>
+      <h3 id="53-repeatable-read"><a href="#53-repeatable-read">5.3 REPEATABLE READ</a></h3>
+      <p>
+        只在第一次
+        <span
+          class="term-tip"
+          data-term="SELECT"
+          data-module="mysql"
+          data-def="查询数据的 SQL 语句"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">SELECT</abbr></span
+        >
+        创建 ReadView，后续复用：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>时间线:  T1        T2        T3        T4</span></span>
+<span class="line"><span>事务A:   BEGIN     SELECT→RV1           SELECT(复用RV1)</span></span>
+<span class="line"><span>事务B:             BEGIN     UPDATE    COMMIT</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>T2: SELECT 创建 RV1</span></span>
+<span class="line"><span>T4: SELECT 复用 RV1，仍然看到事务B修改前的数据</span></span></code></pre>
+      <h3 id="54-serializable"><a href="#54-serializable">5.4 SERIALIZABLE</a></h3>
+      <p>
+        所有
+        <span
+          class="term-tip"
+          data-term="SELECT"
+          data-module="mysql"
+          data-def="查询数据的 SQL 语句"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">SELECT</abbr></span
+        >
+        自动加<span
+          class="term-tip"
+          data-term="共享锁"
+          data-module="cpp"
+          data-def="共享锁"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">共享锁</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="退化"
+          data-module="c"
+          data-def="数组退化为指针"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">退化</abbr></span
+        >为当前读，不<span
+          class="term-tip"
+          data-term="存在"
+          data-module="github"
+          data-def="存在"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">存在</abbr></span
+        >快照读。
+      </p>
+    </article>
+  </body>
+</html>

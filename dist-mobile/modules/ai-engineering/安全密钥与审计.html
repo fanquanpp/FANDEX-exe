@@ -1,0 +1,604 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>安全 — 密钥、API密钥轮换、审计日志与护栏</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">安全 — 密钥、API密钥轮换、审计日志与护栏</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            6 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-beginner"> Beginner </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">安全</span><span class="doc-tag">密钥管理</span
+          ><span class="doc-tag">API密钥轮换</span><span class="doc-tag">PII清洗</span
+          ><span class="doc-tag">审计日志</span><span class="doc-tag">零信任</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解2026年LLM安全最佳实践：集中密钥库、AI网关模式、PII清洗</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="安全--密钥api密钥轮换审计日志与护栏">
+        <a href="#安全--密钥api密钥轮换审计日志与护栏">安全 — 密钥、API密钥轮换、审计日志与护栏</a>
+      </h1>
+      <blockquote>
+        <p>
+          通过集中密钥库(HashiCorp Vault, AWS Secrets Manager, Azure Key
+          Vault)消除密钥散布。永远不要在配置文件、VCS中的env文件、电子表格中存储凭据。使用IAM角色而非静态密钥；CI/CD用OIDC。AI网关模式是2026年解决方案：应用→网关→模型提供商，网关在运行时从密钥库拉取凭据。在密钥库中轮换，所有应用在几分钟内获取——无需重新部署，无需Slack”谁有新密钥”消息。轮换策略&#x3C;=90天；每次提交用TruffleHog
+          / GitGuardian /
+          Gitleaks扫描。零信任：MFA、SSO、RBAC/ABAC、短期token、设备姿态。PII清洗使用实体识别在转发前掩码PHI/PII；一致分词(Mesh方法)将敏感值映射到稳定占位符，使LLM保留代码/关系语义。网络出口：LLM服务在专用VPC/VNet子网中，仅白名单<code>api.openai.com</code>、<code>api.anthropic.com</code>等；阻止所有其他出站。2026年事件驱动因素：Vercel供应链攻击通过受损CI/CD凭据泄露了数千客户部署的env变量。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib, toy PII清洗器 +
+        审计日志写入器) <strong>前置知识:</strong> Phase 17 · 19 (AI网关), Phase 17 · 13 (可观测性)
+        <strong>时间:</strong> ~60分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>解释AI网关模式：应用→网关→提供商，网关从密钥库拉取凭据。</li>
+        <li>描述密钥轮换策略：&#x3C;=90天，密钥库中轮换，应用自动获取。</li>
+        <li>说出PII清洗方法：实体识别+一致分词(Mesh方法)。</li>
+        <li>设计网络出口策略：专用子网+白名单。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        API密钥散布在配置文件、env变量和电子表格中。轮换需要重新部署。泄露导致供应链攻击。2026年解决方案是集中密钥库+AI网关模式。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="ai网关模式"><a href="#ai网关模式">AI网关模式</a></h3>
+      <p>
+        应用→网关→模型提供商。网关在运行时从密钥库拉取凭据。轮换在密钥库中完成，所有应用自动获取。
+      </p>
+      <h3 id="密钥轮换"><a href="#密钥轮换">密钥轮换</a></h3>
+      <ul>
+        <li>&#x3C;=90天轮换策略。</li>
+        <li>密钥库中轮换，应用自动获取。</li>
+        <li>每次提交用TruffleHog/GitGuardian/Gitleaks扫描。</li>
+      </ul>
+      <h3 id="pii清洗"><a href="#pii清洗">PII清洗</a></h3>
+      <ul>
+        <li>实体识别在转发前掩码PHI/PII。</li>
+        <li>
+          一致分词(Mesh方法)：<span
+            class="term-tip"
+            data-term="敏感"
+            data-module="cpp"
+            data-def="敏感的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">敏感</abbr></span
+          >值<span
+            class="term-tip"
+            data-term="映射"
+            data-module="c"
+            data-def="类型到另一类型的对应关系"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">映射</abbr></span
+          >到<span
+            class="term-tip"
+            data-term="稳定"
+            data-module="github"
+            data-def="稳定"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">稳定</abbr></span
+          >占位符。
+        </li>
+        <li>
+          LLM保留代码/<span
+            class="term-tip"
+            data-term="关系"
+            data-module="cpp"
+            data-def="关系"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">关系</abbr></span
+          >语义。
+        </li>
+      </ul>
+      <h3 id="网络出口"><a href="#网络出口">网络出口</a></h3>
+      <ul>
+        <li>LLM服务在专用VPC/VNet子网。</li>
+        <li>
+          仅白名<span
+            class="term-tip"
+            data-term="单"
+            data-module="github"
+            data-def="单"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">单</abbr></span
+          >提供商API端<span
+            class="term-tip"
+            data-term="点"
+            data-module="github"
+            data-def="点"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">点</abbr></span
+          >。
+        </li>
+        <li>
+          阻止所有<span
+            class="term-tip"
+            data-term="其他"
+            data-module="github"
+            data-def="其他"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">其他</abbr></span
+          >出站。
+        </li>
+      </ul>
+      <h3 id="零信任"><a href="#零信任">零信任</a></h3>
+      <ul>
+        <li>MFA、SSO、RBAC/ABAC。</li>
+        <li>
+          短期<span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="设备"
+            data-module="cpp"
+            data-def="设备对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设备</abbr></span
+          >姿态<span
+            class="term-tip"
+            data-term="检查"
+            data-module="cpp"
+            data-def="验证条件"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检查</abbr></span
+          >。
+        </li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code>实现toy PII清洗器和<span
+          class="term-tip"
+          data-term="审计日志"
+          data-module="github"
+          data-def="安全审计记录"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">审计日志</abbr></span
+        >写入器。
+      </p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-llm-security-checklist.md</code>。LLM部署<span
+          class="term-tip"
+          data-term="安全"
+          data-module="cpp"
+          data-def="安全性"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">安全</abbr></span
+        >检查清<span
+          class="term-tip"
+          data-term="单"
+          data-module="github"
+          data-def="单"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">单</abbr></span
+        >。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          设计AI网关密钥<span
+            class="term-tip"
+            data-term="管理"
+            data-module="github"
+            data-def="管理"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">管理</abbr></span
+          >：3个<span
+            class="term-tip"
+            data-term="提供"
+            data-module="github"
+            data-def="提供"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提供</abbr></span
+          >商，<span
+            class="term-tip"
+            data-term="轮"
+            data-module="github"
+            data-def="轮"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">轮</abbr></span
+          >换<span
+            class="term-tip"
+            data-term="策略"
+            data-module="vue3"
+            data-def="解决问题的策略"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">策略</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="审计日志"
+            data-module="github"
+            data-def="安全审计记录"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">审计日志</abbr></span
+          >。
+        </li>
+        <li>
+          PII清洗如何<span
+            class="term-tip"
+            data-term="处理"
+            data-module="cpp"
+            data-def="处理"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">处理</abbr></span
+          >”我的<span
+            class="term-tip"
+            data-term="名字"
+            data-module="github"
+            data-def="名字"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">名字</abbr></span
+          >是John，SSN是123-45-6789”？写出清洗后<span
+            class="term-tip"
+            data-term="输出"
+            data-module="c"
+            data-def="向外部发送数据"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">输出</abbr></span
+          >。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="设计"
+            data-module="github"
+            data-def="设计"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设计</abbr></span
+          >网络出口<span
+            class="term-tip"
+            data-term="策略"
+            data-module="vue3"
+            data-def="解决问题的策略"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">策略</abbr></span
+          >：VPC子网，<span
+            class="term-tip"
+            data-term="安全"
+            data-module="cpp"
+            data-def="安全性"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">安全</abbr></span
+          >组，白名<span
+            class="term-tip"
+            data-term="单"
+            data-module="github"
+            data-def="单"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">单</abbr></span
+          >。
+        </li>
+        <li>
+          阅读Vercel供应链攻击<span
+            class="term-tip"
+            data-term="报告"
+            data-module="github"
+            data-def="报告"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">报告</abbr></span
+          >。<span
+            class="term-tip"
+            data-term="描述"
+            data-module="github"
+            data-def="描述"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">描述</abbr></span
+          >攻击<span
+            class="term-tip"
+            data-term="路径"
+            data-module="github"
+            data-def="路径"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">路径</abbr></span
+          >和防御。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >一致分词：相同PII值跨<span
+            class="term-tip"
+            data-term="请求"
+            data-module="vue3"
+            data-def="HTTP 请求"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">请求</abbr></span
+          >映射到相同<span
+            class="term-tip"
+            data-term="占位符"
+            data-module="html5"
+            data-def="输入框提示文字"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">占位符</abbr></span
+          >。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              AI网关<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="网关"
+                data-module="iot"
+                data-def="连接不同网络协议和通信标准的桥梁设备，实现 IoT 设备与云端的互通"
+                data-slug="iot/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网关</abbr></span
+              >拉密钥”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="网关"
+                data-module="iot"
+                data-def="连接不同网络协议和通信标准的桥梁设备，实现 IoT 设备与云端的互通"
+                data-slug="iot/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网关</abbr></span
+              >在<span
+                class="term-tip"
+                data-term="运行时"
+                data-module="c"
+                data-def="程序执行的阶段"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">运行时</abbr></span
+              >从密钥<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >拉取凭据
+            </td>
+          </tr>
+          <tr>
+            <td>密钥散布</td>
+            <td>”到处都是密钥”</td>
+            <td>
+              凭据分散在<span
+                class="term-tip"
+                data-term="配置文件"
+                data-module="github"
+                data-def="配置文件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">配置文件</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="电子"
+                data-module="github"
+                data-def="电子的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">电子</abbr></span
+              >表<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >中
+            </td>
+          </tr>
+          <tr>
+            <td>PII清洗</td>
+            <td>”脱敏”</td>
+            <td>
+              在转发给LLM前掩码<span
+                class="term-tip"
+                data-term="个人"
+                data-module="github"
+                data-def="个人的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">个人</abbr></span
+              >身份<span
+                class="term-tip"
+                data-term="信息"
+                data-module="github"
+                data-def="信息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信息</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>一致分词</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="稳定"
+                data-module="github"
+                data-def="稳定"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">稳定</abbr></span
+              >占<span
+                class="term-tip"
+                data-term="位"
+                data-module="c"
+                data-def="二进制数字，基本存储单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位</abbr></span
+              >符”
+            </td>
+            <td>
+              相同PII值<span
+                class="term-tip"
+                data-term="映射"
+                data-module="c"
+                data-def="类型到另一类型的对应关系"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">映射</abbr></span
+              >到相同<span
+                class="term-tip"
+                data-term="占位符"
+                data-module="html5"
+                data-def="输入框提示文字"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">占位符</abbr></span
+              >跨<span
+                class="term-tip"
+                data-term="请求"
+                data-module="vue3"
+                data-def="HTTP 请求"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">请求</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              零<span
+                class="term-tip"
+                data-term="信任"
+                data-module="html5"
+                data-def="网站可信度"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信任</abbr></span
+              >
+            </td>
+            <td>
+              ”不默认<span
+                class="term-tip"
+                data-term="信任"
+                data-module="html5"
+                data-def="网站可信度"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信任</abbr></span
+              >”
+            </td>
+            <td>
+              MFA+SSO+RBAC+短期<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >+<span
+                class="term-tip"
+                data-term="设备"
+                data-module="cpp"
+                data-def="设备对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">设备</abbr></span
+              >姿态
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li><a href="https://www.vaultproject.io/">HashiCorp Vault</a></li>
+        <li><a href="https://github.com/trufflesecurity/trufflehog">TruffleHog GitHub</a></li>
+      </ul>
+    </article>
+  </body>
+</html>

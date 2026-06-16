@@ -1,0 +1,1384 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lua与Redis脚本</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Lua与Redis脚本</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            7 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">Redis Lua脚本</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        Redis 从 2.6 版本开始内置了 Lua 脚本支持，允许开发者将多个 Redis
+        命令打包为一个原子操作在服务端执行。这一特性极大地扩展了 Redis
+        的能力边界，使得原本需要多次网络往返的复杂逻辑可以在服务端一次性完成，既减少了网络延迟，又保证了操作的原子性。
+      </p>
+      <p>
+        Redis 中的 Lua
+        脚本运行在一个受限的沙箱环境中。脚本不能访问外部文件系统、网络或系统调用，只能通过
+        redis.call 和 redis.pcall 函数执行 Redis 命令，通过 KEYS 和 ARGV
+        数组接收参数。这种设计确保了脚本执行的安全性和可预测性。Redis
+        保证同一个脚本在所有节点上执行的结果一致，这也是 Redis Cluster 中脚本正确运行的基础。
+      </p>
+      <h2 id="基本概念"><a href="#基本概念">基本概念</a></h2>
+      <p>
+        <strong>EVAL 命令</strong>是执行 Lua 脚本的基本方式。语法为
+        <code>EVAL script numkeys key [key ...] arg [arg ...]</code>，其中 script 是 Lua
+        脚本代码，numkeys 指定键的数量，之后的参数分为键（KEYS）和参数（ARGV）两部分。Redis
+        将键和参数分别传递给脚本中的 KEYS 和 ARGV 全局变量。
+      </p>
+      <p>
+        <strong>EVALSHA 命令</strong>是 EVAL 的优化版本。Redis 会对每个脚本计算 SHA1
+        校验和并缓存编译结果，EVALSHA
+        通过校验和引用已缓存的脚本，避免了每次传输完整脚本的开销。大多数 Redis 客户端库会自动使用
+        EVALSHA 并在脚本未缓存时回退到 EVAL。
+      </p>
+      <p>
+        <strong>redis.call 和 redis.pcall</strong> 是脚本中执行 Redis
+        命令的两种方式。两者功能相同，区别在于命令执行失败时的处理方式：redis.call
+        会直接将错误返回给调用者，而 redis.pcall 会以 Lua
+        表的形式返回错误信息，允许脚本自行处理错误。
+      </p>
+      <p>
+        <strong>原子性</strong>是 Redis Lua 脚本最重要的特性。当一个脚本开始执行后，Redis
+        不会执行其他客户端的命令，直到脚本执行完毕。这意味着脚本中的所有 Redis
+        命令作为一个不可分割的整体执行，不会被其他命令穿插。但这也意味着长脚本会阻塞
+        Redis，应尽量保持脚本简短。
+      </p>
+      <p>
+        <strong>KEYS 和 ARGV</strong> 是脚本与外部通信的参数接口。KEYS 数组包含脚本要操作的 Redis
+        键名，ARGV 数组包含其他参数。遵循规范应将所有键名放在 KEYS 中，而非硬编码在脚本里，这是
+        Redis Cluster 正确路由请求的前提。
+      </p>
+      <h2 id="快速开始"><a href="#快速开始">快速开始</a></h2>
+      <p>使用 redis-cli 执行一个简单的 Lua 脚本：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 最简单的 Lua 脚本：设置一个键并返回结果</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-cli</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> EVAL</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "return redis.call('SET', KEYS[1], ARGV[1])"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> mykey</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> myvalue</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 输出: OK</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 读取键值</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-cli</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> EVAL</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "return redis.call('GET', KEYS[1])"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> mykey</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 输出: "myvalue"</span></span></code></pre>
+      <p>在脚本中使用 Lua 逻辑：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 条件设置：仅当键不存在时才设置</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-cli</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> EVAL</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">if redis.call('EXISTS', KEYS[1]) == 0 then</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    return redis.call('SET', KEYS[1], ARGV[1])</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">else</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    return 0</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">end</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> mykey</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> newvalue</span></span></code></pre>
+      <p>使用编程语言（以 Python 为例）执行 Lua 脚本：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">r </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.Redis(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">host</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'localhost'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">port</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">6379</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">decode_responses</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 限流脚本</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">rate_limit_script </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> """</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">local key = KEYS[1]</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">local limit = tonumber(ARGV[1])</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">local window = tonumber(ARGV[2])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">local current = tonumber(redis.call('GET', key) or '0')</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">if current >= limit then</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    return 0</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">redis.call('INCR', key)</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">redis.call('EXPIRE', key, window)</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">return 1</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"""</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 执行脚本</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> r.eval(rate_limit_script, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"rate:192.168.1.1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">60</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"请求是否允许:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"是"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> else</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "否"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="基本数据类型操作"><a href="#基本数据类型操作">基本数据类型操作</a></h3>
+      <p>在 Lua 脚本中操作 Redis 的各种数据类型：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 字符串操作</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 设置字符串</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 获取字符串</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'INCR'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])                    </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 自增</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'INCRBY'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)              </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 增加指定值</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 哈希操作</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HSET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'name'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 设置哈希字段</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HSET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'age'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 设置另一个字段</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HGET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'name'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 获取字段</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> all </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HGETALL'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])     </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 获取所有字段</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 列表操作</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'LPUSH'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 左侧插入</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'RPUSH'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])            </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 右侧插入</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> item </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'LPOP'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])         </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 左侧弹出</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> len </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'LLEN'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 列表长度</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 集合操作</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SADD'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 添加成员</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> is_member </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SISMEMBER'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 是否成员</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SCARD'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])        </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 成员数量</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 有序集合操作</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'ZADD'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 添加成员和分数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> top </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'ZREVRANGE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">9</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'WITHSCORES'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 前10名</span></span></code></pre>
+      <h3 id="类型转换注意事项"><a href="#类型转换注意事项">类型转换注意事项</a></h3>
+      <p>Redis 和 Lua 之间的类型转换需要特别注意：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Redis 返回值的 Lua 类型映射</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Redis 整数 -> Lua 数字</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> int_result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'INCR'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 返回 number 类型</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Redis 字符串 -> Lua 字符串</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> str_result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])    </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 返回 string 类型</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Redis 列表 -> Lua 表（索引从 1 开始）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> list_result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'LRANGE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 返回 table</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Redis 空值 -> Lua false</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nil_result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'nonexistent'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 返回 false（不是 nil！）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Redis 状态回复 -> Lua 表 {ok = message}</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> status_result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 返回 {ok = "OK"}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 检查空值的正确方式</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> false</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> then</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 键不存在</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "键不存在"</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">else</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 键存在</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> value</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span></code></pre>
+      <p>数字类型的精度问题：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Lua 中只有浮点数，大整数可能丢失精度</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Redis 的 INCR 返回整数，但 Lua 可能将其转为浮点数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'INCR'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 使用 tonumber 确保数字类型</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> limit </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '0'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 比较时注意类型</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> limit </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span></code></pre>
+      <h3 id="分布式锁实现"><a href="#分布式锁实现">分布式锁实现</a></h3>
+      <p>使用 Lua 脚本实现可重入的分布式锁：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 加锁脚本</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 锁的键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 锁的持有者标识（如客户端 ID）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[2]: 锁的过期时间（毫秒）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[3]: 可重入计数（默认为 1）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> lock_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> lock_holder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> lock_timeout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 检查锁是否已被持有</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current_holder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, lock_key)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current_holder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> false</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> then</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 锁未被持有，直接加锁</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, lock_key, lock_holder)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'PEXPIRE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, lock_key, lock_timeout)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current_holder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> lock_holder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 同一个持有者，重入加锁（续期）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'PEXPIRE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, lock_key, lock_timeout)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 锁被其他持有者占用</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span></code></pre>
+      <p>解锁脚本：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 解锁脚本</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 锁的键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 锁的持有者标识</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> lock_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> lock_holder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current_holder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, lock_key)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 只有持有者才能解锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current_holder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> lock_holder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'DEL'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, lock_key)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 不是持有者，无法解锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current_holder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> false</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 锁已过期</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 锁被其他持有者持有</span></span></code></pre>
+      <h3 id="滑动窗口限流"><a href="#滑动窗口限流">滑动窗口限流</a></h3>
+      <p>实现精确的滑动窗口限流算法：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 滑动窗口限流脚本</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 限流键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 窗口内最大请求数</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[2]: 窗口大小（秒）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[3]: 当前时间戳（毫秒）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> limit </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> window </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> now </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 移除窗口外的旧记录</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> window_start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> now </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> window </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'ZREMRANGEBYSCORE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'-inf'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, window_start)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 统计当前窗口内的请求数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'ZCARD'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> limit </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 请求被拒绝</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 记录本次请求（使用时间戳作为分数和成员）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'ZADD'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key, now, now </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ':' </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> math.random</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1000000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 设置键的过期时间，避免无限增长</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'EXPIRE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key, window </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 请求被允许</span></span></code></pre>
+      <h3 id="令牌桶限流"><a href="#令牌桶限流">令牌桶限流</a></h3>
+      <p>实现令牌桶算法：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 令牌桶限流脚本</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 令牌桶键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 桶容量（最大令牌数）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[2]: 令牌生成速率（每秒生成的令牌数）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[3]: 当前时间戳（秒）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[4]: 请求消耗的令牌数</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> capacity </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rate </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> now </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> requested </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 获取当前令牌数和上次更新时间</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> bucket </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HMGET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'tokens'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'timestamp'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(bucket[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> last_time </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(bucket[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 首次使用，初始化满桶</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> nil</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> then</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> capacity</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    last_time </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> now</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 计算新增的令牌数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> elapsed </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> now </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> last_time</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> elapsed </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rate</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 更新令牌数（不超过桶容量）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> math.min</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(capacity, tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_tokens)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 检查是否有足够的令牌</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> requested </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> requested</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 保存更新后的状态</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HMSET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'tokens'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, tokens, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'timestamp'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, now)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'EXPIRE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">math.ceil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(capacity </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rate) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 请求被允许</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">else</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 仍然更新令牌数，但不消耗</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HMSET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'tokens'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, tokens, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'timestamp'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, now)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'EXPIRE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">math.ceil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(capacity </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rate) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 请求被拒绝</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="库存扣减"><a href="#库存扣减">库存扣减</a></h3>
+      <p>使用 Lua 脚本实现原子性的库存扣减，防止超卖：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 库存扣减脚本</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 库存键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 扣减数量</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quantity </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 获取当前库存</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stock_key) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '0'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quantity </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 库存不足</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "库存不足"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock}</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 扣减库存</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> remaining </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quantity</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stock_key, remaining)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {ok </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "扣减成功"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> remaining}</span></span></code></pre>
+      <p>使用哈希存储更丰富的库存信息：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 带订单记录的库存扣减</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 库存键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[2]: 订单记录键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 用户 ID</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[2]: 扣减数量</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> order_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quantity </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 检查用户是否已下单</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HEXISTS'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, order_key, user_id) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 用户已下单</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 检查库存</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stock_key) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '0'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stock </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quantity </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 库存不足</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 扣减库存并记录订单</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'DECRBY'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stock_key, quantity)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HSET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, order_key, user_id, quantity)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 下单成功</span></span></code></pre>
+      <h3 id="消息队列"><a href="#消息队列">消息队列</a></h3>
+      <p>实现简单的消息队列：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 生产者：发送消息</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 队列键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 消息内容</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[2]: 消息优先级（可选）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> queue_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> message </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> priority </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 使用有序集合实现优先级队列</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> message_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'INCR'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, queue_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ':id'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'ZADD'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, queue_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ':pending'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, priority, message_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ':' </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> message)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> message_id</span></span></code></pre>
+      <p>消费者脚本：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 消费者：获取并处理消息</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 队列键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 消费者 ID</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[2]: 可见性超时（秒）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> queue_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> consumer_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> timeout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> now </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> math.floor</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'TIME'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 从待处理队列获取优先级最高的消息</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> messages </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'ZRANGE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, queue_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ':pending'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'WITHSCORES'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> #</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">messages </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> nil</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 队列为空</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> message </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> messages[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> score </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(messages[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 从待处理队列移除</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'ZREM'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, queue_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ':pending'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, message)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 添加到处理中队列，设置超时</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'ZADD'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, queue_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ':processing'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, now </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> timeout, message)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 记录消费者</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HSET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, queue_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">..</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ':consumers'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, message, consumer_id)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> message</span></span></code></pre>
+      <h3 id="缓存更新策略"><a href="#缓存更新策略">缓存更新策略</a></h3>
+      <p>实现缓存的双写一致性：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 缓存更新脚本（先更新数据库标记，再更新缓存）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 缓存键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[2]: 更新标记键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 新的缓存值</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[2]: 缓存过期时间（秒）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cache_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mark_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ttl </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 设置更新标记，防止并发读取到旧数据</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, mark_key, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'updating'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'EXPIRE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, mark_key, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 更新缓存</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, cache_key, new_value)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'EXPIRE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, cache_key, ttl)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 清除更新标记</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'DEL'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, mark_key)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span></code></pre>
+      <p>缓存读取脚本：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 缓存读取脚本（带更新标记检查）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 缓存键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[2]: 更新标记键名</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cache_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mark_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 检查是否有更新操作正在进行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'EXISTS'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, mark_key) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {status </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "updating"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 缓存正在更新，建议回源</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 读取缓存</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, cache_key)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> false</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {status </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "miss"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 缓存未命中</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">else</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {status </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "hit"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> value}  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 缓存命中</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span></code></pre>
+      <h2 id="注意事项与常见错误"><a href="#注意事项与常见错误">注意事项与常见错误</a></h2>
+      <p>
+        <strong>不要在脚本中硬编码键名</strong>。所有键名必须通过 KEYS 数组传入，这是 Redis Cluster
+        的强制要求。如果键名硬编码在脚本中，Redis Cluster
+        无法正确判断键所在的节点，可能导致脚本在错误的节点上执行。虽然单节点模式下硬编码不会报错，但为了兼容性和可维护性，应始终使用
+        KEYS 参数。
+      </p>
+      <p>
+        <strong>脚本执行时间不能过长</strong>。Redis 是<span
+          class="term-tip"
+          data-term="单线程"
+          data-module="javascript"
+          data-def="同一时刻只执行一个任务"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">单线程</abbr></span
+        >的，Lua 脚本执行期间会阻塞所有其他客户端的请求。默认的脚本超时时间为 5 秒（可通过
+        lua-time-limit 配置修改），超过此时间 Redis 会开始接受其他客户端的 SCRIPT KILL
+        命令。应尽量将复杂逻辑拆分为多个简短的脚本。
+      </p>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="注意"
+            data-module="github"
+            data-def="注意"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">注意</abbr></span
+          >
+          Lua 的<span
+            class="term-tip"
+            data-term="浮点数"
+            data-module="javascript"
+            data-def="带小数点的数字类型，IEEE 754 标准"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">浮点数</abbr></span
+          >精<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          ></strong
+        >。Lua 中只有一种数<span
+          class="term-tip"
+          data-term="字"
+          data-module="c"
+          data-def="CPU一次处理的数据单位"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">字</abbr></span
+        >类型（双精<span
+          class="term-tip"
+          data-term="度"
+          data-module="algorithm"
+          data-def="与顶点关联的边数，有向图分为入度和出度"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">度</abbr></span
+        >浮<span
+          class="term-tip"
+          data-term="点"
+          data-module="github"
+          data-def="点"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">点</abbr></span
+        >数），而 Redis 的<span
+          class="term-tip"
+          data-term="整数"
+          data-module="github"
+          data-def="整数"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">整数</abbr></span
+        >操作<span
+          class="term-tip"
+          data-term="返回"
+          data-module="vue3"
+          data-def="返回值"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">返回</abbr></span
+        >的是精确<span
+          class="term-tip"
+          data-term="整数"
+          data-module="github"
+          data-def="整数"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">整数</abbr></span
+        >。当<span
+          class="term-tip"
+          data-term="整数"
+          data-module="github"
+          data-def="整数"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">整数</abbr></span
+        >超过 2^53 时，Lua 可能丢失精<span
+          class="term-tip"
+          data-term="度"
+          data-module="algorithm"
+          data-def="与顶点关联的边数，有向图分为入度和出度"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">度</abbr></span
+        >。<span
+          class="term-tip"
+          data-term="对"
+          data-module="github"
+          data-def="对"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对</abbr></span
+        >于大<span
+          class="term-tip"
+          data-term="整数"
+          data-module="github"
+          data-def="整数"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">整数</abbr></span
+        >操作，<span
+          class="term-tip"
+          data-term="建议"
+          data-module="github"
+          data-def="建议"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">建议</abbr></span
+        >在<span
+          class="term-tip"
+          data-term="脚本"
+          data-module="python"
+          data-def="可直接运行的 Python 程序文件"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">脚本</abbr></span
+        >中使用<span
+          class="term-tip"
+          data-term="字符串"
+          data-module="cpp"
+          data-def="字符序列"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">字符串</abbr></span
+        >处理。
+      </p>
+      <p>
+        <strong
+          >redis.call 与 redis.<span
+            class="term-tip"
+            data-term="pcall"
+            data-module="lua"
+            data-def="受保护的函数调用，捕获错误不终止程序，&#x60;pcall(func, ...)&#x60;"
+            data-slug="lua/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">pcall</abbr></span
+          >
+          的<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          ></strong
+        >。如果<span
+          class="term-tip"
+          data-term="脚本"
+          data-module="python"
+          data-def="可直接运行的 Python 程序文件"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">脚本</abbr></span
+        >中的 Redis
+        <span
+          class="term-tip"
+          data-term="命令"
+          data-module="github"
+          data-def="命令指令"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">命令</abbr></span
+        >可能<span
+          class="term-tip"
+          data-term="失败"
+          data-module="github"
+          data-def="失败"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">失败</abbr></span
+        >且需要自<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >处理<span
+          class="term-tip"
+          data-term="错误"
+          data-module="cpp"
+          data-def="错误情况"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">错误</abbr></span
+        >，使用 redis.<span
+          class="term-tip"
+          data-term="pcall"
+          data-module="lua"
+          data-def="受保护的函数调用，捕获错误不终止程序，&#x60;pcall(func, ...)&#x60;"
+          data-slug="lua/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">pcall</abbr></span
+        >；否则使用 redis.call 让<span
+          class="term-tip"
+          data-term="错误"
+          data-module="cpp"
+          data-def="错误情况"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">错误</abbr></span
+        >直接传播。大<span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >数情况下使用 redis.call 更<span
+          class="term-tip"
+          data-term="简单"
+          data-module="github"
+          data-def="简单"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">简单</abbr></span
+        >，因为<span
+          class="term-tip"
+          data-term="脚本"
+          data-module="python"
+          data-def="可直接运行的 Python 程序文件"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">脚本</abbr></span
+        >中的<span
+          class="term-tip"
+          data-term="命令"
+          data-module="github"
+          data-def="命令指令"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">命令</abbr></span
+        >通常不应<span
+          class="term-tip"
+          data-term="失败"
+          data-module="github"
+          data-def="失败"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">失败</abbr></span
+        >。
+      </p>
+      <p>
+        <strong
+          >KEYS 和 ARGV 的<span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >从 1 开始</strong
+        >。Lua 的<span
+          class="term-tip"
+          data-term="数组"
+          data-module="cpp"
+          data-def="固定大小同类型元素序列"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">数组</abbr></span
+        >索引从 1 开始，因此 KEYS[1] 是第一个键，ARGV[1] 是第一个<span
+          class="term-tip"
+          data-term="参数"
+          data-module="c"
+          data-def="函数定义时的变量"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">参数</abbr></span
+        >。这与许<span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >编程<span
+          class="term-tip"
+          data-term="语言"
+          data-module="github"
+          data-def="编程语言"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">语言</abbr></span
+        >从 0 开始的<span
+          class="term-tip"
+          data-term="索引"
+          data-module="c"
+          data-def="数组中元素的位置"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">索引</abbr></span
+        >不同，容易导致越界<span
+          class="term-tip"
+          data-term="错误"
+          data-module="cpp"
+          data-def="错误情况"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">错误</abbr></span
+        >。
+      </p>
+      <h2 id="高级用法"><a href="#高级用法">高级用法</a></h2>
+      <h3 id="脚本缓存管理"><a href="#脚本缓存管理">脚本缓存管理</a></h3>
+      <p>
+        使用 SCRIPT
+        <span
+          class="term-tip"
+          data-term="命令"
+          data-module="github"
+          data-def="命令指令"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">命令</abbr></span
+        >管理<span
+          class="term-tip"
+          data-term="脚本"
+          data-module="python"
+          data-def="可直接运行的 Python 程序文件"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">脚本</abbr></span
+        >缓存：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 加载脚本到缓存（不执行），返回 SHA1 校验和</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-cli</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> SCRIPT</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> LOAD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "return redis.call('GET', KEYS[1])"</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 输出: faab5f8b4d0d31e9852e1d97c5b8c6e7e5c5d5a1</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 使用 EVALSHA 执行已缓存的脚本</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-cli</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> EVALSHA</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> faab5f8b4d0d31e9852e1d97c5b8c6e7e5c5d5a1</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> mykey</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 检查脚本是否在缓存中</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-cli</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> SCRIPT</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> EXISTS</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> faab5f8b4d0d31e9852e1d97c5b8c6e7e5c5d5a1</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 输出: 1</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 清除所有脚本缓存</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-cli</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> SCRIPT</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> FLUSH</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 杀死正在执行的脚本</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-cli</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> SCRIPT</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> KILL</span></span></code></pre>
+      <h3 id="redis-函数redis-70"><a href="#redis-函数redis-70">Redis 函数（Redis 7.0+）</a></h3>
+      <p>
+        Redis 7.0 引入了 Redis Functions，是 Lua
+        <span
+          class="term-tip"
+          data-term="脚本"
+          data-module="python"
+          data-def="可直接运行的 Python 程序文件"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">脚本</abbr></span
+        >的增强<span
+          class="term-tip"
+          data-term="替代"
+          data-module="c"
+          data-def="用实参替换形参"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">替代</abbr></span
+        >方案：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 注册 Redis 函数</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 使用 redis-cli --functions-rdb 或 FUNCTION LOAD 加载</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">!lua name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">mylib</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 注册函数</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">register_function</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'rate_limit'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">function</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(keys, args)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> keys[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> limit </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(args[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> window </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(args[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '0'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> limit </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'INCR'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'EXPIRE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, key, window)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 注册带标志的函数（允许在从库执行）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">register_function</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    function_name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'get_cache'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    callback</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=function</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(keys, args)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, keys[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    end</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    flags</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{ </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'no-writes' </span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 标记为只读函数</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        <span
+          class="term-tip"
+          data-term="调用"
+          data-module="github"
+          data-def="调用"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">调用</abbr></span
+        >
+        Redis
+        <span
+          class="term-tip"
+          data-term="函数"
+          data-module="c"
+          data-def="完成特定任务的代码块"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">函数</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 调用函数</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-cli</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> FCALL</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> rate_limit</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> rate:192.168.1.1</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 60</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 只读调用（可在从库执行）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-cli</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> FCALL_RO</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> get_cache</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> mykey</span></span></code></pre>
+      <h3 id="流式处理"><a href="#流式处理">流式处理</a></h3>
+      <p>
+        使用 Lua
+        <span
+          class="term-tip"
+          data-term="脚本"
+          data-module="python"
+          data-def="可直接运行的 Python 程序文件"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">脚本</abbr></span
+        >处理 Redis
+        <span
+          class="term-tip"
+          data-term="Stream"
+          data-module="typescript"
+          data-def="流类型"
+          data-slug="typescript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Stream</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 消费者组消息处理脚本</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: Stream 键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[2]: 处理结果键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 消费者组名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[2]: 消费者名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[3]: 最大处理数量</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stream_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> result_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> group </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> consumer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 从消费者组读取未处理的消息</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> messages </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'XREADGROUP'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GROUP'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, group, consumer,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    'COUNT'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, count, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'STREAMS'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stream_key, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'>'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> messages </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 没有新消息</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 处理每条消息</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> processed </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _, stream_data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> ipairs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(messages) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">do</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> entries </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stream_data[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _, entry </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> ipairs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(entries) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">do</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> entry[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> fields </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> entry[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        -- 提取消息字段</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fields, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> do</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            data[fields[i]] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> fields[i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        -- 模拟处理逻辑（此处为简单存储）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'HSET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, result_key, id, data[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'value'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ''</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        -- 确认消息已处理</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'XACK'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stream_key, group, id)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        processed[</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">processed </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    end</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> processed</span></span></code></pre>
+      <h3 id="多键事务"><a href="#多键事务">多键事务</a></h3>
+      <p>
+        使用 Lua
+        <span
+          class="term-tip"
+          data-term="脚本"
+          data-module="python"
+          data-def="可直接运行的 Python 程序文件"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">脚本</abbr></span
+        >实现跨键的<span
+          class="term-tip"
+          data-term="事务"
+          data-module="cpp"
+          data-def="事务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">事务</abbr></span
+        >操作：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 转账脚本：从账户 A 转账到账户 B</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 账户 A 的键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[2]: 账户 B 的键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 转账金额</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> account_a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> account_b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> amount </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 获取两个账户的余额</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance_a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, account_a) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '0'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance_b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> tonumber</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, account_b) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '0'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 检查账户 A 余额是否充足</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance_a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> amount </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "余额不足"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance_a}</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 执行转账</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_balance_a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance_a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> amount</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_balance_b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance_b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> amount</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, account_a, new_balance_a)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'SET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, account_b, new_balance_b)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 记录转账日志</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> log_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'transfer:log'</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> log_entry </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> string.format</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'%s -> %s: %d'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, account_a, account_b, amount)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'LPUSH'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, log_key, log_entry)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ok </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "转账成功"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    from_balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_balance_a,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    to_balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_balance_b,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="发布订阅与脚本"><a href="#发布订阅与脚本">发布订阅与脚本</a></h3>
+      <p>
+        在 Lua
+        <span
+          class="term-tip"
+          data-term="脚本"
+          data-module="python"
+          data-def="可直接运行的 Python 程序文件"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">脚本</abbr></span
+        >中发布<span
+          class="term-tip"
+          data-term="消息"
+          data-module="github"
+          data-def="消息"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">消息</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="lua"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 带条件检查的发布脚本</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- KEYS[1]: 状态键名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[1]: 频道名</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[2]: 消息内容</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ARGV[3]: 期望的状态值</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> state_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> KEYS[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> channel </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> message </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> expected_state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ARGV[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 检查当前状态</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">local</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current_state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'GET'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, state_key)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current_state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> expected_state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">then</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 状态匹配，发布消息</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    redis.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">call</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'PUBLISH'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, channel, message)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 状态不匹配，不发布</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span></code></pre>
+    </article>
+  </body>
+</html>

@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kubernetes网络</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Kubernetes网络</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          Kubernetes网络模型：CNI、Pod网络、Service网络、Ingress 与网络策略详解。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-kubernetes-网络模型">
+        <a href="#1-kubernetes-网络模型">1. Kubernetes 网络模型</a>
+      </h2>
+      <h3 id="11-基本要求"><a href="#11-基本要求">1.1 基本要求</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="要求"
+                data-module="github"
+                data-def="要求"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">要求</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="描述"
+                data-module="github"
+                data-def="描述"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">描述</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              Pod 间<span
+                class="term-tip"
+                data-term="直接"
+                data-module="github"
+                data-def="直接的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">直接</abbr></span
+              >通信
+            </td>
+            <td>无需 NAT</td>
+          </tr>
+          <tr>
+            <td>
+              Node 与 Pod
+              <span
+                class="term-tip"
+                data-term="通信"
+                data-module="github"
+                data-def="通信"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通信</abbr></span
+              >
+            </td>
+            <td>无需 NAT</td>
+          </tr>
+          <tr>
+            <td>Pod 自身 IP</td>
+            <td>每个 Pod 有独立 IP</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="12-三层网络"><a href="#12-三层网络">1.2 三层网络</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>┌─────────────────────────────────┐</span></span>
+<span class="line"><span>│         Ingress 网络             │  ← 外部流量入口</span></span>
+<span class="line"><span>├─────────────────────────────────┤</span></span>
+<span class="line"><span>│         Service 网络             │  ← 虚拟 IP (ClusterIP)</span></span>
+<span class="line"><span>├─────────────────────────────────┤</span></span>
+<span class="line"><span>│         Pod 网络                 │  ← 容器 IP</span></span>
+<span class="line"><span>├─────────────────────────────────┤</span></span>
+<span class="line"><span>│         Node 网络                │  ← 物理网络</span></span>
+<span class="line"><span>└─────────────────────────────────┘</span></span></code></pre>
+      <h2 id="2-cni-插件"><a href="#2-cni-插件">2. CNI 插件</a></h2>
+      <h3 id="21-常见-cni"><a href="#21-常见-cni">2.1 常见 CNI</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="插件"
+                data-module="github"
+                data-def="插件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">插件</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >
+            </th>
+            <th>
+              特<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Calico</td>
+            <td>BGP/VXLAN</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="网络"
+                data-module="github"
+                data-def="网络"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网络</abbr></span
+              >策略强
+            </td>
+          </tr>
+          <tr>
+            <td>Flannel</td>
+            <td>VXLAN/host-gw</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="简单"
+                data-module="github"
+                data-def="简单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">简单</abbr></span
+              >易用
+            </td>
+          </tr>
+          <tr>
+            <td>Cilium</td>
+            <td>eBPF</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >性能、可观测
+            </td>
+          </tr>
+          <tr>
+            <td>Weave</td>
+            <td>VXLAN</td>
+            <td>
+              自动<span
+                class="term-tip"
+                data-term="拓扑"
+                data-module="cpp"
+                data-def="拓扑"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">拓扑</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Antrea</td>
+            <td>OVS</td>
+            <td>VMware 生态</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="22-calico-网络模式"><a href="#22-calico-网络模式">2.2 Calico 网络模式</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="描述"
+                data-module="github"
+                data-def="描述"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">描述</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="性能"
+                data-module="github"
+                data-def="性能"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">性能</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>BGP</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="直接"
+                data-module="github"
+                data-def="直接的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">直接</abbr></span
+              >路由
+            </td>
+            <td>高</td>
+          </tr>
+          <tr>
+            <td>VXLAN</td>
+            <td>
+              Overlay
+              <span
+                class="term-tip"
+                data-term="封装"
+                data-module="java"
+                data-def="将数据和方法包装在类中，通过访问修饰符控制外部访问，OOP 四大特性之一"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">封装</abbr></span
+              >
+            </td>
+            <td>中</td>
+          </tr>
+          <tr>
+            <td>IPIP</td>
+            <td>
+              IP-in-IP
+              <span
+                class="term-tip"
+                data-term="封装"
+                data-module="java"
+                data-def="将数据和方法包装在类中，通过访问修饰符控制外部访问，OOP 四大特性之一"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">封装</abbr></span
+              >
+            </td>
+            <td>中</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="23-cilium-优势"><a href="#23-cilium-优势">2.3 Cilium 优势</a></h3>
+      <ul>
+        <li>
+          基于 eBPF，<span
+            class="term-tip"
+            data-term="内核"
+            data-module="cs-fundamentals"
+            data-def="操作系统的核心部分，运行在内核态，管理硬件资源和提供系统服务"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">内核</abbr></span
+          >级数据<span
+            class="term-tip"
+            data-term="路径"
+            data-module="github"
+            data-def="路径"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">路径</abbr></span
+          >
+        </li>
+        <li>无需 iptables</li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="支持"
+            data-module="cpp"
+            data-def="支持"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">支持</abbr></span
+          >
+          L3-L7
+          <span
+            class="term-tip"
+            data-term="网络"
+            data-module="github"
+            data-def="网络"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">网络</abbr></span
+          >策略
+        </li>
+        <li>
+          内置<span
+            class="term-tip"
+            data-term="可观测性"
+            data-module="devops"
+            data-def="通过日志、指标和链路追踪三支柱理解系统内部状态的能力"
+            data-slug="devops/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">可观测性</abbr></span
+          >（Hubble）
+        </li>
+      </ul>
+      <h2 id="3-pod-网络"><a href="#3-pod-网络">3. Pod 网络</a></h2>
+      <h3 id="31-同节点-pod-通信"><a href="#31-同节点-pod-通信">3.1 同节点 Pod 通信</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>Pod A → veth pair → cni0 (bridge) → veth pair → Pod B</span></span></code></pre>
+      <h3 id="32-跨节点-pod-通信"><a href="#32-跨节点-pod-通信">3.2 跨节点 Pod 通信</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>Pod A → veth → cni0 → 路由 → 物理网络 → 路由 → cni0 → veth → Pod B</span></span></code></pre>
+      <h3 id="33-pause-容器"><a href="#33-pause-容器">3.3 Pause 容器</a></h3>
+      <p>
+        每个 Pod 有一个 Pause
+        <span
+          class="term-tip"
+          data-term="容器"
+          data-module="cpp"
+          data-def="存储多个元素的对象"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">容器</abbr></span
+        >，负责：
+      </p>
+      <ul>
+        <li>
+          创建<span
+            class="term-tip"
+            data-term="网络"
+            data-module="github"
+            data-def="网络"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">网络</abbr></span
+          >命名<span
+            class="term-tip"
+            data-term="空间"
+            data-module="cpp"
+            data-def="空间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">空间</abbr></span
+          >
+        </li>
+        <li>
+          维持 Pod
+          <span
+            class="term-tip"
+            data-term="网络"
+            data-module="github"
+            data-def="网络"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">网络</abbr></span
+          >
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="共享"
+            data-module="cpp"
+            data-def="共享"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">共享</abbr></span
+          >网络<span
+            class="term-tip"
+            data-term="栈"
+            data-module="c"
+            data-def="后进先出的数据结构"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">栈</abbr></span
+          >
+        </li>
+      </ul>
+      <h2 id="4-service-网络"><a href="#4-service-网络">4. Service 网络</a></h2>
+      <h3 id="41-kube-proxy-工作原理">
+        <a href="#41-kube-proxy-工作原理">4.1 kube-proxy 工作原理</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>Client → ClusterIP → iptables/IPVS → Pod IP</span></span></code></pre>
+      <h3 id="42-iptables-模式"><a href="#42-iptables-模式">4.2 iptables 模式</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 随机选择后端 Pod</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-A</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> KUBE-SERVICES</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 10.96.0.1/32</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -j</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> KUBE-SVC-XXX</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-A</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> KUBE-SVC-XXX</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -m</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> statistic</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --probability</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.33</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -j</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> KUBE-SEP-POD1</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-A</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> KUBE-SVC-XXX</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -m</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> statistic</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --probability</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.5</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -j</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> KUBE-SEP-POD2</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-A</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> KUBE-SVC-XXX</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -j</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> KUBE-SEP-POD3</span></span></code></pre>
+      <h3 id="43-ipvs-模式"><a href="#43-ipvs-模式">4.3 IPVS 模式</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="调度"
+                data-module="c"
+                data-def="分配 CPU 时间给线程"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调度</abbr></span
+              >算法
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="描述"
+                data-module="github"
+                data-def="描述"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">描述</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>rr</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="轮询"
+                data-module="github"
+                data-def="轮询"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轮询</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>lc</td>
+            <td>
+              最少<span
+                class="term-tip"
+                data-term="连接"
+                data-module="cpp"
+                data-def="连接关系"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连接</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>wrr</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="加权"
+                data-module="vue3"
+                data-def="权重计算"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">加权</abbr></span
+              >轮询
+            </td>
+          </tr>
+          <tr>
+            <td>sh</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="源"
+                data-module="cpp"
+                data-def="源"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">源</abbr></span
+              >地址<span
+                class="term-tip"
+                data-term="哈希"
+                data-module="github"
+                data-def="哈希值"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">哈希</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="5-ingress"><a href="#5-ingress">5. Ingress</a></h2>
+      <h3 id="51-ingress-架构"><a href="#51-ingress-架构">5.1 Ingress 架构</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>Internet → Ingress Controller → Service → Pod</span></span></code></pre>
+      <h3 id="52-ingress-配置"><a href="#52-ingress-配置">5.2 Ingress 配置</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="yaml"
+      ><code><span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">apiVersion</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">networking.k8s.io/v1</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">kind</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Ingress</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">metadata</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">web-ingress</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  annotations</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">    nginx.ingress.kubernetes.io/ssl-redirect</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'true'</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">spec</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  ingressClassName</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">nginx</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  tls</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">hosts</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        - </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">example.com</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      secretName</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">tls-secret</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  rules</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">host</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">example.com</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">        paths</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">          - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">path</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">/api</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">            pathType</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Prefix</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">            backend</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">              service</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">                name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">api-service</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">                port</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">                  number</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">8080</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">          - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">path</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">/</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">            pathType</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Prefix</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">            backend</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">              service</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">                name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">web-service</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">                port</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">                  number</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">80</span></span></code></pre>
+      <h3 id="53-ingress-controller-对比">
+        <a href="#53-ingress-controller-对比">5.3 Ingress Controller 对比</a>
+      </h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Controller</th>
+            <th>
+              特<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>NGINX Ingress</td>
+            <td>最广泛使用</td>
+          </tr>
+          <tr>
+            <td>Traefik</td>
+            <td>
+              自动<span
+                class="term-tip"
+                data-term="发现"
+                data-module="github"
+                data-def="发现"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">发现</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="配置"
+                data-module="cpp"
+                data-def="配置参数"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">配置</abbr></span
+              >简<span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Envoy/Istio</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="服务网格"
+                data-module="devops"
+                data-def="处理服务间通信的基础设施层，以 Sidecar 代理实现流量管理、可观测性和安全策略"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务网格</abbr></span
+              >集成
+            </td>
+          </tr>
+          <tr>
+            <td>Kong</td>
+            <td>
+              API
+              <span
+                class="term-tip"
+                data-term="网关"
+                data-module="iot"
+                data-def="连接不同网络协议和通信标准的桥梁设备，实现 IoT 设备与云端的互通"
+                data-slug="iot/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网关</abbr></span
+              >功能
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="6-networkpolicy"><a href="#6-networkpolicy">6. NetworkPolicy</a></h2>
+      <h3 id="61-概念"><a href="#61-概念">6.1 概念</a></h3>
+      <p>
+        NetworkPolicy
+        <span
+          class="term-tip"
+          data-term="控制"
+          data-module="github"
+          data-def="控制"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">控制</abbr></span
+        >
+        Pod 间的<span
+          class="term-tip"
+          data-term="网络"
+          data-module="github"
+          data-def="网络"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">网络</abbr></span
+        >访问，<span
+          class="term-tip"
+          data-term="类似"
+          data-module="cpp"
+          data-def="相似的"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">类似</abbr></span
+        >防火墙<span
+          class="term-tip"
+          data-term="规则"
+          data-module="cpp"
+          data-def="规则"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">规则</abbr></span
+        >。
+      </p>
+      <h3 id="62-配置示例"><a href="#62-配置示例">6.2 配置示例</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="yaml"
+      ><code><span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">apiVersion</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">networking.k8s.io/v1</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">kind</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">NetworkPolicy</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">metadata</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">api-policy</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  namespace</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">production</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">spec</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  podSelector</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">    matchLabels</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      app</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">api</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  policyTypes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Ingress</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Egress</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  ingress</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">namespaceSelector</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">            matchLabels</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">              env</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">production</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">podSelector</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">            matchLabels</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">              app</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">web</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      ports</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">port</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">8080</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">          protocol</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">TCP</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  egress</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">to</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">podSelector</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">            matchLabels</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">              app</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">database</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      ports</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">port</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5432</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">          protocol</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">TCP</span></span></code></pre>
+      <h3 id="63-默认策略"><a href="#63-默认策略">6.3 默认策略</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="yaml"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 默认拒绝所有入站</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">apiVersion</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">networking.k8s.io/v1</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">kind</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">NetworkPolicy</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">metadata</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">default-deny-ingress</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">spec</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  podSelector</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {}</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  policyTypes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Ingress</span></span></code></pre>
+      <blockquote>
+        <p>
+          <span
+            class="term-tip"
+            data-term="注意"
+            data-module="github"
+            data-def="注意"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">注意</abbr></span
+          >：NetworkPolicy 需要<span
+            class="term-tip"
+            data-term="支持"
+            data-module="cpp"
+            data-def="支持"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">支持</abbr></span
+          >它的 CNI
+          <span
+            class="term-tip"
+            data-term="插件"
+            data-module="github"
+            data-def="插件"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">插件</abbr></span
+          >（Calico、Cilium 等），Flannel 不<span
+            class="term-tip"
+            data-term="支持"
+            data-module="cpp"
+            data-def="支持"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">支持</abbr></span
+          >。
+        </p>
+      </blockquote>
+    </article>
+  </body>
+</html>

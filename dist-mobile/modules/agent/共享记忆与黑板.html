@@ -1,0 +1,782 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>共享记忆与黑板模式</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">共享记忆与黑板模式</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            14 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          2026 年多 Agent 系统中共存两种方法：消息池（每个人看到每个人的消息，如 AutoGen GroupChat
+          或 MetaGPT）和带订阅的黑板（Agent 订阅相关事件，如 Context-Aware MCP 或 Matrix
+          框架）。两者都是多 Agent 系统中唯一有状态的部分...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="共享记忆与黑板模式"><a href="#共享记忆与黑板模式">共享记忆与黑板模式</a></h1>
+      <blockquote>
+        <p>
+          2026 年多 Agent 系统中共存两种方法：<strong>消息池</strong>（每个人看到每个人的消息，如
+          AutoGen GroupChat 或 MetaGPT）和<strong>带订阅的黑板</strong>（Agent 订阅相关事件，如
+          Context-Aware MCP 或 Matrix 框架）。两者都是多 Agent
+          系统中唯一有状态的部分——这意味着两者都是有趣 bug
+          的栖身之所。参考失败模式是<strong>记忆投毒</strong>：一个 Agent 幻觉出一个”事实”，其他
+          Agent 将其视为已验证，准确性逐渐衰减，比即时崩溃更难调试。本课程用 stdlib
+          构建两种结构，注入投毒攻击，并展示三种在生产中真正有效的缓解措施。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 + 构建 <strong>语言：</strong> Python (stdlib,
+        <code>threading</code>) <strong>前置条件：</strong> Phase 16 · 04 (原语模型), Phase 16 · 09
+        (并行群体网络) <strong>时间：</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        多 Agent 系统需要一个地方让 Agent
+        共享事实。一个字面选项是”在消息中传递一切”——但这用额外的复制重新发明了共享状态。另一个是”给每个人一个全局日志”——但全局日志无限增长且容易投毒。第三个是”为每个
+        Agent 投影一个视图”——可扩展但 Schema 繁重。
+      </p>
+      <p>
+        当一个 Agent 幻觉并将幻觉写入共享状态时，每个读取该状态的下游 Agent
+        都将幻觉采纳为事实。当人类注意到时，推理链已经深入五步，根本原因是第三条写入的消息。调试多
+        Agent 准确性衰减比调试崩溃更难。
+      </p>
+      <p>
+        这就是记忆投毒。它是 MAST 分类法 (Cemri 等人, arXiv:2503.13657)
+        中第二大记录的失败族，而且是结构性的：任何没有来源追踪和不可写入验证者的共享记忆设计最终都会出现此问题。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="两种主要拓扑"><a href="#两种主要拓扑">两种主要拓扑</a></h3>
+      <p>
+        <strong>全消息池。</strong> 每个 Agent 读取每条消息。AutoGen GroupChat 和 MetaGPT
+        使用此方式。简单、透明、可检查，但不能扩展到 ~10 个 Agent 以上，因为每个 Agent
+        的上下文被其他 Agent 的工作填满。
+      </p>
+      <p>
+        <strong>带订阅的黑板。</strong> Agent 声明对主题的兴趣；底层只路由相关消息。CA-MCP
+        (arXiv:2601.11595) 和 Matrix 去中心化框架 (arXiv:2511.21686)
+        使用此方式。扩展更远，但需要前期 Schema 设计使订阅有意义。
+      </p>
+      <h3 id="各自何时胜出"><a href="#各自何时胜出">各自何时胜出</a></h3>
+      <ul>
+        <li>
+          <strong>全池</strong> 在 Agent 少（&#x3C;
+          10）、异构、对话短时时胜出。推理谁说了什么在每个人看到一切时很简单。
+        </li>
+        <li>
+          <strong>黑板</strong> 在 Agent 多、角色同质但实例众多（群体）、对话长时时胜出。路由节省
+          token 成本和上下文污染。
+        </li>
+      </ul>
+      <p>生产系统通常混合使用：顶部小全池（规划层），下方黑板（工作者层）。</p>
+      <h3 id="记忆投毒一个场景"><a href="#记忆投毒一个场景">记忆投毒，一个场景</a></h3>
+      <p>三个 Agent 处理研究任务。Agent A 是检索 Agent。Agent B 是摘要者。Agent C 是分析师。</p>
+      <ol>
+        <li>A 获取页面并写入共享状态：“研究报告了 42% 的准确率提升。”</li>
+        <li>实际页面说的是”4.2% 提升。“A 幻觉了一个小数点。</li>
+        <li>B 读取共享状态，写入：“报告了大幅 42% 准确率增益（来源：A）。”</li>
+        <li>C 读取共享状态，写入：“建议采用——42% 提升是变革性的。”</li>
+        <li>最终报告引用了一个从未存在的 42% 数字。</li>
+      </ol>
+      <p>
+        没有 Agent 崩溃。没有测试失败。系统”工作了”。幻觉通过共享状态从一个 Agent
+        的上下文进入了每个下游 Agent 的推理。
+      </p>
+      <h3 id="为什么这是结构性的"><a href="#为什么这是结构性的">为什么这是结构性的</a></h3>
+      <p>
+        没有共享状态，Agent A 的幻觉留在 A 的上下文中。下游 Agent
+        会重新获取或重新推导，可能捕获错误。有了朴素共享状态，A
+        的上下文变成每个人的上下文，幻觉被洗白为事实。
+      </p>
+      <p>
+        问题不是共享状态本身——而是<strong>没有来源追踪和没有独立验证者</strong>的共享状态。三种缓解措施解决这个问题：
+      </p>
+      <ol>
+        <li>
+          <strong>每次写入时归属来源。</strong>
+          共享状态中的每个条目记录谁写的、何时、在什么提示下、以及（如果适用）Agent
+          引用了什么来源。下游 Agent 带着与来源关联的怀疑阅读。
+        </li>
+        <li>
+          <strong>版本化写入；视为只追加。</strong>
+          修正是取代旧条目的新条目，不是原地更新。审计追踪被保留。
+        </li>
+        <li>
+          <strong>保持至少一个不能写入共享状态的 Agent。</strong> 只读验证者 Agent
+          采样条目、重新获取来源、标记不一致。因为它不能写入池，它不能被池投毒。
+        </li>
+      </ol>
+      <h3 id="黑板先例-hayes-roth-1985">
+        <a href="#黑板先例-hayes-roth-1985">黑板先例 (Hayes-Roth, 1985)</a>
+      </h3>
+      <p>
+        黑板模式比 LLM Agent 早四十年。Hayes-Roth (1985, “A Blackboard Architecture for Control”)
+        描述了观察全局黑板、贡献部分解决方案、触发其他来源的专家知识源。2026 年的黑板 (CA-MCP,
+        Matrix) 是相同模式，LLM Agent 作为知识源，JSON blob
+        作为部分解决方案。旧文献有记录的解决方案处理写入争用、机会控制和一致性，现代系统正在重新发现。
+      </p>
+      <h3 id="投影-vs-全视图"><a href="#投影-vs-全视图">投影 vs 全视图</a></h3>
+      <p>
+        纯黑板给每个订阅者相同的投影（主题范围）。更激进的设计是<strong>每 Agent 投影</strong>：每个
+        Agent 获得根据其角色定制的视图。LangGraph 的状态 reducer 是 2026 年的规范实现——reducer
+        函数将全局状态折叠为角色特定的切片。
+      </p>
+      <p>每 Agent 投影扩展更远但需要 Schema。没有 Schema，你在每个 Agent 的提示中重建临时投影。</p>
+      <h3 id="写入争用模式"><a href="#写入争用模式">写入争用模式</a></h3>
+      <p>多个 Agent 同时写入是一个并发问题，不仅仅是 LLM 问题。三种模式有效：</p>
+      <ul>
+        <li>
+          <strong>顺序写入者（单生产者）。</strong> 所有写入通过一个协调 Agent
+          序列化。简单，但是瓶颈。
+        </li>
+        <li>
+          <strong>带版本化的乐观并发。</strong>
+          每个条目有版本；写入者在版本不匹配时失败并重试。经典数据库技术。
+        </li>
+        <li>
+          <strong>主题分区。</strong> 不同 Agent 拥有不同主题。无跨主题争用。需要设计的分区边界。
+        </li>
+      </ul>
+      <p>大多数 2026 框架默认顺序写入者，因为 LLM 调用足够慢，争用很少，瓶颈不影响。</p>
+      <h3 id="不可写入的验证者"><a href="#不可写入的验证者">不可写入的验证者</a></h3>
+      <p>最承重的缓解措施是只读验证者。实现规则：</p>
+      <ul>
+        <li>验证者与团队共享状态（读取黑板或池）。</li>
+        <li>验证者没有共享状态的写入句柄——只有到单独验证通道的写入。</li>
+        <li>验证者独立获取写入中引用的来源。标记分歧。</li>
+        <li>验证者自己的输出路由到人类或单独的决策 Agent，永远不回馈到池中。</li>
+      </ul>
+      <p>
+        没有这种分离，验证者的输出变成池中的新条目，这意味着被投毒的池投毒了验证者，验证者投毒了其验证。
+      </p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p>
+        <code>code/main.py</code> 在 stdlib Python
+        中实现了两种拓扑以及一个玩具投毒攻击和三种缓解措施。
+      </p>
+      <ul>
+        <li><code>MessagePool</code> — 线程安全的只追加日志，支持完整读出。</li>
+        <li><code>Blackboard</code> — 主题键控的发布/订阅，支持每 Agent 订阅。</li>
+        <li>
+          <code>ProvenanceEntry</code> — 每次写入记录 (writer, timestamp, prompt_hash, source_uri)。
+        </li>
+        <li>
+          <code>PoisoningScenario</code> — 运行三 Agent 研究任务，其中 Agent A
+          幻觉了一个小数点。打印最终报告。
+        </li>
+        <li>
+          <code>Verifier</code> — 重新获取来源并标记不一致的只读 Agent。运行相同场景但有验证者存在。
+        </li>
+      </ul>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <p>预期输出：</p>
+      <ul>
+        <li>运行 1（无验证者）：幻觉的 42% 传播到最终报告。</li>
+        <li>运行 2（有验证者）：验证者标记不一致，池被标记为”已标记”，最终报告包含撤回。</li>
+      </ul>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        <code>outputs/skill-memory-auditor.md</code> 是一个技能，审计任何多 Agent
+        系统的共享记忆设计的来源追踪、版本控制和验证者分离。在生产前对新多 Agent 架构运行它。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>对于任何共享记忆设计：</p>
+      <ul>
+        <li>
+          每次写入记录来源：<code
+            >(writer, timestamp, prompt_hash, tool_calls_cited, source_uri)</code
+          >。
+        </li>
+        <li>使日志只追加。修正是引用被取代条目的新条目。</li>
+        <li>部署至少一个具有独立来源访问的只读验证者 Agent。</li>
+        <li>将验证者输出路由到单独通道，不回馈到共享池。</li>
+        <li>记录被取代的写入比例——上升的比例是幻觉模式的早期证据。</li>
+      </ul>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>运行 <code>code/main.py</code>。确认运行 1 传播幻觉，运行 2 捕获它。</li>
+        <li>
+          添加第二个幻觉：Agent B
+          编造了一个数据集大小。验证者应该在不针对任何一个手动调优的情况下捕获两者。
+        </li>
+        <li>
+          将全池切换为带主题分区的黑板（<code>prices</code>、<code>summaries</code>、<code>analyses</code>）。主题分区使哪些投毒场景更难实施，哪些没有帮助？
+        </li>
+        <li>
+          阅读 Hayes-Roth (1985, “A Blackboard Architecture for
+          Control”)。识别论文中未讨论的两个控制模式，2026 系统会受益于。
+        </li>
+        <li>
+          阅读 CA-MCP (arXiv:2601.11595)。将其共享上下文存储映射到 <code>code/main.py</code> 中的
+          MessagePool 或 Blackboard 类。CA-MCP 在其之上添加了哪些原语？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们怎么说</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>消息池</td>
+            <td>”共享聊天历史”</td>
+            <td>每个 Agent 读取的只追加日志。完全透明，扩展性差。</td>
+          </tr>
+          <tr>
+            <td>黑板</td>
+            <td>”共享工作区”</td>
+            <td>主题键控的发布/订阅。Agent 订阅相关主题。扩展更远。</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="来源"
+                data-module="github"
+                data-def="来源"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">来源</abbr></span
+              >追踪
+            </td>
+            <td>”谁写了什么”</td>
+            <td>
+              每次<span
+                class="term-tip"
+                data-term="写入"
+                data-module="c"
+                data-def="输出数据到目标"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">写入</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="元数据"
+                data-module="github"
+                data-def="元数据"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">元数据</abbr></span
+              >：<span
+                class="term-tip"
+                data-term="写入"
+                data-module="c"
+                data-def="输出数据到目标"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">写入</abbr></span
+              >者、<span
+                class="term-tip"
+                data-term="时间戳"
+                data-module="cpp"
+                data-def="时间戳"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间戳</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="来源"
+                data-module="github"
+                data-def="来源"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">来源</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="记忆"
+                data-module="github"
+                data-def="记忆"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记忆</abbr></span
+              >投<span
+                class="term-tip"
+                data-term="毒"
+                data-module="github"
+                data-def="毒"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">毒</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="幻觉"
+                data-module="agent"
+                data-def="大语言模型生成看似合理但实际不正确或虚构内容的现象"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">幻觉</abbr></span
+              >传播”
+            </td>
+            <td>
+              一个 Agent 的<span
+                class="term-tip"
+                data-term="错误"
+                data-module="cpp"
+                data-def="错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">错误</abbr></span
+              >进入<span
+                class="term-tip"
+                data-term="共享状态"
+                data-module="cpp"
+                data-def="共享状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">共享状态</abbr></span
+              >，下游 Agent 采纳为事实。
+            </td>
+          </tr>
+          <tr>
+            <td>只追加</td>
+            <td>
+              ”没有原地<span
+                class="term-tip"
+                data-term="更新"
+                data-module="c"
+                data-def="修改变量值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">更新</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="修正"
+                data-module="github"
+                data-def="修正"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">修正</abbr></span
+              >是取代旧条<span
+                class="term-tip"
+                data-term="目的"
+                data-module="github"
+                data-def="目的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目的</abbr></span
+              >新条目。<span
+                class="term-tip"
+                data-term="保留"
+                data-module="github"
+                data-def="保留"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保留</abbr></span
+              >审计<span
+                class="term-tip"
+                data-term="追踪"
+                data-module="c"
+                data-def="记录程序执行"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">追踪</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              不<span
+                class="term-tip"
+                data-term="可写"
+                data-module="vue3"
+                data-def="可写入的"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">可写</abbr></span
+              >入<span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >者
+            </td>
+            <td>
+              ”独立<span
+                class="term-tip"
+                data-term="审计"
+                data-module="sql"
+                data-def="记录数据库操作日志的安全功能，用于合规审查和安全追踪"
+                data-slug="sql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">审计</abbr></span
+              >者”
+            </td>
+            <td>
+              重新<span
+                class="term-tip"
+                data-term="获取"
+                data-module="github"
+                data-def="下载远程数据不合并"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">获取</abbr></span
+              >来<span
+                class="term-tip"
+                data-term="源"
+                data-module="cpp"
+                data-def="源"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">源</abbr></span
+              >并<span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >不一致的<span
+                class="term-tip"
+                data-term="只读"
+                data-module="cpp"
+                data-def="只读"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">只读</abbr></span
+              >
+              Agent。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="投影"
+                data-module="c"
+                data-def="提取类型的部分属性"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">投影</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="限定"
+                data-module="cpp"
+                data-def="限定"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限定</abbr></span
+              >视<span
+                class="term-tip"
+                data-term="图"
+                data-module="algorithm"
+                data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图</abbr></span
+              >”
+            </td>
+            <td>
+              从<span
+                class="term-tip"
+                data-term="全局状态"
+                data-module="vue3"
+                data-def="整个应用共享的状态"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">全局状态</abbr></span
+              >计算的每 Agent
+              <span
+                class="term-tip"
+                data-term="视图"
+                data-module="cpp"
+                data-def="视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">视图</abbr></span
+              >。LangGraph reducer 是<span
+                class="term-tip"
+                data-term="规范"
+                data-module="html5"
+                data-def="HTML 标准文档"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">规范</abbr></span
+              >案例。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="知识"
+                data-module="github"
+                data-def="知识"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">知识</abbr></span
+              >源
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="专家"
+                data-module="github"
+                data-def="专家"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">专家</abbr></span
+              >
+              Agent”
+            </td>
+            <td>
+              Hayes-Roth 1985
+              <span
+                class="term-tip"
+                data-term="年"
+                data-module="cpp"
+                data-def="年"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">年</abbr></span
+              >对黑板<span
+                class="term-tip"
+                data-term="参与者"
+                data-module="vue3"
+                data-def="参与事件的对象"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参与者</abbr></span
+              >的称呼。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2503.13657"
+            >Cemri et al. — Why Do Multi-Agent LLM Systems Fail?</a
+          >
+          — MAST
+          <span
+            class="term-tip"
+            data-term="分类"
+            data-module="vue3"
+            data-def="分组和组织"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分类</abbr></span
+          >法；<span
+            class="term-tip"
+            data-term="记忆"
+            data-module="github"
+            data-def="记忆"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">记忆</abbr></span
+          >投<span
+            class="term-tip"
+            data-term="毒"
+            data-module="github"
+            data-def="毒"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">毒</abbr></span
+          >是<span
+            class="term-tip"
+            data-term="协调"
+            data-module="react"
+            data-def="React 比较新旧虚拟 DOM 树并计算最小变更的算法过程"
+            data-slug="react/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协调</abbr></span
+          >失败<span
+            class="term-tip"
+            data-term="子"
+            data-module="cpp"
+            data-def="子"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">子</abbr></span
+          >族
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2601.11595">CA-MCP — Context-Aware Multi-Server MCP</a> —
+          <span
+            class="term-tip"
+            data-term="协调"
+            data-module="react"
+            data-def="React 比较新旧虚拟 DOM 树并计算最小变更的算法过程"
+            data-slug="react/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协调</abbr></span
+          >
+          MCP
+          <span
+            class="term-tip"
+            data-term="服务器"
+            data-module="javascript"
+            data-def="提供服务的后端程序"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">服务器</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="共享"
+            data-module="cpp"
+            data-def="共享"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">共享</abbr></span
+          >上下文<span
+            class="term-tip"
+            data-term="存储"
+            data-module="cpp"
+            data-def="存储"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">存储</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2511.21686"
+            >Matrix — decentralized multi-agent framework</a
+          >
+          — 基于<span
+            class="term-tip"
+            data-term="消息"
+            data-module="github"
+            data-def="消息"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">消息</abbr></span
+          >队列的无中央<span
+            class="term-tip"
+            data-term="编排"
+            data-module="devops"
+            data-def="自动化管理多个容器和服务的部署、扩缩、网络和生命周期的过程"
+            data-slug="devops/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编排</abbr></span
+          >者黑板
+        </li>
+        <li>
+          <a href="https://docs.langchain.com/oss/python/langgraph/workflows-agents"
+            >LangGraph state and reducers</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="生产"
+            data-module="github"
+            data-def="生产"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产</abbr></span
+          >中的每 Agent
+          <span
+            class="term-tip"
+            data-term="投影"
+            data-module="c"
+            data-def="提取类型的部分属性"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">投影</abbr></span
+          >模式
+        </li>
+        <li>
+          <a href="https://www.anthropic.com/engineering/multi-agent-research-system"
+            >Anthropic — How we built our multi-agent research system</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="生产"
+            data-module="github"
+            data-def="生产"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产</abbr></span
+          >部署的<span
+            class="term-tip"
+            data-term="来源"
+            data-module="github"
+            data-def="来源"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">来源</abbr></span
+          >追踪和<span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >笔记
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

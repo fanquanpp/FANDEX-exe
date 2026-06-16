@@ -1,0 +1,970 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Go与中间件</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Go与中间件</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">HTTP中间件模式</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        中间件是一种包装模式，在请求处理前后插入通用逻辑，如日志记录、认证、限流等。中间件将横切关注点与业务逻辑分离，使代码更清晰、更易维护。Go
+        的 <code>net/http</code> 原生支持中间件模式，不需要框架即可实现。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <p>在开始编码之前，需要理解中间件的几个核心概念：</p>
+      <ul>
+        <li>
+          <strong>Handler</strong>：处理 HTTP 请求的函数或对象，签名为
+          <code>func(w http.ResponseWriter, r *http.Request)</code>。
+        </li>
+        <li>
+          <strong>中间件函数</strong>：接收一个 Handler，返回一个新的 Handler，在原 Handler
+          前后添加逻辑。
+        </li>
+        <li>
+          <strong>中间件链</strong>：多个中间件按顺序组合，请求依次经过每个中间件，响应反向返回。
+        </li>
+        <li>
+          <strong>洋葱模型</strong>：请求从外层中间件进入，到达核心 Handler
+          后，响应从内层向外层返回。
+        </li>
+      </ul>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <p>
+        最<span
+          class="term-tip"
+          data-term="简单"
+          data-module="github"
+          data-def="简单"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">简单</abbr></span
+        >的<span
+          class="term-tip"
+          data-term="中间件"
+          data-module="github"
+          data-def="中间人"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">中间件</abbr></span
+        >
+        —
+        <span
+          class="term-tip"
+          data-term="日志"
+          data-module="github"
+          data-def="日志"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">日志</abbr></span
+        >记录：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">package</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">log</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">net/http</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">time</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 日志中间件</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> loggingMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">next</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandlerFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Now</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"请求开始: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> %s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, r.Method, r.URL.Path)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        next.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ServeHTTP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, r) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 调用下一个 Handler</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"请求完成: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> %s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 耗时: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%v</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, r.Method, r.URL.Path, time.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Since</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(start))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    })</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> helloHandler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    w.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Write</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"你好！"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    mux </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewServeMux</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    mux.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandleFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"/"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, helloHandler)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 用中间件包装路由</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    handler </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> loggingMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(mux)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ListenAndServe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">":8080"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, handler)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="1-中间件的基本模式"><a href="#1-中间件的基本模式">1. 中间件的基本模式</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 标准中间件签名</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Middleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">next</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandlerFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 前置逻辑：在 next.ServeHTTP 之前执行</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"请求前"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        next.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ServeHTTP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, r) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 调用下一个 Handler</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 后置逻辑：在 next.ServeHTTP 之后执行</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"请求后"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    })</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="2-认证中间件"><a href="#2-认证中间件">2. 认证中间件</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> authMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">next</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandlerFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        token </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> r.Header.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Authorization"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> token </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ""</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Error</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"未认证"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, http.StatusUnauthorized)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            return</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 不调用 next，请求被拦截</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 验证 token</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        claims, err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> validateToken</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(token)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Error</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"令牌无效"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, http.StatusUnauthorized)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            return</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 将用户信息存入 Context</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        ctx </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> context.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WithValue</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Context</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"userID"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, claims.UserID)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        next.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ServeHTTP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WithContext</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    })</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="3-cors-中间件"><a href="#3-cors-中间件">3. CORS 中间件</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> corsMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">next</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandlerFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        w.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Header</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Access-Control-Allow-Origin"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"*"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        w.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Header</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Access-Control-Allow-Methods"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"GET, POST, PUT, DELETE, OPTIONS"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        w.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Header</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Access-Control-Allow-Headers"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Content-Type, Authorization"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 处理预检请求</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> r.Method </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.MethodOptions {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            w.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WriteHeader</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(http.StatusOK)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            return</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        next.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ServeHTTP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, r)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    })</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="4-请求-id-中间件"><a href="#4-请求-id-中间件">4. 请求 ID 中间件</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> requestIDMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">next</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandlerFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        requestID </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> r.Header.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"X-Request-ID"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> requestID </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ""</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            requestID </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> generateUUID</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        ctx </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> context.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WithValue</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Context</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"requestID"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, requestID)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        w.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Header</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"X-Request-ID"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, requestID)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        next.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ServeHTTP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WithContext</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    })</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="5-恢复中间件防崩溃"><a href="#5-恢复中间件防崩溃">5. 恢复中间件（防崩溃）</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> recoveryMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">next</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandlerFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        defer</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> recover</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); err </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                log.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"panic 已恢复: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%v\n%s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, err, debug.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Stack</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Error</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"服务器内部错误"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, http.StatusInternalServerError)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        next.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ServeHTTP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, r)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    })</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="6-组合多个中间件"><a href="#6-组合多个中间件">6. 组合多个中间件</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 链式组合中间件</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Chain</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">handler</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">middlewares</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ...func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(middlewares) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">--</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        handler </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> middlewares</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">i</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">](handler)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> handler</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 使用</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">handler </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Chain</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(mux,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    recoveryMiddleware,  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 最外层：恢复 panic</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    loggingMiddleware,   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 日志</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    corsMiddleware,      </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// CORS</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    authMiddleware,      </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 认证（最内层）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="7-响应包装器"><a href="#7-响应包装器">7. 响应包装器</a></h3>
+      <p>
+        如果<span
+          class="term-tip"
+          data-term="中间件"
+          data-module="github"
+          data-def="中间人"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">中间件</abbr></span
+        >需要<span
+          class="term-tip"
+          data-term="读取"
+          data-module="c"
+          data-def="从输入获取数据"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">读取</abbr></span
+        >响应<span
+          class="term-tip"
+          data-term="状态"
+          data-module="cpp"
+          data-def="状态"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">状态</abbr></span
+        >码，需要<span
+          class="term-tip"
+          data-term="包装"
+          data-module="github"
+          data-def="包装"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">包装</abbr></span
+        >
+        ResponseWriter：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> responseRecorder</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    statusCode </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">responseRecorder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WriteHeader</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">code</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    r.statusCode </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> code</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    r.ResponseWriter.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WriteHeader</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(code)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> loggingMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">next</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandlerFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Now</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        recorder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x26;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">responseRecorder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{ResponseWriter: w, statusCode: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">200</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        next.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ServeHTTP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(recorder, r)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        log.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> %s</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> %d</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> %v</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, r.Method, r.URL.Path, recorder.statusCode, time.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Since</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(start))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    })</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="场景一api-网关中间件栈">
+        <a href="#场景一api-网关中间件栈">场景一：API 网关中间件栈</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">handler </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Chain</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(mux,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    recoveryMiddleware,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    requestIDMiddleware,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    loggingMiddleware,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    corsMiddleware,</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    rateLimitMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(limiter),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    authMiddleware,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="场景二路由级中间件"><a href="#场景二路由级中间件">场景二：路由级中间件</a></h3>
+      <p>
+        某些<span
+          class="term-tip"
+          data-term="路由"
+          data-module="cs-fundamentals"
+          data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+          data-slug="cs-fundamentals/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">路由</abbr></span
+        >需要认证，某些不需要：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">mux </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewServeMux</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 公开路由</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">mux.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandleFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"GET /api/public"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, publicHandler)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 受保护路由</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">protectedMux </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewServeMux</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">protectedMux.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandleFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"GET /api/users"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, listUsers)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">protectedMux.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandleFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"POST /api/users"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, createUser)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 只对受保护路由应用认证中间件</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">mux.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"/api/users/"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">authMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(protectedMux))</span></span></code></pre>
+      <h3 id="场景三超时中间件"><a href="#场景三超时中间件">场景三：超时中间件</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> timeoutMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">duration</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> time</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Duration</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">next</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandlerFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            ctx, cancel </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> context.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WithTimeout</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Context</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(), duration)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            defer</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> cancel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            done </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">chan</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{})</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            go</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                next.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ServeHTTP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WithContext</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx))</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">                close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(done)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            }()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            select</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            case</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">done:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                return</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            case</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ctx.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Done</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Error</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"请求超时"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, http.StatusGatewayTimeout)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        })</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="注意事项与常见错误"><a href="#注意事项与常见错误">注意事项与常见错误</a></h2>
+      <ol>
+        <li>
+          <p>
+            <strong
+              ><span
+                class="term-tip"
+                data-term="中间件"
+                data-module="github"
+                data-def="中间人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">中间件</abbr></span
+              >顺序很重要</strong
+            >：最外层的<span
+              class="term-tip"
+              data-term="中间件"
+              data-module="github"
+              data-def="中间人"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">中间件</abbr></span
+            >最先<span
+              class="term-tip"
+              data-term="执行"
+              data-module="github"
+              data-def="执行"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">执行</abbr></span
+            >前置<span
+              class="term-tip"
+              data-term="逻辑"
+              data-module="github"
+              data-def="逻辑"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">逻辑</abbr></span
+            >，最后<span
+              class="term-tip"
+              data-term="执行"
+              data-module="github"
+              data-def="执行"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">执行</abbr></span
+            >后置<span
+              class="term-tip"
+              data-term="逻辑"
+              data-module="github"
+              data-def="逻辑"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">逻辑</abbr></span
+            >。<span
+              class="term-tip"
+              data-term="恢复"
+              data-module="github"
+              data-def="恢复"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">恢复</abbr></span
+            >中间件应该放在最外层。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >不要忘记<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="next"
+                data-module="cpp"
+                data-def="前进迭代器"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">next</abbr></span
+              ></strong
+            >：如果<span
+              class="term-tip"
+              data-term="中间件"
+              data-module="github"
+              data-def="中间人"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">中间件</abbr></span
+            >不<span
+              class="term-tip"
+              data-term="调用"
+              data-module="github"
+              data-def="调用"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">调用</abbr></span
+            >
+            <code>next.ServeHTTP</code>，<span
+              class="term-tip"
+              data-term="请求"
+              data-module="vue3"
+              data-def="HTTP 请求"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">请求</abbr></span
+            >链会<span
+              class="term-tip"
+              data-term="中断"
+              data-module="c"
+              data-def="暂停程序执行"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">中断</abbr></span
+            >，后续的 Handler 不会<span
+              class="term-tip"
+              data-term="执行"
+              data-module="github"
+              data-def="执行"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">执行</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              ><span
+                class="term-tip"
+                data-term="Context"
+                data-module="react"
+                data-def="React 提供的跨组件层级传递数据的机制，避免逐层手动传递 props"
+                data-slug="react/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Context</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="类型"
+                data-module="c"
+                data-def="数据的分类"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型</abbr></span
+              >安全</strong
+            >：使用<span
+              class="term-tip"
+              data-term="自定义"
+              data-module="github"
+              data-def="自定义"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">自定义</abbr></span
+            >类型作为
+            <span
+              class="term-tip"
+              data-term="Context"
+              data-module="react"
+              data-def="React 提供的跨组件层级传递数据的机制，避免逐层手动传递 props"
+              data-slug="react/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">Context</abbr></span
+            >
+            的键，避免冲突：
+          </p>
+        </li>
+      </ol>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> contextKey</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> string</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> userIDKey</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> contextKey</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "userID"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ctx </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> context.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">WithValue</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Context</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(), userIDKey, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"123"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <ol start="4">
+        <li>
+          <p>
+            <strong
+              ><span
+                class="term-tip"
+                data-term="goroutine"
+                data-module="go"
+                data-def="Go 运行时管理的轻量级并发执行单元，初始栈仅 2KB 且可动态增长"
+                data-slug="go/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">goroutine</abbr></span
+              >
+              泄漏</strong
+            >：在<span
+              class="term-tip"
+              data-term="中间件"
+              data-module="github"
+              data-def="中间人"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">中间件</abbr></span
+            >中<span
+              class="term-tip"
+              data-term="启动"
+              data-module="github"
+              data-def="启动"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">启动</abbr></span
+            >
+            <span
+              class="term-tip"
+              data-term="goroutine"
+              data-module="go"
+              data-def="Go 运行时管理的轻量级并发执行单元，初始栈仅 2KB 且可动态增长"
+              data-slug="go/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">goroutine</abbr></span
+            >
+            时，确保它能正确<span
+              class="term-tip"
+              data-term="退出"
+              data-module="github"
+              data-def="退出"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">退出</abbr></span
+            >，特别是当<span
+              class="term-tip"
+              data-term="请求"
+              data-module="vue3"
+              data-def="HTTP 请求"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">请求</abbr></span
+            >被<span
+              class="term-tip"
+              data-term="取消"
+              data-module="vue3"
+              data-def="撤销操作"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">取消</abbr></span
+            >时。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >ResponseWriter 只能<span
+                class="term-tip"
+                data-term="写入"
+                data-module="c"
+                data-def="输出数据到目标"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">写入</abbr></span
+              >一次</strong
+            >：如果<span
+              class="term-tip"
+              data-term="中间件"
+              data-module="github"
+              data-def="中间人"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">中间件</abbr></span
+            >已经<span
+              class="term-tip"
+              data-term="写入"
+              data-module="c"
+              data-def="输出数据到目标"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">写入</abbr></span
+            >了<span
+              class="term-tip"
+              data-term="响应"
+              data-module="vue3"
+              data-def="服务端响应"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">响应</abbr></span
+            >，后续的 Handler 不应该再<span
+              class="term-tip"
+              data-term="写入"
+              data-module="c"
+              data-def="输出数据到目标"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">写入</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              ><span
+                class="term-tip"
+                data-term="中间件"
+                data-module="github"
+                data-def="中间人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">中间件</abbr></span
+              >应该是无<span
+                class="term-tip"
+                data-term="状态"
+                data-module="cpp"
+                data-def="状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">状态</abbr></span
+              >的</strong
+            >：<span
+              class="term-tip"
+              data-term="中间件"
+              data-module="github"
+              data-def="中间人"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">中间件</abbr></span
+            >不应该<span
+              class="term-tip"
+              data-term="存储"
+              data-module="cpp"
+              data-def="存储"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">存储</abbr></span
+            >请求<span
+              class="term-tip"
+              data-term="相关"
+              data-module="cpp"
+              data-def="相关的"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">相关</abbr></span
+            >的<span
+              class="term-tip"
+              data-term="状态"
+              data-module="cpp"
+              data-def="状态"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">状态</abbr></span
+            >。每个<span
+              class="term-tip"
+              data-term="请求"
+              data-module="vue3"
+              data-def="HTTP 请求"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">请求</abbr></span
+            >的数据应该<span
+              class="term-tip"
+              data-term="通过"
+              data-module="github"
+              data-def="通过"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">通过</abbr></span
+            >
+            <span
+              class="term-tip"
+              data-term="Context"
+              data-module="react"
+              data-def="React 提供的跨组件层级传递数据的机制，避免逐层手动传递 props"
+              data-slug="react/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">Context</abbr></span
+            >
+            传递。
+          </p>
+        </li>
+      </ol>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="使用-chi-路由器的中间件">
+        <a href="#使用-chi-路由器的中间件">使用 chi 路由器的中间件</a>
+      </h3>
+      <p>
+        chi
+        <span
+          class="term-tip"
+          data-term="提供"
+          data-module="github"
+          data-def="提供"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">提供</abbr></span
+        >了更优雅的<span
+          class="term-tip"
+          data-term="中间件"
+          data-module="github"
+          data-def="中间人"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">中间件</abbr></span
+        >管理：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">github.com/go-chi/chi/v5</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">github.com/go-chi/chi/v5/middleware</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">r </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chi.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewRouter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 全局中间件</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Use</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(middleware.RequestID)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Use</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(middleware.RealIP)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Use</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(middleware.Logger)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Use</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(middleware.Recoverer)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 路由组中间件</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Route</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"/admin"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> chi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Router</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Use</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(authMiddleware) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 仅 admin 路由需要认证</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    r.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"/dashboard"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, adminDashboard)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">})</span></span></code></pre>
+      <h3 id="条件中间件"><a href="#条件中间件">条件中间件</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> conditionalMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">condition</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">mw</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">next</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HandlerFunc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> condition</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(r) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">                mw</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(next).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ServeHTTP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, r)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            } </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                next.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ServeHTTP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(w, r)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        })</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 仅对 API 路径应用认证</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">conditionalMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> strings.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">HasPrefix</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(r.URL.Path, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"/api/"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}, </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">authMiddleware</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+    </article>
+  </body>
+</html>

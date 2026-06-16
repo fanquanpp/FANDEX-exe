@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>长时间范围Agent</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">长时间范围Agent</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          METR 的 2024-2025 测量显示，Agent 在 1 小时任务上得分 50%，但在 8 小时任务上仅得分
+          10%。差距不是线性的——它是超线性的。每个额外小时的人类等价工作需要不成比例更多的 Agent
+          步骤，因为错误累积、上下文衰减和工具失败复合。当前 Agent 在约 30 分钟...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="长时间范围-agent--metr-曲线-8-小时工作日-扩展瓶颈">
+        <a href="#长时间范围-agent--metr-曲线-8-小时工作日-扩展瓶颈"
+          >长时间范围 Agent — METR 曲线, 8 小时工作日, 扩展瓶颈</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          METR 的 2024-2025 测量显示，Agent 在 1 小时任务上得分 50%，但在 8 小时任务上仅得分
+          10%。差距不是线性的——它是超线性的。每个额外小时的人类等价工作需要不成比例更多的 Agent
+          步骤，因为错误累积、上下文衰减和工具失败复合。当前 Agent 在约 30
+          分钟时达到实际挂钟极限；超过这个时间，可靠性急剧下降。本课程将长时间范围能力视为工程约束而非研究抱负：哪些架构选择将有效工作范围从分钟推到小时？
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 <strong>语言：</strong> Python (stdlib)
+        <strong>前置条件：</strong> Phase 14 (Agent 工程) <strong>时间：</strong> ~60 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        大多数 Agent 演示运行 5-15 分钟。真实工作需要数小时。当 Agent 运行更长时间时，三件事出错：
+      </p>
+      <ol>
+        <li>
+          <strong>错误累积。</strong> 第 10 步的小错误成为第 50 步的巨大错误。Agent
+          在错误假设上构建。
+        </li>
+        <li>
+          <strong>上下文衰减。</strong> Agent 忘记了 30
+          步前读过的内容。上下文窗口填满；早期信息被驱逐。
+        </li>
+        <li>
+          <strong>工具失败复合。</strong> API
+          限速、网络超时、文件锁。每次失败都需要重试；重试消耗预算和时间。
+        </li>
+      </ol>
+      <p>
+        METR (Model Evaluation &#x26; Threat Research) 在 2024-2025 年的评估量化了这一点：Agent 在 1
+        小时人类等价工作上得分约 50%，但在 8 小时工作上仅约 10%。曲线不是线性的——它是超线性的衰减。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="metr-测量"><a href="#metr-测量">METR 测量</a></h3>
+      <p>METR 评估框架测量 Agent 在不同时间预算下的性能。关键发现：</p>
+      <ul>
+        <li><strong>1 小时任务：</strong> 前沿 Agent 得分约 50%。</li>
+        <li><strong>4 小时任务：</strong> 约 25%。</li>
+        <li><strong>8 小时任务：</strong> 约 10%。</li>
+      </ul>
+      <p>衰减是超线性的。每个额外小时需要更多 Agent 步骤，更多步骤意味着更多失败机会。</p>
+      <h3 id="扩展瓶颈"><a href="#扩展瓶颈">扩展瓶颈</a></h3>
+      <p>
+        <strong>上下文窗口饱和。</strong> Agent
+        读取文件、运行命令、获取结果。每个工具调用添加到上下文。到 50
+        次工具调用时，上下文已满，Agent 忘记了早期信息。
+      </p>
+      <p>
+        <strong>工具可靠性。</strong> 单个工具 99% 的可靠性意味着 100 次调用后约 37%
+        的失败概率。长时间范围 Agent 进行数百次工具调用。
+      </p>
+      <p>
+        <strong>规划退化。</strong> Agent 在第 1 步制定的计划到第 50
+        步时已过时。环境变化，工具返回意外结果，计划需要修订。但修订计划本身消耗步骤。
+      </p>
+      <h3 id="将工作范围从分钟推到小时的架构选择">
+        <a href="#将工作范围从分钟推到小时的架构选择">将工作范围从分钟推到小时的架构选择</a>
+      </h3>
+      <p>
+        <strong>检查点和恢复。</strong> 持久化 Agent
+        状态到检查点。崩溃时，从最后一个检查点恢复。LangGraph 的运行时在每个超步后写入检查点。
+      </p>
+      <p>
+        <strong>子 Agent 隔离。</strong> 将长任务分解为子任务，每个由独立子 Agent 处理。父 Agent
+        维护计划；子 Agent 有新鲜上下文窗口。Anthropic 的研究系统使用此模式。
+      </p>
+      <p>
+        <strong>记忆外部化。</strong>
+        不在上下文窗口中保留所有信息，而是写入外部存储（文件、数据库、向量存储）。Agent
+        按需检索。生成式 Agent 的记忆流 (Park 2023) 是参考实现。
+      </p>
+      <p>
+        <strong>渐进式精炼。</strong>
+        不追求一步完美，而是产生粗略草稿，然后迭代精炼。每轮可以独立验证。
+      </p>
+      <p>
+        <strong>带预算的自动重试。</strong> 工具调用失败时自动重试，但带封顶预算。指数退避 +
+        最大重试次数。
+      </p>
+      <h3 id="8-小时工作日意味着什么">
+        <a href="#8-小时工作日意味着什么">8 小时工作日意味着什么</a>
+      </h3>
+      <p>8 小时人类等价工作意味着：</p>
+      <ul>
+        <li>约 200-500 次工具调用（假设每分钟 1-2 次调用）。</li>
+        <li>约 50-100 个不同的文件或 API 端点交互。</li>
+        <li>约 10-20 个子任务，每个需要 15-30 分钟的 Agent 工作。</li>
+        <li>约 5-10 个需要修订计划的意外障碍。</li>
+      </ul>
+      <p>
+        当前 Agent 在约 30 分钟时达到实际极限。超过这个时间，可靠性急剧下降。从 30 分钟到 8
+        小时的差距是 2026 年的核心工程挑战。
+      </p>
+      <h3 id="当前最先进水平"><a href="#当前最先进水平">当前最先进水平</a></h3>
+      <p>截至 2026 年 4 月：</p>
+      <ul>
+        <li>
+          <strong>Claude Code</strong> 可以运行数小时用于代码库级任务，使用子 Agent 和检查点。
+        </li>
+        <li><strong>Devin</strong> 运行带浏览器和终端访问的长时间范围编码任务。</li>
+        <li>
+          <strong>Anthropic 研究系统</strong> 使用 15 倍 token 预算运行 10+ 子 Agent 进行深度研究。
+        </li>
+      </ul>
+      <p>所有三个都使用相同的模式：子 Agent 隔离 + 检查点 + 外部记忆。</p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p>
+        <code>code/main.py</code> 模拟长时间范围 Agent
+        执行，展示错误累积和上下文衰减。比较三种策略：
+      </p>
+      <ol>
+        <li><strong>朴素单循环。</strong> 一个 Agent，一个上下文窗口，无检查点。</li>
+        <li><strong>带检查点。</strong> 定期持久化状态；从故障恢复。</li>
+        <li><strong>子 Agent 隔离。</strong> 将任务分解为子任务，每个由独立子 Agent 处理。</li>
+      </ol>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <p>
+        预期输出：朴素方法在约 30 步后可靠性下降。检查点帮助恢复但上下文仍衰减。子 Agent
+        隔离保持可靠性最长时间。
+      </p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        <code>outputs/skill-long-horizon-extender.md</code> 设计将 Agent
+        工作范围从分钟推到小时的策略。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          运行 <code>code/main.py</code>。比较三种策略的可靠性曲线。子 Agent
+          隔离在什么步数后开始明显胜出？
+        </li>
+        <li>添加记忆外部化：Agent 将关键信息写入文件，稍后检索。这如何改变上下文衰减曲线？</li>
+        <li>
+          阅读 METR 评估报告。识别一个当前 Agent 在 8
+          小时任务上失败的具体任务类型。什么架构改变会帮助？
+        </li>
+        <li>
+          设计一个需要 4 小时人类工作的任务。将其分解为子任务。估计每个子任务的 Agent
+          步骤数。总步骤数与 METR 的超线性衰减预测相比如何？
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >渐进式精炼<span
+            class="term-tip"
+            data-term="变体"
+            data-module="c"
+            data-def="可存储不同类型的值"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">变体</abbr></span
+          >：Agent 产生粗略草稿，然后运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >
+          3
+          <span
+            class="term-tip"
+            data-term="轮"
+            data-module="github"
+            data-def="轮"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">轮</abbr></span
+          >精炼。每<span
+            class="term-tip"
+            data-term="轮"
+            data-module="github"
+            data-def="轮"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">轮</abbr></span
+          >独立<span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >。与<span
+            class="term-tip"
+            data-term="单"
+            data-module="github"
+            data-def="单"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">单</abbr></span
+          >次通过方法比较质量。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>METR 曲线</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >
+              vs 准确性”
+            </td>
+            <td>
+              Agent
+              <span
+                class="term-tip"
+                data-term="性能"
+                data-module="github"
+                data-def="性能"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">性能</abbr></span
+              >随<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >长<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >超<span
+                class="term-tip"
+                data-term="线性"
+                data-module="github"
+                data-def="线性的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">线性</abbr></span
+              >衰减。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              长<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >范围
+            </td>
+            <td>
+              ”8
+              <span
+                class="term-tip"
+                data-term="小时"
+                data-module="github"
+                data-def="小时"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">小时</abbr></span
+              >任务”
+            </td>
+            <td>
+              需要数<span
+                class="term-tip"
+                data-term="小时"
+                data-module="github"
+                data-def="小时"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">小时</abbr></span
+              >人<span
+                class="term-tip"
+                data-term="类"
+                data-module="cpp"
+                data-def="定义对象的结构和行为"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类</abbr></span
+              >等价<span
+                class="term-tip"
+                data-term="工作"
+                data-module="cpp"
+                data-def="工作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工作</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >衰减
+            </td>
+            <td>”Agent 忘记了”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="上下文窗口"
+                data-module="agent"
+                data-def="大语言模型单次推理能处理的最大 token 数量，决定输入输出的长度上限"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文窗口</abbr></span
+              >填满时<span
+                class="term-tip"
+                data-term="早期"
+                data-module="github"
+                data-def="早期的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">早期</abbr></span
+              >信息丢失。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="错误"
+                data-module="cpp"
+                data-def="错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">错误</abbr></span
+              >累积
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="错误"
+                data-module="cpp"
+                data-def="错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">错误</abbr></span
+              >复合”
+            </td>
+            <td>
+              小<span
+                class="term-tip"
+                data-term="错误"
+                data-module="cpp"
+                data-def="错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">错误</abbr></span
+              >在后续<span
+                class="term-tip"
+                data-term="步骤"
+                data-module="vue3"
+                data-def="处理步骤"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">步骤</abbr></span
+              >中变成大<span
+                class="term-tip"
+                data-term="错误"
+                data-module="cpp"
+                data-def="错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">错误</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="检查点"
+                data-module="github"
+                data-def="检查点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检查点</abbr></span
+              >
+            </td>
+            <td>
+              ”保存<span
+                class="term-tip"
+                data-term="状态"
+                data-module="cpp"
+                data-def="状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">状态</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="持久化"
+                data-module="vue3"
+                data-def="长期保存"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">持久化</abbr></span
+              >
+              Agent
+              <span
+                class="term-tip"
+                data-term="状态"
+                data-module="cpp"
+                data-def="状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">状态</abbr></span
+              >以从故障<span
+                class="term-tip"
+                data-term="恢复"
+                data-module="github"
+                data-def="恢复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">恢复</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >
+              Agent 隔离
+            </td>
+            <td>
+              ”新鲜<span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >”
+            </td>
+            <td>
+              每个<span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >任务获得独立<span
+                class="term-tip"
+                data-term="上下文窗口"
+                data-module="agent"
+                data-def="大语言模型单次推理能处理的最大 token 数量，决定输入输出的长度上限"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文窗口</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="记忆"
+                data-module="github"
+                data-def="记忆"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记忆</abbr></span
+              >外部化
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="写入"
+                data-module="c"
+                data-def="输出数据到目标"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">写入</abbr></span
+              >磁盘”
+            </td>
+            <td>
+              将<span
+                class="term-tip"
+                data-term="信息"
+                data-module="github"
+                data-def="信息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信息</abbr></span
+              >存储在<span
+                class="term-tip"
+                data-term="上下文窗口"
+                data-module="agent"
+                data-def="大语言模型单次推理能处理的最大 token 数量，决定输入输出的长度上限"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文窗口</abbr></span
+              >外。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="渐进式"
+                data-module="typescript"
+                data-def="逐步添加类型"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">渐进式</abbr></span
+              >精炼
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >轮<span
+                class="term-tip"
+                data-term="改进"
+                data-module="github"
+                data-def="改进"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">改进</abbr></span
+              >”
+            </td>
+            <td>
+              产生粗略草稿，然后<span
+                class="term-tip"
+                data-term="迭代"
+                data-module="github"
+                data-def="迭代"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">迭代</abbr></span
+              >改进。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://metr.org/">METR evaluations</a> — Agent
+          <span
+            class="term-tip"
+            data-term="时间"
+            data-module="cpp"
+            data-def="时间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">时间</abbr></span
+          >范围测量
+        </li>
+        <li>
+          <a href="https://www.anthropic.com/engineering/multi-agent-research-system"
+            >Anthropic — Multi-agent research system</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="子"
+            data-module="cpp"
+            data-def="子"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">子</abbr></span
+          >
+          Agent +
+          <span
+            class="term-tip"
+            data-term="检查点"
+            data-module="github"
+            data-def="检查点"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检查点</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="生产"
+            data-module="github"
+            data-def="生产"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产</abbr></span
+          >实现
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2304.03442">Park et al. — Generative Agents</a> —
+          <span
+            class="term-tip"
+            data-term="记忆"
+            data-module="github"
+            data-def="记忆"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">记忆</abbr></span
+          >流<span
+            class="term-tip"
+            data-term="架构"
+            data-module="vue3"
+            data-def="代码和系统的组织结构"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">架构</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

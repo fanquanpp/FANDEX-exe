@@ -1,0 +1,752 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>指令微调SFT</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">指令微调SFT</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">SFT</span><span class="doc-tag">instruction tuning</span
+          ><span class="doc-tag">监督微调</span><span class="doc-tag">指令微调</span
+          ><span class="doc-tag">对齐</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          理解监督微调（SFT）的原理和实现，将预训练模型转化为指令遵循模型
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="指令微调sft"><a href="#指令微调sft">指令微调SFT</a></h1>
+      <blockquote>
+        <p>
+          预训练模型能预测下一个 token，但它不知道如何遵循指令。SFT（Supervised
+          Fine-Tuning）教会模型”听懂人话”——从续写文本变成回答问题、执行任务。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python
+        <strong>前置条件：</strong> Phase 10 Lesson 04（预训练 Mini-GPT）
+        <strong>预计时间：</strong> ~60 分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>理解预训练和微调的区别与联系</li>
+        <li>构建 SFT 训练数据集（指令-回复对）</li>
+        <li>实现 SFT 训练循环，包括 EOS token 处理</li>
+        <li>理解训练技巧：学习率、epoch 数、数据质量的影响</li>
+      </ul>
+      <h2 id="预训练-vs-微调"><a href="#预训练-vs-微调">预训练 vs 微调</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>维度</th>
+            <th>预训练</th>
+            <th>SFT</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>目标</td>
+            <td>预测下一个 token</td>
+            <td>生成符合指令的回复</td>
+          </tr>
+          <tr>
+            <td>数据</td>
+            <td>无标注原始文本</td>
+            <td>指令-回复对</td>
+          </tr>
+          <tr>
+            <td>数据量</td>
+            <td>万亿 token</td>
+            <td>数万到数十万条</td>
+          </tr>
+          <tr>
+            <td>学习率</td>
+            <td>1e-4 到 3e-4</td>
+            <td>1e-5 到 5e-5</td>
+          </tr>
+          <tr>
+            <td>训练轮数</td>
+            <td>1 epoch</td>
+            <td>3-5 epochs</td>
+          </tr>
+          <tr>
+            <td>损失计算</td>
+            <td>所有 token</td>
+            <td>仅计算回复部分的 token</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="sft-数据格式"><a href="#sft-数据格式">SFT 数据格式</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># Alpaca 格式</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "instruction"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"将下面的句子翻译成英文"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "input"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"今天天气很好"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "output"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"The weather is nice today."</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># ChatML 格式</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "messages"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"role"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"system"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"content"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"你是一个有帮助的助手。"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"role"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"content"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"将下面的句子翻译成英文：今天天气很好"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"role"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"assistant"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"content"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"The weather is nice today."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="实现-sft-训练"><a href="#实现-sft-训练">实现 SFT 训练</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.nn.functional </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> F</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dataclasses </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dataclass</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">@dataclass</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> SFTDataCollator</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """SFT 数据整理器：构建输入和标签"""</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    tokenizer: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">object</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    max_length: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">int</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2048</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __call__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, examples):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        batch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ex </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> examples:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 构建提示模板</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            prompt </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"### Instruction:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ex[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'instruction'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}\n\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ex.get(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'input'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                prompt </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"### Input:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ex[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'input'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}\n\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            prompt </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"### Response:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 编码</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            prompt_ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.tokenizer.encode(prompt)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            response_ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.tokenizer.encode(ex[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'output'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 拼接：prompt + response + EOS</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            input_ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> prompt_ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> response_ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.tokenizer.eos_token_id]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 截断</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            input_ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> input_ids[:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.max_length]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 标签：prompt 部分设为 -100（不计算损失）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            labels </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(prompt_ids) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> response_ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.tokenizer.eos_token_id]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            labels </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> labels[:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.max_length]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            batch.append({</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">                'input_ids'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: input_ids,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">                'labels'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: labels,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">                'attention_mask'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(input_ids),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            })</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 填充到相同长度</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        max_len </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> max</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(b[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'input_ids'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            pad_len </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> max_len </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(b[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'input_ids'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            b[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'input_ids'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.tokenizer.pad_token_id] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pad_len</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            b[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'labels'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pad_len</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            b[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'attention_mask'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pad_len</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">            'input_ids'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: torch.tensor([b[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'input_ids'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch]),</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">            'labels'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: torch.tensor([b[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'labels'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch]),</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">            'attention_mask'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: torch.tensor([b[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'attention_mask'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch]),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> train_sft</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(model, dataloader, optimizer, epochs</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, lr</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2e-5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, device</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'cuda'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """SFT 训练循环"""</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    model </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.to(device)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> epoch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(epochs):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        model.train()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        total_loss </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dataloader:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            input_ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'input_ids'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">].to(device)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            labels </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'labels'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">].to(device)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            attention_mask </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'attention_mask'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">].to(device)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 前向传播</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            outputs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model(input_ids, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">attention_mask</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">attention_mask)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            logits </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> outputs.logits</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 仅计算回复部分的损失</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            shift_logits </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> logits[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, :</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, :].contiguous()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            shift_labels </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> labels[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:].contiguous()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            loss </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> F.cross_entropy(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                shift_logits.view(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, shift_logits.size(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                shift_labels.view(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">                ignore_index</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            )</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 反向传播</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            loss.backward()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            torch.nn.utils.clip_grad_norm_(model.parameters(), </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1.0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            optimizer.step()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            optimizer.zero_grad()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            total_loss </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> loss.item()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        avg_loss </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> total_loss </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(dataloader)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Epoch </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">epoch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">epochs</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> | Loss: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">avg_loss</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.4f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h2 id="训练技巧"><a href="#训练技巧">训练技巧</a></h2>
+      <p>
+        <strong
+          >学习<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >选择。</strong
+        >
+        SFT 的学习<span
+          class="term-tip"
+          data-term="率"
+          data-module="cpp"
+          data-def="速率"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">率</abbr></span
+        >通常比预<span
+          class="term-tip"
+          data-term="训练"
+          data-module="github"
+          data-def="培训"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">训练</abbr></span
+        >低一个<span
+          class="term-tip"
+          data-term="数量"
+          data-module="github"
+          data-def="数量"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">数量</abbr></span
+        >级（1e-5 到 5e-5），因为模型已经学会了<span
+          class="term-tip"
+          data-term="语言"
+          data-module="github"
+          data-def="编程语言"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">语言</abbr></span
+        >表示，只需要<span
+          class="term-tip"
+          data-term="微调"
+          data-module="agent"
+          data-def="在预训练模型基础上使用特定领域数据进一步训练，使模型适应特定任务"
+          data-slug="agent/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">微调</abbr></span
+        >行为。
+      </p>
+      <p>
+        <strong>损失掩码。</strong> 只<span
+          class="term-tip"
+          data-term="计算"
+          data-module="cpp"
+          data-def="计算过程"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">计算</abbr></span
+        >回复<span
+          class="term-tip"
+          data-term="部分"
+          data-module="github"
+          data-def="部分的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">部分</abbr></span
+        >的损失是关键。如果也<span
+          class="term-tip"
+          data-term="计算"
+          data-module="cpp"
+          data-def="计算过程"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">计算</abbr></span
+        >
+        prompt
+        <span
+          class="term-tip"
+          data-term="部分"
+          data-module="github"
+          data-def="部分的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">部分</abbr></span
+        >的损失，模型会浪费<span
+          class="term-tip"
+          data-term="容量"
+          data-module="github"
+          data-def="容量"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">容量</abbr></span
+        >学习”<span
+          class="term-tip"
+          data-term="复制"
+          data-module="github"
+          data-def="复制"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">复制</abbr></span
+        >指令”而不是”<span
+          class="term-tip"
+          data-term="生成"
+          data-module="vue3"
+          data-def="创建代码或数据"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生成</abbr></span
+        >回复”。
+      </p>
+      <p>
+        <strong
+          >数据<span
+            class="term-tip"
+            data-term="质量"
+            data-module="github"
+            data-def="质量"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">质量</abbr></span
+          >
+          > 数据量。</strong
+        >
+        LIMA 论文<span
+          class="term-tip"
+          data-term="表"
+          data-module="cpp"
+          data-def="表"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">表</abbr></span
+        >明，仅用 1,000 条<span
+          class="term-tip"
+          data-term="高"
+          data-module="github"
+          data-def="高的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">高</abbr></span
+        >质量数据就能<span
+          class="term-tip"
+          data-term="训练"
+          data-module="github"
+          data-def="培训"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">训练</abbr></span
+        >出与 GPT-4 相当的模型。数据<span
+          class="term-tip"
+          data-term="质量"
+          data-module="github"
+          data-def="质量"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">质量</abbr></span
+        >比<span
+          class="term-tip"
+          data-term="数量"
+          data-module="github"
+          data-def="数量"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">数量</abbr></span
+        >更重要。
+      </p>
+      <p>
+        <strong>Epoch 数。</strong> SFT 通常<span
+          class="term-tip"
+          data-term="训练"
+          data-module="github"
+          data-def="培训"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">训练</abbr></span
+        >
+        3-5 个 epoch。<span
+          class="term-tip"
+          data-term="训练"
+          data-module="github"
+          data-def="培训"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">训练</abbr></span
+        >过<span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >会导致过拟合——模型开始<span
+          class="term-tip"
+          data-term="记忆"
+          data-module="github"
+          data-def="记忆"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">记忆</abbr></span
+        >训练数据而不是<span
+          class="term-tip"
+          data-term="泛化"
+          data-module="agent"
+          data-def="模型在未见过的新数据上保持良好性能的能力，是衡量模型质量的关键指标"
+          data-slug="agent/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">泛化</abbr></span
+        >。
+      </p>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>SFT</td>
+            <td>”教模型听话”</td>
+            <td>
+              Supervised Fine-Tuning，在<span
+                class="term-tip"
+                data-term="指令"
+                data-module="github"
+                data-def="指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指令</abbr></span
+              >-回复<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >上<span
+                class="term-tip"
+                data-term="微调"
+                data-module="agent"
+                data-def="在预训练模型基础上使用特定领域数据进一步训练，使模型适应特定任务"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">微调</abbr></span
+              >预<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >模型
+            </td>
+          </tr>
+          <tr>
+            <td>损失掩码</td>
+            <td>”只算回复的损失”</td>
+            <td>
+              将 prompt
+              <span
+                class="term-tip"
+                data-term="部分"
+                data-module="github"
+                data-def="部分的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">部分</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="标签"
+                data-module="c"
+                data-def="标记代码位置的标识符"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标签</abbr></span
+              >设为 -100，不<span
+                class="term-tip"
+                data-term="参与"
+                data-module="github"
+                data-def="参与"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参与</abbr></span
+              >损失<span
+                class="term-tip"
+                data-term="计算"
+                data-module="cpp"
+                data-def="计算过程"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">计算</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="指令"
+                data-module="github"
+                data-def="指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指令</abbr></span
+              >遵循
+            </td>
+            <td>
+              ”听懂<span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >话”
+            </td>
+            <td>
+              模型能够理解并<span
+                class="term-tip"
+                data-term="执行"
+                data-module="github"
+                data-def="执行"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行</abbr></span
+              >用户<span
+                class="term-tip"
+                data-term="指令"
+                data-module="github"
+                data-def="指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指令</abbr></span
+              >的能力
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Chat
+              <span
+                class="term-tip"
+                data-term="Template"
+                data-module="typescript"
+                data-def="模板"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Template</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >话<span
+                class="term-tip"
+                data-term="模板"
+                data-module="cpp"
+                data-def="参数化代码的机制"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模板</abbr></span
+              >”
+            </td>
+            <td>
+              将<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >轮<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >话<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >式化为模型可理解的<span
+                class="term-tip"
+                data-term="输入"
+                data-module="c"
+                data-def="从外部获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输入</abbr></span
+              >格式
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2203.02155"
+            >Ouyang et al., 2022 — “Training language models to follow instructions with human
+            feedback”</a
+          >
+          — InstructGPT 论文，SFT + RLHF 的<span
+            class="term-tip"
+            data-term="原始"
+            data-module="vue3"
+            data-def="原始的、最初的"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">原始</abbr></span
+          >框架
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2305.11206"
+            >Zhou et al., 2023 — “LIMA: Less Is More for Alignment”</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="证明"
+            data-module="github"
+            data-def="证明"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">证明</abbr></span
+          >
+          1,000 条<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >质量数据足以<span
+            class="term-tip"
+            data-term="微调"
+            data-module="agent"
+            data-def="在预训练模型基础上使用特定领域数据进一步训练，使模型适应特定任务"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">微调</abbr></span
+          >的论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2212.10560"
+            >Wang et al., 2023 — “Self-Instruct: Aligning Language Models with Self-Generated
+            Instructions”</a
+          >
+          — 自动<span
+            class="term-tip"
+            data-term="生成"
+            data-module="vue3"
+            data-def="创建代码或数据"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生成</abbr></span
+          >
+          SFT 数据的<span
+            class="term-tip"
+            data-term="方法"
+            data-module="c"
+            data-def="关联到对象的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">方法</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://huggingface.co/datasets/HuggingFaceFW/fineweb"
+            >Conover et al., 2023 — “The FineWeb Datasets”</a
+          >
+          — 大<span
+            class="term-tip"
+            data-term="规模"
+            data-module="vue3"
+            data-def="应用的规模"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">规模</abbr></span
+          >
+          SFT 数据集
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

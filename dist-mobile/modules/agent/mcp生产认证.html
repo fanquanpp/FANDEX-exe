@@ -1,0 +1,1330 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MCP生产认证 — 注册、JWKS刷新、受众固定Token</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">MCP生产认证 — 注册、JWKS刷新、受众固定Token</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            38 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">MCP认证</span><span class="doc-tag">JWKS</span
+          ><span class="doc-tag">CIMD</span><span class="doc-tag">DCR</span
+          ><span class="doc-tag">受众验证</span><span class="doc-tag">生产部署</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          掌握生产MCP认证的完整表面：客户端注册（CIMD/DCR）、JWKS缓存刷新、受众固定token验证和IdP能力矩阵
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="mcp生产认证--注册jwks刷新受众固定token">
+        <a href="#mcp生产认证--注册jwks刷新受众固定token"
+          >MCP生产认证 — 注册、JWKS刷新、受众固定Token</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          第16课在内存中搭建了OAuth
+          2.1状态机。到2026年，你发布给真实组织的每个MCP服务器都位于生产认证之后：可扩展到无界客户端群体的客户端注册（Client
+          ID Metadata Documents优先，动态客户端注册作为向后兼容回退）、授权服务器元数据发现（RFC
+          8414或OpenID Connect
+          Discovery）、不会破坏凌晨3点token验证的JWKS缓存刷新，以及拒绝跨资源重放的受众固定token。本课用三个角色
+          — 授权服务器、资源服务器（MCP服务器）和客户端 —
+          建模完整表面，以便你可以追踪从发现到验证工具调用的每一跳。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库）
+        <strong>前置条件：</strong> Phase 13 · 16（OAuth 2.1状态机），Phase 13 · 17（网关）
+        <strong>时间：</strong> ~90分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>通过RFC 8414元数据发现授权服务器并验证契约。</li>
+        <li>实现RFC 7591动态客户端注册，使MCP客户端无需管理员干预即可注册。</li>
+        <li>按计划缓存和刷新JWKS密钥，使签名验证在密钥轮换后存活。</li>
+        <li>使用RFC 8707资源指示器将token固定到单个MCP资源，并拒绝混淆代理重用。</li>
+        <li>干净地分离三个角色 — 授权服务器、资源服务器、客户端 — 使每个只强制属于自己的检查。</li>
+        <li>阅读IdP能力矩阵并在IdP无法满足MCP认证配置时拒绝部署。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>第16课模拟器在内存中运行OAuth 2.1。生产有三个内存模拟器看不到的运营差距。</p>
+      <p>
+        第一个差距是注册。真实组织运行数百个MCP服务器和数千个MCP客户端。操作员不会手工注册每个Cursor用户为OAuth客户端。2025-11-25规范给客户端解决此问题的优先顺序：如果你有预注册的
+        <code>client_id</code> 就使用它，否则使用<strong>Client ID Metadata Document</strong
+        >（客户端用其控制的HTTPS URL标识自己，授权服务器<em>拉取</em>元数据），否则回退到<strong
+          >RFC 7591动态客户端注册</strong
+        >（客户端<em>推送</em> <code>POST /register</code> 并当场获得
+        <code>client_id</code
+        >），否则提示用户。CIMD是推荐默认，因为它完全移除了每服务器注册同时保持DNS根植的信任模型；DCR保留用于向后兼容。两者都从授权服务器的元数据发现其入口点：CIMD的
+        <code>client_id_metadata_document_supported</code>，DCR的
+        <code>registration_endpoint</code>。
+      </p>
+      <p>
+        第二个差距是密钥轮换。JWT验证依赖授权服务器的签名密钥，发布为JSON Web Key
+        Set（JWKS）。授权服务器按计划轮换这些（通常每小时，有时在事件响应下更快）。在启动时获取一次JWKS的MCP服务器在轮换窗口之前验证正常
+        —
+        然后每个请求失败直到重启。生产将JWKS连接为缓存值，带有在前一个密钥过期前覆盖缓存的刷新作业，加上缓存未命中时的回退获取，用于签名密钥比缓存更新的token到达的情况。
+      </p>
+      <p>
+        第三个差距是受众绑定。第16课介绍了RFC
+        8707资源指示器。在生产中，该指示器成为每个请求的硬声明检查。MCP服务器将
+        <code>token.aud</code> 与其自己的规范资源URL比较，并用HTTP
+        401拒绝不匹配。这是防御上游MCP服务器（或持有给一个服务器的token的恶意客户端）在同一信任网格中对另一个服务器重放该token的唯一防线。
+      </p>
+      <p>
+        本课将每个差距映射到表面的具体部分。元数据文档是HTTP端点。JWKS缓存刷新是计划作业加键值缓存。JWT验证是资源服务器在调度任何工具之前运行的过程。保持三个角色分离，每个只强制属于自己的检查：授权服务器发出和轮换密钥，资源服务器缓存和验证，客户端发现和注册。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="rfc-8414--oauth授权服务器元数据">
+        <a href="#rfc-8414--oauth授权服务器元数据">RFC 8414 — OAuth授权服务器元数据</a>
+      </h3>
+      <p><code>/.well-known/oauth-authorization-server</code> 处的文档描述客户端需要的一切：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "issuer"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://auth.example.com"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "authorization_endpoint"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://auth.example.com/authorize"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "token_endpoint"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://auth.example.com/token"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "jwks_uri"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://auth.example.com/.well-known/jwks.json"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "registration_endpoint"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://auth.example.com/register"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "response_types_supported"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"code"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "grant_types_supported"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"authorization_code"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"refresh_token"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "code_challenge_methods_supported"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"S256"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "scopes_supported"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"mcp:tools.read"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"mcp:tools.invoke"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "token_endpoint_auth_methods_supported"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"none"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"private_key_jwt"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        给定MCP资源URL的客户端链式发现：RFC 9728的
+        <code>oauth-protected-resource</code>（资源服务器的文档）命名issuer，然后
+        <code>oauth-authorization-server</code>（此RFC）命名每个端点。客户端永远不硬编码授权URL。
+      </p>
+      <p>你在信任IdP用于MCP之前验证的契约：</p>
+      <ul>
+        <li>
+          <code>code_challenge_methods_supported</code> 包含 <code>S256</code>（RFC
+          7636的PKCE）。规范明确：如果此字段<strong>缺失</strong>，授权服务器不支持PKCE，客户端<strong>必须</strong>拒绝继续。
+        </li>
+        <li>
+          <code>grant_types_supported</code> 包含 <code>authorization_code</code> 并拒绝
+          <code>password</code> 和 <code>implicit</code>。
+        </li>
+        <li>
+          至少通告一条注册路径：<code>client_id_metadata_document_supported: true</code
+          >（CIMD，首选）<strong>或</strong> <code>registration_endpoint</code>（RFC 7591
+          DCR，回退）。任一满足契约；你不再硬性要求DCR。
+        </li>
+        <li><code>response_types_supported</code> 对OAuth 2.1恰好是 <code>["code"]</code>。</li>
+      </ul>
+      <p>
+        如果 <code>S256</code> 缺失，MCP服务器拒绝针对此IdP部署 —
+        PKCE没有降级模式。如果<em>两条</em>注册路径都未通告且你没有预注册的
+        <code>client_id</code>，你也无法注册；部署清单有问题，不是代码。
+      </p>
+      <h3 id="rfc-9728回顾-受保护资源元数据">
+        <a href="#rfc-9728回顾-受保护资源元数据">RFC 9728（回顾）— 受保护资源元数据</a>
+      </h3>
+      <p>
+        第16课涵盖了RFC
+        9728。生产中的增量：此文档是客户端查找<em>此</em>MCP服务器信任的授权服务器的唯一位置。单个MCP服务器可以接受来自多个IdP的token（一个给员工，一个给合作伙伴）。RFC
+        9728声明该集合；RFC 8414文档每个IdP支持什么。
+      </p>
+      <h3 id="client-id-metadata-documents推荐默认">
+        <a href="#client-id-metadata-documents推荐默认">Client ID Metadata Documents（推荐默认）</a>
+      </h3>
+      <p>
+        CIMD将注册从<em>推</em>反转为<em>拉</em>。客户端使用其控制的HTTPS URL<strong>作为</strong>其
+        <code>client_id</code>，而不是要求授权服务器铸造
+        <code>client_id</code
+        >。URL解析为JSON元数据文档；授权服务器在OAuth流程期间按需获取它。信任根植于DNS：如果服务器操作员信任
+        <code>app.example.com</code>，它就信任从
+        <code>https://app.example.com/client.json</code> 提供的客户端。无注册往返，无
+        <code>client_id</code> 命名空间耗尽，无每服务器状态需同步。
+      </p>
+      <p>客户端托管的元数据文档：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "client_id"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://app.example.com/oauth/client.json"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "client_name"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Example MCP Client"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "client_uri"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://app.example.com"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "redirect_uris"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"http://127.0.0.1:7333/callback"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"http://localhost:7333/callback"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "grant_types"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"authorization_code"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"refresh_token"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "response_types"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"code"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "token_endpoint_auth_method"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"none"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        文档中的
+        <code>client_id</code>
+        值<strong>必须</strong>等于其提供服务的URL（授权服务器验证此；不匹配被拒绝）。授权服务器在其RFC
+        8414元数据中用 <code>client_id_metadata_document_supported: true</code> 通告支持。
+      </p>
+      <p>规范直白指出的两个安全事实：</p>
+      <ul>
+        <li>
+          <strong>SSRF。</strong>
+          授权服务器获取攻击者提供的URL。它必须防御服务器端请求伪造（不获取内部/管理端点）。
+        </li>
+        <li>
+          <strong>localhost冒充。</strong>
+          CIMD单独无法阻止本地攻击者声称合法客户端的元数据URL并绑定任何
+          <code>localhost</code>
+          重定向。授权服务器<strong>必须</strong>在同意期间清楚显示重定向URI主机名，并<strong>应该</strong>对仅
+          <code>localhost</code> 的重定向发出警告。
+        </li>
+      </ul>
+      <p>
+        因为CIMD不需要服务器端状态，没有像DCR需要的注册器需要建立。客户端侧是只读的：从静态HTTPS端点提供元数据文档，让授权服务器拉取它。
+      </p>
+      <h3 id="rfc-7591--动态客户端注册回退向后兼容">
+        <a href="#rfc-7591--动态客户端注册回退向后兼容"
+          >RFC 7591 — 动态客户端注册（回退/向后兼容）</a
+        >
+      </h3>
+      <p>
+        DCR现在是
+        <code>MAY</code
+        >，保留用于与2025-11-25之前部署和尚不支持CIMD的IdP的向后兼容。没有它（也没有CIMD或预注册），每个MCP客户端（Cursor、Claude
+        Desktop、自定义Agent）需要与IdP管理员的带外交换。有了DCR，客户端发布：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">POST /register</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Content-Type: application/json</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "redirect_uris"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"http://127.0.0.1:7333/callback"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "grant_types"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"authorization_code"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"refresh_token"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "response_types"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"code"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "token_endpoint_auth_method"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"none"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "scope"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"mcp:tools.invoke"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "client_name"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Cursor"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "software_id"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"com.cursor.cursor"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "software_version"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"0.42.0"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        服务器用 <code>client_id</code> 和 <code>registration_access_token</code> 响应以供后续更新：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "client_id"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"c_3e7f1a"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "client_id_issued_at"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1769472000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "redirect_uris"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"http://127.0.0.1:7333/callback"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "grant_types"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"authorization_code"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"refresh_token"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "registration_access_token"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"regt_b2..."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "registration_client_uri"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://auth.example.com/register/c_3e7f1a"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        <code>token_endpoint_auth_method: none</code>
+        是运行在用户设备上的MCP客户端的正确默认值。它们只获得 <code>client_id</code> — 无
+        <code>client_secret</code> 可外泄。PKCE提供公共客户端所需的占有证明。
+      </p>
+      <p>三个生产陷阱：</p>
+      <ul>
+        <li>
+          注册端点必须按源IP速率限制。没有它，恶意行为者脚本化数百万假注册并耗尽
+          <code>client_id</code> 命名空间。在注册器处理请求之前运行速率限制检查。
+        </li>
+        <li>
+          <code>software_statement</code
+          >（为客户端担保的签名JWT）是某些企业IdP要求的。本课的模拟跳过它；生产连接验证步骤，拒绝来自localhost重定向URI以外的未签名注册。
+        </li>
+        <li>
+          <code>registration_access_token</code>
+          必须存储为哈希，不是明文。此token的盗窃意味着攻击者可以重写客户端的重定向URI。
+        </li>
+      </ul>
+      <h3 id="rfc-8707回顾-资源指示器">
+        <a href="#rfc-8707回顾-资源指示器">RFC 8707（回顾）— 资源指示器</a>
+      </h3>
+      <p>
+        第16课确立了形状。生产规则：每个token请求包含
+        <code>resource=&#x3C;canonical-mcp-url></code>，MCP服务器在每个调用上验证
+        <code>token.aud</code>
+        匹配其自己的资源URL。规范URI是服务器的<em>最具体</em>标识符：使用小写方案和主机，无片段，通常无尾随斜杠。路径组件<strong>不</strong>按规则剥离
+        —
+        规范在需要标识单个MCP服务器时保留它。<code>https://mcp.example.com</code>、<code>https://mcp.example.com/mcp</code>、<code
+          >https://mcp.example.com:8443</code
+        >
+        和 <code>https://mcp.example.com/server/mcp</code> 都是有效的规范URI。每个服务器选一个并将
+        <code>aud</code> 固定到那个。
+      </p>
+      <h3 id="rfc-7636回顾-pkce"><a href="#rfc-7636回顾-pkce">RFC 7636（回顾）— PKCE</a></h3>
+      <p>
+        PKCE在OAuth 2.1中是强制的。本课的授权码流程始终携带 <code>code_challenge</code> 和
+        <code>code_verifier</code>。服务器拒绝没有验证器或验证器不哈希到存储挑战的token请求。
+      </p>
+      <h3 id="mcp规范-2025-11-25-认证配置">
+        <a href="#mcp规范-2025-11-25-认证配置">MCP规范 2025-11-25 认证配置</a>
+      </h3>
+      <p>MCP规范（2025-11-25）对MCP服务器的授权层必须做什么很精确：</p>
+      <ul>
+        <li>
+          实现RFC 9728受保护资源元数据，并通过401上的
+          <code>WWW-Authenticate: Bearer resource_metadata="..."</code> 头或知名URI
+          <code>/.well-known/oauth-protected-resource</code>
+          提供其位置（SEP-985使头可选，有知名回退）。元数据
+          <code>authorization_servers</code> 字段<strong>必须</strong>命名至少一个服务器。
+        </li>
+        <li>
+          仅通过<strong>每个</strong>请求上的 <code>Authorization: Bearer ...</code> 接受token —
+          从不在查询字符串中，从不仅在会话开始时验证。
+        </li>
+        <li>
+          每个请求验证 <code>aud</code>、<code>iss</code>、<code>exp</code>
+          和必需作用域。服务器<strong>必须</strong>验证token是专门为其发出的（受众）；缺失或不匹配的
+          <code>aud</code> 被拒绝，从不视为通配符。
+        </li>
+        <li>
+          在401/403上，返回 <code>WWW-Authenticate: Bearer</code> 携带 <code>error=...</code>、<code
+            >resource_metadata="&#x3C;PRM-URL>"</code
+          >
+          参数（元数据文档的URL，<em>不是</em>裸资源），以及
+          <code>insufficient_scope</code>（403）上的 <code>scope="..."</code>。注意：参数是
+          <code>resource_metadata</code>，一个发现指针 — 挑战中没有 <code>resource</code> 参数。
+        </li>
+        <li>
+          授权服务器发现接受<strong>RFC 8414 OAuth元数据</strong>或<strong
+            >OpenID Connect Discovery 1.0</strong
+          >；客户端必须按优先顺序尝试两个知名后缀。
+        </li>
+        <li>
+          客户端（不是服务器）防御<strong>混淆攻击</strong>：在重定向前记录预期
+          <code>issuer</code>，并在兑换代码之前验证 <code>iss</code> 授权响应参数（RFC
+          9207）。仅PKCE不阻止混淆，因为客户端将其
+          <code>code_verifier</code> 交给它被引导到的任何token端点。
+        </li>
+      </ul>
+      <p>
+        OAuth 2.1草案是基板；RFC 8414/7591/8707/9728/9207 + RFC 7636 + CIMD是表面；MCP规范是配置。
+      </p>
+      <h3 id="idp能力矩阵"><a href="#idp能力矩阵">IdP能力矩阵</a></h3>
+      <p>
+        并非每个IdP支持完整的MCP配置。下表记录了截至2025-11-25规范的事实能力声明。它是<em>部署门控</em>，不是推荐。
+      </p>
+      <p>
+        CIMD在2025-11-25规范中发布，底层OAuth草案仅在2025年10月被采纳，因此供应商支持仍在到来 —
+        将下表中的”CIMD”视为”今天的状况，在你的租户中验证”，不是永久声明。
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>IdP类别</th>
+            <th>AS元数据（8414/OIDC）</th>
+            <th>CIMD</th>
+            <th>RFC 7591 DCR</th>
+            <th>RFC 8707 resource</th>
+            <th>RFC 7636 S256 PKCE</th>
+            <th>备注</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>自托管（Keycloak）</td>
+            <td>是</td>
+            <td>新兴</td>
+            <td>是</td>
+            <td>是（24.x起）</td>
+            <td>是</td>
+            <td>本课MCP配置的参考IdP；完整DCR路径端到端，CIMD跟踪新规范</td>
+          </tr>
+          <tr>
+            <td>企业SSO（Microsoft Entra ID）</td>
+            <td>是</td>
+            <td>新兴</td>
+            <td>是（高级层级）</td>
+            <td>是</td>
+            <td>是</td>
+            <td>DCR可用性因租户层级而异；在目标租户中部署前验证</td>
+          </tr>
+          <tr>
+            <td>企业SSO（Okta）</td>
+            <td>是</td>
+            <td>新兴</td>
+            <td>是（Okta CIC / Auth0）</td>
+            <td>是</td>
+            <td>是</td>
+            <td>DCR在Auth0上可用（现Okta CIC）；经典Okta组织需要管理员预注册</td>
+          </tr>
+          <tr>
+            <td>社交登录IdP（通用）</td>
+            <td>不定</td>
+            <td>否</td>
+            <td>罕见</td>
+            <td>罕见</td>
+            <td>是</td>
+            <td>
+              大多数社交IdP将客户端视为静态合作伙伴；无自助注册。仅用作身份源，在其上叠加你自己MCP感知的授权服务器
+            </td>
+          </tr>
+          <tr>
+            <td>自定义/自建</td>
+            <td>取决</td>
+            <td>取决</td>
+            <td>取决</td>
+            <td>取决</td>
+            <td>取决</td>
+            <td>如果你发布自己的，发布完整配置并偏好CIMD。跳过PKCE或受众绑定会破坏MCP认证契约</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        部署清单的拒绝规则：如果选择的IdP未在 <code>code_challenge_methods_supported</code> 中列出
+        <code>S256</code>，MCP服务器拒绝启动 —
+        PKCE没有降级模式。注册是更软的门控：你需要<em>一条</em>工作路径（预注册的
+        <code>client_id</code>、<code>client_id_metadata_document_supported: true</code> 或
+        <code>registration_endpoint</code
+        >）。仅DCR的缺失不再是拒绝触发器，因为CIMD或预注册可以覆盖它。
+      </p>
+      <h3 id="jwks刷新模式在as处轮换在资源服务器处刷新">
+        <a href="#jwks刷新模式在as处轮换在资源服务器处刷新"
+          >JWKS刷新模式（在AS处轮换，在资源服务器处刷新）</a
+        >
+      </h3>
+      <p>保持两个动词分离，因为混淆它们是真实的生产bug：</p>
+      <ul>
+        <li>
+          <strong>轮换</strong
+          >是<em>授权服务器</em>做的：铸造新签名密钥，在JWKS中发布，稍后退役旧的。资源服务器不参与此，无法做
+          — 它不持有IdP的私钥。
+        </li>
+        <li>
+          <strong>刷新</strong>是<em>资源服务器</em>做的：重新
+          <code>GET</code> 已发布的JWKS到其缓存。那是资源服务器曾经执行的唯一JWKS动作。
+        </li>
+      </ul>
+      <p>
+        生产失败模式是过期缓存。用计划刷新作业加键值缓存解决它。资源服务器运行一个作业（cron、定时器，无论你的运行时提供什么），按固定间隔获取
+        <code>&#x3C;issuer>/.well-known/jwks.json</code> 并覆盖
+        <code>cache[issuer] = {keys, fetched_at}</code>。验证器从该缓存读取。<code>kid</code>
+        缺失于缓存的token触发<strong>一次</strong>同步刷新作为回退，然后重新检查。这同时处理两种情况：计划刷新，以及签名密钥比下一次计划刷新更新的token到达的密钥重叠窗口。
+      </p>
+      <p>
+        回退<strong>必须是重新获取，永远不是轮换</strong>。如果你将缓存未命中路径连接到轮换并铸造，两件事会破坏：(1)
+        铸造新密钥产生仍然不匹配token的 <code>kid</code>，所以查找仍然失败；(2) 喷射随机
+        <code>kid</code> 值的token的攻击者强制无限制的密钥创建系列 —
+        自我造成的DoS。重新获取是幂等的，所以假 <code>kid</code> 最多花费一次浪费的获取。
+      </p>
+      <p>缓存形状：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "https://auth.example.com"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "keys"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">      { </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"kid"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"k_2026_03"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"kty"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"RSA"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"n"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"..."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"e"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"AQAB"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"alg"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"RS256"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"use"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"sig"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">      { </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"kid"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"k_2026_04"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"kty"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"RSA"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"n"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"..."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"e"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"AQAB"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"alg"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"RS256"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"use"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"sig"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "fetched_at"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1772668800</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        同时有两个密钥是稳态。授权服务器通过在退役前一个（<code>k_2026_03</code>）之前引入下一个密钥（<code>k_2026_04</code>）来轮换，所以在旧密钥下发出的token在过期前仍然有效。缓存持有并集；验证器按
+        <code>kid</code> 选择。
+      </p>
+      <h3 id="验证过程"><a href="#验证过程">验证过程</a></h3>
+      <p>MCP服务器在调度任何工具之前运行验证。<code>code/main.py</code> 使用的形状：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> server.validate(bearer_token, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">required_scope</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"mcp:tools.invoke"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> result[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"valid"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"status"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: result[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"status"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"WWW-Authenticate"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: result[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"www_authenticate"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]}</span></span></code></pre>
+      <p>
+        <code>validate</code>
+        解码JWT，从JWKS缓存解析签名密钥（未命中时刷新一次），验证签名，然后对照允许列表检查
+        <code>iss</code>，对照此服务器的规范资源检查
+        <code>aud</code>，<code>exp</code>，和必需作用域 — 在第一个失败时返回
+        <code>WWW-Authenticate</code>
+        挑战。将其保持为资源服务器上的单个过程意味着每个入口点（每个工具调用、每个传输）都通过相同的检查；没有不先验证就到达工具的路径。
+      </p>
+      <h3 id="受众重放演练访问token权限限制">
+        <a href="#受众重放演练访问token权限限制">受众重放演练（访问token权限限制）</a>
+      </h3>
+      <p>
+        服务器A（<code>notes.example.com</code>）和服务器B（<code>tasks.example.com</code>）都注册到同一个授权服务器。服务器A被入侵。攻击者拿用户的笔记token重放到服务器B。
+      </p>
+      <p>服务器B的验证器：</p>
+      <ol>
+        <li>解码JWT，按 <code>kid</code> 获取JWKS，验证签名。</li>
+        <li>
+          对照其受保护资源元数据的 <code>authorization_servers</code> 检查 <code>iss</code>。（通过
+          — 同一IdP。）
+        </li>
+        <li>
+          检查 <code>aud == "https://tasks.example.com"</code>。（失败 — token的 <code>aud</code> 是
+          <code>https://notes.example.com</code>。）
+        </li>
+        <li>
+          返回401带
+          <code
+            >WWW-Authenticate: Bearer error="invalid_token", error_description="audience mismatch",
+            resource_metadata="https://tasks.example.com/.well-known/oauth-protected-resource"</code
+          >。
+        </li>
+      </ol>
+      <p>
+        受众声明是协议层防御此攻击的唯一防线。为性能跳过它是最常见的生产错误；验证器必须在每个请求上运行，不是仅在会话开始时。规范称此为<strong>访问token权限限制</strong>：MCP服务器<code>必须</code>拒绝未在受众中命名它的任何token。
+      </p>
+      <h3 id="混淆攻击服务器无法提供的客户端侧防御">
+        <a href="#混淆攻击服务器无法提供的客户端侧防御">混淆攻击（服务器无法提供的客户端侧防御）</a>
+      </h3>
+      <p>
+        客户端在其生命周期中与许多授权服务器对话。恶意AS可以尝试使客户端在攻击者的token端点兑换诚实AS的授权码。受众绑定在这里没有帮助
+        — 攻击发生在任何token存在之前。防御在客户端（RFC 9207）：
+      </p>
+      <ol>
+        <li>重定向前，客户端从验证的AS元数据记录预期 <code>issuer</code>。</li>
+        <li>
+          在授权响应上，客户端在将代码发送到任何地方之前将返回的
+          <code>iss</code> 参数与记录的issuer比较（简单字符串比较，无规范化）。
+        </li>
+        <li>
+          不匹配（或当AS通告 <code>authorization_response_iss_parameter_supported</code> 时
+          <code>iss</code> 缺失）→ 拒绝，甚至不显示 <code>error</code> 字段。
+        </li>
+      </ol>
+      <p>
+        仅PKCE不阻止混淆，因为客户端将其
+        <code>code_verifier</code> 交给它被引导到的任何token端点。这就是为什么规范在PKCE验证器和
+        <code>state</code> 旁边按请求记录issuer。
+      </p>
+      <h3 id="失败模式"><a href="#失败模式">失败模式</a></h3>
+      <ul>
+        <li>
+          <strong>过期JWKS。</strong> 验证器在AS轮换密钥后拒绝有效token。修复是上面的cron刷新 +
+          缓存未命中重新获取模式。永远不要在没有刷新作业的情况下缓存JWKS。
+        </li>
+        <li>
+          <strong>轮换作为回退。</strong>
+          将缓存未命中路径连接到轮换并铸造而不是重新获取是真实bug：它永远不产生缺失的
+          <code>kid</code>，并将攻击者控制的 <code>kid</code> 值变成密钥创建DoS。回退必须是幂等的
+          <code>refresh-jwks</code>。
+        </li>
+        <li>
+          <strong>缺失 <code>aud</code> 声明。</strong> 某些IdP默认省略
+          <code>aud</code>，除非token请求中存在 <code>resource</code>。验证器必须拒绝缺失
+          <code>aud</code> 的token，不是将缺失视为通配符。
+        </li>
+        <li>
+          <strong>缺失 <code>iss</code> 检查导致的混淆。</strong> 不在重定向前验证RFC 9207
+          <code>iss</code>
+          授权响应参数与记录的issuer的客户端可以被引导到在攻击者token端点兑换诚实AS的代码。这是客户端侧失败；资源服务器无法补偿。
+        </li>
+        <li>
+          <strong>作用域升级竞争。</strong>
+          同一用户的两个并发步进流程都可以成功并产生两个带不同作用域的访问token。验证器必须使用请求上呈现的token，不是查找”用户当前作用域”
+          — 那会创建TOCTOU窗口。
+        </li>
+        <li>
+          <strong>注册token盗窃。</strong> 泄露的
+          <code>registration_access_token</code>
+          让攻击者重写重定向URI。静态哈希这些；要求客户端在每次更新时呈现明文；怀疑时轮换。
+        </li>
+        <li>
+          <strong><code>iss</code> 未固定。</strong> 接受任何
+          <code>iss</code>
+          的验证器让攻击者建立自己的授权服务器，为目标受众注册客户端，并发出token。受保护资源元数据的
+          <code>authorization_servers</code> 列表是允许列表；强制它。
+        </li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code> 用标准库Python和三个角色 — <code>AuthorizationServer</code>、<code
+          >ResourceServer</code
+        >
+        和 <code>Client</code> — 走过完整生产流程。流程：
+      </p>
+      <ol>
+        <li>
+          授权服务器在 <code>/.well-known/oauth-authorization-server</code> 发布RFC 8414元数据。
+        </li>
+        <li>
+          MCP客户端调用元数据端点并检查其注册选项（CIMD的
+          <code>client_id_metadata_document_supported</code>，DCR的
+          <code>registration_endpoint</code>）和 <code>S256</code> PKCE支持。
+        </li>
+        <li>
+          演练走DCR回退路径：客户端POST到 <code>/register</code>（RFC 7591）并获得
+          <code>client_id</code>。（CIMD客户端将改为呈现自己的HTTPS
+          <code>client_id</code> URL并跳过此步骤。）
+        </li>
+        <li>
+          MCP客户端运行带 <code>resource</code> 指示器（RFC 8707）的PKCE保护授权码流程（RFC 7636）。
+        </li>
+        <li>MCP客户端用 <code>Authorization: Bearer ...</code> 在MCP服务器上调用工具。</li>
+        <li>MCP服务器运行 <code>validate</code>，从JWKS缓存解析签名密钥。</li>
+        <li>IdP轮换密钥；计划刷新将JWKS重新拉入缓存。</li>
+        <li>下一次调用在重叠窗口内对刷新密钥验证无需重启，前一个token仍然验证。</li>
+        <li>
+          对不同MCP资源的受众重放尝试获得401带 <code>audience mismatch</code> 和
+          <code>resource_metadata</code> 指针。
+        </li>
+      </ol>
+      <p>
+        此处的JWT使用HS256带共享密钥（所以本课仅用标准库运行）。生产使用带上述JWKS模式的RS256或EdDSA；验证逻辑否则相同。因为IdP和资源服务器在一个进程中，<code
+          >refresh_jwks</code
+        >
+        直接读取授权服务器的密钥列表；在线路上它是到 <code>jwks_uri</code> 的HTTP <code>GET</code>。
+      </p>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        本课产生
+        <code>outputs/skill-mcp-auth.md</code
+        >。给定MCP服务器配置和IdP能力集，该技能发出要搭建的认证表面 —
+        受保护资源元数据、要使用的注册路径（CIMD、预注册或DCR回退）、JWKS刷新计划、作用域映射，以及IdP不支持完整RFC配置时应用的拒绝规则。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            运行 <code>code/main.py</code>。追踪流程。注意IdP如何在第6步轮换密钥，计划
+            <code>refresh_jwks</code>
+            重新拉取已发布集合，旧token（重叠窗口）和新鲜token都无需重启即可验证。
+          </p>
+        </li>
+        <li>
+          <p>
+            在受保护资源元数据的
+            <code>authorization_servers</code>
+            列表中添加新IdP。发出由新IdP签名的token并确认验证器接受它。发出由未列出IdP签名的token并确认验证器以
+            <code
+              >WWW-Authenticate: Bearer error="invalid_token", error_description="iss not
+              allowed"</code
+            >
+            拒绝。
+          </p>
+        </li>
+        <li>
+          <p>
+            在
+            <code>register_client</code>
+            中添加速率限制检查，在注册器接受请求之前运行。使用按源IP的令牌桶，保存在以IP为键的小字典中。
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读RFC 7591并识别本课
+            <code>/register</code> 处理程序未验证的两个字段。添加验证。（提示：<code
+              >software_statement</code
+            >
+            和 <code>redirect_uris</code> URI方案。）
+          </p>
+        </li>
+        <li>
+          <p>
+            添加Client ID Metadata Document路径。提供 <code>client_id</code> 等于其自身URL的
+            <code>client.json</code>，并让授权服务器获取并验证它（如果 <code>client_id</code> ≠
+            URL则拒绝）。确认CIMD客户端无需 <code>register_client</code> 调用即可注册。
+          </p>
+        </li>
+        <li>
+          <p>
+            证明DoS修复。向验证器发送带随机 <code>kid</code> 的token并确认
+            <code>refresh_jwks</code>
+            最多运行一次且授权服务器的密钥计数不增长。然后故意将回退重新连接到轮换并铸造并观察每个假token的密钥计数攀升
+            — 之后恢复重新获取。
+          </p>
+        </li>
+        <li>
+          <p>
+            实现混淆部分的客户端侧RFC 9207
+            <code>iss</code> 检查：在授权请求前记录预期issuer，然后拒绝
+            <code>iss</code> 不匹配的授权响应。
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们怎么说</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>ASM</td>
+            <td>”OAuth元数据文档”</td>
+            <td>RFC 8414 <code>/.well-known/oauth-authorization-server</code> JSON</td>
+          </tr>
+          <tr>
+            <td>CIMD</td>
+            <td>”客户端元数据URL”</td>
+            <td>
+              Client ID Metadata Document — 用作 <code>client_id</code> 的HTTPS
+              URL；AS拉取JSON。2025-11-25起推荐默认
+            </td>
+          </tr>
+          <tr>
+            <td>DCR</td>
+            <td>”自助客户端注册”</td>
+            <td>
+              RFC 7591 <code>POST /register</code> 流程；2025-11-25降级为 <code>MAY</code> 回退
+            </td>
+          </tr>
+          <tr>
+            <td>JWKS</td>
+            <td>”JWT验证的公钥”</td>
+            <td>JSON Web Key Set，从 <code>jwks_uri</code> 获取，按 <code>kid</code> 索引</td>
+          </tr>
+          <tr>
+            <td>Rotate vs refresh</td>
+            <td>”更新密钥”</td>
+            <td>
+              <em>轮换</em> = AS铸造/退役签名密钥；<em>刷新</em> =
+              资源服务器重新获取已发布集合。资源服务器只刷新
+            </td>
+          </tr>
+          <tr>
+            <td>Resource indicator</td>
+            <td>”受众参数”</td>
+            <td>
+              RFC 8707 <code>resource</code>
+              <span
+                class="term-tip"
+                data-term="参数"
+                data-module="c"
+                data-def="函数定义时的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参数</abbr></span
+              >将<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >固定到一个服务器
+            </td>
+          </tr>
+          <tr>
+            <td><code>aud</code> claim</td>
+            <td>”受众”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="验证器"
+                data-module="cpp"
+                data-def="验证器"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证器</abbr></span
+              >与<span
+                class="term-tip"
+                data-term="规范"
+                data-module="html5"
+                data-def="HTML 标准文档"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">规范</abbr></span
+              >资源<span
+                class="term-tip"
+                data-term="URL"
+                data-module="javascript"
+                data-def="URL 处理对象"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">URL</abbr></span
+              >比较的<span
+                class="term-tip"
+                data-term="JWT"
+                data-module="html5"
+                data-def="JSON Web Token 认证方式"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JWT</abbr></span
+              >声明
+            </td>
+          </tr>
+          <tr>
+            <td>Audience replay</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="Token"
+                data-module="agent"
+                data-def="大语言模型处理文本的最小单位，一个 token 约对应 0.75 个英文单词或 0.5-1 个中文字符"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Token</abbr></span
+              >重放”
+            </td>
+            <td>
+              为<span
+                class="term-tip"
+                data-term="服务"
+                data-module="cpp"
+                data-def="服务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务</abbr></span
+              >器A发出的<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >呈现给<span
+                class="term-tip"
+                data-term="服务"
+                data-module="cpp"
+                data-def="服务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务</abbr></span
+              >器B；<span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >受众<span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >防御（<span
+                class="term-tip"
+                data-term="规范"
+                data-module="html5"
+                data-def="HTML 标准文档"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">规范</abbr></span
+              >：访问<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >权限<span
+                class="term-tip"
+                data-term="限制"
+                data-module="github"
+                data-def="限制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限制</abbr></span
+              >）
+            </td>
+          </tr>
+          <tr>
+            <td>Confused deputy</td>
+            <td>
+              ”代理<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >误用”
+            </td>
+            <td>
+              带<span
+                class="term-tip"
+                data-term="静态"
+                data-module="cpp"
+                data-def="静态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">静态</abbr></span
+              >客户端ID的MCP代理在无每<span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >同意下转发<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >；与受众重放不同
+            </td>
+          </tr>
+          <tr>
+            <td>Mix-up attack</td>
+            <td>
+              ”错误<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >端<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >被引导到在攻击者<span
+                class="term-tip"
+                data-term="端点"
+                data-module="cpp"
+                data-def="端点"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">端点</abbr></span
+              >兑换诚实<span
+                class="term-tip"
+                data-term="AS"
+                data-module="mysql"
+                data-def="定义别名"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">AS</abbr></span
+              >的代码；通过RFC 9207 <code>iss</code>
+              <span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >侧防御
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <code>iss</code> allow-<span
+                class="term-tip"
+                data-term="list"
+                data-module="cpp"
+                data-def="双向链表容器"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">list</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="信任"
+                data-module="html5"
+                data-def="网站可信度"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信任</abbr></span
+              >的授权<span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >”
+            </td>
+            <td>
+              受<span
+                class="term-tip"
+                data-term="保护"
+                data-module="github"
+                data-def="保护"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保护</abbr></span
+              >资<span
+                class="term-tip"
+                data-term="源"
+                data-module="cpp"
+                data-def="源"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">源</abbr></span
+              >元数据 <code>authorization_servers</code> 中<span
+                class="term-tip"
+                data-term="命名"
+                data-module="github"
+                data-def="命名"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">命名</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="集合"
+                data-module="cpp"
+                data-def="集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">集合</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>resource_metadata</code></td>
+            <td>”去哪找PRM文档”</td>
+            <td>
+              401/403上命名RFC 9728元数据<span
+                class="term-tip"
+                data-term="URL"
+                data-module="javascript"
+                data-def="URL 处理对象"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">URL</abbr></span
+              >的 <code>WWW-Authenticate</code>
+              <span
+                class="term-tip"
+                data-term="参数"
+                data-module="c"
+                data-def="函数定义时的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参数</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Public client</td>
+            <td>
+              ”原生或<span
+                class="term-tip"
+                data-term="浏览器"
+                data-module="cpp"
+                data-def="浏览实体"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">浏览器</abbr></span
+              >客户端”
+            </td>
+            <td>无 <code>client_secret</code> 的OAuth客户端；PKCE补偿</td>
+          </tr>
+          <tr>
+            <td><code>WWW-Authenticate</code></td>
+            <td>
+              ”401/403响应<span
+                class="term-tip"
+                data-term="头"
+                data-module="github"
+                data-def="头"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">头</abbr></span
+              >”
+            </td>
+            <td>
+              携带驱动<span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >恢复的 <code>Bearer error=...</code>
+              <span
+                class="term-tip"
+                data-term="指令"
+                data-module="github"
+                data-def="指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指令</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization"
+            >MCP — Authorization spec (2025-11-25)</a
+          >
+          — 本课<span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >的MCP认证<span
+            class="term-tip"
+            data-term="配置"
+            data-module="cpp"
+            data-def="配置参数"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">配置</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://blog.modelcontextprotocol.io/posts/2025-11-25-first-mcp-anniversary/"
+            >MCP blog — One Year of MCP: November 2025 Spec Release</a
+          >
+          — 2025-11-25变更（CIMD、XAA、DCR降级）
+        </li>
+        <li>
+          <a href="https://aaronparecki.com/2025/11/25/1/mcp-authorization-spec-update"
+            >Aaron Parecki — Client Registration in the November 2025 MCP Authorization Spec</a
+          >
+          — CIMD优于DCR的<span
+            class="term-tip"
+            data-term="理由"
+            data-module="github"
+            data-def="理由"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">理由</abbr></span
+          >
+        </li>
+        <li>
+          <a
+            href="https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00"
+            >OAuth Client ID Metadata Document (draft-ietf-oauth-client-id-metadata-document-00)</a
+          >
+          — CIMD
+        </li>
+        <li>
+          <a href="https://datatracker.ietf.org/doc/html/rfc8414"
+            >RFC 8414 — OAuth 2.0 Authorization Server Metadata</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="发现"
+            data-module="github"
+            data-def="发现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发现</abbr></span
+          >契约
+        </li>
+        <li>
+          <a href="https://datatracker.ietf.org/doc/html/rfc7591"
+            >RFC 7591 — OAuth 2.0 Dynamic Client Registration Protocol</a
+          >
+          — DCR（<span
+            class="term-tip"
+            data-term="回退"
+            data-module="vue3"
+            data-def="备选方案"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">回退</abbr></span
+          >路径）
+        </li>
+        <li>
+          <a href="https://datatracker.ietf.org/doc/html/rfc7636"
+            >RFC 7636 — Proof Key for Code Exchange (PKCE)</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="公共"
+            data-module="vue3"
+            data-def="公开可访问"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">公共</abbr></span
+          >客户端占有<span
+            class="term-tip"
+            data-term="证明"
+            data-module="github"
+            data-def="证明"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">证明</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://datatracker.ietf.org/doc/html/rfc8707"
+            >RFC 8707 — Resource Indicators for OAuth 2.0</a
+          >
+          — 受众<span
+            class="term-tip"
+            data-term="固定"
+            data-module="cpp"
+            data-def="固定的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">固定</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://datatracker.ietf.org/doc/html/rfc9728"
+            >RFC 9728 — OAuth 2.0 Protected Resource Metadata</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="资源"
+            data-module="github"
+            data-def="资源"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">资源</abbr></span
+          >服务器<span
+            class="term-tip"
+            data-term="发现"
+            data-module="github"
+            data-def="发现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发现</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://datatracker.ietf.org/doc/html/rfc9207"
+            >RFC 9207 — OAuth 2.0 Authorization Server Issuer Identification</a
+          >
+          — 防御混淆攻击的 <code>iss</code>
+          <span
+            class="term-tip"
+            data-term="参数"
+            data-module="c"
+            data-def="函数定义时的变量"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参数</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1">OAuth 2.1 draft</a>
+          —
+          <span
+            class="term-tip"
+            data-term="合并"
+            data-module="github"
+            data-def="整合不同分支的更改"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">合并</abbr></span
+          >的OAuth基板
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

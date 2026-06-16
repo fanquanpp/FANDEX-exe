@@ -1,0 +1,950 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>死锁检测与处理</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">死锁检测与处理</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            4 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          PostgreSQL死锁检测与处理：检测算法、日志分析、超时配置与预防策略
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        死锁是数据库并发控制中常见的问题，当两个或多个事务互相等待对方持有的锁时，就会形成循环等待，导致所有涉及的事务都无法继续执行。PostgreSQL
+        内置了基于等图（Wait-For
+        Graph）的死锁检测机制，能够自动发现并中断死锁。理解死锁的成因、检测原理和处理策略，对于保障数据库系统的稳定运行至关重要。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <p>
+        <strong>死锁（Deadlock）</strong>：两个或多个事务形成循环等待的情况。事务 A 等待事务 B
+        持有的锁，事务 B 同时等待事务 A 持有的锁，双方都无法继续。
+      </p>
+      <p>
+        <strong>等图（Wait-For Graph）</strong
+        >：一种有向图，节点表示事务，边表示等待关系。如果图中存在环，则说明发生了死锁。
+      </p>
+      <p>
+        <strong>deadlock_timeout</strong>：死锁检测间隔参数，默认 1 秒。PostgreSQL
+        不会在每次锁等待时都检查死锁，而是等待该时间后才触发检测，因为死锁相对罕见，频繁检测会浪费资源。
+      </p>
+      <p>
+        <strong>lock_timeout</strong
+        >：锁等待超时参数，设置事务等待锁的最长时间。超过该时间后自动中止等待，与死锁检测无关。
+      </p>
+      <p>
+        <strong>牺牲者（Victim）</strong>：<span
+          class="term-tip"
+          data-term="死锁"
+          data-module="c"
+          data-def="多个进程相互等待对方释放资源"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">死锁</abbr></span
+        >被<span
+          class="term-tip"
+          data-term="检测"
+          data-module="github"
+          data-def="检测"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">检测</abbr></span
+        >到后，PostgreSQL 会<span
+          class="term-tip"
+          data-term="选择"
+          data-module="cpp"
+          data-def="选择"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">选择</abbr></span
+        >其中一个<span
+          class="term-tip"
+          data-term="事务"
+          data-module="cpp"
+          data-def="事务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">事务</abbr></span
+        >作为牺牲者并中止它，从而打破<span
+          class="term-tip"
+          data-term="循环"
+          data-module="c"
+          data-def="重复执行的代码"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">循环</abbr></span
+        >等待。通常<span
+          class="term-tip"
+          data-term="选择"
+          data-module="cpp"
+          data-def="选择"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">选择</abbr></span
+        >修改数据量最少的事务。
+      </p>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <h3 id="死锁检测配置"><a href="#死锁检测配置">死锁检测配置</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看当前死锁检测间隔</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">SHOW deadlock_timeout;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 设置死锁检测间隔为 1 秒（默认值）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deadlock_timeout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '1s'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 在生产环境中可以适当增大，减少检测开销</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 但不要设置过大，否则死锁发现会延迟</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deadlock_timeout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2s'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="锁等待超时"><a href="#锁等待超时">锁等待超时</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 设置锁等待超时为 5 秒</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 超过 5 秒仍未获取锁则自动中止</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> lock_timeout</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '5s'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 默认值为 0，表示无限等待</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> lock_timeout</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 在应用层设置，避免长时间阻塞</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LOCAL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> lock_timeout</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '10s'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="查看当前锁等待"><a href="#查看当前锁等待">查看当前锁等待</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看当前正在等待锁的会话</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> blocked_pid,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">query</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> blocked_query,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    blocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> blocking_pid,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    blocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">query</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> blocking_query,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">wait_event_type</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">wait_event</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_stat_activity blocked</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_locks blocked_locks</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_locks blocking_locks</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">locktype</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">locktype</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">database</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">database</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">relation</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">relation</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">page</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">page</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">tuple</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">tuple</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">virtualxid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">virtualxid</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">transactionid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">transactionid</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">classid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">classid</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">objid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">objid</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">objsubid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">objsubid</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> !=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_stat_activity blocking</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocking</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked_locks</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">granted</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="死锁日志分析"><a href="#死锁日志分析">死锁日志分析</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 当死锁发生时，PostgreSQL 会在日志中记录详细信息</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 典型的死锁日志如下：</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ERROR:  deadlock detected</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- DETAIL:  Process 12345 waits for AccessExclusiveLock on relation 16384;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">--          blocked by process 12346.</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">--          Process 12346 waits for ShareLock on transaction 98765;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">--          blocked by process 12345.</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- HINT:   See server log for query details.</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- CONTEXT: while updating tuple (0,1) in relation "accounts"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 日志解读：</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 1. 进程 12345 等待关系 16384 上的 AccessExclusiveLock</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 2. 该锁被进程 12346 持有</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 3. 进程 12346 等待事务 98765 上的 ShareLock</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 4. 该锁被进程 12345 持有</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 5. 形成循环等待 -> 死锁</span></span></code></pre>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 启用更详细的锁日志</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 记录所有锁等待事件</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> log_lock_waits </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> on</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 设置锁等待日志阈值（默认 1 秒）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 等待超过该时间的锁会记录到日志</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deadlock_timeout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '1s'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 在 postgresql.conf 中配置</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- log_lock_waits = on</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- deadlock_timeout = '1s'</span></span></code></pre>
+      <h3 id="模拟死锁场景"><a href="#模拟死锁场景">模拟死锁场景</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 会话1：更新账户A的余额</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 此时持有 id=1 的行锁</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 会话2：更新账户B的余额</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 50</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 此时持有 id=2 的行锁</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 会话1：尝试更新账户B（等待会话2释放锁）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 阻塞...</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 会话2：尝试更新账户A（等待会话1释放锁）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 50</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 死锁形成！PostgreSQL 检测到后自动中止其中一个事务</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 结果：其中一个会话收到错误</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ERROR: deadlock detected</span></span></code></pre>
+      <h3 id="使用-advisory-锁协调"><a href="#使用-advisory-锁协调">使用 Advisory 锁协调</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Advisory 锁是应用级别的锁，不与表数据关联</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 可用于协调多个会话的执行顺序，避免死锁</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 获取 Advisory 锁（会阻塞直到获取）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_advisory_lock(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">12345</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 尝试获取 Advisory 锁（非阻塞，获取失败返回 false）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_try_advisory_lock(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">12345</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 释放 Advisory 锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_advisory_unlock(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">12345</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 使用 Advisory 锁确保按固定顺序访问资源</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 先获取账户ID较小的锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_advisory_lock(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">least</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_advisory_lock(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">greatest</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 然后执行更新操作</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_advisory_unlock_all();</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="转账场景的死锁预防"><a href="#转账场景的死锁预防">转账场景的死锁预防</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 问题：两个用户同时互相转账</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 用户A给用户B转账，用户B同时给用户A转账</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 可能形成死锁</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 解决方案1：按固定顺序获取锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE OR REPLACE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FUNCTION</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> transfer_funds</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    from_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    to_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    amount </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DECIMAL</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">RETURNS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> VOID </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $$</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DECLARE</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    first_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    second_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 按 ID 排序，确保总是先锁较小的 ID</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    first_id :</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> least</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(from_id, to_id);</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    second_id :</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> greatest</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(from_id, to_id);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 按顺序锁定行</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    PERFORM </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> first_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FOR</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    PERFORM </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> second_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FOR</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    -- 执行转账</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> amount </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> from_id;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> amount </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> to_id;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">END</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">$$ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">LANGUAGE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> plpgsql;</span></span></code></pre>
+      <h3 id="批量更新避免死锁"><a href="#批量更新避免死锁">批量更新避免死锁</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 问题：批量更新时可能与其他事务形成死锁</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 解决方案：使用 ORDER BY 确保更新顺序一致</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 不推荐：无序更新可能导致死锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> status</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'processed'</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> status</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'pending'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 推荐：按主键顺序更新</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> status</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'processed'</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">IN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    WHERE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> status</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'pending'</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    FOR</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SKIP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> LOCKED  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 跳过被锁定的行</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- SKIP LOCKED：跳过已被其他事务锁定的行</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 避免等待，减少死锁风险</span></span></code></pre>
+      <h3 id="读写分离场景的锁冲突"><a href="#读写分离场景的锁冲突">读写分离场景的锁冲突</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 问题：长事务持有锁导致写入阻塞</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 解决方案：使用较低隔离级别或优化查询</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案1：使用 READ COMMITTED 隔离级别（默认）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 每条语句获取新的快照，减少锁持有时间</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> TRANSACTION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ISOLATION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEVEL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> READ</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> COMMITTED</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案2：将长查询拆分为多个短事务</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 而不是一个持续很久的大事务</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案3：使用 NOWAIT 避免阻塞</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 无法获取锁时立即报错而非等待</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FOR</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOWAIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案4：使用 SKIP LOCKED 处理队列</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 跳过被锁定的行，处理可用的行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> job_queue</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> status</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'pending'</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> created_at</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">LIMIT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 10</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FOR</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SKIP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> LOCKED;</span></span></code></pre>
+      <h2 id="注意事项"><a href="#注意事项">注意事项</a></h2>
+      <ul>
+        <li>
+          <strong
+            >deadlock_timeout
+            <span
+              class="term-tip"
+              data-term="设置"
+              data-module="cpp"
+              data-def="设置"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">设置</abbr></span
+            ></strong
+          >：默认 1 秒适合大<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >数场景。<span
+            class="term-tip"
+            data-term="设置"
+            data-module="cpp"
+            data-def="设置"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设置</abbr></span
+          >过小会<span
+            class="term-tip"
+            data-term="增加"
+            data-module="github"
+            data-def="增加"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">增加</abbr></span
+          >
+          CPU 开销（频繁构建等<span
+            class="term-tip"
+            data-term="图"
+            data-module="algorithm"
+            data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">图</abbr></span
+          >），<span
+            class="term-tip"
+            data-term="设置"
+            data-module="cpp"
+            data-def="设置"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设置</abbr></span
+          >过大会<span
+            class="term-tip"
+            data-term="延长"
+            data-module="github"
+            data-def="延长"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">延长</abbr></span
+          >死<span
+            class="term-tip"
+            data-term="锁"
+            data-module="python"
+            data-def="线程同步原语，同一时刻只允许一个线程持有"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">锁</abbr></span
+          >持续<span
+            class="term-tip"
+            data-term="时间"
+            data-module="cpp"
+            data-def="时间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">时间</abbr></span
+          >。<span
+            class="term-tip"
+            data-term="生产环境"
+            data-module="vue3"
+            data-def="线上环境"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产环境</abbr></span
+          >建议保持默认或设为 2-5 秒。
+        </li>
+        <li>
+          <strong>lock_timeout 与 deadlock_timeout 的区别</strong>：lock_timeout 是<span
+            class="term-tip"
+            data-term="锁"
+            data-module="python"
+            data-def="线程同步原语，同一时刻只允许一个线程持有"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">锁</abbr></span
+          >等待<span
+            class="term-tip"
+            data-term="超时"
+            data-module="cpp"
+            data-def="超时"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">超时</abbr></span
+          >，无论是否<span
+            class="term-tip"
+            data-term="死锁"
+            data-module="c"
+            data-def="多个进程相互等待对方释放资源"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">死锁</abbr></span
+          >都会<span
+            class="term-tip"
+            data-term="触发"
+            data-module="javascript"
+            data-def="导致事件发生"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">触发</abbr></span
+          >；deadlock_timeout 是<span
+            class="term-tip"
+            data-term="死锁检测"
+            data-module="mysql"
+            data-def="自动检测死锁"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">死锁检测</abbr></span
+          >间隔，只在<span
+            class="term-tip"
+            data-term="检测"
+            data-module="github"
+            data-def="检测"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检测</abbr></span
+          >到<span
+            class="term-tip"
+            data-term="循环"
+            data-module="c"
+            data-def="重复执行的代码"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">循环</abbr></span
+          >等待时才<span
+            class="term-tip"
+            data-term="触发"
+            data-module="javascript"
+            data-def="导致事件发生"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">触发</abbr></span
+          >。两者独立<span
+            class="term-tip"
+            data-term="工作"
+            data-module="cpp"
+            data-def="工作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工作</abbr></span
+          >。
+        </li>
+        <li>
+          <strong
+            >自动<span
+              class="term-tip"
+              data-term="恢复"
+              data-module="github"
+              data-def="恢复"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">恢复</abbr></span
+            ></strong
+          >：PostgreSQL
+          <span
+            class="term-tip"
+            data-term="检测"
+            data-module="github"
+            data-def="检测"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检测</abbr></span
+          >到<span
+            class="term-tip"
+            data-term="死锁"
+            data-module="c"
+            data-def="多个进程相互等待对方释放资源"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">死锁</abbr></span
+          >后会自动中止其中一个<span
+            class="term-tip"
+            data-term="事务"
+            data-module="cpp"
+            data-def="事务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">事务</abbr></span
+          >（牺牲者），<span
+            class="term-tip"
+            data-term="应用"
+            data-module="github"
+            data-def="GitHub 应用程序"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">应用</abbr></span
+          >需要<span
+            class="term-tip"
+            data-term="捕获"
+            data-module="cpp"
+            data-def="lambda 捕获的变量"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">捕获</abbr></span
+          >错误并<span
+            class="term-tip"
+            data-term="重试"
+            data-module="vue3"
+            data-def="失败后重试"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">重试</abbr></span
+          >。
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="重试"
+              data-module="vue3"
+              data-def="失败后重试"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">重试</abbr></span
+            >策略</strong
+          >：被中止的<span
+            class="term-tip"
+            data-term="事务"
+            data-module="cpp"
+            data-def="事务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">事务</abbr></span
+          >应自动<span
+            class="term-tip"
+            data-term="重试"
+            data-module="vue3"
+            data-def="失败后重试"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">重试</abbr></span
+          >，通常<span
+            class="term-tip"
+            data-term="重试"
+            data-module="vue3"
+            data-def="失败后重试"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">重试</abbr></span
+          >
+          3-5 次即可。<span
+            class="term-tip"
+            data-term="重试"
+            data-module="vue3"
+            data-def="失败后重试"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">重试</abbr></span
+          >时应使用新的<span
+            class="term-tip"
+            data-term="连接"
+            data-module="cpp"
+            data-def="连接关系"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">连接</abbr></span
+          >或<span
+            class="term-tip"
+            data-term="重置"
+            data-module="vue3"
+            data-def="恢复初始状态"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">重置</abbr></span
+          >事务<span
+            class="term-tip"
+            data-term="状态"
+            data-module="cpp"
+            data-def="状态"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">状态</abbr></span
+          >。
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="监控"
+              data-module="devops"
+              data-def="持续采集和展示系统指标（CPU、内存、延迟等）的过程，用于了解系统运行状态"
+              data-slug="devops/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">监控</abbr></span
+            >告警</strong
+          >：频繁<span
+            class="term-tip"
+            data-term="发生"
+            data-module="github"
+            data-def="发生"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发生</abbr></span
+          >死<span
+            class="term-tip"
+            data-term="锁"
+            data-module="python"
+            data-def="线程同步原语，同一时刻只允许一个线程持有"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">锁</abbr></span
+          >说明<span
+            class="term-tip"
+            data-term="应用"
+            data-module="github"
+            data-def="GitHub 应用程序"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">应用</abbr></span
+          >逻辑<span
+            class="term-tip"
+            data-term="存在"
+            data-module="github"
+            data-def="存在"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">存在</abbr></span
+          >问题，应<span
+            class="term-tip"
+            data-term="设置"
+            data-module="cpp"
+            data-def="设置"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设置</abbr></span
+          >监控<span
+            class="term-tip"
+            data-term="告警"
+            data-module="devops"
+            data-def="当监控指标超过预设阈值时自动发送通知的机制，确保运维团队及时响应异常"
+            data-slug="devops/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">告警</abbr></span
+          >，当<span
+            class="term-tip"
+            data-term="死锁"
+            data-module="c"
+            data-def="多个进程相互等待对方释放资源"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">死锁</abbr></span
+          >频<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >超过阈<span
+            class="term-tip"
+            data-term="值"
+            data-module="cpp"
+            data-def="值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">值</abbr></span
+          >时及时排查。
+        </li>
+      </ul>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="自定义死锁重试逻辑"><a href="#自定义死锁重试逻辑">自定义死锁重试逻辑</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 在 PL/pgSQL 中实现自动重试</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE OR REPLACE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FUNCTION</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> safe_transfer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    from_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    to_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    amount </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DECIMAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    max_retries </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DEFAULT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 3</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">RETURNS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BOOLEAN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $$</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DECLARE</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    retry_count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> :</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    LOOP</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        BEGIN</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            PERFORM transfer_funds(from_id, to_id, amount);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            RETURN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> true;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        EXCEPTION </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHEN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deadlock_detected </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">THEN</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            retry_count :</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> retry_count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            IF</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> retry_count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> max_retries </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">THEN</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                RAISE NOTICE </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'Transfer failed after % retries'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, max_retries;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                RETURN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> false;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            END</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IF</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            -- 短暂延迟后重试</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            PERFORM pg_sleep(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> retry_count);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        END</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    END</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LOOP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">END</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">$$ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">LANGUAGE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> plpgsql;</span></span></code></pre>
+      <h3 id="死锁监控视图"><a href="#死锁监控视图">死锁监控视图</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 创建死锁监控视图</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> VIEW</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> v_deadlock_monitor</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AS</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    datname </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> database</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    deadlocks </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deadlock_count,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    xact_commit,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    xact_rollback,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    ROUND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        deadlocks::</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">numeric</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> /</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> NULLIF</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(xact_commit </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> xact_rollback, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        4</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deadlock_rate</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_stat_database</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deadlocks </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deadlocks </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查询死锁率</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> v_deadlock_monitor;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 重置死锁统计计数器</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_stat_reset();</span></span></code></pre>
+      <h3 id="锁等待超时与语句超时配合">
+        <a href="#锁等待超时与语句超时配合">锁等待超时与语句超时配合</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 综合超时策略</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 语句执行超时：单条 SQL 最长执行时间</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LOCAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> statement_timeout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '30s'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 锁等待超时：等待锁的最长时间</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LOCAL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> lock_timeout</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '5s'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 死锁检测间隔</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LOCAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deadlock_timeout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '1s'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 执行业务操作</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 三层超时保护：</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 1. lock_timeout (5s)：快速发现锁冲突</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 2. deadlock_timeout (1s)：快速发现死锁</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 3. statement_timeout (30s)：防止语句执行过久</span></span></code></pre>
+    </article>
+  </body>
+</html>

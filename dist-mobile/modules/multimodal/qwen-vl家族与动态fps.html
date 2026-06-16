@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Qwen-VL家族与动态FPS视频</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Qwen-VL家族与动态FPS视频</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            14 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">Qwen-VL</span><span class="doc-tag">M-RoPE</span
+          ><span class="doc-tag">动态FPS</span><span class="doc-tag">视频理解</span
+          ><span class="doc-tag">Agent输出</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解Qwen-VL家族的M-RoPE、动态FPS采样和结构化Agent输出</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="qwen-vl家族与动态fps视频">
+        <a href="#qwen-vl家族与动态fps视频">Qwen-VL家族与动态FPS视频</a>
+      </h1>
+      <blockquote>
+        <p>
+          Qwen-VL家族——Qwen-VL (2023)、Qwen2-VL (2024)、Qwen2.5-VL (2025)、Qwen3-VL
+          (2025)——是2026年最有影响力的开源视觉语言模型谱系。每一代做了一个决定性的架构赌注，开源生态系统在十二个月内复制：通过M-RoPE的原生动态分辨率、带绝对时间对齐的动态FPS采样、ViT中的窗口注意力，以及结构化agent输出格式。到Qwen3-VL，方案已稳定：2D-RoPE-ViT编码器带原生纵横比输入，MLP投影器到大型Qwen3语言基座，训练阶段强调OCR、定位和agent行为为一等目标。本课程按时间顺序阅读家族，让你理解为什么每个旋钮在它所在的位置。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib, M-RoPE编码器 +
+        动态FPS采样器) <strong>前置知识:</strong> Phase 12 · 06 (patch-n’-pack)
+        <strong>时间:</strong> ~120分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>计算M-RoPE的三轴旋转（时间、高度、宽度）并解释为什么三个都需要。</li>
+        <li>为视频选择动态FPS采样策略，并推理每秒token vs 事件检测准确率。</li>
+        <li>按顺序说出四个Qwen-VL代际升级以及每个启用了什么。</li>
+        <li>连接Qwen2.5-VL风格的JSON agent输出格式并从VLM响应中解析结构化工具调用。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        Qwen-VL于2023年8月发布，作为对LLaVA-1.5和BLIP-2的直接回应。Qwen团队瞄准的差距有三方面：分辨率、视频和结构化输出。
+      </p>
+      <p>
+        分辨率：LLaVA-1.5在336x336运行。适合照片，对中文发票或密集电子表格截图无用。Qwen-VL的第一个创新是448x448和定位边界框输出，让模型能指向事物。
+      </p>
+      <p>
+        视频：Video-LLaMA堆叠每帧编码器并喂给LLM。对短片段有效，对多分钟视频无效，其中时间轴是信号。Qwen团队想要一个理解时间的单一编码器。
+      </p>
+      <p>
+        结构化输出：LLaVA发出自由格式文本。Agent需要JSON。Qwen-VL在显式JSON输出格式上训练，包括边界框坐标作为文本。
+      </p>
+      <p>每个Qwen-VL代际扩展这三个轴之一。</p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="qwen-vl-2023年8月"><a href="#qwen-vl-2023年8月">Qwen-VL (2023年8月)</a></h3>
+      <p>
+        第一代：OpenCLIP
+        ViT-bigG/14作为编码器（2.5B参数），LLama兼容Q-Former（256查询1步），Qwen-7B基座。贡献：
+      </p>
+      <ul>
+        <li>448x448分辨率（当时开源VLM的SOTA）。</li>
+        <li>
+          定位：在带显式坐标token输出的图像-文本对上训练。“猫在<box>(112, 204), (280, 344)</box>”。
+        </li>
+        <li>从一开始的中英双语训练。</li>
+      </ul>
+      <p>当时基准：在英语上与GPT-4V竞争，在中文上主导。定位监督是真正的头条。</p>
+      <h3 id="qwen2-vl-2024年9月--m-rope和原生分辨率">
+        <a href="#qwen2-vl-2024年9月--m-rope和原生分辨率"
+          >Qwen2-VL (2024年9月) — M-RoPE和原生分辨率</a
+        >
+      </h3>
+      <p>Qwen2-VL用原生动态分辨率ViT编码器替换了固定分辨率 + Q-Former堆栈。关键变化：</p>
+      <ul>
+        <li>
+          原生动态分辨率。ViT接受任何能被28整除的HxW（patch
+          14带2x空间合并）。1120x672的图像（40x24合并patch）产生960个视觉token。无调整大小，无平铺，无缩略图。
+        </li>
+        <li>
+          M-RoPE（多模态RoPE）。每个token携带3D位置(t, h, w)而非1D。图像t=0，视频t =
+          frame_index。RoPE按轴频率旋转查询/键向量。无位置嵌入表。
+        </li>
+        <li>MLP投影器。放弃Q-Former；在合并patch token上使用2层MLP。</li>
+        <li>动态FPS视频。视频默认以1-2 FPS采样，但模型接受任意帧数。</li>
+      </ul>
+      <p>
+        结果：Qwen2-VL-7B在多个多模态基准上匹配GPT-4o，在DocVQA上击败它(94.5 vs
+        88.4)。架构变化是决定性举措。
+      </p>
+      <h3 id="qwen25-vl-2025年2月--动态fps--绝对时间">
+        <a href="#qwen25-vl-2025年2月--动态fps--绝对时间"
+          >Qwen2.5-VL (2025年2月) — 动态FPS + 绝对时间</a
+        >
+      </h3>
+      <p>Qwen2.5-VL的重大转变是视频。动态FPS不仅是”需要时采样更多帧”。论文形式化了：</p>
+      <ul>
+        <li>
+          绝对时间token。不是位置索引（帧0, 1, 2…），使用实际时间戳。“在0:04，猫跳了。“模型看到<code
+            >&#x3C;time>0.04&#x3C;/time></code
+          >
+          token与帧token交错。
+        </li>
+        <li>动态FPS。慢镜头以1 FPS采样，动作以4+ FPS。用户或训练者选择；M-RoPE适应。</li>
+        <li>ViT中的窗口注意力。空间注意力在块内局部窗口化以提高吞吐量；每隔几层添加全局注意力。</li>
+        <li>
+          显式JSON输出格式。在工具调用数据上训练：<code
+            >{"tool": "click", "coords": [380, 220]}</code
+          >。开箱即用的agent就绪。
+        </li>
+        <li>MRoPE-v2缩放。位置随最大输入大小缩放，使10分钟视频不会用完频率范围。</li>
+      </ul>
+      <p>
+        基准：Qwen2.5-VL-72B在大多数视频基准上击败GPT-4o，在文档上匹配Gemini
+        2.0，并设定GUI定位的开源SOTA（ScreenSpot：84%准确率 vs GPT-4o的38%）。
+      </p>
+      <h3 id="qwen3-vl-2025年11月"><a href="#qwen3-vl-2025年11月">Qwen3-VL (2025年11月)</a></h3>
+      <p>
+        Qwen3-VL是增量升级，巩固而非重新发明：更大LLM骨干(Qwen3-72B)，扩展训练数据，改进OCR，通过Qwen3”思考模式”更强推理。ViT和M-RoPE保持。论文关注数据和训练改进而非架构。
+      </p>
+      <p>谱系要点：到2025年Qwen-VL架构已稳定。后续代际缩放计算和数据，而非原语。</p>
+      <h3 id="m-rope数学"><a href="#m-rope数学">M-RoPE数学</a></h3>
+      <p>经典RoPE使用配对坐标按位置<code>m</code>旋转维度<code>d</code>的查询<code>q</code>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>q_rot[2i]   = q[2i]   * cos(m * theta_i) - q[2i+1] * sin(m * theta_i)</span></span>
+<span class="line"><span>q_rot[2i+1] = q[2i]   * sin(m * theta_i) + q[2i+1] * cos(m * theta_i)</span></span>
+<span class="line"><span>theta_i     = 10000^(-2i/d)</span></span></code></pre>
+      <p>
+        M-RoPE将隐藏维度分为三个频段。假设<code>d = 96</code
+        >。分配32维给时间，32给高度，32给宽度。每个频段按自己的轴位置旋转。(t=5, h=10,
+        w=20)处的patch获得旋转<code>R_t(5)</code>、<code>R_h(10)</code>、<code>R_w(20)</code>应用于其三个频段。
+      </p>
+      <p>
+        文本token使用<code>t = text_index, h = 0, w = 0</code
+        >（或归一化选择），保持兼容性。视频帧使用<code>t = frame_time, h = row, w = col</code
+        >。单图像使用<code>t = 0</code>。
+      </p>
+      <p>好处：一个位置编码处理文本、图像和视频，无需分支代码或不同位置表。</p>
+      <h3 id="动态fps采样逻辑"><a href="#动态fps采样逻辑">动态FPS采样逻辑</a></h3>
+      <p>给定时长<code>T</code>秒的视频和目标token预算<code>B</code>：</p>
+      <ol>
+        <li>计算你能承受的最大FPS：<code>fps_max = B / (T * tokens_per_frame)</code>。</li>
+        <li>从<code>{1, 2, 4, 8}</code>中选择满足<code>fps &#x3C;= fps_max</code>的目标FPS。</li>
+        <li>如果运动强度高（光流启发式或显式用户请求），选择更高FPS。如果运动强度低，选择更低。</li>
+        <li>以所选FPS均匀采样；在帧之间插入<code>&#x3C;time>t&#x3C;/time></code> token。</li>
+      </ol>
+      <p>
+        Qwen2.5-VL隐式训练此逻辑；推理时用户通过<code>fps</code>参数控制。60秒动作序列以4 FPS每帧81
+        token = 19440 token，在32k上下文中可管理。
+      </p>
+      <h3 id="结构化agent输出"><a href="#结构化agent输出">结构化Agent输出</a></h3>
+      <p>Qwen2.5-VL的agent训练明确针对结构化工具调用：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>{</span></span>
+<span class="line"><span>  "tool": "mouse_click",</span></span>
+<span class="line"><span>  "coords": [1024, 512],</span></span>
+<span class="line"><span>  "button": "left",</span></span>
+<span class="line"><span>  "modifier": null</span></span>
+<span class="line"><span>}</span></span></code></pre>
+      <p>
+        解析是确定性的：对模型输出进行JSON.parse。与需要正则和歧义处理的自由格式”click at (1024,
+        512)“相比。这种转变是Qwen2.5-VL的ScreenSpot分数从Qwen2-VL的55%跳到84%的原因。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code>实现了：</p>
+      <ul>
+        <li>混合文本、图像patch和视频帧的打包序列的M-RoPE位置计算。</li>
+        <li>动态FPS采样器：给定(时长, 预算, 运动级别)，选择FPS并输出帧时间戳。</li>
+        <li>处理带坐标字段工具调用响应的toy Qwen2.5-VL JSON输出解析器。</li>
+      </ul>
+      <p>运行它，然后感受在5分钟视频上将固定FPS换为动态FPS的差异。</p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-qwen-vl-pipeline-designer.md</code>。给定视频任务（监控、agent、动作识别、无障碍），它输出Qwen2.5-VL配置（帧预算、FPS策略、窗口注意力标志、agent输出模式）和延迟估算。每当你为视频产品部署Qwen-VL家族模型时使用。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            计算patch在(t=3, h=5, w=7)处的M-RoPE旋转，隐藏维度48（每频段16，基础theta
+            10000）。展示每个频段前三对的旋转角度。
+          </p>
+        </li>
+        <li>
+          <p>
+            10分钟安防摄像头录像以1
+            FPS产生多少帧？在384分辨率3x池化下，总共多少token？Qwen2.5-VL的默认32k上下文能处理吗？
+          </p>
+        </li>
+        <li>
+          <p>
+            为30秒网球拉锯战 vs 30秒食谱演示 vs 30秒UI agent录制选择FPS。用动态FPS逻辑论证每个。
+          </p>
+        </li>
+        <li>
+          <p>
+            Qwen2.5-VL完全放弃了Q-Former。为什么简单MLP在2025年可<span
+              class="term-tip"
+              data-term="行"
+              data-module="vue3"
+              data-def="数据行"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行</abbr></span
+            >但在2023年不<span
+              class="term-tip"
+              data-term="行"
+              data-module="vue3"
+              data-def="数据行"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行</abbr></span
+            >？（<span
+              class="term-tip"
+              data-term="提示"
+              data-module="cpp"
+              data-def="提示"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">提示</abbr></span
+            >：数据<span
+              class="term-tip"
+              data-term="规模"
+              data-module="vue3"
+              data-def="应用的规模"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">规模</abbr></span
+            >和<span
+              class="term-tip"
+              data-term="编码"
+              data-module="cpp"
+              data-def="编写代码"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">编码</abbr></span
+            >器质量。）
+          </p>
+        </li>
+        <li>
+          <p>
+            将三个Qwen2.5-VL
+            <span
+              class="term-tip"
+              data-term="JSON"
+              data-module="html5"
+              data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+              data-slug="html5/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">JSON</abbr></span
+            >工具<span
+              class="term-tip"
+              data-term="调用"
+              data-module="github"
+              data-def="调用"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">调用</abbr></span
+            >输出<span
+              class="term-tip"
+              data-term="解析"
+              data-module="javascript"
+              data-def="将文本分解为 Token 的过程"
+              data-slug="javascript/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">解析</abbr></span
+            >为Python字典。<span
+              class="term-tip"
+              data-term="格"
+              data-module="discrete-math"
+              data-def="任意两个元素都有上确界和下确界的偏序集"
+              data-slug="discrete-math/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">格</abbr></span
+            >式<span
+              class="term-tip"
+              data-term="错误"
+              data-module="cpp"
+              data-def="错误情况"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">错误</abbr></span
+            >的<span
+              class="term-tip"
+              data-term="JSON"
+              data-module="html5"
+              data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+              data-slug="html5/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">JSON</abbr></span
+            >会<span
+              class="term-tip"
+              data-term="失败"
+              data-module="github"
+              data-def="失败"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">失败</abbr></span
+            >什么，Qwen cookbook推荐的<span
+              class="term-tip"
+              data-term="恢复"
+              data-module="github"
+              data-def="恢复"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">恢复</abbr></span
+            >策略是什么？
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>M-RoPE</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >模态RoPE”
+            </td>
+            <td>
+              隐藏<span
+                class="term-tip"
+                data-term="维度"
+                data-module="cpp"
+                data-def="维度数量"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">维度</abbr></span
+              >中带<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >度和<span
+                class="term-tip"
+                data-term="宽度"
+                data-module="c"
+                data-def="类型的位数"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">宽度</abbr></span
+              >频<span
+                class="term-tip"
+                data-term="段"
+                data-module="vue3"
+                data-def="URL 的一段"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">段</abbr></span
+              >的3D旋转<span
+                class="term-tip"
+                data-term="位置"
+                data-module="github"
+                data-def="位置"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位置</abbr></span
+              >嵌入
+            </td>
+          </tr>
+          <tr>
+            <td>动态FPS</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="智能"
+                data-module="cpp"
+                data-def="智能"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">智能</abbr></span
+              >采样”
+            </td>
+            <td>
+              基于<span
+                class="term-tip"
+                data-term="运动"
+                data-module="github"
+                data-def="运动"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">运动</abbr></span
+              >、时长和<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >预算按视频<span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >的帧采样<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              绝<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >时间<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >戳<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >”
+            </td>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="序列"
+                data-module="github"
+                data-def="序列"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">序列</abbr></span
+              >中交错的<code>&#x3C;time>t&#x3C;/time></code>，使模型看到实际秒数而非帧<span
+                class="term-tip"
+                data-term="索引"
+                data-module="c"
+                data-def="数组中元素的位置"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">索引</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              窗口<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力
+            </td>
+            <td>
+              ”局部<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力”
+            </td>
+            <td>
+              为速<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >限制在小窗口内的<span
+                class="term-tip"
+                data-term="空间"
+                data-module="cpp"
+                data-def="空间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">空间</abbr></span
+              >自<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力；周期性添加全局<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >化Agent输出
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >模式”
+            </td>
+            <td>
+              教VLM发出带坐标和<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >名的可解析<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >数据<span
+                class="term-tip"
+                data-term="监督"
+                data-module="cpp"
+                data-def="监督"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">监督</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>min_pixels / max_pixels</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="分辨率"
+                data-module="github"
+                data-def="分辨率"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分辨率</abbr></span
+              >边界”
+            </td>
+            <td>
+              Qwen2.5-VL每<span
+                class="term-tip"
+                data-term="请求"
+                data-module="vue3"
+                data-def="HTTP 请求"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">请求</abbr></span
+              >控制，<span
+                class="term-tip"
+                data-term="限制"
+                data-module="github"
+                data-def="限制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限制</abbr></span
+              >总像素数从而限制<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >数
+            </td>
+          </tr>
+          <tr>
+            <td>
+              定<span
+                class="term-tip"
+                data-term="位"
+                data-module="c"
+                data-def="二进制数字，基本存储单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位</abbr></span
+              >
+            </td>
+            <td>”指向它”</td>
+            <td>
+              将<span
+                class="term-tip"
+                data-term="边界"
+                data-module="java"
+                data-def="泛型类型参数的约束，上界 &#x60;extends&#x60;、下界 &#x60;super&#x60;"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">边界</abbr></span
+              >框坐标作为文本<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >输出；自Qwen-VL v1起使用
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li><a href="https://arxiv.org/abs/2308.12966">Bai等人 — Qwen-VL (arXiv:2308.12966)</a></li>
+        <li>
+          <a href="https://arxiv.org/abs/2409.12191">Wang等人 — Qwen2-VL (arXiv:2409.12191)</a>
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2502.13923"
+            >Qwen Team — Qwen2.5-VL Technical Report (arXiv:2502.13923)</a
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2511.21631">Qwen Team — Qwen3-VL (arXiv:2511.21631)</a>
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2504.10479">Zhu等人 — InternVL3 (arXiv:2504.10479)</a>
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

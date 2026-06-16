@@ -1,0 +1,684 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>作用域契约与任务边界</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">作用域契约与任务边界</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            8 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">作用域契约</span><span class="doc-tag">范围蔓延</span
+          ><span class="doc-tag">任务边界</span><span class="doc-tag">回滚计划</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          构建作用域契约，定义允许文件、禁止文件、验收标准和回滚计划，实现范围蔓延的自动检测和审查
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="作用域契约与任务边界"><a href="#作用域契约与任务边界">作用域契约与任务边界</a></h1>
+      <blockquote>
+        <p>
+          模型不知道工作在哪里结束。作用域契约是一个每任务文件，说明工作从哪里开始、在哪里结束，以及如果溢出如何回滚。契约将”保持在范围内”从愿望变为检查。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库）
+        <strong>前置条件：</strong> Phase 14 · 32（最小工作台），Phase 14 · 33（规则即约束）
+        <strong>时间：</strong> ~50分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>编写Agent在任务开始时读取、验证者在任务结束时读取的作用域契约。</li>
+        <li>指定允许文件、禁止文件、验收标准、回滚计划和批准边界。</li>
+        <li>实现将diff与契约比较并标记违规的范围检查器。</li>
+        <li>使范围蔓延可见、自动和可审查。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        Agent会蔓延。任务是”修复登录bug”。diff触及登录路由、邮件助手、数据库驱动、README和发布脚本。每次触及都有当时的合理理由。合在一起，它们是一个与审查时不同的变更。
+      </p>
+      <p>
+        范围蔓延是Agent工作中最缺乏监控的失败模式，因为Agent真诚地叙述每一步。修复不是更严格的提示。修复是磁盘上的契约，说明承诺了什么，以及将结果与承诺比较的检查。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="作用域契约包含什么"><a href="#作用域契约包含什么">作用域契约包含什么</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>字段</th>
+            <th>目的</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>task_id</code></td>
+            <td>链接到板上的任务</td>
+          </tr>
+          <tr>
+            <td><code>goal</code></td>
+            <td>审查者可以验证的一句话</td>
+          </tr>
+          <tr>
+            <td><code>allowed_files</code></td>
+            <td>Agent可以写入的glob</td>
+          </tr>
+          <tr>
+            <td><code>forbidden_files</code></td>
+            <td>Agent即使意外也不能触及的glob</td>
+          </tr>
+          <tr>
+            <td><code>acceptance_criteria</code></td>
+            <td>证明完成的测试命令或断言行</td>
+          </tr>
+          <tr>
+            <td><code>rollback_plan</code></td>
+            <td>操作员在需要停止时可以执行的一段话</td>
+          </tr>
+          <tr>
+            <td><code>approvals_required</code></td>
+            <td>需要明确人类签署的范围外动作</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>没有 <code>forbidden_files</code> 的契约是不完整的。负空间是契约的一半。</p>
+      <h3 id="glob不是原始路径"><a href="#glob不是原始路径">Glob，不是原始路径</a></h3>
+      <p>
+        真实仓库会移动文件。将契约固定到glob（<code>app/**/*.py</code>、<code>tests/test_signup*.py</code>），使会话间的重构不会使契约无效。
+      </p>
+      <h3 id="回滚是范围的一部分"><a href="#回滚是范围的一部分">回滚是范围的一部分</a></h3>
+      <p>列出如何回滚迫使契约作者思考什么可能出错。你无法回滚的契约是不应该被批准的契约。</p>
+      <h3 id="范围检查是diff检查"><a href="#范围检查是diff检查">范围检查是diff检查</a></h3>
+      <p>
+        Agent写入diff。检查器读取diff、允许glob、禁止glob和运行的任何验收命令列表。每个违规是一个标记的发现，验证门可以拒绝。
+      </p>
+      <h3 id="两种高度的范围功能列表和任务契约">
+        <a href="#两种高度的范围功能列表和任务契约">两种高度的范围：功能列表和任务契约</a>
+      </h3>
+      <p>
+        任务契约限定一个任务。它不限定项目。Agent可以完美地停留在登录修复的契约内，但在下一轮决定项目还需要设置页面、暗模式切换和路由器重写。
+      </p>
+      <p>
+        第二种高度需要自己的原语：Agent在会话开始时读取的
+        <code>feature_list.json</code>。它是项目待办事项作为机器可读的有序文件。Agent选择一个
+        <code>status</code> 为 <code>todo</code> 的功能，将其
+        <code>id</code> 写入活跃作用域契约，并被禁止在同一会话中启动第二个功能。
+      </p>
+      <p>
+        两条规则使列表承重而非装饰。首先，“最多一个
+        <code>in_progress</code
+        >”的不变量本身是一个启动检查。其次，功能列表是文件，不是聊天消息，因为聊天会滚出上下文，而文件跨会话和跨Agent持久化。
+      </p>
+      <h3 id="生产模式"><a href="#生产模式">生产模式</a></h3>
+      <ul>
+        <li>
+          <strong>违规预算，不是二进制失败。</strong> <code>agent-guardrails</code> 发布每个任务的
+          <code>violationBudget</code
+          >：预算内的轻微范围滑移作为警告显示；只有当预算超出时合并门才拒绝。
+        </li>
+        <li>
+          <strong>按路径族的严重性不对称。</strong> <code>docs/**</code> 的范围外写入通常是
+          <code>warn</code>；<code>scripts/**</code>、<code>migrations/**</code>、<code
+            >config/prod/**</code
+          >
+          的范围外写入始终是 <code>block</code>。
+        </li>
+        <li>
+          <strong>文件预算旁边的时间和网络预算。</strong>
+          <code>time_budget_minutes</code> 限定挂钟时间；<code>network_egress</code>
+          允许列表防止Agent静默命中不属于任务的外部API。
+        </li>
+        <li>
+          <strong>多契约合并语义（最小权限）。</strong> 当两个作用域契约适用时，合并是：<strong
+            >交集</strong
+          >
+          <code>allowed_files</code>（两个契约都必须允许路径），<strong>并集</strong>
+          <code>forbidden_files</code>（任一可以禁止），<code>time_budget_minutes</code>
+          是最严格的（最小值），<code>approvals_required</code> 累积。
+        </li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code>实现：<code>scope_contract.json</code> schema、diff解析器、<code
+          >scope_check</code
+        >
+        返回
+        <code>(violations, in_scope, off_scope)</code>，以及两个演示运行（一个在范围内，一个蔓延）。
+      </p>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        <code>outputs/skill-scope-contract.md</code>为<span
+          class="term-tip"
+          data-term="任务"
+          data-module="cpp"
+          data-def="任务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">任务</abbr></span
+        >描述<span
+          class="term-tip"
+          data-term="生成"
+          data-module="vue3"
+          data-def="创建代码或数据"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生成</abbr></span
+        >作用<span
+          class="term-tip"
+          data-term="域"
+          data-module="discrete-math"
+          data-def="同时满足加法和乘法群性质且满足分配律的代数结构，如有理数域、有限域"
+          data-slug="discrete-math/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">域</abbr></span
+        >契约和在CI中对每个Agent diff运行的glob感知检查器。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          添加 <code>network_egress</code>
+          <span
+            class="term-tip"
+            data-term="字段"
+            data-module="cpp"
+            data-def="字段"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">字段</abbr></span
+          >列出<span
+            class="term-tip"
+            data-term="允许"
+            data-module="github"
+            data-def="允许"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">允许</abbr></span
+          >的外部<span
+            class="term-tip"
+            data-term="主机"
+            data-module="github"
+            data-def="主机"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">主机</abbr></span
+          >。<span
+            class="term-tip"
+            data-term="拒绝"
+            data-module="github"
+            data-def="拒绝"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">拒绝</abbr></span
+          >触及<span
+            class="term-tip"
+            data-term="其他"
+            data-module="github"
+            data-def="其他"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">其他</abbr></span
+          >主机的运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="扩展"
+            data-module="cpp"
+            data-def="添加的功能"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">扩展</abbr></span
+          >检查器<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >
+          <code>docs/**</code> 软<span
+            class="term-tip"
+            data-term="失败"
+            data-module="github"
+            data-def="失败"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">失败</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >
+          <code>scripts/**</code> 硬<span
+            class="term-tip"
+            data-term="失败"
+            data-module="github"
+            data-def="失败"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">失败</abbr></span
+          >。辩护不<span
+            class="term-tip"
+            data-term="对称"
+            data-module="cpp"
+            data-def="对称的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对称</abbr></span
+          >。
+        </li>
+        <li>
+          使<span
+            class="term-tip"
+            data-term="契约"
+            data-module="cpp"
+            data-def="函数的输入输出条件"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">契约</abbr></span
+          >从 <code>goal</code>
+          <span
+            class="term-tip"
+            data-term="字段"
+            data-module="cpp"
+            data-def="字段"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">字段</abbr></span
+          >使用<span
+            class="term-tip"
+            data-term="静态"
+            data-module="cpp"
+            data-def="静态"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">静态</abbr></span
+          >规则集（无LLM）推导 <code>allowed_files</code>。第一个<span
+            class="term-tip"
+            data-term="边"
+            data-module="github"
+            data-def="边"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">边</abbr></span
+          >缘情况出了什么<span
+            class="term-tip"
+            data-term="问题"
+            data-module="github"
+            data-def="跟踪任务、缺陷、想法"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">问题</abbr></span
+          >？
+        </li>
+        <li>
+          添加 <code>time_budget_minutes</code> 并在挂钟超过时<span
+            class="term-tip"
+            data-term="拒绝"
+            data-module="github"
+            data-def="拒绝"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">拒绝</abbr></span
+          >继续。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >同一diff运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >两个<span
+            class="term-tip"
+            data-term="契约"
+            data-module="cpp"
+            data-def="函数的输入输出条件"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">契约</abbr></span
+          >。当两者都适用时，正确的<span
+            class="term-tip"
+            data-term="合并"
+            data-module="github"
+            data-def="整合不同分支的更改"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">合并</abbr></span
+          >语义是什么？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="作用域"
+                data-module="c"
+                data-def="标识符可见的区域"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">作用域</abbr></span
+              >契约
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >简报”
+            </td>
+            <td>
+              每任务<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >列出<span
+                class="term-tip"
+                data-term="允许"
+                data-module="github"
+                data-def="允许"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">允许</abbr></span
+              >/禁止<span
+                class="term-tip"
+                data-term="文件"
+                data-module="github"
+                data-def="文件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文件</abbr></span
+              >、验收、<span
+                class="term-tip"
+                data-term="回滚"
+                data-module="devops"
+                data-def="将部署恢复到先前已知正常版本的操作，是故障恢复的关键手段"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">回滚</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >蔓延
+            </td>
+            <td>”它还触及了…”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="契约"
+                data-module="cpp"
+                data-def="函数的输入输出条件"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">契约</abbr></span
+              >外<span
+                class="term-tip"
+                data-term="文件"
+                data-module="github"
+                data-def="文件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文件</abbr></span
+              >在同一<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >中<span
+                class="term-tip"
+                data-term="变更"
+                data-module="github"
+                data-def="代码修改"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">变更</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="回滚"
+                data-module="devops"
+                data-def="将部署恢复到先前已知正常版本的操作，是故障恢复的关键手段"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">回滚</abbr></span
+              >计划
+            </td>
+            <td>
+              ”我们可以<span
+                class="term-tip"
+                data-term="回滚"
+                data-module="devops"
+                data-def="将部署恢复到先前已知正常版本的操作，是故障恢复的关键手段"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">回滚</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="操作"
+                data-module="github"
+                data-def="GitHub Actions 工作流"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">操作</abbr></span
+              >员停止运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >的一<span
+                class="term-tip"
+                data-term="段"
+                data-module="vue3"
+                data-def="URL 的一段"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">段</abbr></span
+              >话<span
+                class="term-tip"
+                data-term="手册"
+                data-module="github"
+                data-def="手册"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">手册</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              批准<span
+                class="term-tip"
+                data-term="边界"
+                data-module="java"
+                data-def="泛型类型参数的约束，上界 &#x60;extends&#x60;、下界 &#x60;super&#x60;"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">边界</abbr></span
+              >
+            </td>
+            <td>”需要签署”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="契约"
+                data-module="cpp"
+                data-def="函数的输入输出条件"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">契约</abbr></span
+              >中列为需要明确<span
+                class="term-tip"
+                data-term="人类"
+                data-module="github"
+                data-def="人类"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人类</abbr></span
+              >批准的动作
+            </td>
+          </tr>
+          <tr>
+            <td>Diff检查</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="路径"
+                data-module="github"
+                data-def="路径"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路径</abbr></span
+              >审计”
+            </td>
+            <td>
+              将触及<span
+                class="term-tip"
+                data-term="文件"
+                data-module="github"
+                data-def="文件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文件</abbr></span
+              >与契约glob比较
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://langchain-ai.github.io/langgraph/concepts/human_in_the_loop/"
+            >LangGraph human-in-the-loop interrupts</a
+          >
+        </li>
+        <li>
+          <a href="https://github.com/logi-cmd/agent-guardrails">logi-cmd/agent-guardrails</a> —
+          违规预算、<span
+            class="term-tip"
+            data-term="严重性"
+            data-module="github"
+            data-def="严重性"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">严重性</abbr></span
+          >层级
+        </li>
+        <li>
+          <a href="https://www.augmentcode.com/guides/ai-spec-template"
+            >Augment Code, AI Spec Template</a
+          >
+          — 三层<span
+            class="term-tip"
+            data-term="边界"
+            data-module="java"
+            data-def="泛型类型参数的约束，上界 &#x60;extends&#x60;、下界 &#x60;super&#x60;"
+            data-slug="java/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">边界</abbr></span
+          >系统
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CrewAI角色团队与流程</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">CrewAI角色团队与流程</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            20 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          CrewAI是2026年基于角色的多Agent框架。四个原语：Agent、Task、Crew、Process。两种顶层形状：Crew（自主、基于角色的协作）和Flow（事件驱动、确定性）。文档直言：&quot;对于任何生产就绪应用，从Flow开始。&quot;
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="crewai角色团队与流程"><a href="#crewai角色团队与流程">CrewAI：角色团队与流程</a></h1>
+      <blockquote>
+        <p>
+          CrewAI是2026年基于角色的多Agent框架。四个原语：Agent、Task、Crew、Process。两种顶层形状：Crew（自主、基于角色的协作）和Flow（事件驱动、确定性）。文档直言：“对于任何生产就绪应用，从Flow开始。”
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 + 构建 <strong>语言：</strong> Python (stdlib)
+        <strong>前置条件：</strong> Phase 14 · 12 (工作流模式), Phase 14 · 14 (Actor模型)
+        <strong>时间：</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>说出CrewAI的四个原语（Agent、Task、Crew、Process）以及各自拥有的内容。</li>
+        <li>区分Sequential、Hierarchical和计划中的Consensus流程；按工作负载选择。</li>
+        <li>区分Crew（自主基于角色）和Flow（事件驱动确定性），并解释文档的生产建议。</li>
+        <li>
+          用<code>@tool</code>装饰器和<code>BaseTool</code>子类连接工具；推理结构化输出 vs
+          自由文本。
+        </li>
+        <li>说出四种CrewAI记忆类型以及各自何时值得。</li>
+        <li>实现一个stdlib三Agent团队（研究员、作者、编辑）产出简报。</li>
+        <li>发现三个CrewAI失败模式：提示膨胀、管理者LLM税、脆弱交接。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        采用多Agent框架的团队撞上同一面墙。“自主协作”在演示中听起来很棒。然后客户提交了一个Bug，你需要确定性重放。或者财务问LLM路由团队每次运行多少钱。或者值班需要知道哪个Agent在凌晨3点停滞了。
+      </p>
+      <p>
+        自由形式LLM路由团队都不能干净地回答这些问题。纯DAG都能回答但失去了头脑风暴Agent需要的探索形状。
+      </p>
+      <p>
+        CrewAI的拆分对权衡很诚实。Crew用于协作、基于角色、探索性工作。Flow用于事件驱动、代码拥有、可审计的生产。同一框架，两种形状，按场景选择。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="四个原语"><a href="#四个原语">四个原语</a></h3>
+      <p>CrewAI的面很小。记住这些，其余就是配置。</p>
+      <ul>
+        <li>
+          <strong>Agent。</strong>
+          <code>role + goal + backstory + tools + (optional) llm</code
+          >。backstory是承重的。它塑造语气、判断、Agent何时停止。工具是Agent可以调用的函数。
+        </li>
+        <li>
+          <strong>Task。</strong>
+          <code
+            >description + expected_output + agent + (optional) context + (optional)
+            output_pydantic</code
+          >。可复用的工作单元。<code>expected_output</code>是契约。<code>context</code>列出上游任务，其输出被传入。<code>output_pydantic</code>强制结构化形状。
+        </li>
+        <li>
+          <strong>Crew。</strong>
+          容器。拥有<code>agents</code>列表、<code>tasks</code>列表、<code>process</code>和可选的<code
+            >memory</code
+          >
+          + <code>verbose</code> + <code>manager_llm</code>设置。
+        </li>
+        <li>
+          <strong>Process。</strong>
+          执行策略。Sequential、Hierarchical、Consensus（计划中）。选择运行的形状。
+        </li>
+      </ul>
+      <p>
+        Agent不直接看到彼此。Task引用Agent。Crew排序Task。Process决定谁选择下一个Task。这就是整个心智模型。
+      </p>
+      <h3 id="sequential-vs-hierarchical-vs-consensus">
+        <a href="#sequential-vs-hierarchical-vs-consensus"
+          >Sequential vs Hierarchical vs Consensus</a
+        >
+      </h3>
+      <ul>
+        <li>
+          <strong>Sequential。</strong> Task按声明顺序运行。Task
+          N的输出作为<code>context</code>对Task N+1可用。最低成本。最可预测。当顺序固定时使用。
+        </li>
+        <li>
+          <strong>Hierarchical。</strong>
+          一个管理者Agent（单独的LLM调用）在专家之间路由。CrewAI从你的<code>manager_llm</code>配置或默认值生成管理者。管理者每轮选择下一个Task，可以拒绝或重新路由。当你有四个或更多专家且顺序真正取决于先前输出时使用。
+        </li>
+        <li>
+          <strong>Consensus。</strong>
+          计划中，目前未在公共API中实现。文档为未来基于投票的流程保留名称。今天不要依赖它。
+        </li>
+      </ul>
+      <p>
+        Hierarchical在每个专家调用之上添加每轮LLM调用（管理者）。在五步运行中token成本可能翻三倍。只在需要路由时才为此付费。
+      </p>
+      <h3 id="crew-vs-flow"><a href="#crew-vs-flow">Crew vs Flow</a></h3>
+      <p>这是2026年文档的框架。</p>
+      <ul>
+        <li>
+          <strong>Crew。</strong>
+          LLM驱动的自主性。框架在运行时选择形状。适用于：研究、头脑风暴、初稿、路径是答案一部分的任何地方。难以重放。难以测试。原型制作便宜。
+        </li>
+        <li>
+          <strong>Flow。</strong>
+          你拥有的事件驱动图。<code>@start</code>标记入口。<code>@listen(topic)</code>标记当另一个步骤发出该主题时触发的步骤。每个步骤是普通Python（可以在内部调用Crew）。适用于：生产。可观测。可测试。确定性。
+        </li>
+      </ul>
+      <p>
+        文档的2026年生产建议：从Flow开始。当自主性证明其成本时，将Crew作为<code>Crew.kickoff()</code>调用从Flow步骤内嵌入。Flow给你审计轨迹，Crew给你探索。组合，不要选择。
+      </p>
+      <h3 id="工具集成"><a href="#工具集成">工具集成</a></h3>
+      <p>三种方式给Agent一个工具。选择最简单的适合的。</p>
+      <ol>
+        <li>
+          <p>
+            <strong><code>@tool</code>装饰器。</strong>
+            纯函数变成工具。签名是Schema；docstring是LLM看到的描述。最适合一次性辅助。
+          </p>
+          <pre
+            class="astro-code astro-code-themes github-light github-dark"
+            style="
+              --shiki-light: #24292e;
+              --shiki-dark: #e1e4e8;
+              --shiki-light-bg: #fff;
+              --shiki-dark-bg: #24292e;
+              overflow-x: auto;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+            "
+            tabindex="0"
+            data-language="python"
+          ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> crewai.tools </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tool</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">@tool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Search the web"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> search</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(query: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">str</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) -> </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">str</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """Return top results for the query."""</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> run_search(query)</span></span></code></pre>
+        </li>
+        <li>
+          <p>
+            <strong><code>BaseTool</code>子类。</strong>
+            带显式参数Schema、异步支持、重试的基于类的工具。当工具有状态（客户端、缓存）或需要结构化参数时使用。
+          </p>
+          <pre
+            class="astro-code astro-code-themes github-light github-dark"
+            style="
+              --shiki-light: #24292e;
+              --shiki-dark: #e1e4e8;
+              --shiki-light-bg: #fff;
+              --shiki-dark-bg: #24292e;
+              overflow-x: auto;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+            "
+            tabindex="0"
+            data-language="python"
+          ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> crewai.tools </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> BaseTool</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pydantic </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> BaseModel</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> SearchArgs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BaseModel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    query: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">str</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    limit: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">int</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 10</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> SearchTool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BaseTool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "web_search"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    description </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "Search the web and return top results."</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    args_schema </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> SearchArgs</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> _run</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, query: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">str</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, limit: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">int</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) -> </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">str</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.client.search(query, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">limit</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">limit)</span></span></code></pre>
+        </li>
+        <li>
+          <p>
+            <strong>内置工具包。</strong>
+            CrewAI提供第一方适配器：<code>SerperDevTool</code>、<code>FileReadTool</code>、<code>DirectoryReadTool</code>、<code>CodeInterpreterTool</code>、<code>RagTool</code>、<code>WebsiteSearchTool</code>。一次导入即可连接。
+          </p>
+        </li>
+      </ol>
+      <p>
+        结构化输出使用Pydantic。在Task上传递<code>output_pydantic=MyModel</code>。CrewAI根据模型验证LLM响应，然后强制转换或重试。将此与紧凑的<code>expected_output</code>字符串配对。自由文本输出适合草稿；结构化输出是下游Flow可以消费的。
+      </p>
+      <h3 id="记忆钩子"><a href="#记忆钩子">记忆钩子</a></h3>
+      <p>CrewAI开箱提供四种记忆类型。它们可以组合：一个Crew可以同时启用所有四种。</p>
+      <ul>
+        <li><strong>短期。</strong> 单次运行内的对话缓冲区。结束时清除。</li>
+        <li>
+          <strong>长期。</strong>
+          跨运行持久化。存储在向量DB中（默认Chroma，可替换）。按与当前任务的相似性检索。
+        </li>
+        <li>
+          <strong>实体。</strong> 每实体事实。“客户X在企业计划上。“按键而非相似性索引。跨运行存活。
+        </li>
+        <li><strong>上下文。</strong> 组装时检索。在Agent需要时拉取相关记忆，而非预加载。</li>
+      </ul>
+      <p>
+        在Crew上用<code>memory=True</code>或每类型配置启用。由你配置的嵌入提供商支持（默认OpenAI，可替换为本地）。记忆是CrewAI相对于更薄框架证明其价值的地方之一；纯LangGraph需要你自己连接这些。
+      </p>
+      <h3 id="crewai何时适合"><a href="#crewai何时适合">CrewAI何时适合</a></h3>
+      <ul>
+        <li>三到六个有命名角色和协作工作流的Agent。起草、审查、规划、头脑风暴。</li>
+        <li>LLM对下一步的判断是价值一部分的路由（Hierarchical）。</li>
+        <li>团队更愿意读<code>role + goal + backstory</code>而非图定义的地方。</li>
+      </ul>
+      <h3 id="crewai何时不适合"><a href="#crewai何时不适合">CrewAI何时不适合</a></h3>
+      <ul>
+        <li>
+          有严格排序的确定性DAG。使用LangGraph（第13课）。图形状是正确的抽象；CrewAI的角色框架是摩擦。
+        </li>
+        <li>
+          亚秒级延迟预算。Hierarchical添加往返。即使Sequential也序列化包含backstory和先前输出的提示。
+        </li>
+        <li>单Agent循环。跳过框架；Agent循环（第1课）加工具注册表更短。</li>
+      </ul>
+      <h3 id="这个模式哪里会出错"><a href="#这个模式哪里会出错">这个模式哪里会出错</a></h3>
+      <ul>
+        <li>
+          <strong>backstory导致的提示膨胀。</strong> 每个Agent
+          2000字的backstory和五个Agent的团队在第一次工具调用前就烧光了上下文预算。保持backstory在200字以内。跨Agent复用短语；不要重复五次内务风格。
+        </li>
+        <li>
+          <strong>管理者LLM token税。</strong>
+          Hierarchical流程在每个专家调用前添加一个管理者LLM调用。在五任务团队中那是六次LLM调用而非五次，而且管理者调用携带完整任务列表加先前输出。除非路由取决于输出，否则切换到Sequential。
+        </li>
+        <li>
+          <strong>脆弱交接。</strong> Task N的<code>expected_output</code>是”一个大纲”。Task
+          N+1将其作为<code>context</code>读取并尝试解析三个部分。LLM产生了四个。下游Agent即兴发挥。用Task
+          N上的<code>output_pydantic</code>修复，使Task N+1读取类型化对象而非自由文本。
+        </li>
+        <li>
+          <strong>Crew即生产。</strong>
+          自由形式Crew在没有Flow包装器的情况下发布到生产。输出变异性高；重放不可能；值班无法对比坏运行和好运行。用Flow包装。
+        </li>
+      </ul>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p><code>code/main.py</code>实现两种形状的stdlib版本加三Agent团队。</p>
+      <p>形状：</p>
+      <ul>
+        <li><code>Agent</code>、<code>Task</code>数据类匹配CrewAI的面。</li>
+        <li>
+          <code>SequentialCrew.kickoff(inputs)</code
+          >按声明顺序运行任务，将输出作为<code>context</code>传递。
+        </li>
+        <li>
+          <code>HierarchicalCrew.kickoff(topic)</code
+          >添加一个管理者Agent每轮选择下一个专家，在”done”时停止。
+        </li>
+        <li>
+          <code>Flow</code
+          >带<code>@start</code>和<code>@listen(topic)</code>装饰器，一个小事件循环和一个跟踪。
+        </li>
+        <li><code>tool(name)</code>装饰器镜像CrewAI的<code>@tool</code>形状。</li>
+        <li>
+          <code>Memory</code
+          >带<code>short_term</code>、<code>long_term</code>、<code>entity</code>存储；模拟相似性使用numpy。
+        </li>
+        <li>模拟LLM响应是按键于角色加输入前缀的硬编码字符串。无网络。确定性。</li>
+      </ul>
+      <p>
+        具体演示：研究员、作者、编辑团队产出关于”agent engineering
+        2026”的简报。研究员拉取（模拟）来源。作者起草。编辑精炼。同一团队通过Flow运行以展示确定性形状。
+      </p>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">python3</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> code/main.py</span></span></code></pre>
+      <p>
+        跟踪覆盖：顺序团队通过<code>context</code>传递输出，层次团队带管理者选择（研究员、作者、编辑，然后”done”），Flow以显式主题运行相同三步（<code>researched</code>、<code>drafted</code>、<code>edited</code>），通过<code>@tool</code>路由的工具调用，以及跨两次kickoff存活的长期记忆。
+      </p>
+      <p>Crew跟踪是流动的；管理者原则上可以重新排序。Flow跟踪是固定的。那个选择就是课程。</p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <ul>
+        <li>
+          <strong>CrewAI Flow</strong
+          >用于生产。即使Flow只有一个步骤调用<code>Crew.kickoff()</code>。Flow给出审计边界。
+        </li>
+        <li>**CrewAI Crew（Sequential）**用于清晰排序的协作工作，特别是初稿和审查循环。</li>
+        <li>**CrewAI Crew（Hierarchical）**当路由取决于输出且有四个或更多专家时。</li>
+        <li><strong>LangGraph</strong>（第13课）用于显式状态机、持久恢复、严格排序。</li>
+        <li><strong>AutoGen v0.4</strong>（第14课）用于Actor模型并发和故障隔离。</li>
+        <li><strong>OpenAI Agents SDK</strong>（第16课）用于OpenAI优先产品，带交接和护栏。</li>
+        <li>
+          <strong>Claude Agent SDK</strong>（第17课）用于Claude优先产品，带子Agent和会话存储。
+        </li>
+      </ul>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>
+        <code>outputs/skill-crew-or-flow.md</code>为任务选择Crew vs
+        Flow并脚手架最小实现。硬拒绝Crew-without-backstory、Flow-without-explicit-topics、少于三个专家的Hierarchical。
+      </p>
+      <h2 id="陷阱"><a href="#陷阱">陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>Backstory作为风味。</strong>
+          它塑造输出。每个Agent测试三个变体；方差是真实的。选一个，冻结它。
+        </li>
+        <li>
+          <strong>跳过<code>expected_output</code>。</strong>
+          没有每任务的契约，下游任务拾取LLM产生的任何东西。Crew运行；审计失败。
+        </li>
+        <li>
+          <strong>记忆始终开启。</strong>
+          每次运行都写长期。向量DB增长。检索变嘈杂。将写入范围限定到事实是持久的任务。
+        </li>
+        <li>
+          <strong>管理者提示漂移。</strong>
+          Hierarchical的管理者提示是隐式的。如果路由变奇怪，在verbose模式中转储并阅读。
+        </li>
+        <li>
+          <strong>Crew中的工具副作用。</strong>
+          Crew可能比预期更多次调用工具。POST、DELETE、支付属于Flow步骤，从不是Crew工具。
+        </li>
+      </ul>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>将Sequential团队转换为Flow。计算可变性下降的接触点。注意可读性在哪里下降。</li>
+        <li>给团队添加实体记忆：关于客户的事实跨kickoff持久化。验证检索拉取正确的实体。</li>
+        <li>
+          实现Hierarchical流程，管理者拒绝路由到编辑，直到作者的输出至少有三个段落。跟踪重试。
+        </li>
+        <li>
+          为（模拟的）Web搜索连接<code>BaseTool</code>子类。比较跟踪形状与<code>@tool</code>装饰器版本。
+        </li>
+        <li>
+          给编辑任务添加<code>output_pydantic=Brief</code>，其中<code>Brief</code>有<code>title</code>、<code>summary</code>、<code>sections</code>。让作者任务输出一次格式错误的JSON；验证跟踪中CrewAI的重试行为。
+        </li>
+        <li>
+          阅读CrewAI文档介绍。将玩具移植到真实的<code>crewai</code> API。stdlib版本跳过了哪些保证？
+        </li>
+        <li>将AgentOps或Langfuse（第24课）连接到真实运行。你在stdlib版本中遗漏了哪些跟踪？</li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们常说的</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Agent</td>
+            <td>”角色”</td>
+            <td>Role + goal + backstory + tools</td>
+          </tr>
+          <tr>
+            <td>Task</td>
+            <td>”工作单元”</td>
+            <td>描述 + 预期输出 + 分配者 + 可选结构化输出</td>
+          </tr>
+          <tr>
+            <td>Crew</td>
+            <td>”Agent团队”</td>
+            <td>
+              Agent +
+              <span
+                class="term-tip"
+                data-term="Task"
+                data-module="typescript"
+                data-def="任务类型"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Task</abbr></span
+              >
+              + Process的<span
+                class="term-tip"
+                data-term="容器"
+                data-module="cpp"
+                data-def="存储多个元素的对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">容器</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Process</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="执行"
+                data-module="github"
+                data-def="执行"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行</abbr></span
+              >策略”
+            </td>
+            <td>
+              Sequential / Hierarchical / Consensus（<span
+                class="term-tip"
+                data-term="计划"
+                data-module="github"
+                data-def="计划"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">计划</abbr></span
+              >中）
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Flow"
+                data-module="kotlin"
+                data-def="Kotlin 协程中的冷数据流 API，支持背压和生命周期感知的异步数据流处理"
+                data-slug="kotlin/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Flow</abbr></span
+              >
+            </td>
+            <td>
+              ”确定性<span
+                class="term-tip"
+                data-term="工作流"
+                data-module="github"
+                data-def="工作流程"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工作流</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="事件驱动"
+                data-module="cpp"
+                data-def="事件驱动"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">事件驱动</abbr></span
+              >、代码拥有、可<span
+                class="term-tip"
+                data-term="测试"
+                data-module="cpp"
+                data-def="测试"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">测试</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Backstory</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="角色"
+                data-module="html5"
+                data-def="ARIA 元素角色"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">角色</abbr></span
+              >提示”
+            </td>
+            <td>Agent的语气和判断塑造器</td>
+          </tr>
+          <tr>
+            <td><code>@tool</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >工具”
+            </td>
+            <td>
+              将<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >变成Agent可<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >工具的<span
+                class="term-tip"
+                data-term="装饰器"
+                data-module="typescript"
+                data-def="&#x60;@expression&#x60; 语法，用于修改类或属性"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">装饰器</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>BaseTool</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="类"
+                data-module="cpp"
+                data-def="定义对象的结构和行为"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类</abbr></span
+              >工具”
+            </td>
+            <td>
+              带参数<span
+                class="term-tip"
+                data-term="Schema"
+                data-module="typescript"
+                data-def="类型模式"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Schema</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="重试"
+                data-module="vue3"
+                data-def="失败后重试"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">重试</abbr></span
+              >、异步<span
+                class="term-tip"
+                data-term="支持"
+                data-module="cpp"
+                data-def="支持"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">支持</abbr></span
+              >的基于<span
+                class="term-tip"
+                data-term="类"
+                data-module="cpp"
+                data-def="定义对象的结构和行为"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="实体"
+                data-module="html5"
+                data-def="HTML 特殊字符代码，如 &#x60;&#x26;nbsp;&#x60;、&#x60;&#x26;copy;&#x60;"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">实体</abbr></span
+              >记忆
+            </td>
+            <td>
+              ”每<span
+                class="term-tip"
+                data-term="实体"
+                data-module="html5"
+                data-def="HTML 特殊字符代码，如 &#x60;&#x26;nbsp;&#x60;、&#x60;&#x26;copy;&#x60;"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">实体</abbr></span
+              >事实”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >限定到<span
+                class="term-tip"
+                data-term="客户"
+                data-module="cpp"
+                data-def="客户代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户</abbr></span
+              >/账户/<span
+                class="term-tip"
+                data-term="问题"
+                data-module="github"
+                data-def="跟踪任务、缺陷、想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">问题</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="记忆"
+                data-module="github"
+                data-def="记忆"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记忆</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="长期"
+                data-module="github"
+                data-def="长期的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">长期</abbr></span
+              >记忆
+            </td>
+            <td>
+              ”跨运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >记忆”
+            </td>
+            <td>
+              在kickoff之间存活的<span
+                class="term-tip"
+                data-term="向量"
+                data-module="cpp"
+                data-def="向量"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">向量</abbr></span
+              >支持<span
+                class="term-tip"
+                data-term="记忆"
+                data-module="github"
+                data-def="记忆"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记忆</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >记忆
+            </td>
+            <td>”即时检索”</td>
+            <td>
+              在Agent需要时<span
+                class="term-tip"
+                data-term="拉取"
+                data-module="github"
+                data-def="获取并合并远程更改"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">拉取</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="记忆"
+                data-module="github"
+                data-def="记忆"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记忆</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="管理"
+                data-module="github"
+                data-def="管理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">管理</abbr></span
+              >者LLM
+            </td>
+            <td>”路由Agent”</td>
+            <td>
+              Hierarchical流程中<span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >下一个<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >的额外LLM
+            </td>
+          </tr>
+          <tr>
+            <td><code>expected_output</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >契约”
+            </td>
+            <td>
+              告诉Agent（和<span
+                class="term-tip"
+                data-term="审计"
+                data-module="sql"
+                data-def="记录数据库操作日志的安全功能，用于合规审查和安全追踪"
+                data-slug="sql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">审计</abbr></span
+              >）<span
+                class="term-tip"
+                data-term="返回"
+                data-module="vue3"
+                data-def="返回值"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">返回</abbr></span
+              >什么<span
+                class="term-tip"
+                data-term="形状"
+                data-module="github"
+                data-def="形状"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">形状</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="字符串"
+                data-module="cpp"
+                data-def="字符序列"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字符串</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://docs.crewai.com/en/introduction">CrewAI文档介绍</a>：<span
+            class="term-tip"
+            data-term="概念"
+            data-module="cpp"
+            data-def="模板约束的抽象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">概念</abbr></span
+          >和<span
+            class="term-tip"
+            data-term="推荐"
+            data-module="github"
+            data-def="推荐"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">推荐</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="生产"
+            data-module="github"
+            data-def="生产"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产</abbr></span
+          >路径
+        </li>
+        <li>
+          <a href="https://docs.crewai.com/en/concepts/flows">CrewAI Flows指南</a>：<span
+            class="term-tip"
+            data-term="事件驱动"
+            data-module="cpp"
+            data-def="事件驱动"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">事件驱动</abbr></span
+          >形状，<code>@start</code>，<code>@listen</code>
+        </li>
+        <li>
+          <a href="https://docs.crewai.com/en/concepts/tools">CrewAI工具参考</a
+          >：<code>@tool</code>、<code>BaseTool</code>、内置<span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >包
+        </li>
+        <li>
+          <a href="https://docs.crewai.com/en/concepts/memory">CrewAI记忆</a>：短期、<span
+            class="term-tip"
+            data-term="长期"
+            data-module="github"
+            data-def="长期的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">长期</abbr></span
+          >、<span
+            class="term-tip"
+            data-term="实体"
+            data-module="html5"
+            data-def="HTML 特殊字符代码，如 &#x60;&#x26;nbsp;&#x60;、&#x60;&#x26;copy;&#x60;"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实体</abbr></span
+          >、<span
+            class="term-tip"
+            data-term="上下文"
+            data-module="cpp"
+            data-def="使用环境"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">上下文</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://www.anthropic.com/research/building-effective-agents"
+            >Anthropic, Building Effective Agents</a
+          >：多Agent何时有<span
+            class="term-tip"
+            data-term="帮助"
+            data-module="github"
+            data-def="帮助"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">帮助</abbr></span
+          >何时没有
+        </li>
+        <li>
+          <a href="https://docs.langchain.com/oss/python/langgraph/overview">LangGraph概述</a
+          >：<span
+            class="term-tip"
+            data-term="状态机"
+            data-module="c"
+            data-def="状态和转换的模型"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">状态机</abbr></span
+          >替代
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

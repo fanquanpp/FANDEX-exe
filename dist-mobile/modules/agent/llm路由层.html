@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLM路由层 — 模型选择、回退、成本优化</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">LLM路由层 — 模型选择、回退、成本优化</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            8 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">LLM路由</span><span class="doc-tag">模型选择</span
+          ><span class="doc-tag">回退链</span><span class="doc-tag">成本优化</span
+          ><span class="doc-tag">AB测试</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          构建LLM路由层，实现基于任务的路由、回退链、成本感知选择和A/B测试
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="llm路由层--模型选择回退成本优化">
+        <a href="#llm路由层--模型选择回退成本优化">LLM路由层 — 模型选择、回退、成本优化</a>
+      </h1>
+      <blockquote>
+        <p>
+          每个请求都调用最贵的模型是浪费。每个请求都调用最便宜的模型是脆弱的。路由层根据任务特征选择正确的模型，在提供商中断时回退，并跟踪成本。本课构建一个最小路由器，实现基于规则的路由、回退链和成本归因。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库，路由引擎）
+        <strong>前置条件：</strong> Phase 13 · 02（函数调用深入），Phase 13 · 20（OpenTelemetry）
+        <strong>时间：</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>实现基于任务的路由：简单任务用便宜模型，复杂任务用强大模型。</li>
+        <li>构建回退链：主提供商失败时，尝试次选。</li>
+        <li>计算每次调用的成本并按用户/会话归因。</li>
+        <li>设计A/B测试：10%流量到新模型，测量质量差异。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>2026年的生产Agent系统使用多个LLM提供商和模型。原因：</p>
+      <ul>
+        <li><strong>成本。</strong> GPT-4o比GPT-4o-mini贵10倍。不是每个任务都需要GPT-4o。</li>
+        <li><strong>延迟。</strong> 小模型更快。聊天响应需要&#x3C;500ms；后台研究可以等待5秒。</li>
+        <li>
+          <strong>韧性。</strong>
+          提供商中断。OpenAI在2024年12月有40分钟中断。回退到Anthropic保持系统运行。
+        </li>
+        <li><strong>能力。</strong> 一些模型擅长代码，其他擅长推理，其他擅长多模态。</li>
+      </ul>
+      <p>路由层是做出这些选择的组件。它坐在Agent逻辑和提供商API之间，暴露一个统一的接口。</p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="基于规则的路由"><a href="#基于规则的路由">基于规则的路由</a></h3>
+      <p>最简单的路由：按任务类型分类并映射到模型。</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">ROUTE_TABLE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "simple_qa"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"gpt-4o-mini"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "code_generation"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"claude-3.5-sonnet"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "complex_reasoning"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"gpt-4o"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "summarization"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"gemini-2.0-flash"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>分类可以基于：工具名称、提示长度、用户偏好、会话上下文。</p>
+      <h3 id="基于特征的路由"><a href="#基于特征的路由">基于特征的路由</a></h3>
+      <p>更高级：提取提示特征并路由。</p>
+      <ul>
+        <li><strong>Token计数。</strong> 短提示用快模型；长上下文用大上下文模型。</li>
+        <li><strong>工具存在。</strong> 需要工具的提示路由到擅长函数调用的模型。</li>
+        <li><strong>语言。</strong> 非英语提示路由到多语言模型。</li>
+        <li><strong>结构化输出。</strong> 需要严格JSON的路由到支持严格模式的模型。</li>
+      </ul>
+      <h3 id="回退链"><a href="#回退链">回退链</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">FALLBACK_CHAINS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "primary"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"openai:gpt-4o"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"anthropic:claude-3.5-sonnet"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"gemini:gemini-2.0-flash"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "fast"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"openai:gpt-4o-mini"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"gemini:gemini-2.0-flash-lite"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        当主提供商失败（超时、速率限制、5xx）时，路由器尝试链中的下一个。每次尝试记录为追踪span（Phase
+        13 · 20）。
+      </p>
+      <h3 id="成本感知路由"><a href="#成本感知路由">成本感知路由</a></h3>
+      <p>每次调用有美元成本。路由器跟踪：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">call_cost </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (input_tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> input_price </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (output_tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> output_price </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>策略：</p>
+      <ul>
+        <li><strong>预算限制。</strong> 每用户每日最大$10。超限路由到最便宜模型。</li>
+        <li><strong>成本-质量权衡。</strong> 如果质量差异&#x3C;5%，选择更便宜的模型。</li>
+        <li><strong>会话预算。</strong> 每会话$2。前3次调用用强模型；之后降级。</li>
+      </ul>
+      <h3 id="ab测试"><a href="#ab测试">A/B测试</a></h3>
+      <p>路由10%流量到新模型并比较：</p>
+      <ul>
+        <li>任务完成率</li>
+        <li>平均token使用</li>
+        <li>延迟P50/P95</li>
+        <li>用户满意度（如果可测量）</li>
+      </ul>
+      <p>使用一致的哈希（用户id % 10）使同一用户始终看到同一变体。</p>
+      <h3 id="路由器作为mcp网关"><a href="#路由器作为mcp网关">路由器作为MCP网关</a></h3>
+      <p>
+        Phase 13 ·
+        17的MCP网关可以包含路由。网关暴露单个MCP端点；内部它路由到不同的LLM提供商。客户端不知道哪个模型执行了请求。
+      </p>
+      <h3 id="提供商抽象"><a href="#提供商抽象">提供商抽象</a></h3>
+      <p>路由器为每个提供商适配器定义统一接口：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> LLMProvider</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    async</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> complete</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, messages, tools, model) -> LLMResponse: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    async</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> stream</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, messages, tools, model) -> AsyncIterator[LLMChunk]: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span></span></code></pre>
+      <p>每个适配器（OpenAI、Anthropic、Gemini）实现此接口。Phase 13 · 02的翻译器映射响应形状。</p>
+      <h3 id="缓存"><a href="#缓存">缓存</a></h3>
+      <p>
+        相同提示 + 工具 +
+        模型的相同请求返回相同结果。缓存键是提示和工具的哈希。命中节省完整LLM调用成本。语义缓存（嵌入相似性）更宽松但更强大
+        — Phase 17涵盖这一点。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code> 实现一个最小路由引擎，带有：</p>
+      <ul>
+        <li>基于规则的路由表。</li>
+        <li>带有模拟提供商失败的回退链。</li>
+        <li>每次调用的成本计算和归因。</li>
+        <li>使用一致哈希的A/B测试。</li>
+      </ul>
+      <p>模拟提供商返回预设响应，带有可配置的延迟和失败率。</p>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        本课产生
+        <code>outputs/skill-llm-router-designer.md</code
+        >。给定一个多模型部署，该技能设计路由表、回退链、成本预算和A/B测试计划。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>运行 <code>code/main.py</code>。观察路由决策和回退行为。</p>
+        </li>
+        <li>
+          <p>添加一个基于token计数的路由规则：超过2000 token的提示路由到大上下文模型。</p>
+        </li>
+        <li>
+          <p>实现会话预算：前3次调用用强模型，之后降级。跟踪每会话累计成本。</p>
+        </li>
+        <li>
+          <p>设计一个A/B测试，比较代码生成任务上的两个模型。定义指标和统计显著性阈值。</p>
+        </li>
+        <li>
+          <p>
+            添加<span
+              class="term-tip"
+              data-term="语义"
+              data-module="cpp"
+              data-def="语义"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">语义</abbr></span
+            >缓存：<span
+              class="term-tip"
+              data-term="嵌入"
+              data-module="agent"
+              data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">嵌入</abbr></span
+            >提示，检查相似性阈值，返回缓存结果如果>0.95相似。注意：这需要嵌入模型；模拟它。
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Router</td>
+            <td>
+              ”模型<span
+                class="term-tip"
+                data-term="选择器"
+                data-module="cpp"
+                data-def="选择器"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择器</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="根"
+                data-module="vue3"
+                data-def="根节点"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">根</abbr></span
+              >据<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >特征选择LLM的<span
+                class="term-tip"
+                data-term="组件"
+                data-module="cpp"
+                data-def="组成整体的部分"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">组件</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Fallback chain</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="提供"
+                data-module="github"
+                data-def="提供"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提供</abbr></span
+              >商顺序”
+            </td>
+            <td>
+              主<span
+                class="term-tip"
+                data-term="提供"
+                data-module="github"
+                data-def="提供"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提供</abbr></span
+              >商<span
+                class="term-tip"
+                data-term="失败"
+                data-module="github"
+                data-def="失败"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">失败</abbr></span
+              >时尝试的<span
+                class="term-tip"
+                data-term="有序列表"
+                data-module="markdown"
+                data-def="有序列表使用数字加句点创建带顺序编号的列表。"
+                data-slug="markdown/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">有序列表</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Cost attribution</td>
+            <td>”谁花了什么”</td>
+            <td>
+              按<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="会话"
+                data-module="github"
+                data-def="会话"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">会话</abbr></span
+              >的LLM成本分组
+            </td>
+          </tr>
+          <tr>
+            <td>A/B test</td>
+            <td>”模型实验”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="分割"
+                data-module="github"
+                data-def="分割"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分割</abbr></span
+              >流量<span
+                class="term-tip"
+                data-term="比较"
+                data-module="github"
+                data-def="比较两个分支或提交"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">比较</abbr></span
+              >模型<span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Route
+              <span
+                class="term-tip"
+                data-term="table"
+                data-module="lua"
+                data-def="Lua 唯一的容器类型，可表示数组、字典、对象等，是引用类型"
+                data-slug="lua/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">table</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >到模型<span
+                class="term-tip"
+                data-term="映射"
+                data-module="c"
+                data-def="类型到另一类型的对应关系"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">映射</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >类型到<span
+                class="term-tip"
+                data-term="首选"
+                data-module="github"
+                data-def="首选"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">首选</abbr></span
+              >模型的<span
+                class="term-tip"
+                data-term="字典"
+                data-module="github"
+                data-def="字典"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字典</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Feature-based routing</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >特征<span
+                class="term-tip"
+                data-term="路由"
+                data-module="cs-fundamentals"
+                data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路由</abbr></span
+              >”
+            </td>
+            <td>
+              基于<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >计数、<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="语言"
+                data-module="github"
+                data-def="编程语言"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语言</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="路由"
+                data-module="cs-fundamentals"
+                data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路由</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Budget limit</td>
+            <td>”成本上限”</td>
+            <td>
+              每<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="会话"
+                data-module="github"
+                data-def="会话"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">会话</abbr></span
+              >最大LLM支出
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Provider"
+                data-module="react"
+                data-def="Context 的数据提供组件，将值向下传递给所有订阅该 Context 的后代组件"
+                data-slug="react/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Provider</abbr></span
+              >
+              adapter
+            </td>
+            <td>”统一API”</td>
+            <td>
+              每个LLM提供商的<span
+                class="term-tip"
+                data-term="通用"
+                data-module="cpp"
+                data-def="通用"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通用</abbr></span
+              >接口
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Semantic"
+                data-module="typescript"
+                data-def="语义类型"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Semantic</abbr></span
+              >
+              cache
+            </td>
+            <td>
+              ”相似性<span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >”
+            </td>
+            <td>
+              基于<span
+                class="term-tip"
+                data-term="嵌入"
+                data-module="agent"
+                data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">嵌入</abbr></span
+              >相似性的<span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >命中
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Consistent
+              <span
+                class="term-tip"
+                data-term="hash"
+                data-module="cpp"
+                data-def="哈希函数对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">hash</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="粘性"
+                data-module="vue3"
+                data-def="粘性定位"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">粘性</abbr></span
+              >路由”
+            </td>
+            <td>
+              同一<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >始终<span
+                class="term-tip"
+                data-term="路由"
+                data-module="cs-fundamentals"
+                data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路由</abbr></span
+              >到同一<span
+                class="term-tip"
+                data-term="变体"
+                data-module="c"
+                data-def="可存储不同类型的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">变体</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://github.com/BerriAI/litellm">LiteLLM — Unified LLM API</a> — 开<span
+            class="term-tip"
+            data-term="源"
+            data-module="cpp"
+            data-def="源"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">源</abbr></span
+          >路由和<span
+            class="term-tip"
+            data-term="回退"
+            data-module="vue3"
+            data-def="备选方案"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">回退</abbr></span
+          >库
+        </li>
+        <li>
+          <a href="https://portkey.ai/">Portkey — AI gateway</a> — 带<span
+            class="term-tip"
+            data-term="路由"
+            data-module="cs-fundamentals"
+            data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">路由</abbr></span
+          >和<span
+            class="term-tip"
+            data-term="缓存"
+            data-module="vue3"
+            data-def="存储数据供后续使用"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">缓存</abbr></span
+          >的商业LLM网关
+        </li>
+        <li>
+          <a href="https://openrouter.ai/">OpenRouter — Model routing</a> —
+          <span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >提供商<span
+            class="term-tip"
+            data-term="路由"
+            data-module="cs-fundamentals"
+            data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">路由</abbr></span
+          >服务
+        </li>
+        <li>
+          <a href="https://withmartian.com/">Martian — Model router</a> — 基于学习的<span
+            class="term-tip"
+            data-term="路由"
+            data-module="cs-fundamentals"
+            data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">路由</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/model-routing.html"
+            >AWS — Model routing best practices</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="企业"
+            data-module="github"
+            data-def="企业"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">企业</abbr></span
+          >路由<span
+            class="term-tip"
+            data-term="模式"
+            data-module="github"
+            data-def="模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模式</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

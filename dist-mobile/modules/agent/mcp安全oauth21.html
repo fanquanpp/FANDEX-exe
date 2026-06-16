@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MCP安全II — OAuth 2.1、资源指示器、增量作用域</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">MCP安全II — OAuth 2.1、资源指示器、增量作用域</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            13 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">OAuth 2.1</span><span class="doc-tag">PKCE</span
+          ><span class="doc-tag">资源指示器</span><span class="doc-tag">步进授权</span
+          ><span class="doc-tag">MCP认证</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          实现MCP的OAuth 2.1认证配置，掌握PKCE、RFC 8707资源指示器、RFC
+          9728受保护资源元数据和SEP-835步进授权
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="mcp安全ii--oauth-21资源指示器增量作用域">
+        <a href="#mcp安全ii--oauth-21资源指示器增量作用域"
+          >MCP安全II — OAuth 2.1、资源指示器、增量作用域</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          远程MCP服务器需要授权，不仅是认证。2025-11-25规范与OAuth 2.1 + PKCE + 资源指示器（RFC
+          8707）+ 受保护资源元数据（RFC 9728）对齐。SEP-835添加了带403
+          WWW-Authenticate步进授权的增量作用域同意。本课将步进流程实现为状态机，以便你看到每一跳。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库，OAuth状态机模拟器）
+        <strong>前置条件：</strong> Phase 13 · 09（传输），Phase 13 · 15（安全I）
+        <strong>时间：</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>区分资源服务器和授权服务器职责。</li>
+        <li>走过PKCE保护的OAuth 2.1授权码流程。</li>
+        <li>
+          使用 <code>resource</code>（RFC 8707）和受保护资源元数据（RFC 9728）防止混淆代理攻击。
+        </li>
+        <li>
+          实现步进授权：服务器用WWW-Authenticate响应403请求更高作用域；客户端重新提示用户同意并重试。
+        </li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        早期MCP（2025年之前）发布带有临时API密钥甚至无认证的远程服务器。2025-11-25规范用完整的OAuth
+        2.1配置关闭了这一差距。
+      </p>
+      <p>三个现实需求：</p>
+      <ul>
+        <li>
+          <strong>普通远程服务器。</strong> 用户安装访问其Notion / GitHub /
+          Gmail的远程MCP服务器。带PKCE的OAuth 2.1是正确的形状。
+        </li>
+        <li>
+          <strong>作用域升级。</strong> 被授予 <code>notes:read</code> 的笔记服务器稍后可能需要
+          <code>notes:write</code> 执行特定动作。不是重做整个流程，步进（SEP-835）请求额外作用域。
+        </li>
+        <li>
+          <strong>混淆代理预防。</strong>
+          客户端持有作用域限定给服务器A的token受众。服务器A是恶意的，尝试向服务器B出示token。资源指示器（RFC
+          8707）将token固定到其预期受众。
+        </li>
+      </ul>
+      <p>
+        OAuth 2.1不是新的。新的是MCP的配置：特定必需流程（仅授权码 +
+        PKCE；无隐式，默认无客户端凭证）、每次token请求强制资源指示器，以及发布的受保护资源元数据让客户端知道去哪里。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="角色"><a href="#角色">角色</a></h3>
+      <ul>
+        <li><strong>客户端。</strong> MCP客户端（Claude Desktop、Cursor等）。</li>
+        <li><strong>资源服务器。</strong> MCP服务器（笔记、GitHub、Postgres等）。</li>
+        <li>
+          <strong>授权服务器。</strong>
+          发出token。可以与资源服务器是同一服务或独立的IdP（Auth0、Keycloak、Cognito）。
+        </li>
+      </ul>
+      <p>在MCP的配置中，资源和授权服务器可以是同一主机，但应通过URL区分。</p>
+      <h3 id="授权码--pkce"><a href="#授权码--pkce">授权码 + PKCE</a></h3>
+      <p>流程：</p>
+      <ol>
+        <li>
+          客户端生成 <code>code_verifier</code>（随机）和 <code>code_challenge</code>（SHA256）。
+        </li>
+        <li>
+          客户端将用户重定向到
+          <code
+            >/authorize?response_type=code&#x26;client_id=...&#x26;redirect_uri=...&#x26;scope=notes:read&#x26;code_challenge=...&#x26;resource=https://notes.example.com</code
+          >。
+        </li>
+        <li>用户同意。授权服务器重定向到 <code>redirect_uri?code=...</code>。</li>
+        <li>
+          客户端POST到
+          <code
+            >/token?grant_type=authorization_code&#x26;code=...&#x26;code_verifier=...&#x26;resource=...</code
+          >。
+        </li>
+        <li>授权服务器验证验证器的哈希与存储的挑战匹配并发出访问token。</li>
+        <li>客户端使用token：每个对资源服务器的请求上 <code>Authorization: Bearer ...</code>。</li>
+      </ol>
+      <p>PKCE防止授权码拦截攻击。资源指示器防止token在其他地方有效。</p>
+      <h3 id="受保护资源元数据rfc-9728">
+        <a href="#受保护资源元数据rfc-9728">受保护资源元数据（RFC 9728）</a>
+      </h3>
+      <p>资源服务器发布 <code>.well-known/oauth-protected-resource</code> 文档：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "resource"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://notes.example.com"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "authorization_servers"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"https://auth.example.com"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "scopes_supported"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"notes:read"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"notes:write"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"notes:delete"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>客户端从资源服务器发现授权服务器。减少配置 — 客户端只需要资源URL。</p>
+      <h3 id="资源指示器rfc-8707"><a href="#资源指示器rfc-8707">资源指示器（RFC 8707）</a></h3>
+      <p>
+        token请求中的 <code>resource</code> 参数将token的预期受众固定。发出的token包含
+        <code>aud: "https://notes.example.com"</code>。另一个接收此token的MCP服务器检查
+        <code>aud</code> 并拒绝它。
+      </p>
+      <h3 id="作用域模型"><a href="#作用域模型">作用域模型</a></h3>
+      <p>作用域是空格分隔的字符串。常见MCP约定：</p>
+      <ul>
+        <li><code>notes:read</code>、<code>notes:write</code>、<code>notes:delete</code></li>
+        <li><code>admin:*</code> 用于管理员能力（谨慎使用）</li>
+        <li><code>profile:read</code> 用于身份</li>
+      </ul>
+      <p>作用域选择应是最小权限：请求你现在需要的，需要更多时步进。</p>
+      <h3 id="步进授权sep-835"><a href="#步进授权sep-835">步进授权（SEP-835）</a></h3>
+      <p>用户授予 <code>notes:read</code>。他们后来让Agent删除笔记。服务器响应：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>HTTP/1.1 403 Forbidden</span></span>
+<span class="line"><span>WWW-Authenticate: Bearer error="insufficient_scope",</span></span>
+<span class="line"><span>    scope="notes:delete", resource="https://notes.example.com"</span></span></code></pre>
+      <p>
+        客户端看到insufficient_scope错误，用额外作用域的同意对话框提示用户，为它执行迷你OAuth流程，用新token重试请求。
+      </p>
+      <h3 id="token受众验证"><a href="#token受众验证">Token受众验证</a></h3>
+      <p>
+        每个请求：服务器检查 <code>token.aud == self.resource_url</code>。不匹配 =
+        401。这阻止跨服务器token重用。
+      </p>
+      <h3 id="短寿命token和轮换"><a href="#短寿命token和轮换">短寿命token和轮换</a></h3>
+      <p>
+        访问token应是短寿命的（默认1小时）。刷新token在每次刷新时轮换。客户端在后台处理静默刷新。
+      </p>
+      <h3 id="无token传递"><a href="#无token传递">无token传递</a></h3>
+      <p>Sampling服务器（Phase 13 · 11）不得将客户端的token传递给其他服务。sampling请求是边界。</p>
+      <h3 id="混淆代理预防"><a href="#混淆代理预防">混淆代理预防</a></h3>
+      <p>
+        Token绑定到 <code>aud</code>。客户端绑定到
+        <code>client_id</code
+        >。每个请求根据两者验证。规范明确禁止在MCP前远程工具生态系统中常见的旧”传递token”模式。
+      </p>
+      <h3 id="客户端id发现"><a href="#客户端id发现">客户端ID发现</a></h3>
+      <p>
+        每个MCP客户端在固定URL发布其元数据。授权服务器可以获取客户端的元数据文档以发现重定向URI和联系信息。这移除了手动客户端注册。
+      </p>
+      <h3 id="网关和oauth"><a href="#网关和oauth">网关和OAuth</a></h3>
+      <p>
+        Phase 13 ·
+        17展示企业网关如何处理OAuth：网关持有上游服务器的凭证，给客户端的token是网关发出的，上游token永远不离开网关。这翻转了信任模型
+        — 用户与网关认证一次；网关处理N个服务器授权。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code> 将完整的OAuth 2.1步进流程模拟为状态机。它实现：</p>
+      <ul>
+        <li>PKCE code-verifier / challenge生成。</li>
+        <li>带资源指示器的授权码流程。</li>
+        <li>受保护资源元数据端点。</li>
+        <li>带受众检查的token验证。</li>
+        <li><code>insufficient_scope</code> 上的步进。</li>
+      </ul>
+      <p>
+        本课无HTTP服务器；状态机在内存中运行，以便你追踪每一跳。Phase 13 ·
+        17的网关课将其连接到实际传输。
+      </p>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        本课产生
+        <code>outputs/skill-oauth-scope-planner.md</code
+        >。给定一个带工具的远程MCP服务器，该技能设计作用域集、固定规则和步进策略。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>运行 <code>code/main.py</code>。追踪双作用域步进流程。注意步进时哪些跳重复。</p>
+        </li>
+        <li>
+          <p>
+            添加刷新<span
+              class="term-tip"
+              data-term="token"
+              data-module="python"
+              data-def="词法分析的最小语法单元"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">token</abbr></span
+            >轮换：每次<span
+              class="term-tip"
+              data-term="刷新"
+              data-module="cpp"
+              data-def="刷新"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">刷新</abbr></span
+            >发出新刷新<span
+              class="term-tip"
+              data-term="token"
+              data-module="python"
+              data-def="词法分析的最小语法单元"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">token</abbr></span
+            >并使旧<span
+              class="term-tip"
+              data-term="token"
+              data-module="python"
+              data-def="词法分析的最小语法单元"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">token</abbr></span
+            >无效。模拟轮换后使用被盗刷新token并确认它失败。
+          </p>
+        </li>
+        <li>
+          <p>
+            使用<span
+              class="term-tip"
+              data-term="标准"
+              data-module="c"
+              data-def="语言规范文档"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">标准</abbr></span
+            >库http.server将受<span
+              class="term-tip"
+              data-term="保护"
+              data-module="github"
+              data-def="保护"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">保护</abbr></span
+            >资<span
+              class="term-tip"
+              data-term="源"
+              data-module="cpp"
+              data-def="源"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">源</abbr></span
+            >元数据<span
+              class="term-tip"
+              data-term="端点"
+              data-module="cpp"
+              data-def="端点"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">端点</abbr></span
+            >实现为真实<span
+              class="term-tip"
+              data-term="HTTP"
+              data-module="cs-fundamentals"
+              data-def="Web应用层协议，基于请求-响应模型，定义了资源获取和提交的方式"
+              data-slug="cs-fundamentals/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">HTTP</abbr></span
+            >响应。<span
+              class="term-tip"
+              data-term="镜像"
+              data-module="github"
+              data-def="镜像"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">镜像</abbr></span
+            >第09课的 <code>/mcp</code>
+            <span
+              class="term-tip"
+              data-term="端点"
+              data-module="cpp"
+              data-def="端点"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">端点</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            为<span
+              class="term-tip"
+              data-term="GitHub"
+              data-module="github"
+              data-def="代码托管和协作平台"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">GitHub</abbr></span
+            >
+            MCP服务器<span
+              class="term-tip"
+              data-term="设计"
+              data-module="github"
+              data-def="设计"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">设计</abbr></span
+            >作用<span
+              class="term-tip"
+              data-term="域"
+              data-module="discrete-math"
+              data-def="同时满足加法和乘法群性质且满足分配律的代数结构，如有理数域、有限域"
+              data-slug="discrete-math/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">域</abbr></span
+            >层级：读取repo、写PR、批准PR、合并PR、admin。在每个<span
+              class="term-tip"
+              data-term="级别"
+              data-module="github"
+              data-def="级别"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">级别</abbr></span
+            >之间使用步进。
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读RFC 8707和RFC 9728。识别9728中MCP与RFC示例不同使用的一个<span
+              class="term-tip"
+              data-term="字段"
+              data-module="cpp"
+              data-def="字段"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">字段</abbr></span
+            >。（<span
+              class="term-tip"
+              data-term="提示"
+              data-module="cpp"
+              data-def="提示"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">提示</abbr></span
+            >：与 <code>scopes_supported</code> 有关。）
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>OAuth 2.1</td>
+            <td>”现代OAuth”</td>
+            <td>
+              合并RFC，强制PKCE并禁止隐式<span
+                class="term-tip"
+                data-term="流程"
+                data-module="cpp"
+                data-def="流程控制"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流程</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>PKCE</td>
+            <td>
+              ”占有<span
+                class="term-tip"
+                data-term="证明"
+                data-module="github"
+                data-def="证明"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">证明</abbr></span
+              >”
+            </td>
+            <td>
+              代码<span
+                class="term-tip"
+                data-term="验证器"
+                data-module="cpp"
+                data-def="验证器"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证器</abbr></span
+              >
+              + 挑战，击败授权码拦截
+            </td>
+          </tr>
+          <tr>
+            <td>Resource indicator</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="Token"
+                data-module="agent"
+                data-def="大语言模型处理文本的最小单位，一个 token 约对应 0.75 个英文单词或 0.5-1 个中文字符"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Token</abbr></span
+              >受众”
+            </td>
+            <td>
+              RFC 8707 <code>resource</code>
+              <span
+                class="term-tip"
+                data-term="参数"
+                data-module="c"
+                data-def="函数定义时的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参数</abbr></span
+              >将<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >固定到一个<span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Protected-resource metadata</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="发现"
+                data-module="github"
+                data-def="发现"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">发现</abbr></span
+              >文档”
+            </td>
+            <td>RFC 9728 <code>.well-known/oauth-protected-resource</code></td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Step"
+                data-module="typescript"
+                data-def="编译步骤"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Step</abbr></span
+              >-up authorization
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="增量"
+                data-module="github"
+                data-def="增量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">增量</abbr></span
+              >同意”
+            </td>
+            <td>
+              SEP-835按需添加<span
+                class="term-tip"
+                data-term="作用域"
+                data-module="c"
+                data-def="标识符可见的区域"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">作用域</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="流程"
+                data-module="cpp"
+                data-def="流程控制"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流程</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>insufficient_scope</code></td>
+            <td>”403带WWW-Authenticate”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >信号重新同意更大<span
+                class="term-tip"
+                data-term="作用域"
+                data-module="c"
+                data-def="标识符可见的区域"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">作用域</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Confused deputy</td>
+            <td>
+              ”跨服务<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >重用”
+            </td>
+            <td>
+              受<span
+                class="term-tip"
+                data-term="信任"
+                data-module="html5"
+                data-def="网站可信度"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信任</abbr></span
+              >持有者不当转发<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >的攻击
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Short-lived
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+            </td>
+            <td>
+              ”访问<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+              TTL”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="快速"
+                data-module="github"
+                data-def="快速的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">快速</abbr></span
+              >过期的Bearer；刷新<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >续期
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Scope"
+                data-module="typescript"
+                data-def="作用域"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Scope</abbr></span
+              >
+              hierarchy
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="最小"
+                data-module="github"
+                data-def="最小的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最小</abbr></span
+              >权限<span
+                class="term-tip"
+                data-term="栈"
+                data-module="c"
+                data-def="后进先出的数据结构"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">栈</abbr></span
+              >”
+            </td>
+            <td>
+              带<span
+                class="term-tip"
+                data-term="级别"
+                data-module="github"
+                data-def="级别"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">级别</abbr></span
+              >间步进的渐进<span
+                class="term-tip"
+                data-term="作用域"
+                data-module="c"
+                data-def="标识符可见的区域"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">作用域</abbr></span
+              >集
+            </td>
+          </tr>
+          <tr>
+            <td>Client ID metadata</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >发现<span
+                class="term-tip"
+                data-term="文档"
+                data-module="vue3"
+                data-def="代码说明文档"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文档</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >发布自己OAuth元数据的<span
+                class="term-tip"
+                data-term="URL"
+                data-module="javascript"
+                data-def="URL 处理对象"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">URL</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://modelcontextprotocol.io/specification/draft/basic/authorization"
+            >MCP — Authorization spec</a
+          >
+          — 权威MCP OAuth配置
+        </li>
+        <li>
+          <a href="https://den.dev/blog/mcp-november-authorization-spec/"
+            >den.dev — MCP November authorization spec</a
+          >
+          — 2025-11-25变更演练
+        </li>
+        <li>
+          <a href="https://datatracker.ietf.org/doc/html/rfc8707"
+            >RFC 8707 — Resource indicators for OAuth 2.0</a
+          >
+          — 受众固定RFC
+        </li>
+        <li>
+          <a href="https://datatracker.ietf.org/doc/html/rfc9728"
+            >RFC 9728 — OAuth 2.0 protected resource metadata</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="发现"
+            data-module="github"
+            data-def="发现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发现</abbr></span
+          >文档RFC
+        </li>
+        <li>
+          <a href="https://aembit.io/blog/mcp-oauth-2-1-pkce-and-the-future-of-ai-authorization/"
+            >Aembit — MCP OAuth 2.1, PKCE and the future of AI authorization</a
+          >
+          — 实用步进<span
+            class="term-tip"
+            data-term="流程"
+            data-module="cpp"
+            data-def="流程控制"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">流程</abbr></span
+          >演练
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

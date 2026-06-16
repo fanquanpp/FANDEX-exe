@@ -16,7 +16,7 @@ import { fileURLToPath } from 'url';
 /** 当前脚本所在目录 */
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** 速查表 JSON 文件目录 */
-const cheatsheetDir = path.resolve(__dirname, '../src/data/cheatsheets');
+const cheatsheetDir = path.resolve(__dirname, '../apps/web/src/data/cheatsheets');
 /** 增量处理标记文件目录 */
 const processedFlagDir = path.resolve(__dirname, '../.cache/cheatsheet-flags');
 

@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenTelemetry-GenAI语义约定</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">OpenTelemetry-GenAI语义约定</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          OpenTelemetry的GenAI
+          SIG（2024年4月启动）定义了Agent遥测的标准Schema。Span名称、属性和内容捕获规则跨供应商趋同，使Agent追踪在Datadog、Grafana、Jaeger和Honeycomb中含义相同。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="opentelemetry-genai语义约定">
+        <a href="#opentelemetry-genai语义约定">OpenTelemetry GenAI语义约定</a>
+      </h1>
+      <blockquote>
+        <p>
+          OpenTelemetry的GenAI
+          SIG（2024年4月启动）定义了Agent遥测的标准Schema。Span名称、属性和内容捕获规则跨供应商趋同，使Agent追踪在Datadog、Grafana、Jaeger和Honeycomb中含义相同。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 + 构建 <strong>语言：</strong> Python (stdlib)
+        <strong>前置条件：</strong> Phase 14 · 13 (LangGraph), Phase 14 · 24 (可观测性平台)
+        <strong>时间：</strong> ~60分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>说出GenAI span类别：model/client、agent、tool。</li>
+        <li>区分<code>invoke_agent</code> CLIENT vs INTERNAL span以及各自何时适用。</li>
+        <li>列出顶层GenAI属性：provider name、request model、data-source ID。</li>
+        <li>
+          解释内容捕获契约：选择加入、<code>OTEL_SEMCONV_STABILITY_OPT_IN</code>、外部引用推荐。
+        </li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        每个供应商发明自己的span名称。运维团队最终构建每框架仪表板。OpenTelemetry的GenAI
+        SIG通过定义整个生态系统目标的一个标准来修复这个问题。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="span类别"><a href="#span类别">Span类别</a></h3>
+      <ol>
+        <li>
+          <strong>模型/客户端span。</strong>
+          覆盖原始LLM调用。由提供商SDK（Anthropic、OpenAI、Bedrock）和框架模型适配器发出。
+        </li>
+        <li>
+          <strong>Agent span。</strong>
+          <code>create_agent</code>（Agent构造时）和<code>invoke_agent</code>（运行时）。
+        </li>
+        <li><strong>工具span。</strong> 每次工具调用一个；通过父子关系连接到Agent span。</li>
+      </ol>
+      <h3 id="agent-span命名"><a href="#agent-span命名">Agent span命名</a></h3>
+      <ul>
+        <li>
+          Span名称：<code>invoke_agent {gen_ai.agent.name}</code
+          >（如果命名）；回退到<code>invoke_agent</code>。
+        </li>
+        <li>
+          Span种类：
+          <ul>
+            <li>
+              <strong>CLIENT</strong> — 用于远程Agent服务（OpenAI Assistants API、Bedrock Agents）。
+            </li>
+            <li>
+              <strong>INTERNAL</strong> — 用于进程内Agent框架（LangChain、CrewAI、本地ReAct）。
+            </li>
+          </ul>
+        </li>
+      </ul>
+      <h3 id="关键属性"><a href="#关键属性">关键属性</a></h3>
+      <ul>
+        <li>
+          <code>gen_ai.provider.name</code> —
+          <code>anthropic</code
+          >、<code>openai</code>、<code>aws.bedrock</code>、<code>google.vertex</code>。
+        </li>
+        <li><code>gen_ai.request.model</code> — 模型ID。</li>
+        <li><code>gen_ai.response.model</code> — 解析的模型（可能因路由与请求不同）。</li>
+        <li><code>gen_ai.agent.name</code> — Agent标识符。</li>
+        <li>
+          <code>gen_ai.operation.name</code> —
+          <code>chat</code
+          >、<code>completion</code>、<code>invoke_agent</code>、<code>tool_call</code>。
+        </li>
+        <li><code>gen_ai.data_source.id</code> — 用于RAG：查询了哪个语料库或存储。</li>
+      </ul>
+      <p>存在Anthropic、Azure AI Inference、AWS Bedrock、OpenAI的技术特定约定。</p>
+      <h3 id="内容捕获"><a href="#内容捕获">内容捕获</a></h3>
+      <p>默认规则：仪器默认不应捕获输入/输出。捕获通过以下选择加入：</p>
+      <ul>
+        <li><code>gen_ai.system_instructions</code></li>
+        <li><code>gen_ai.input.messages</code></li>
+        <li><code>gen_ai.output.messages</code></li>
+      </ul>
+      <p>
+        推荐的生产模式：将内容存储在外部（S3、你的日志存储），在span上记录引用（指针ID，而非散文）。这是第27课内容投毒防御连接到可观测性的方式。
+      </p>
+      <h3 id="稳定性"><a href="#稳定性">稳定性</a></h3>
+      <p>截至2026年3月，大多数约定是实验性的。选择加入稳定预览：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental</span></span></code></pre>
+      <p>
+        Datadog v1.37+原生将GenAI属性映射到其LLM Observability
+        Schema。其他后端（Grafana、Honeycomb、Jaeger）支持原始属性。
+      </p>
+      <h3 id="这个模式哪里会出错"><a href="#这个模式哪里会出错">这个模式哪里会出错</a></h3>
+      <ul>
+        <li>
+          <strong>在span中捕获完整提示。</strong> PII、秘密、客户数据在运维可读的追踪中。外部存储。
+        </li>
+        <li>
+          <strong>无<code>gen_ai.provider.name</code>。</strong> 当归属缺失时多提供商仪表板会破坏。
+        </li>
+        <li><strong>无父链接的span。</strong> 孤立的工具span。总是传播上下文。</li>
+        <li><strong>不设置稳定性选择加入。</strong> 你的属性可能在后端升级时被重命名。</li>
+      </ul>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p><code>code/main.py</code>实现一个匹配GenAI约定的stdlib span发射器：</p>
+      <ul>
+        <li>带GenAI属性Schema的<code>Span</code>。</li>
+        <li>带有<code>start_span</code>、嵌套上下文的<code>Tracer</code>。</li>
+        <li>
+          一个脚本Agent运行发出：<code>create_agent</code>、<code>invoke_agent</code>（INTERNAL）、每工具span、LLM调用的<code
+            >chat</code
+          >
+          span。
+        </li>
+        <li>一个内容捕获模式，将提示存储在外部并在span上记录ID。</li>
+      </ul>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <p>输出：一个带所有必需GenAI属性的span树，以及一个显示选择加入内容引用的”外部存储”。</p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <ul>
+        <li><strong>Datadog LLM Observability</strong>（v1.37+）原生映射属性。</li>
+        <li><strong>Langfuse / Phoenix / Opik</strong>（第24课）— 自动仪器化生态系统。</li>
+        <li>
+          <strong>Jaeger / Honeycomb / Grafana Tempo</strong> —
+          原始OTel追踪；从GenAI属性构建仪表板。
+        </li>
+        <li><strong>自托管</strong> — 运行带GenAI处理器的OTel Collector。</li>
+      </ul>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>
+        <code>outputs/skill-otel-genai.md</code>将OTel GenAI
+        span连接到现有Agent，带内容捕获默认值和外部引用存储。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          用<code>invoke_agent</code>（INTERNAL）+ 每工具<span
+            class="term-tip"
+            data-term="span"
+            data-module="cpp"
+            data-def="非拥有视图"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">span</abbr></span
+          >仪器化你的第01课<span
+            class="term-tip"
+            data-term="ReAct"
+            data-module="agent"
+            data-def="结合推理与行动的智能体框架，交替执行思考步骤和工具调用步骤"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">ReAct</abbr></span
+          >循<span
+            class="term-tip"
+            data-term="环"
+            data-module="discrete-math"
+            data-def="具有加法群和乘法半群结构且满足分配律的代数系统"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">环</abbr></span
+          >。发送到Jaeger实例。
+        </li>
+        <li>
+          在”仅<span
+            class="term-tip"
+            data-term="引用"
+            data-module="c"
+            data-def="变量的别名"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">引用</abbr></span
+          >”<span
+            class="term-tip"
+            data-term="模式"
+            data-module="github"
+            data-def="模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模式</abbr></span
+          >下添加<span
+            class="term-tip"
+            data-term="内容"
+            data-module="cpp"
+            data-def="内容部分"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">内容</abbr></span
+          >捕获：<span
+            class="term-tip"
+            data-term="提示"
+            data-module="cpp"
+            data-def="提示"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提示</abbr></span
+          >到SQLite，<span
+            class="term-tip"
+            data-term="span"
+            data-module="cpp"
+            data-def="非拥有视图"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">span</abbr></span
+          >属性只携带行ID。
+        </li>
+        <li>
+          阅读<code>gen_ai.data_source.id</code>的<span
+            class="term-tip"
+            data-term="规范"
+            data-module="html5"
+            data-def="HTML 标准文档"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">规范</abbr></span
+          >。将其<span
+            class="term-tip"
+            data-term="连接"
+            data-module="cpp"
+            data-def="连接关系"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">连接</abbr></span
+          >到你的第09课Mem0搜索。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="设置"
+            data-module="cpp"
+            data-def="设置"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设置</abbr></span
+          ><code>OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental</code>并<span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >你的<span
+            class="term-tip"
+            data-term="属性"
+            data-module="c"
+            data-def="附加在声明上的修饰符"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">属性</abbr></span
+          >没有被收集器<span
+            class="term-tip"
+            data-term="重命名"
+            data-module="github"
+            data-def="重命名"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">重命名</abbr></span
+          >。
+        </li>
+        <li>
+          构建<span
+            class="term-tip"
+            data-term="仪表板"
+            data-module="github"
+            data-def="信息展示面板"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">仪表板</abbr></span
+          >：“哪些<span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >错误与哪些模型<span
+            class="term-tip"
+            data-term="相关"
+            data-module="cpp"
+            data-def="相关的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">相关</abbr></span
+          >”仅从GenAI属性。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们常说的
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GenAI SIG</td>
+            <td>”OpenTelemetry GenAI组”</td>
+            <td>
+              定义<span
+                class="term-tip"
+                data-term="Schema"
+                data-module="typescript"
+                data-def="类型模式"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Schema</abbr></span
+              >的OTel工作组
+            </td>
+          </tr>
+          <tr>
+            <td>invoke_agent</td>
+            <td>
+              ”Agent
+              <span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >”
+            </td>
+            <td>
+              代表Agent运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >名称
+            </td>
+          </tr>
+          <tr>
+            <td>
+              CLIENT
+              <span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="远程"
+                data-module="cpp"
+                data-def="远程"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">远程</abbr></span
+              >调用”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >远程Agent服务<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              INTERNAL
+              <span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="进程"
+                data-module="c"
+                data-def="运行的程序实例"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">进程</abbr></span
+              >内”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="进程"
+                data-module="c"
+                data-def="运行的程序实例"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">进程</abbr></span
+              >内Agent运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="span"
+                data-module="cpp"
+                data-def="非拥有视图"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">span</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>gen_ai.provider.name</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="提供"
+                data-module="github"
+                data-def="提供"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提供</abbr></span
+              >商”
+            </td>
+            <td>anthropic / openai / aws.bedrock / google.vertex</td>
+          </tr>
+          <tr>
+            <td>gen_ai.data_source.id</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="RAG"
+                data-module="agent"
+                data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">RAG</abbr></span
+              >源”
+            </td>
+            <td>
+              检索命中了哪个语料<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="存储"
+                data-module="cpp"
+                data-def="存储"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存储</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="内容"
+                data-module="cpp"
+                data-def="内容部分"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内容</abbr></span
+              >捕获
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >日志”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >加入的<span
+                class="term-tip"
+                data-term="消息"
+                data-module="github"
+                data-def="消息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">消息</abbr></span
+              >捕获；<span
+                class="term-tip"
+                data-term="生产"
+                data-module="github"
+                data-def="生产"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生产</abbr></span
+              >中外部<span
+                class="term-tip"
+                data-term="存储"
+                data-module="cpp"
+                data-def="存储"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存储</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="稳定性"
+                data-module="cpp"
+                data-def="稳定性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">稳定性</abbr></span
+              >选择加入
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="预览模式"
+                data-module="github"
+                data-def="预览模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">预览模式</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="固定"
+                data-module="cpp"
+                data-def="固定的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">固定</abbr></span
+              >实验性约定的<span
+                class="term-tip"
+                data-term="环境变量"
+                data-module="c"
+                data-def="操作系统的配置变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">环境变量</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://opentelemetry.io/docs/specs/semconv/gen-ai/"
+            >OpenTelemetry GenAI语义约定</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="规范"
+            data-module="html5"
+            data-def="HTML 标准文档"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">规范</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://openai.github.io/openai-agents-python/">OpenAI Agents SDK</a> — 默认GenAI
+          <span
+            class="term-tip"
+            data-term="span"
+            data-module="cpp"
+            data-def="非拥有视图"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">span</abbr></span
+          >
+        </li>
+        <li>
+          <a
+            href="https://www.microsoft.com/en-us/research/articles/autogen-v0-4-reimagining-the-foundation-of-agentic-ai-for-scale-extensibility-and-robustness/"
+            >AutoGen v0.4 (Microsoft Research)</a
+          >
+          — 内置OTel
+          <span
+            class="term-tip"
+            data-term="span"
+            data-module="cpp"
+            data-def="非拥有视图"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">span</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://platform.claude.com/docs/en/agent-sdk/overview">Claude Agent SDK</a> —
+          W3C追踪<span
+            class="term-tip"
+            data-term="上下文"
+            data-module="cpp"
+            data-def="使用环境"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">上下文</abbr></span
+          >传播
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

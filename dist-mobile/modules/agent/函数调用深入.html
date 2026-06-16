@@ -1,0 +1,916 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>函数调用深入 — OpenAI、Anthropic、Gemini</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">函数调用深入 — OpenAI、Anthropic、Gemini</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            18 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">函数调用</span><span class="doc-tag">OpenAI</span
+          ><span class="doc-tag">Anthropic</span><span class="doc-tag">Gemini</span
+          ><span class="doc-tag">提供商移植</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          对比三大前沿提供商的函数调用格式差异，构建统一翻译器实现跨提供商移植
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="函数调用深入--openaianthropicgemini">
+        <a href="#函数调用深入--openaianthropicgemini">函数调用深入 — OpenAI、Anthropic、Gemini</a>
+      </h1>
+      <blockquote>
+        <p>
+          三大前沿提供商在2024年趋同于相同的工具调用循环，然后在其他一切上分道扬镳。OpenAI使用
+          <code>tools</code> 和 <code>tool_calls</code>。Anthropic使用 <code>tool_use</code> 和
+          <code>tool_result</code> 块。Gemini使用
+          <code>functionDeclarations</code>
+          和唯一id关联。本课并排对比三者，使在一个提供商上发布的代码在移植时不会中断。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库，模式翻译器）
+        <strong>前置条件：</strong> Phase 13 · 01（工具接口） <strong>时间：</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>陈述OpenAI、Anthropic和Gemini函数调用负载之间的三个形状差异（声明、调用、结果）。</li>
+        <li>将一个工具声明翻译为所有三个提供商格式，并预测严格模式约束的不同之处。</li>
+        <li>在每个提供商中使用 <code>tool_choice</code> 来强制、禁止或自动选择工具调用。</li>
+        <li>了解每个提供商的硬限制（工具数量、模式深度、参数长度）以及违反限制时的错误签名。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>函数调用请求的形状因提供商而异。2026年生产栈的三个具体示例：</p>
+      <p>
+        <strong>OpenAI Chat Completions / Responses API。</strong> 你传递
+        <code>tools: [{type: "function", function: {name, description, parameters, strict}}]</code
+        >。模型的响应包含
+        <code
+          >choices[0].message.tool_calls: [{id, type: "function", function: {name,
+          arguments}}]</code
+        >，其中 <code>arguments</code> 是你必须解析的JSON字符串。严格模式（<code>strict: true</code
+        >）通过约束解码强制模式合规。
+      </p>
+      <p>
+        <strong>Anthropic Messages API。</strong> 你传递
+        <code>tools: [{name, description, input_schema}]</code>。响应以
+        <code>content: [{type: "text"}, {type: "tool_use", id, name, input}]</code> 形式返回。<code
+          >input</code
+        >
+        已经解析（一个对象，不是字符串）。你用包含
+        <code>{type: "tool_result", tool_use_id, content}</code> 块的新 <code>user</code> 消息回复。
+      </p>
+      <p>
+        <strong>Google Gemini API。</strong> 你传递
+        <code>tools: [{functionDeclarations: [{name, description, parameters}]}]</code>（嵌套在
+        <code>functionDeclarations</code> 下）。响应以
+        <code>candidates[0].content.parts: [{functionCall: {name, args, id}}]</code> 形式到达，其中
+        <code>id</code> 在Gemini 3及以上版本中用于并行调用关联。你用
+        <code>{functionResponse: {name, id, response}}</code> 回复。
+      </p>
+      <p>
+        相同的循环。不同的字段名称、不同的嵌套、不同的字符串与对象约定、不同的关联机制。在OpenAI上编写天气Agent的团队需要两天移植到Anthropic，又需要一天移植到Gemini，仅用于管道工作。
+      </p>
+      <p>
+        本课构建一个翻译器，将三种格式统一为一个规范工具声明，并在边缘路由。Phase 13 ·
+        17将相同模式泛化为LLM网关。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="共同结构"><a href="#共同结构">共同结构</a></h3>
+      <p>每个提供商需要五样东西：</p>
+      <ol>
+        <li><strong>工具列表。</strong> 每个工具的名称、描述和输入模式。</li>
+        <li><strong>工具选择。</strong> 强制特定工具、禁止工具或让模型决定。</li>
+        <li><strong>调用发出。</strong> 命名工具和参数的结构化输出。</li>
+        <li><strong>调用id。</strong> 将响应与正确的调用关联（并行时重要）。</li>
+        <li><strong>结果注入。</strong> 将结果与调用关联的消息或块。</li>
+      </ol>
+      <h3 id="逐字段形状差异"><a href="#逐字段形状差异">逐字段形状差异</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>方面</th>
+            <th>OpenAI</th>
+            <th>Anthropic</th>
+            <th>Gemini</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>声明信封</td>
+            <td><code>{type: "function", function: {...}}</code></td>
+            <td><code>{name, description, input_schema}</code></td>
+            <td><code>{functionDeclarations: [{...}]}</code></td>
+          </tr>
+          <tr>
+            <td>模式字段</td>
+            <td><code>parameters</code></td>
+            <td><code>input_schema</code></td>
+            <td><code>parameters</code></td>
+          </tr>
+          <tr>
+            <td>响应容器</td>
+            <td>assistant消息上的 <code>tool_calls[]</code></td>
+            <td>类型为 <code>tool_use</code> 的 <code>content[]</code></td>
+            <td>类型为 <code>functionCall</code> 的 <code>parts[]</code></td>
+          </tr>
+          <tr>
+            <td>参数类型</td>
+            <td>字符串化JSON</td>
+            <td>解析后的对象</td>
+            <td>解析后的对象</td>
+          </tr>
+          <tr>
+            <td>Id格式</td>
+            <td><code>call_...</code>（OpenAI生成）</td>
+            <td><code>toolu_...</code>（Anthropic）</td>
+            <td>UUID（Gemini 3+）</td>
+          </tr>
+          <tr>
+            <td>结果块</td>
+            <td>角色 <code>tool</code>，<code>tool_call_id</code></td>
+            <td><code>user</code> 带 <code>tool_result</code>，<code>tool_use_id</code></td>
+            <td><code>functionResponse</code> 带匹配 <code>id</code></td>
+          </tr>
+          <tr>
+            <td>强制工具</td>
+            <td><code>tool_choice: {type: "function", function: {name}}</code></td>
+            <td><code>tool_choice: {type: "tool", name}</code></td>
+            <td><code>tool_config: {function_calling_config: {mode: "ANY"}}</code></td>
+          </tr>
+          <tr>
+            <td>禁止工具</td>
+            <td><code>tool_choice: "none"</code></td>
+            <td><code>tool_choice: {type: "none"}</code></td>
+            <td><code>mode: "NONE"</code></td>
+          </tr>
+          <tr>
+            <td>严格模式</td>
+            <td><code>strict: true</code></td>
+            <td>模式即模式（始终强制）</td>
+            <td>请求级 <code>responseSchema</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="你会实际碰到的限制"><a href="#你会实际碰到的限制">你会实际碰到的限制</a></h3>
+      <ul>
+        <li>
+          <strong>OpenAI。</strong> 每个请求128个工具。模式深度5。参数字符串 &#x3C;=
+          8192字节。严格模式要求无 <code>$ref</code>，无重叠的
+          <code>oneOf</code>/<code>anyOf</code>/<code>allOf</code>，每个属性列在
+          <code>required</code> 中。
+        </li>
+        <li>
+          <strong>Anthropic。</strong>
+          每个请求64个工具。模式深度实际上无限制但实际限制为10。无严格模式标志；模式是契约，模型倾向于遵守。
+        </li>
+        <li>
+          <strong>Gemini。</strong> 每个请求64个函数。模式类型是OpenAPI 3.0子集（与JSON Schema
+          2020-12略有分歧）。并行调用自Gemini 3起有唯一id。
+        </li>
+      </ul>
+      <h3 id="tool_choice-行为">
+        <a href="#tool_choice-行为"><code>tool_choice</code> 行为</a>
+      </h3>
+      <p>每个人都支持的三种模式，命名不同。</p>
+      <ul>
+        <li><strong>Auto。</strong> 模型选择工具或文本。默认。</li>
+        <li><strong>Required / Any。</strong> 模型必须调用至少一个工具。</li>
+        <li><strong>None。</strong> 模型不得调用工具。</li>
+      </ul>
+      <p>加上每个提供商独有的一种模式：</p>
+      <ul>
+        <li><strong>OpenAI。</strong> 按名称强制特定工具。</li>
+        <li>
+          <strong>Anthropic。</strong> 按名称强制特定工具；<code>disable_parallel_tool_use</code>
+          标志区分单次与多次。
+        </li>
+        <li>
+          <strong>Gemini。</strong>
+          <code>mode: "VALIDATED"</code> 将每个响应通过模式验证器路由，无论模型意图。
+        </li>
+      </ul>
+      <h3 id="并行调用"><a href="#并行调用">并行调用</a></h3>
+      <p>
+        OpenAI的
+        <code>parallel_tool_calls: true</code
+        >（默认）在一个assistant消息中发出多个调用。你运行所有调用并用包含每个
+        <code>tool_call_id</code> 一个条目的批量工具角色消息回复。Anthropic历史上做单次调用；<code
+          >disable_parallel_tool_use: false</code
+        >（Claude 3.5起默认）启用多次。Gemini 2允许并行调用但不给稳定id；Gemini
+        3添加UUID，使乱序响应干净地关联。
+      </p>
+      <h3 id="流式传输"><a href="#流式传输">流式传输</a></h3>
+      <p>三个提供商都支持流式工具调用。线路格式不同：</p>
+      <ul>
+        <li>
+          <strong>OpenAI。</strong>
+          <code>tool_calls[i].function.arguments</code> 的增量块逐步到达。你累积直到
+          <code>finish_reason: "tool_calls"</code>。
+        </li>
+        <li>
+          <strong>Anthropic。</strong> block-start / block-delta / block-stop 事件。<code
+            >input_json_delta</code
+          >
+          块携带部分参数。
+        </li>
+        <li>
+          <strong>Gemini。</strong> <code>streamFunctionCallArguments</code>（Gemini 3新增）发出带有
+          <code>functionCallId</code> 的块，使多个并行调用可以交错。
+        </li>
+      </ul>
+      <p>Phase 13 · 03深入并行 + 流式重组。本课侧重于声明和单次调用形状。</p>
+      <h3 id="错误与修复"><a href="#错误与修复">错误与修复</a></h3>
+      <p>无效参数错误看起来也不同。</p>
+      <ul>
+        <li>
+          <strong>OpenAI（非严格）。</strong> 模型返回
+          <code>arguments: "{bad json}"</code>，你的JSON解析失败，你注入错误消息并重新调用。
+        </li>
+        <li>
+          <strong>OpenAI（严格）。</strong> 验证在解码期间发生；无效JSON不可能出现，但
+          <code>refusal</code> 可以出现。
+        </li>
+        <li>
+          <strong>Anthropic。</strong>
+          <code>input</code> 可能包含意外字段；模式是建议性的。服务器端验证。
+        </li>
+        <li>
+          <strong>Gemini。</strong> OpenAPI 3.0怪癖：对象字段上的
+          <code>enum</code> 被静默忽略；自行验证。
+        </li>
+      </ul>
+      <h3 id="翻译器模式"><a href="#翻译器模式">翻译器模式</a></h3>
+      <p>你代码中的规范工具声明看起来像这样（你选择形状）：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Tool(</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"get_weather"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    description</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Use when ..."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    input_schema</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"object"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"properties"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"required"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]},</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    strict</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>
+        三个小函数将其翻译为三个提供商形状。<code>code/main.py</code>
+        中的线束正是这样做的，然后通过每个提供商的响应形状往返一个假工具调用。不需要网络 —
+        本课教授形状，不是HTTP。
+      </p>
+      <p>
+        生产团队将此翻译器包装在 <code>AbstractToolset</code>（Pydantic
+        AI）、<code>UniversalToolNode</code>（LangGraph）或
+        <code>BaseTool</code>（LlamaIndex）中。Phase 13 ·
+        17发布一个网关，在任何三个提供商前面暴露OpenAI形状的API。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code> 定义一个规范的
+        <code>Tool</code>
+        数据类和三个翻译器，它们发出OpenAI、Anthropic和Gemini声明JSON。然后它将每个形状的手工提供商响应解析为相同的规范调用对象，演示语义在表面下是相同的。运行它并并排对比三个声明。
+      </p>
+      <p>关注点：</p>
+      <ul>
+        <li>三个声明块仅在信封和字段名称上不同。</li>
+        <li>
+          三个响应块在调用所在位置不同（顶级 <code>tool_calls</code>、<code>content[]</code>
+          块、<code>parts[]</code> 条目）。
+        </li>
+        <li>
+          一个 <code>canonical_call()</code> 函数从所有三个响应形状中提取
+          <code>{id, name, args}</code>。
+        </li>
+      </ul>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        本课产生
+        <code>outputs/skill-provider-portability-audit.md</code
+        >。给定一个针对某个提供商的函数调用集成，该技能生成可移植性审计：它依赖哪些提供商限制，哪些字段需要重命名，以及移植到每个其他提供商时什么会中断。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            运行 <code>code/main.py</code> 并验证三个提供商声明JSON都序列化相同的底层
+            <code>Tool</code>
+            对象。修改规范工具以添加枚举参数，并确认只有Gemini翻译器需要处理OpenAPI怪癖。
+          </p>
+        </li>
+        <li>
+          <p>
+            为每个提供商添加一个 <code>ListToolsResponse</code> 解析器，提取模型在
+            <code>list_tools</code> 或发现调用后返回的工具列表。OpenAI原生没有这个；注意这种不对称。
+          </p>
+        </li>
+        <li>
+          <p>
+            实现 <code>tool_choice</code> 转换：将规范
+            <code>ToolChoice(mode="force", tool_name="x")</code> 映射为所有三个提供商形状。然后映射
+            <code>mode="any"</code> 和 <code>mode="none"</code>。查看本课的差异表。
+          </p>
+        </li>
+        <li>
+          <p>
+            选择三个提供商之一，从头到尾阅读其函数调用指南。找到其模式规范中其他两个不支持的一个字段。候选：OpenAI
+            <code>strict</code>、Anthropic <code>disable_parallel_tool_use</code>、Gemini
+            <code>function_calling_config.allowed_function_names</code>。
+          </p>
+        </li>
+        <li>
+          <p>
+            编写一个<span
+              class="term-tip"
+              data-term="测试"
+              data-module="cpp"
+              data-def="测试"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">测试</abbr></span
+            >向量：一个<span
+              class="term-tip"
+              data-term="参数"
+              data-module="c"
+              data-def="函数定义时的变量"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">参数</abbr></span
+            >违反<span
+              class="term-tip"
+              data-term="声明"
+              data-module="c"
+              data-def="引入变量或函数"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">声明</abbr></span
+            >模式的工具调用。通过每个提供商的验证器运行它（第01课中的标准库版本可作为代理）并记录哪些错误触发。记录你会在生产中使用哪个提供商来获得严格性。
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Function"
+                data-module="javascript"
+                data-def="函数对象"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Function</abbr></span
+              >
+              calling
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="工具使用"
+                data-module="agent"
+                data-def="智能体调用外部工具（如搜索引擎、代码执行器、API）扩展自身能力的行为"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具使用</abbr></span
+              >”
+            </td>
+            <td>
+              用于<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >化<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >调用发出的<span
+                class="term-tip"
+                data-term="提供"
+                data-module="github"
+                data-def="提供"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提供</abbr></span
+              >商级API
+            </td>
+          </tr>
+          <tr>
+            <td>Tool declaration</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >规范”
+            </td>
+            <td>
+              名称 +
+              <span
+                class="term-tip"
+                data-term="描述"
+                data-module="github"
+                data-def="描述"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">描述</abbr></span
+              >
+              +
+              <span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="Schema"
+                data-module="typescript"
+                data-def="类型模式"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Schema</abbr></span
+              >输入<span
+                class="term-tip"
+                data-term="负载"
+                data-module="github"
+                data-def="负载"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">负载</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>tool_choice</code></td>
+            <td>”强制/禁止”</td>
+            <td>
+              Auto /
+              <span
+                class="term-tip"
+                data-term="required"
+                data-module="html5"
+                data-def="表单必填验证属性，提交时浏览器自动验证"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">required</abbr></span
+              >
+              /
+              <span
+                class="term-tip"
+                data-term="none"
+                data-module="cpp"
+                data-def="无操作流"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">none</abbr></span
+              >
+              / 特定名称<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Strict mode</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >强制”
+            </td>
+            <td>
+              OpenAI标志，<span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >约束<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >强制<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >合规
+            </td>
+          </tr>
+          <tr>
+            <td><code>tool_use</code> block</td>
+            <td>
+              ”Anthropic的<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >形状”
+            </td>
+            <td>
+              带有id、name、input的<span
+                class="term-tip"
+                data-term="内联"
+                data-module="c"
+                data-def="请求编译器内联展开"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内联</abbr></span
+              >内容<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>functionCall</code> part</td>
+            <td>
+              ”Gemini的<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >形状”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="包"
+                data-module="go"
+                data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+                data-slug="go/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">包</abbr></span
+              >含name、args和id的 <code>parts[]</code> 条目
+            </td>
+          </tr>
+          <tr>
+            <td>Arguments-as-string</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="字符串"
+                data-module="cpp"
+                data-def="字符序列"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字符串</abbr></span
+              >化<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >”
+            </td>
+            <td>
+              OpenAI将<span
+                class="term-tip"
+                data-term="参数"
+                data-module="c"
+                data-def="函数定义时的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参数</abbr></span
+              >作为<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >字符串<span
+                class="term-tip"
+                data-term="返回"
+                data-module="vue3"
+                data-def="返回值"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">返回</abbr></span
+              >，不是<span
+                class="term-tip"
+                data-term="对象"
+                data-module="cpp"
+                data-def="类的实例"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对象</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Parallel tool calls</td>
+            <td>
+              ”一<span
+                class="term-tip"
+                data-term="轮"
+                data-module="github"
+                data-def="轮"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轮</abbr></span
+              >扇出”
+            </td>
+            <td>
+              一个assistant消息中的<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >个<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >调用
+            </td>
+          </tr>
+          <tr>
+            <td>Refusal</td>
+            <td>
+              ”模型<span
+                class="term-tip"
+                data-term="拒绝"
+                data-module="github"
+                data-def="拒绝"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">拒绝</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="严格模式"
+                data-module="github"
+                data-def="严格模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">严格模式</abbr></span
+              >专用的<span
+                class="term-tip"
+                data-term="拒绝"
+                data-module="github"
+                data-def="拒绝"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">拒绝</abbr></span
+              >块，<span
+                class="term-tip"
+                data-term="替代"
+                data-module="c"
+                data-def="用实参替换形参"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">替代</abbr></span
+              >调用
+            </td>
+          </tr>
+          <tr>
+            <td>OpenAPI 3.0 subset</td>
+            <td>”Gemini模式怪癖”</td>
+            <td>
+              Gemini使用与<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="Schema"
+                data-module="typescript"
+                data-def="类型模式"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Schema</abbr></span
+              >略有不同的方言
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://platform.openai.com/docs/guides/function-calling"
+            >OpenAI — Function calling guide</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="包"
+            data-module="go"
+            data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+            data-slug="go/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">包</abbr></span
+          >括<span
+            class="term-tip"
+            data-term="严格模式"
+            data-module="github"
+            data-def="严格模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">严格模式</abbr></span
+          >和<span
+            class="term-tip"
+            data-term="并行"
+            data-module="github"
+            data-def="并行的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">并行</abbr></span
+          >调用的权威<span
+            class="term-tip"
+            data-term="参考"
+            data-module="github"
+            data-def="参考"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参考</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/overview"
+            >Anthropic — Tool use overview</a
+          >
+          — <code>tool_use</code> 和 <code>tool_result</code>
+          <span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >语义
+        </li>
+        <li>
+          <a href="https://ai.google.dev/gemini-api/docs/function-calling"
+            >Google — Gemini function calling</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="并行"
+            data-module="github"
+            data-def="并行的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">并行</abbr></span
+          >调用、唯一id和OpenAPI子集
+        </li>
+        <li>
+          <a
+            href="https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/function-calling"
+            >Vertex AI — Function calling reference</a
+          >
+          — Gemini的<span
+            class="term-tip"
+            data-term="企业"
+            data-module="github"
+            data-def="企业"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">企业</abbr></span
+          >表<span
+            class="term-tip"
+            data-term="面"
+            data-module="cpp"
+            data-def="面对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">面</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://platform.openai.com/docs/guides/structured-outputs"
+            >OpenAI — Structured outputs</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="严格模式"
+            data-module="github"
+            data-def="严格模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">严格模式</abbr></span
+          >模式强制详情
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

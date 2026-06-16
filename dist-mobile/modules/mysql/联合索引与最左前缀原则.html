@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>联合索引与最左前缀原则</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">联合索引与最左前缀原则</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            1 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          MySQL联合索引与最左前缀原则：索引结构、匹配规则、跳列场景与索引设计策略
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-联合索引结构"><a href="#1-联合索引结构">1. 联合索引结构</a></h2>
+      <p>
+        <span
+          class="term-tip"
+          data-term="联合"
+          data-module="c"
+          data-def="可存储不同类型的重叠内存"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">联合</abbr></span
+        >索引（复合<span
+          class="term-tip"
+          data-term="索引"
+          data-module="c"
+          data-def="数组中元素的位置"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">索引</abbr></span
+        >）是在<span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >个列上创建的<span
+          class="term-tip"
+          data-term="索引"
+          data-module="c"
+          data-def="数组中元素的位置"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">索引</abbr></span
+        >，按照<span
+          class="term-tip"
+          data-term="定义"
+          data-module="c"
+          data-def="创建变量或函数的实体"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">定义</abbr></span
+        >列的顺序在 B+<span
+          class="term-tip"
+          data-term="树"
+          data-module="algorithm"
+          data-def="n个节点的有限集合，连通无环图，n个节点有n-1条边"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">树</abbr></span
+        >中<span
+          class="term-tip"
+          data-term="排序"
+          data-module="cpp"
+          data-def="排序"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">排序</abbr></span
+        >。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 创建联合索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_abc</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table_name(a, b, c);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- B+树排序规则：</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 先按 a 排序，a 相同按 b 排序，b 相同按 c 排序</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 索引项：(1,1,1), (1,1,2), (1,2,1), (2,1,1), (2,2,1)</span></span></code></pre>
+      <h2 id="2-最左前缀原则"><a href="#2-最左前缀原则">2. 最左前缀原则</a></h2>
+      <h3 id="21-匹配规则"><a href="#21-匹配规则">2.1 匹配规则</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="联合"
+          data-module="c"
+          data-def="可存储不同类型的重叠内存"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">联合</abbr></span
+        >索引 <code>(a, b, c)</code> 可以<span
+          class="term-tip"
+          data-term="支持"
+          data-module="cpp"
+          data-def="支持"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">支持</abbr></span
+        >以下<span
+          class="term-tip"
+          data-term="查询"
+          data-module="cpp"
+          data-def="查询操作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">查询</abbr></span
+        >模式：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="WHERE"
+                data-module="mysql"
+                data-def="过滤结果的条件子句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">WHERE</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="条件"
+                data-module="github"
+                data-def="条件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">条件</abbr></span
+              >
+            </th>
+            <th>
+              使用<span
+                class="term-tip"
+                data-term="索引"
+                data-module="c"
+                data-def="数组中元素的位置"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">索引</abbr></span
+              >
+            </th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>a = 1</td>
+            <td>a</td>
+            <td>最左列</td>
+          </tr>
+          <tr>
+            <td>
+              a = 1
+              <span
+                class="term-tip"
+                data-term="AND"
+                data-module="mysql"
+                data-def="逻辑与运算符"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">AND</abbr></span
+              >
+              b = 2
+            </td>
+            <td>a, b</td>
+            <td>最左两列</td>
+          </tr>
+          <tr>
+            <td>
+              a = 1
+              <span
+                class="term-tip"
+                data-term="AND"
+                data-module="mysql"
+                data-def="逻辑与运算符"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">AND</abbr></span
+              >
+              b = 2
+              <span
+                class="term-tip"
+                data-term="AND"
+                data-module="mysql"
+                data-def="逻辑与运算符"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">AND</abbr></span
+              >
+              c = 3
+            </td>
+            <td>a, b, c</td>
+            <td>全部列</td>
+          </tr>
+          <tr>
+            <td>b = 2</td>
+            <td></td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="跳过"
+                data-module="cpp"
+                data-def="跳过"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">跳过</abbr></span
+              >最左列
+            </td>
+          </tr>
+          <tr>
+            <td>c = 3</td>
+            <td></td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="跳过"
+                data-module="cpp"
+                data-def="跳过"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">跳过</abbr></span
+              >最左列
+            </td>
+          </tr>
+          <tr>
+            <td>
+              b = 2
+              <span
+                class="term-tip"
+                data-term="AND"
+                data-module="mysql"
+                data-def="逻辑与运算符"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">AND</abbr></span
+              >
+              c = 3
+            </td>
+            <td></td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="跳过"
+                data-module="cpp"
+                data-def="跳过"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">跳过</abbr></span
+              >最左列
+            </td>
+          </tr>
+          <tr>
+            <td>
+              a = 1
+              <span
+                class="term-tip"
+                data-term="AND"
+                data-module="mysql"
+                data-def="逻辑与运算符"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">AND</abbr></span
+              >
+              c = 3
+            </td>
+            <td>a</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="跳过"
+                data-module="cpp"
+                data-def="跳过"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">跳过</abbr></span
+              >中间列 b
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="22-范围查询中断"><a href="#22-范围查询中断">2.2 范围查询中断</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 索引 (a, b, c)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 范围查询后的列无法使用索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">       -- 只用 a，b 无法用索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 用 a, b，c 无法用索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  -- 用 a, b, c 全部</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 等值条件在前，范围条件在后</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 索引设计时应将范围查询列放在最后</span></span></code></pre>
+      <h3 id="23-order-by-与最左前缀">
+        <a href="#23-order-by-与最左前缀">2.3 ORDER BY 与最左前缀</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 索引 (a, b, c)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ORDER BY 可以利用索引避免 filesort</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b              </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">--  使用索引排序</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b, c           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">--  使用索引排序</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> c              </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">--  跳过 b，需要 filesort</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> c    </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">--  使用索引排序</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a, b, c                    </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">--  使用索引排序</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b, c                       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">--  跳过 a</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">     --  降序也可用索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ASC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">              --  排序方向不一致</span></span></code></pre>
+      <h2 id="3-索引设计策略"><a href="#3-索引设计策略">3. 索引设计策略</a></h2>
+      <h3 id="31-列顺序原则"><a href="#31-列顺序原则">3.1 列顺序原则</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 原则1：等值条件列在前，范围条件列在后</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查询：WHERE status = 'active' AND created_at > '2026-01-01'</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_status_created</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">status</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, created_at);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 原则2：高选择性列在前</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查询：WHERE city = '北京' AND gender = 'M'</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- city 选择性 > gender 选择性</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_city_gender</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users(city, gender);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 原则3：考虑排序需求</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查询：WHERE dept_id = 5 ORDER BY salary DESC</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_dept_salary</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees(dept_id, salary </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+      <h3 id="32-冗余索引检测"><a href="#32-冗余索引检测">3.2 冗余索引检测</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 索引 (a, b) 已经覆盖了 (a) 的功能</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- (a) 是冗余索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_a</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table_name(a);       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 冗余</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_ab</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table_name(a, b);   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 包含 a 的查询也能用</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 但 (a, b) 不能替代 (b)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_b</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table_name(b);       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 非冗余</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看冗余索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sys</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">schema_redundant_indexes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="33-联合索引-vs-多个单列索引">
+        <a href="#33-联合索引-vs-多个单列索引">3.3 联合索引 vs 多个单列索引</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 场景：WHERE a = 1 AND b = 2</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案1：联合索引（推荐）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_ab</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table_name(a, b);</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 一次索引查找，效率高</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案2：两个单列索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_a</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table_name(a);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_b</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table_name(b);</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 优化器可能使用 index_merge，效率不如联合索引</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 且无法用于排序</span></span></code></pre>
+    </article>
+  </body>
+</html>

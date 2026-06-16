@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>并发渲染与可中断更新</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">并发渲染与可中断更新</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            2 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">React并发渲染与可中断更新详解：Concurrent Rendering原理。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-并发渲染原理"><a href="#1-并发渲染原理">1. 并发渲染原理</a></h2>
+      <h3 id="11-同步-vs-并发"><a href="#11-同步-vs-并发">1.1 同步 vs 并发</a></h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="同步"
+            data-module="c"
+            data-def="协调多个执行单元"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">同步</abbr></span
+          >渲染</strong
+        >：一旦开始，不可<span
+          class="term-tip"
+          data-term="中断"
+          data-module="c"
+          data-def="暂停程序执行"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">中断</abbr></span
+        >，直到<span
+          class="term-tip"
+          data-term="完成"
+          data-module="github"
+          data-def="完成"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">完成</abbr></span
+        >。
+      </p>
+      <p>
+        <strong
+          >并发<span
+            class="term-tip"
+            data-term="渲染"
+            data-module="html5"
+            data-def="将代码转为可视内容"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">渲染</abbr></span
+          ></strong
+        >：可暂停、<span
+          class="term-tip"
+          data-term="恢复"
+          data-module="github"
+          data-def="恢复"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">恢复</abbr></span
+        >、放弃<span
+          class="term-tip"
+          data-term="渲染"
+          data-module="html5"
+          data-def="将代码转为可视内容"
+          data-slug="html5/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">渲染</abbr></span
+        >工作。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>同步:  ────渲染───────→ 用户可交互</span></span>
+<span class="line"><span>并发:  ──渲染──╳──高优先级──→──恢复渲染──→ 用户可交互</span></span></code></pre>
+      <h3 id="12-fiber-架构"><a href="#12-fiber-架构">1.2 Fiber 架构</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="Fiber"
+          data-module="react"
+          data-def="React 16+ 的协调引擎架构，支持可中断渲染和优先级调度"
+          data-slug="react/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Fiber</abbr></span
+        >
+        将<span
+          class="term-tip"
+          data-term="渲染"
+          data-module="html5"
+          data-def="将代码转为可视内容"
+          data-slug="html5/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">渲染</abbr></span
+        >工作<span
+          class="term-tip"
+          data-term="拆分"
+          data-module="cpp"
+          data-def="拆分"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">拆分</abbr></span
+        >为小<span
+          class="term-tip"
+          data-term="单元"
+          data-module="c"
+          data-def="编译的基本单位"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">单元</abbr></span
+        >（<span
+          class="term-tip"
+          data-term="Fiber"
+          data-module="react"
+          data-def="React 16+ 的协调引擎架构，支持可中断渲染和优先级调度"
+          data-slug="react/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Fiber</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="节点"
+          data-module="github"
+          data-def="节点"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">节点</abbr></span
+        >），每个<span
+          class="term-tip"
+          data-term="单元"
+          data-module="c"
+          data-def="编译的基本单位"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">单元</abbr></span
+        >可在 5ms
+        <span
+          class="term-tip"
+          data-term="时间"
+          data-module="cpp"
+          data-def="时间"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">时间</abbr></span
+        >片内<span
+          class="term-tip"
+          data-term="完成"
+          data-module="github"
+          data-def="完成"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">完成</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>Work Loop:</span></span>
+<span class="line"><span>  while (nextUnitOfWork &#x26;&#x26; !shouldYield()) {</span></span>
+<span class="line"><span>    nextUnitOfWork = performUnitOfWork(nextUnitOfWork);</span></span>
+<span class="line"><span>  }</span></span></code></pre>
+      <h2 id="2-优先级调度"><a href="#2-优先级调度">2. 优先级调度</a></h2>
+      <h3 id="21-优先级等级"><a href="#21-优先级等级">2.1 优先级等级</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="优先级"
+                data-module="cpp"
+                data-def="优先级"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">优先级</abbr></span
+              >
+            </th>
+            <th>场景</th>
+            <th>Lane</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>立即</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="用户输入"
+                data-module="vue3"
+                data-def="用户输入"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户输入</abbr></span
+              >
+            </td>
+            <td>SyncLane</td>
+          </tr>
+          <tr>
+            <td>高</td>
+            <td>
+              受控<span
+                class="term-tip"
+                data-term="输入"
+                data-module="c"
+                data-def="从外部获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输入</abbr></span
+              >
+            </td>
+            <td>InputContinuousLane</td>
+          </tr>
+          <tr>
+            <td>默认</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="数据获取"
+                data-module="vue3"
+                data-def="从服务端获取数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">数据获取</abbr></span
+              >
+            </td>
+            <td>DefaultLane</td>
+          </tr>
+          <tr>
+            <td>低</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="离屏"
+                data-module="html5"
+                data-def="视口外不可见"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">离屏</abbr></span
+              >预<span
+                class="term-tip"
+                data-term="渲染"
+                data-module="html5"
+                data-def="将代码转为可视内容"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">渲染</abbr></span
+              >
+            </td>
+            <td>IdleLane</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="22-优先级插队"><a href="#22-优先级插队">2.2 优先级插队</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="jsx"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 低优先级更新进行中</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">startTransition</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">  setSearchResults</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">heavyFilter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(query));</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 用户输入插队（高优先级）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">setInputValue</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(e.target.value);</span></span></code></pre>
+      <h2 id="3-starttransition"><a href="#3-starttransition">3. startTransition</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="jsx"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { useState, startTransition } </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'react'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">function</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Search</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  const</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">input</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">setInput</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> useState</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">''</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  const</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">results</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">setResults</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> useState</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  function</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> handleChange</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 高优先级：立即更新输入框</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    setInput</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(e.target.value);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 低优先级：延迟更新搜索结果</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    startTransition</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">      setResults</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">filterItems</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(e.target.value));</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    });</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="4-usedeferredvalue"><a href="#4-usedeferredvalue">4. useDeferredValue</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="jsx"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { useDeferredValue } </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'react'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">function</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Search</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  const</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">query</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">setQuery</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> useState</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">''</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  const</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> deferredQuery</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> useDeferredValue</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(query);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    &#x3C;></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">      &#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">input</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> value</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{query} </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">onChange</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=></span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> setQuery</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(e.target.value)} /></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">      &#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">Results</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> query</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{deferredQuery} /></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    &#x3C;/></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  );</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        <code>useDeferredValue</code>
+        <span
+          class="term-tip"
+          data-term="返回"
+          data-module="vue3"
+          data-def="返回值"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">返回</abbr></span
+        >一个<span
+          class="term-tip"
+          data-term="延迟"
+          data-module="cpp"
+          data-def="延迟操作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">延迟</abbr></span
+        >版本的<span
+          class="term-tip"
+          data-term="值"
+          data-module="cpp"
+          data-def="值"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">值</abbr></span
+        >，当有更<span
+          class="term-tip"
+          data-term="高"
+          data-module="github"
+          data-def="高的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">高</abbr></span
+        >优先级<span
+          class="term-tip"
+          data-term="更新时"
+          data-module="vue3"
+          data-def="数据更新时"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">更新时</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="延迟"
+          data-module="cpp"
+          data-def="延迟操作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">延迟</abbr></span
+        >更新。
+      </p>
+      <h2 id="5-suspense-与并发"><a href="#5-suspense-与并发">5. Suspense 与并发</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="jsx"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">Suspense</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> fallback</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">Loading</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> />}></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  &#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">UserProfile</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> /> {</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/* 异步获取数据 */</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">Suspense</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+      <p>
+        并发<span
+          class="term-tip"
+          data-term="模式"
+          data-module="github"
+          data-def="模式"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">模式</abbr></span
+        >下，<span
+          class="term-tip"
+          data-term="Suspense"
+          data-module="react"
+          data-def="声明式等待异步数据加载的组件，显示 fallback 直到子组件就绪"
+          data-slug="react/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Suspense</abbr></span
+        >
+        不会阻塞整个<span
+          class="term-tip"
+          data-term="树"
+          data-module="algorithm"
+          data-def="n个节点的有限集合，连通无环图，n个节点有n-1条边"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">树</abbr></span
+        >，只显示<span
+          class="term-tip"
+          data-term="最近"
+          data-module="github"
+          data-def="最近的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">最近</abbr></span
+        >的 fallback。
+      </p>
+    </article>
+  </body>
+</html>

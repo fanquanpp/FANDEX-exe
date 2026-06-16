@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Go与CGO</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Go与CGO</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            4 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">CGO与C互操作</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        CGO 是 Go 调用 C 代码的桥梁。通过 CGO，Go 程序可以调用现有的 C 库，复用成熟的 C
+        生态。这在需要使用系统底层 API、高性能计算库或遗留 C 代码时非常有用。但 CGO
+        也会带来性能开销和构建复杂性，应谨慎使用。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <p>在开始编码之前，需要理解 CGO 的几个核心概念：</p>
+      <ul>
+        <li>
+          <strong>CGO 指令</strong>：紧邻 <code>import "C"</code> 之前的注释块，用于包含 C
+          头文件、定义 C 类型和函数。
+        </li>
+        <li>
+          <strong>C 类型映射</strong>：Go 和 C 之间的类型转换，如 Go 的 <code>int32</code> 对应 C 的
+          <code>int32_t</code>。
+        </li>
+        <li><strong>C.GoString / C.CString</strong>：Go 字符串和 C 字符串之间的转换函数。</li>
+        <li>
+          <strong>交叉编译限制</strong>：启用 CGO 后，交叉编译需要对应平台的 C 工具链，不如纯 Go
+          方便。
+        </li>
+      </ul>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <p>最简单的 CGO 示例：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">package</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#include &#x3C;stdio.h></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#include &#x3C;stdlib.h></span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 在 C 注释块中定义 C 函数</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">void say_hello(const char* name) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    printf("你好，%s！来自 C 语言\n", name);</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">}</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 必须紧邻 C 注释块，中间不能有空行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unsafe</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 将 Go 字符串转为 C 字符串</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"小明"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">free</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(name)) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// C 字符串需要手动释放</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 调用 C 函数</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">say_hello</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(name)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="1-调用-c-标准库函数"><a href="#1-调用-c-标准库函数">1. 调用 C 标准库函数</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#include &#x3C;stdio.h></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#include &#x3C;stdlib.h></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#include &#x3C;string.h></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 调用 printf</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"数字: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">), C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">42</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 调用 malloc/free</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ptr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">malloc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">size_t</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">free</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ptr)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">memset</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ptr, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">size_t</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span></code></pre>
+      <h3 id="2-字符串转换"><a href="#2-字符串转换">2. 字符串转换</a></h3>
+      <p>Go 字符串和 C 字符串的内存管理方式不同，需要显式转换：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// Go 字符串 -> C 字符串（需要手动释放）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">cStr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"你好"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">free</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cStr))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// C 字符串 -> Go 字符串（自动管理内存）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">goStr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GoString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cStr)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// C 字符串 -> Go 字节切片（指定长度）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">goBytes </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GoBytes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cStr), C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// C 字符数组 -> Go 字符串（带长度）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">goStr2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GoStringN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cStr, C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span></code></pre>
+      <h3 id="3-调用外部-c-库"><a href="#3-调用外部-c-库">3. 调用外部 C 库</a></h3>
+      <p>使用 pkg-config 或手动指定链接标志：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#cgo pkg-config: libxml-2.0</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#include &#x3C;libxml/parser.h></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span></code></pre>
+      <p>手动指定编译和链接标志：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#cgo CFLAGS: -I/usr/local/include/mylib</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#cgo LDFLAGS: -L/usr/local/lib -lmylib</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#include &#x3C;mylib.h></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span></code></pre>
+      <h3 id="4-在-c-中回调-go-函数">
+        <a href="#4-在-c-中回调-go-函数">4. 在 C 中回调 Go 函数</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">extern void call_go_func(void* ctx, int result);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// C 函数接收回调</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">void async_operation(void* ctx) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    int result = do_something();</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    call_go_func(ctx, result);</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">}</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unsafe</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 导出 Go 函数供 C 调用</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">//export call_go_func</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> call_go_func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ctx</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> unsafe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">result</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> C</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"C 回调结果: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(result))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="5-传递结构体"><a href="#5-传递结构体">5. 传递结构体</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">typedef struct {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    int x;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    int y;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">} Point;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">Point create_point(int x, int y) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    Point p;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    p.x = x;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    p.y = y;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    return p;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">}</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 在 Go 中使用 C 结构体</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">create_point</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">20</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Point: (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">)</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, p.x, p.y)</span></span></code></pre>
+      <h3 id="6-条件编译"><a href="#6-条件编译">6. 条件编译</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="根"
+          data-module="vue3"
+          data-def="根节点"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">根</abbr></span
+        >据平台条件编译不同的 C 代码：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#cgo linux CFLAGS: -DLINUX</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#cgo windows CFLAGS: -DWINDOWS</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#cgo darwin CFLAGS: -DDARWIN</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#ifdef LINUX</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">const char* platform() { return "Linux"; }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#elif defined(WINDOWS)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">const char* platform() { return "Windows"; }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#elif defined(DARWIN)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">const char* platform() { return "macOS"; }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#endif</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"平台:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GoString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">platform</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()))</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="场景一使用-sqlite"><a href="#场景一使用-sqlite">场景一：使用 SQLite</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#cgo CFLAGS: -I/usr/include/sqlite3</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#cgo LDFLAGS: -lsqlite3</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#include &#x3C;sqlite3.h></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> OpenDB</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">path</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">sqlite3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">error</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> db </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">sqlite3</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    cPath </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(path)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">free</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cPath))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    rc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">sqlite3_open</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cPath, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">db)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> C.SQLITE_OK {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Errorf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"打开数据库失败"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> db, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">nil</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="场景二使用系统-api"><a href="#场景二使用系统-api">场景二：使用系统 API</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#cgo windows LDFLAGS: -lkernel32</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#include &#x3C;windows.h></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> GetSystemInfo</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> si </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">SYSTEM_INFO</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    C.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GetSystemInfo</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">si)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"处理器数量: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, si.dwNumberOfProcessors)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="场景三性能关键代码用-c-实现">
+        <a href="#场景三性能关键代码用-c-实现">场景三：性能关键代码用 C 实现</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#include &#x3C;string.h></span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">int fast_memcmp(const void* s1, const void* s2, size_t n) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    return memcmp(s1, s2, n);</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">}</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span></code></pre>
+      <h2 id="注意事项与常见错误"><a href="#注意事项与常见错误">注意事项与常见错误</a></h2>
+      <ol>
+        <li>
+          <p>
+            <strong
+              >import “C” 前不能有空<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              ></strong
+            >：C
+            <span
+              class="term-tip"
+              data-term="注释"
+              data-module="c"
+              data-def="被编译器忽略的说明文本"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">注释</abbr></span
+            >块和 <code>import "C"</code> 之间不能有空<span
+              class="term-tip"
+              data-term="行"
+              data-module="vue3"
+              data-def="数据行"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行</abbr></span
+            >，否则 CGO 不会<span
+              class="term-tip"
+              data-term="识别"
+              data-module="github"
+              data-def="识别"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">识别</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >C.CString
+              <span
+                class="term-tip"
+                data-term="内存泄漏"
+                data-module="c"
+                data-def="分配的内存未释放"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内存泄漏</abbr></span
+              ></strong
+            >：<code>C.CString</code> 在 C
+            <span
+              class="term-tip"
+              data-term="堆"
+              data-module="algorithm"
+              data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+              data-slug="algorithm/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">堆</abbr></span
+            >上<span
+              class="term-tip"
+              data-term="分配"
+              data-module="github"
+              data-def="将 Issue 指派给某人"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">分配</abbr></span
+            >内存，Go 的<span
+              class="term-tip"
+              data-term="垃圾回收"
+              data-module="csharp"
+              data-def=".NET 运行时自动管理堆内存的机制，采用分代回收策略回收不再使用的对象"
+              data-slug="csharp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">垃圾回收</abbr></span
+            >器不会<span
+              class="term-tip"
+              data-term="管理"
+              data-module="github"
+              data-def="管理"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">管理</abbr></span
+            >它。必须用 <code>C.free</code>
+            <span
+              class="term-tip"
+              data-term="释放"
+              data-module="github"
+              data-def="释放"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">释放</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >CGO
+              <span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >开销</strong
+            >：每次 CGO
+            <span
+              class="term-tip"
+              data-term="调用"
+              data-module="github"
+              data-def="调用"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">调用</abbr></span
+            >约需 50-100ns 的额外开销（<span
+              class="term-tip"
+              data-term="栈"
+              data-module="c"
+              data-def="后进先出的数据结构"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">栈</abbr></span
+            >切换等），不适合<span
+              class="term-tip"
+              data-term="高"
+              data-module="github"
+              data-def="高的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">高</abbr></span
+            >频<span
+              class="term-tip"
+              data-term="调用"
+              data-module="github"
+              data-def="调用"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">调用</abbr></span
+            >。<span
+              class="term-tip"
+              data-term="热路径"
+              data-module="c"
+              data-def="频繁执行的代码路径"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">热路径</abbr></span
+            >应避免使用 CGO。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              ><span
+                class="term-tip"
+                data-term="交叉编译"
+                data-module="c"
+                data-def="在一种平台编译另一种平台代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">交叉编译</abbr></span
+              >困难</strong
+            >：<span
+              class="term-tip"
+              data-term="启用"
+              data-module="cpp"
+              data-def="启用功能"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">启用</abbr></span
+            >
+            CGO 后，<span
+              class="term-tip"
+              data-term="交叉编译"
+              data-module="c"
+              data-def="在一种平台编译另一种平台代码"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">交叉编译</abbr></span
+            >需要<span
+              class="term-tip"
+              data-term="对应"
+              data-module="cpp"
+              data-def="对应关系"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对应</abbr></span
+            >平台的 C
+            <span
+              class="term-tip"
+              data-term="交叉编译"
+              data-module="c"
+              data-def="在一种平台编译另一种平台代码"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">交叉编译</abbr></span
+            >工具链。<span
+              class="term-tip"
+              data-term="设置"
+              data-module="cpp"
+              data-def="设置"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">设置</abbr></span
+            >
+            <code>CGO_ENABLED=0</code> 可以<span
+              class="term-tip"
+              data-term="禁用"
+              data-module="cpp"
+              data-def="禁用功能"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">禁用</abbr></span
+            >
+            CGO。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >Goroutine
+              <span
+                class="term-tip"
+                data-term="调度"
+                data-module="c"
+                data-def="分配 CPU 时间给线程"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调度</abbr></span
+              >阻塞</strong
+            >：C
+            <span
+              class="term-tip"
+              data-term="函数"
+              data-module="c"
+              data-def="完成特定任务的代码块"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">函数</abbr></span
+            >执<span
+              class="term-tip"
+              data-term="行"
+              data-module="vue3"
+              data-def="数据行"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行</abbr></span
+            >期间，<span
+              class="term-tip"
+              data-term="关联"
+              data-module="vue3"
+              data-def="数据间关系"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">关联</abbr></span
+            >的
+            <span
+              class="term-tip"
+              data-term="goroutine"
+              data-module="go"
+              data-def="Go 运行时管理的轻量级并发执行单元，初始栈仅 2KB 且可动态增长"
+              data-slug="go/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">goroutine</abbr></span
+            >
+            不会<span
+              class="term-tip"
+              data-term="参与"
+              data-module="github"
+              data-def="参与"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">参与</abbr></span
+            >调<span
+              class="term-tip"
+              data-term="度"
+              data-module="algorithm"
+              data-def="与顶点关联的边数，有向图分为入度和出度"
+              data-slug="algorithm/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">度</abbr></span
+            >。如果 C
+            <span
+              class="term-tip"
+              data-term="函数"
+              data-module="c"
+              data-def="完成特定任务的代码块"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">函数</abbr></span
+            >阻塞，会占用<span
+              class="term-tip"
+              data-term="系统"
+              data-module="cpp"
+              data-def="系统"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">系统</abbr></span
+            >线程。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >构建速<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              ></strong
+            >：CGO
+            <span
+              class="term-tip"
+              data-term="项目"
+              data-module="github"
+              data-def="项目"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">项目</abbr></span
+            >构建比纯 Go
+            <span
+              class="term-tip"
+              data-term="项目"
+              data-module="github"
+              data-def="项目"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">项目</abbr></span
+            >慢很<span
+              class="term-tip"
+              data-term="多"
+              data-module="github"
+              data-def="多个的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">多</abbr></span
+            >，因为需要<span
+              class="term-tip"
+              data-term="调用"
+              data-module="github"
+              data-def="调用"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">调用</abbr></span
+            >
+            C
+            <span
+              class="term-tip"
+              data-term="编译器"
+              data-module="c"
+              data-def="将 C 代码转换为机器码的程序"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">编译器</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >//export
+              <span
+                class="term-tip"
+                data-term="指令"
+                data-module="github"
+                data-def="指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指令</abbr></span
+              ></strong
+            >：<span
+              class="term-tip"
+              data-term="导出"
+              data-module="typescript"
+              data-def="从模块暴露类型或值"
+              data-slug="typescript/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">导出</abbr></span
+            >给 C
+            <span
+              class="term-tip"
+              data-term="调用"
+              data-module="github"
+              data-def="调用"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">调用</abbr></span
+            >的 Go
+            <span
+              class="term-tip"
+              data-term="函数"
+              data-module="c"
+              data-def="完成特定任务的代码块"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">函数</abbr></span
+            >前必须有 <code>//export 函数名</code>
+            <span
+              class="term-tip"
+              data-term="注释"
+              data-module="c"
+              data-def="被编译器忽略的说明文本"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">注释</abbr></span
+            >，且<span
+              class="term-tip"
+              data-term="函数"
+              data-module="c"
+              data-def="完成特定任务的代码块"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">函数</abbr></span
+            >必须是 <code>func</code>
+            <span
+              class="term-tip"
+              data-term="类型"
+              data-module="c"
+              data-def="数据的分类"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">类型</abbr></span
+            >。
+          </p>
+        </li>
+      </ol>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="禁用-cgo"><a href="#禁用-cgo">禁用 CGO</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 编译时禁用 CGO</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">CGO_ENABLED</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">0</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> build</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -o</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> myapp</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> .</span></span></code></pre>
+      <h3 id="使用-cgo-检查工具"><a href="#使用-cgo-检查工具">使用 cgo 检查工具</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 查看 CGO 调用详情</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cgo</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -godefs</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> main.go</span></span></code></pre>
+      <h3 id="与-c-交互"><a href="#与-c-交互">与 C++ 交互</a></h3>
+      <p>
+        CGO 不<span
+          class="term-tip"
+          data-term="直接"
+          data-module="github"
+          data-def="直接的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">直接</abbr></span
+        >支持 C++，但可以<span
+          class="term-tip"
+          data-term="通过"
+          data-module="github"
+          data-def="通过"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">通过</abbr></span
+        >
+        C
+        <span
+          class="term-tip"
+          data-term="包装"
+          data-module="github"
+          data-def="包装"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">包装</abbr></span
+        >层<span
+          class="term-tip"
+          data-term="间接调用"
+          data-module="c"
+          data-def="通过函数指针调用"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">间接调用</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">/*</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#ifdef __cplusplus</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">extern "C" {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#endif</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// C 包装函数声明</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">void cpp_wrapper_func();</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#ifdef __cplusplus</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">}</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#endif</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">*/</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">C</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span></code></pre>
+    </article>
+  </body>
+</html>

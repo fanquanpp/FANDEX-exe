@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>注意力变体</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">注意力变体</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            14 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">滑动窗口注意力</span><span class="doc-tag">稀疏注意力</span
+          ><span class="doc-tag">差分注意力</span><span class="doc-tag">注意力变体</span
+          ><span class="doc-tag">长上下文</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          完整注意力是一个圆,每个token看到每个token,内存付出代价,四种变体弯曲圆的形状并回收一半成本
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="注意力变体--滑动窗口稀疏差分">
+        <a href="#注意力变体--滑动窗口稀疏差分">注意力变体 — 滑动窗口、稀疏、差分</a>
+      </h1>
+      <blockquote>
+        <p>
+          完整注意力是一个圆。每个token看到每个token,内存付出代价。四种变体弯曲圆的形状并回收一半成本。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置知识:</strong> 阶段7 ·
+        02(自注意力), 阶段7 · 03(多头), 阶段7 · 12(KV缓存/Flash Attention)
+        <strong>预计时间:</strong> ~60分钟
+      </p>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        完整注意力在序列长度上花费 <code>O(N^2)</code> 内存和
+        <code>O(N^2)</code> 计算。对于128K上下文的Llama 3
+        70B,那是每层160亿个注意力条目,乘以80层。Flash Attention(第12课)隐藏了
+        <code>O(N^2)</code> 激活内存但不改变算术成本——每个token仍然关注每个其他token。
+      </p>
+      <p>三类变体改变注意力矩阵本身的拓扑:</p>
+      <ol>
+        <li>
+          <strong>滑动窗口注意力(SWA)。</strong>
+          每个token关注固定窗口的邻居,而非完整前缀。内存和计算降到 <code>O(N · W)</code>,其中
+          <code>W</code> 是窗口。Gemma 2/3, Mistral 7B的前几层, Phi-3-Long。
+        </li>
+        <li>
+          <strong>稀疏/块注意力。</strong> 只有选定的对
+          <code>(i, j)</code> 被评分;其余强制为零权重。Longformer, BigBird, OpenAI稀疏transformer。
+        </li>
+        <li>
+          <strong>差分注意力。</strong>
+          用单独的Q/K投影计算两个注意力图,从一个减去另一个。消除将权重泄漏到前几个token的”注意力汇聚”。微软的DIFF
+          Transformer(2024)。
+        </li>
+      </ol>
+      <p>
+        这些共存。2026年前沿模型经常混合它们:大多数层是SWA-1024,每五层是全局完整注意力,少数是清理检索的差分头。Gemma
+        3的5:1 SWA:全局比率是当前教科书默认。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="滑动窗口注意力swa"><a href="#滑动窗口注意力swa">滑动窗口注意力(SWA)</a></h3>
+      <p>
+        位置 <code>i</code> 的每个查询只关注 <code>[i - W, i]</code>(因果SWA)或
+        <code>[i - W/2, i + W/2]</code>(双向)中的位置。窗口外的token在分数矩阵中获得
+        <code>-inf</code>。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>完整因果:              滑动窗口 (W=4):</span></span>
+<span class="line"><span>位置 0-7               位置 0-7, W=4</span></span>
+<span class="line"><span>    0 1 2 3 4 5 6 7       0 1 2 3 4 5 6 7</span></span>
+<span class="line"><span>0 | x                 0 |  x</span></span>
+<span class="line"><span>1 | x x               1 |  x x</span></span>
+<span class="line"><span>2 | x x x             2 |  x x x</span></span>
+<span class="line"><span>3 | x x x x           3 |  x x x x</span></span>
+<span class="line"><span>4 | x x x x x         4 |    x x x x</span></span>
+<span class="line"><span>5 | x x x x x x       5 |      x x x x</span></span>
+<span class="line"><span>6 | x x x x x x x     6 |        x x x x</span></span>
+<span class="line"><span>7 | x x x x x x x x   7 |          x x x x</span></span></code></pre>
+      <p>
+        对于 <code>N = 8192</code> 和 <code>W = 1024</code>,分数矩阵预期有1024 ×
+        8192个非零行——8倍缩减。
+      </p>
+      <p>
+        <strong>KV缓存随SWA缩小。</strong> 每层只需保留K和V的最后
+        <code>W</code> 个token。对于Gemma-3式配置(1024窗口, 128K上下文),KV缓存降低128倍。
+      </p>
+      <p>
+        <strong>质量代价。</strong>
+        仅SWA的transformer在长程检索上挣扎。修复:将SWA层与完整注意力层交错。Gemma 3使用5:1
+        SWA:全局。Mistral 7B使用因果SWA栈,信息通过重叠窗口”向前流动”——每层扩展有效感受野
+        <code>W</code>,L层后模型可以关注 <code>L × W</code> 个token回溯。
+      </p>
+      <h3 id="稀疏块注意力"><a href="#稀疏块注意力">稀疏/块注意力</a></h3>
+      <p>预先选择 <code>N × N</code> 稀疏模式。三种规范形状:</p>
+      <ul>
+        <li>
+          <strong>局部 + 步幅(OpenAI稀疏transformer)。</strong> 关注最后
+          <code>W</code> 个token加之前每隔 <code>stride</code> 个token。以
+          <code>O(N · sqrt(N))</code> 计算捕获局部和长程。
+        </li>
+        <li>
+          <strong>Longformer / BigBird。</strong> 局部窗口 + 少量全局token(如
+          <code>[CLS]</code>)关注所有人并被所有人关注 + 随机稀疏链接。匹配质量下2倍上下文。
+        </li>
+        <li>
+          <strong>原生稀疏注意力(DeepSeek, 2025)。</strong> 学习哪些
+          <code>(Q, K)</code> 块重要;在内核级跳过零块。FlashAttention兼容。
+        </li>
+      </ul>
+      <p>
+        稀疏注意力是内核工程故事。数学很简单(掩码分数矩阵);收益来自从不将零条目加载到SRAM。FlashAttention-3和2026年FlexAttention
+        API使自定义稀疏模式在PyTorch中成为一等公民。
+      </p>
+      <h3 id="差分注意力diff-transformer-2024">
+        <a href="#差分注意力diff-transformer-2024">差分注意力(DIFF Transformer, 2024)</a>
+      </h3>
+      <p>
+        常规注意力有”注意力汇聚”问题:softmax强制每行总和为1,所以不想关注任何特定内容的token将权重倾倒到第一个token(或前几个)。这窃取了本应给真实内容的容量。
+      </p>
+      <p>差分注意力通过计算<strong>两个</strong>注意力图并相减来修复:</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>A1 = softmax(Q1 K1^T / √d)</span></span>
+<span class="line"><span>A2 = softmax(Q2 K2^T / √d)</span></span>
+<span class="line"><span>DiffAttn = (A1 - λ · A2) V</span></span></code></pre>
+      <p>
+        其中
+        <code>λ</code>
+        是学习标量(通常0.5-0.8)。A1捕获真实内容权重;A2捕获汇聚。减法消除汇聚,将权重重新分配给相关token。
+      </p>
+      <p>
+        报告结果(微软2024): 5-10%更低困惑度,
+        1.5-2倍更长有效上下文(相同训练长度),更锐利的针在干草堆检索。
+      </p>
+      <h3 id="变体比较"><a href="#变体比较">变体比较</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>变体</th>
+            <th>计算</th>
+            <th>KV缓存</th>
+            <th>质量vs完整</th>
+            <th>生产使用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>完整注意力</td>
+            <td>O(N^2)</td>
+            <td>O(N)每层</td>
+            <td>基线</td>
+            <td>每个模型的默认层</td>
+          </tr>
+          <tr>
+            <td>SWA(窗口1024)</td>
+            <td>O(N·W)</td>
+            <td>O(W)每层</td>
+            <td>-0.1 ppl, 配合全局层好</td>
+            <td>Gemma 2/3, Phi-3-Long</td>
+          </tr>
+          <tr>
+            <td>局部+步幅稀疏</td>
+            <td>O(N·√N)</td>
+            <td>混合</td>
+            <td>类似SWA</td>
+            <td>OpenAI稀疏transformer, Longformer</td>
+          </tr>
+          <tr>
+            <td>BigBird(局部+全局+随机)</td>
+            <td>O(N)近似</td>
+            <td>混合</td>
+            <td>2倍上下文匹配完整</td>
+            <td>早期长上下文BERT</td>
+          </tr>
+          <tr>
+            <td>原生稀疏(DeepSeek-V3.2)</td>
+            <td>O(N · 活跃比例)</td>
+            <td>O(N)</td>
+            <td>0.05 ppl内</td>
+            <td>DeepSeek-V3.2, 2025</td>
+          </tr>
+          <tr>
+            <td>差分</td>
+            <td>O(2·N^2)</td>
+            <td>O(2N)</td>
+            <td>-5到-10% ppl</td>
+            <td>DIFF Transformer, 2026早期模型</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="动手构建"><a href="#动手构建">动手构建</a></h2>
+      <p>
+        参见
+        <code>code/main.py</code
+        >。我们实现因果掩码比较器,在玩具序列上并排显示完整、SWA、局部+步幅和差分注意力。
+      </p>
+      <h3 id="步骤1完整因果掩码基线">
+        <a href="#步骤1完整因果掩码基线">步骤1:完整因果掩码(基线)</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> causal_mask</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.0</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">else</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> float</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"-inf"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n)] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n)]</span></span></code></pre>
+      <p>第07课的基线。下三角;对角线上方零权重。</p>
+      <h3 id="步骤2滑动窗口因果掩码">
+        <a href="#步骤2滑动窗口因果掩码">步骤2:滑动窗口因果掩码</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> swa_mask</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n, window):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    M </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">float</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"-inf"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> n </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n)]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        lo </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> max</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> window </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(lo, i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            M[i][j] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> M</span></span></code></pre>
+      <p>
+        一个参数——<code>window</code>。对于 <code>window >= n</code>,恢复完整因果注意力。对于
+        <code>window = 1</code>,每个token只关注自身。
+      </p>
+      <h3 id="步骤3局部步幅稀疏掩码">
+        <a href="#步骤3局部步幅稀疏掩码">步骤3:局部+步幅稀疏掩码</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> strided_mask</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n, window, stride):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    M </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">float</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"-inf"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> n </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n)]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        lo </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> max</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> window </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(lo, i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            M[i][j] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stride):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            M[i][j] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> M</span></span></code></pre>
+      <p>
+        密集局部窗口加每隔 <code>stride</code> 个token回到序列开头。感受野随额外层以对数步增长。
+      </p>
+      <h3 id="步骤4差分注意力"><a href="#步骤4差分注意力">步骤4:差分注意力</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> diff_attention</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Q1, K1, Q2, K2, V, lam):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    A1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> softmax_causal(Q1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">@</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> K1.T </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sqrt_d)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    A2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> softmax_causal(Q2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">@</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> K2.T </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sqrt_d)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (A1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> lam </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> A2) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">@</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> V</span></span></code></pre>
+      <p>
+        两次注意力传递,用学习混合系数相减。在代码中我们比较单个vs差分的注意力汇聚热力图,观察汇聚消失。
+      </p>
+      <h3 id="步骤5kv缓存大小"><a href="#步骤5kv缓存大小">步骤5:KV缓存大小</a></h3>
+      <p>
+        打印
+        <code>N = 131072</code>
+        时每个变体每层的缓存大小。SWA和稀疏变体降低10-100倍。差分翻倍。有意识地支付你的内存账单。
+      </p>
+      <h2 id="实际应用"><a href="#实际应用">实际应用</a></h2>
+      <p>2026年生产模式:</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> transformers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoModelForCausalLM</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># Gemma 3以5:1混合SWA(窗口=1024)和全局层。</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoModelForCausalLM.from_pretrained(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"google/gemma-3-27b-it"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># print(model.config.sliding_window, model.config.layer_types)</span></span></code></pre>
+      <p>PyTorch 2.5+中的FlexAttention接受掩码函数:</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.nn.attention.flex_attention </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> flex_attention, create_block_mask</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> swa_pattern</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(b, h, q_idx, kv_idx):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (q_idx </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> kv_idx </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1024</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (q_idx </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> kv_idx)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">mask </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> create_block_mask(swa_pattern, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">B</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">batch, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">H</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">heads, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">Q_LEN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">n, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">KV_LEN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">n)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">out </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> flex_attention(q, k, v, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">block_mask</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">mask)</span></span></code></pre>
+      <p>
+        这编译为自定义Triton内核。常见模式在FlashAttention-3速度的10%以内,掩码函数是Python可调用对象。
+      </p>
+      <p><strong>何时选择每个:</strong></p>
+      <ul>
+        <li><strong>纯完整注意力</strong> — 每层最多约16K上下文,或检索质量至关重要时。</li>
+        <li>
+          <strong>SWA + 全局混合</strong> — 长上下文(>32K),训练和推理内存受限。2026年32K以上的默认。
+        </li>
+        <li>
+          <strong>稀疏块注意力</strong> — 自定义内核,自定义模式。保留给专业工作负载(检索, 音频)。
+        </li>
+        <li>
+          <strong>差分注意力</strong> — 注意力汇聚污染有害的任何工作负载(长上下文RAG, 针在干草堆)。
+        </li>
+      </ul>
+      <h2 id="交付成果"><a href="#交付成果">交付成果</a></h2>
+      <p>
+        参见
+        <code>outputs/skill-attention-variant-picker.md</code
+        >。该技能根据目标上下文长度、检索需求和训练/推理计算概况为新模型选择注意力拓扑。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong>简单。</strong> 运行 <code>code/main.py</code>。验证SWA在
+          <code>window=4</code> 时将每行最后4个token之外的所有内容归零。验证
+          <code>window=n</code> 位相同地重现完整因果注意力。
+        </li>
+        <li>
+          <strong>中等。</strong> 在第07课毕业项目上实现
+          <code>window=1024</code>
+          的因果SWA。在tinyshakespeare上训练1,000步。验证损失vs完整注意力退化多少?峰值内存下降多少?
+        </li>
+        <li>
+          <strong>困难。</strong> 在毕业项目模型中实现Gemma-3式5:1层混合(5 SWA,
+          1全局)。在匹配参数下比较纯SWA和纯全局基线的损失、内存和生成质量。
+        </li>
+        <li>
+          <strong>困难。</strong> 实现每头学习 <code>λ</code> 的差分<span
+            class="term-tip"
+            data-term="注意"
+            data-module="github"
+            data-def="注意"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">注意</abbr></span
+          >力。在合成检索任务(一根针,
+          2,000个干扰项)上训练。在匹配参数下测量检索准确率vs单注意力基线。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="滑动窗口"
+                data-module="cpp"
+                data-def="滑动窗口"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">滑动窗口</abbr></span
+              >注意力(SWA)
+            </td>
+            <td>
+              “局部<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力”
+            </td>
+            <td>
+              每个<span
+                class="term-tip"
+                data-term="查询"
+                data-module="cpp"
+                data-def="查询操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">查询</abbr></span
+              >关注其最后 <code>W</code> 个<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >;KV缓存缩减为 <code>O(W)</code>。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="有效"
+                data-module="cpp"
+                data-def="有效的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">有效</abbr></span
+              >感受野
+            </td>
+            <td>
+              ”模型能看<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >远”
+            </td>
+            <td>
+              在 <code>L</code> 层窗口 <code>W</code> 的SWA栈中,最<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >
+              <code>L × W</code> 个<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>Longformer / BigBird</td>
+            <td>
+              ”局部+全局+<span
+                class="term-tip"
+                data-term="随机"
+                data-module="github"
+                data-def="随机的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">随机</abbr></span
+              >”
+            </td>
+            <td>
+              带少量始终<span
+                class="term-tip"
+                data-term="关注"
+                data-module="github"
+                data-def="关注"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">关注</abbr></span
+              >的全局<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="稀疏"
+                data-module="cpp"
+                data-def="稀疏的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">稀疏</abbr></span
+              >模式;<span
+                class="term-tip"
+                data-term="早期"
+                data-module="github"
+                data-def="早期的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">早期</abbr></span
+              >长<span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >方法。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              原生<span
+                class="term-tip"
+                data-term="稀疏"
+                data-module="cpp"
+                data-def="稀疏的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">稀疏</abbr></span
+              >注意力
+            </td>
+            <td>
+              ”DeepSeek的<span
+                class="term-tip"
+                data-term="内核"
+                data-module="cs-fundamentals"
+                data-def="操作系统的核心部分，运行在内核态，管理硬件资源和提供系统服务"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内核</abbr></span
+              >技巧”
+            </td>
+            <td>
+              学习<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >级<span
+                class="term-tip"
+                data-term="稀疏"
+                data-module="cpp"
+                data-def="稀疏的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">稀疏</abbr></span
+              >;在<span
+                class="term-tip"
+                data-term="内核"
+                data-module="cs-fundamentals"
+                data-def="操作系统的核心部分，运行在内核态，管理硬件资源和提供系统服务"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内核</abbr></span
+              >级<span
+                class="term-tip"
+                data-term="跳过"
+                data-module="cpp"
+                data-def="跳过"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">跳过</abbr></span
+              >零<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >同时保持<span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              差分<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力
+            </td>
+            <td>
+              ”两个<span
+                class="term-tip"
+                data-term="图"
+                data-module="algorithm"
+                data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图</abbr></span
+              >,一个相减”
+            </td>
+            <td>
+              DIFF Transformer:从第一个减去学习 <code>λ</code> 倍的第二个<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力<span
+                class="term-tip"
+                data-term="图"
+                data-module="algorithm"
+                data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图</abbr></span
+              >以消除<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力汇聚。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力汇聚
+            </td>
+            <td>
+              ”权重泄漏到<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+              0”
+            </td>
+            <td>
+              softmax归一化强制<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >总和为1;无<span
+                class="term-tip"
+                data-term="信息"
+                data-module="github"
+                data-def="信息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信息</abbr></span
+              >查询将权重倾倒到<span
+                class="term-tip"
+                data-term="位"
+                data-module="c"
+                data-def="二进制数字，基本存储单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位</abbr></span
+              >置0。
+            </td>
+          </tr>
+          <tr>
+            <td>FlexAttention</td>
+            <td>”掩码即Python”</td>
+            <td>
+              PyTorch 2.5+ API,将任意掩码<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >编译为FlashAttention形<span
+                class="term-tip"
+                data-term="内核"
+                data-module="cs-fundamentals"
+                data-def="操作系统的核心部分，运行在内核态，管理硬件资源和提供系统服务"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内核</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              层<span
+                class="term-tip"
+                data-term="类型"
+                data-module="c"
+                data-def="数据的分类"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型</abbr></span
+              >混合
+            </td>
+            <td>”5:1 SWA比全局”</td>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="栈"
+                data-module="c"
+                data-def="后进先出的数据结构"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">栈</abbr></span
+              >中交错<span
+                class="term-tip"
+                data-term="稀疏"
+                data-module="cpp"
+                data-def="稀疏的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">稀疏</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="完整"
+                data-module="github"
+                data-def="完整"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">完整</abbr></span
+              >注意力层,以在更低内存下保持<span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2004.05150"
+            >Beltagy, Peters, Cohan (2020). Longformer: The Long-Document Transformer</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="规范"
+            data-module="html5"
+            data-def="HTML 标准文档"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">规范</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="滑动窗口"
+            data-module="cpp"
+            data-def="滑动窗口"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">滑动窗口</abbr></span
+          >
+          + 全局<span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >论文。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2007.14062"
+            >Zaheer et al. (2020). Big Bird: Transformers for Longer Sequences</a
+          >
+          — 局部 + 全局 +
+          <span
+            class="term-tip"
+            data-term="随机"
+            data-module="github"
+            data-def="随机的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">随机</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1904.10509"
+            >Child et al. (2019). Generating Long Sequences with Sparse Transformers</a
+          >
+          — OpenAI的局部+步幅<span
+            class="term-tip"
+            data-term="模式"
+            data-module="github"
+            data-def="模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模式</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2408.00118"
+            >Gemma Team (2024). Gemma 2: Improving Open Language Models at a Practical Size</a
+          >
+          — 1:1 SWA:全局<span
+            class="term-tip"
+            data-term="混合"
+            data-module="github"
+            data-def="混合"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">混合</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2503.19786">Gemma Team (2025). Gemma 3 technical report</a>
+          — 5:1混合,窗口=1024,现在是教科书默认。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2410.05258">Ye et al. (2024). Differential Transformer</a>
+          — DIFF Transformer论文。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2502.11089">Yuan et al. (2025). Native Sparse Attention</a>
+          — DeepSeek-V3.2的学习<span
+            class="term-tip"
+            data-term="稀疏"
+            data-module="cpp"
+            data-def="稀疏的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">稀疏</abbr></span
+          >注意力。
+        </li>
+        <li>
+          <a href="https://pytorch.org/blog/flexattention/"
+            >PyTorch — FlexAttention blog and docs</a
+          >
+          — 实际<span
+            class="term-tip"
+            data-term="应用"
+            data-module="github"
+            data-def="GitHub 应用程序"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">应用</abbr></span
+          >中掩码即可<span
+            class="term-tip"
+            data-term="调用"
+            data-module="github"
+            data-def="调用"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">调用</abbr></span
+          >模式的API参考。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

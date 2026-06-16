@@ -1,0 +1,894 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>unsafe与指针</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">unsafe与指针</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            4 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">unsafe包与指针运算</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        Go 的 <code>unsafe</code> 包提供了绕过 Go
+        类型系统和内存安全检查的能力。它允许进行指针运算、类型转换和内存操作。虽然名为”unsafe”（不安全），但在某些底层编程场景中是必需的，如与
+        C 代码交互、高性能序列化、内存池实现等。使用 unsafe 需要格外小心，因为它破坏了 Go
+        的内存安全保证。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <p>在开始编码之前，需要理解 unsafe 的几个核心概念：</p>
+      <ul>
+        <li>
+          <strong>unsafe.Pointer</strong
+          >：通用指针类型，可以与任意指针类型互相转换。是其他指针类型之间转换的桥梁。
+        </li>
+        <li>
+          <strong>uintptr</strong>：整数类型，足以存储指针的值。可以参与算术运算，但不会被 GC 追踪。
+        </li>
+        <li><strong>指针运算</strong>：通过 uintptr 进行地址加减，实现类似 C 语言的指针偏移。</li>
+        <li>
+          <strong>Sizeof/Alignof/Offsetof</strong>：获取类型的大小、对齐要求和结构体字段的偏移量。
+        </li>
+      </ul>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <p>最简单的 unsafe 用法 — 获取类型大小：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">package</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">fmt</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unsafe</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 获取类型的大小（字节）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"int 大小:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)))           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 8（64位系统）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"string 大小:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"hello"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 16（指针+长度）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"slice 大小:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">})) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 24（指针+长度+容量）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 获取对齐要求</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"int 对齐:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Alignof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> User</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        Name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        Age  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 获取字段偏移量</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Name 偏移:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Offsetof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">User</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}.Name)) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 0</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Age 偏移:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Offsetof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">User</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}.Age))   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 16</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="1-unsafepointer-转换规则">
+        <a href="#1-unsafepointer-转换规则">1. unsafe.Pointer 转换规则</a>
+      </h3>
+      <p>Go 对 unsafe.Pointer 的使用有严格的规则，合法的转换模式只有以下几种：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 模式1：*T -> unsafe.Pointer -> *T（双向转换）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 42</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">x)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// *int -> unsafe.Pointer</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">px </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(p)           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// unsafe.Pointer -> *int</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 模式2：*T -> unsafe.Pointer -> uintptr（计算地址）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">addr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> uintptr</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">x))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 模式3：uintptr -> unsafe.Pointer -> *T（从计算后的地址创建指针）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 注意：uintptr 不会被 GC 追踪，中间不能有 GC</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">newAddr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> addr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">newPtr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(newAddr))</span></span></code></pre>
+      <h3 id="2-类型转换"><a href="#2-类型转换">2. 类型转换</a></h3>
+      <p>unsafe 可以实现普通类型转换无法完成的操作：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 将 []byte 转换为 string（零拷贝）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> bytesToString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">b</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">b))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 将 string 转换为 []byte（零拷贝，得到的 slice 不能修改）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> stringToBytes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">s</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) []</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>注意：这种转换是危险的。如果原始数据被修改或释放，转换后的值也会受影响。</p>
+      <h3 id="3-结构体字段访问"><a href="#3-结构体字段访问">3. 结构体字段访问</a></h3>
+      <p>通过偏移量访问结构体字段：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> User</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Age  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    City </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">user </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> User</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{Name: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"小明"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, Age: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">25</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, City: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"北京"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 通过偏移量访问 Age 字段</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ageOffset </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Offsetof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(user.Age)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">agePtr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uintptr</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">user)) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ageOffset))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Age:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">agePtr) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 25</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 修改字段</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">agePtr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 30</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(user.Age) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 30</span></span></code></pre>
+      <h3 id="4-slice-底层结构"><a href="#4-slice-底层结构">4. Slice 底层结构</a></h3>
+      <p>利用 unsafe 访问 slice 的底层字段：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// slice 的底层结构</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> SliceHeader</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Data </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unsafe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 数据指针</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Len  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            // 长度</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Cap  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            // 容量</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">header </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">SliceHeader</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"数据指针: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%v</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 长度: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 容量: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, header.Data, header.Len, header.Cap)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 修改 slice 的长度（危险！）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">header.Len </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 5</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 直接修改长度</span></span></code></pre>
+      <h3 id="5-string-底层结构"><a href="#5-string-底层结构">5. String 底层结构</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// string 的底层结构</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> StringHeader</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Data </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unsafe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 数据指针</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Len  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            // 长度</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "你好，世界"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">header </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">StringHeader</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"数据指针: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%v</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">, 长度: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, header.Data, header.Len)</span></span></code></pre>
+      <h3 id="6-sizeofalignofoffsetof">
+        <a href="#6-sizeofalignofoffsetof">6. Sizeof、Alignof、Offsetof</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Config</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Debug </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">bool</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 1 字节，但会填充到 8 字节对齐</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Port  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">     // 8 字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Host  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 16 字节</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">cfg </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Config</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// Sizeof：类型占用的字节数（包含填充）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Config 大小:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Sizeof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cfg)) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 32</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// Alignof：类型的对齐要求</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Config 对齐:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Alignof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cfg)) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 8</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// Offsetof：字段在结构体中的偏移量</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Debug 偏移:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Offsetof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cfg.Debug)) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 0</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Port 偏移:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Offsetof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cfg.Port))   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 8（填充了7字节）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Host 偏移:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Offsetof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(cfg.Host))   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 16</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="场景一高性能字符串字节转换">
+        <a href="#场景一高性能字符串字节转换">场景一：高性能字符串/字节转换</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 零拷贝转换，避免内存分配</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> FastBytesToString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">b</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">b))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> FastStringToBytes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">s</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) []</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="场景二访问未导出字段"><a href="#场景二访问未导出字段">场景二：访问未导出字段</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 访问其他包中未导出的字段（不推荐，但有时必要）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> secret</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    hidden </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> secret</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{hidden: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">42</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">hiddenPtr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uintptr</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s)) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Offsetof</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(s.hidden)))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"hidden:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">hiddenPtr)</span></span></code></pre>
+      <h3 id="场景三内存池"><a href="#场景三内存池">场景三：内存池</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 简单的内存池，复用 []byte</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> BytePool</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    pool [][]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    size </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BytePool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() []</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(p.pool) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, p.size)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    buf </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p.pool[</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(p.pool)</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    p.pool </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p.pool[:</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(p.pool)</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 重置长度</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    header </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">SliceHeader</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">buf))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    header.Len </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p.size</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> buf</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="注意事项与常见错误"><a href="#注意事项与常见错误">注意事项与常见错误</a></h2>
+      <ol>
+        <li>
+          <p>
+            <strong
+              >unsafe.Pointer 不是任意<span
+                class="term-tip"
+                data-term="转换"
+                data-module="cpp"
+                data-def="转换"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">转换</abbr></span
+              ></strong
+            >：不能<span
+              class="term-tip"
+              data-term="直接"
+              data-module="github"
+              data-def="直接的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">直接</abbr></span
+            >在 *T1 和 *T2 之间<span
+              class="term-tip"
+              data-term="转换"
+              data-module="cpp"
+              data-def="转换"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">转换</abbr></span
+            >，必须经过 unsafe.Pointer。且 *T1 和 *T2 必须有相同的内存<span
+              class="term-tip"
+              data-term="布局"
+              data-module="vue3"
+              data-def="页面布局结构"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">布局</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >uintptr 不会被 GC
+              <span
+                class="term-tip"
+                data-term="追踪"
+                data-module="c"
+                data-def="记录程序执行"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">追踪</abbr></span
+              ></strong
+            >：将<span
+              class="term-tip"
+              data-term="指针"
+              data-module="c"
+              data-def="存储内存地址的变量"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">指针</abbr></span
+            >转为 uintptr 后，如果<span
+              class="term-tip"
+              data-term="发生"
+              data-module="github"
+              data-def="发生"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">发生</abbr></span
+            >
+            GC，原来的<span
+              class="term-tip"
+              data-term="对象"
+              data-module="cpp"
+              data-def="类的实例"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对象</abbr></span
+            >可能被<span
+              class="term-tip"
+              data-term="回收"
+              data-module="github"
+              data-def="回收"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">回收</abbr></span
+            >。不要将 uintptr
+            <span
+              class="term-tip"
+              data-term="存储"
+              data-module="cpp"
+              data-def="存储"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">存储</abbr></span
+            >在<span
+              class="term-tip"
+              data-term="变量"
+              data-module="c"
+              data-def="存储数据的命名位置"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">变量</abbr></span
+            >中跨 GC 使用。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >不要<span
+                class="term-tip"
+                data-term="依赖"
+                data-module="c"
+                data-def="两个计算之间的顺序关系"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">依赖</abbr></span
+              >内存<span
+                class="term-tip"
+                data-term="布局"
+                data-module="vue3"
+                data-def="页面布局结构"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">布局</abbr></span
+              ></strong
+            >：<span
+              class="term-tip"
+              data-term="结构体"
+              data-module="c"
+              data-def="组合不同类型的数据"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">结构体</abbr></span
+            >的内存<span
+              class="term-tip"
+              data-term="布局"
+              data-module="vue3"
+              data-def="页面布局结构"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">布局</abbr></span
+            >可能因 Go
+            <span
+              class="term-tip"
+              data-term="版本"
+              data-module="c"
+              data-def="软件的迭代版本"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">版本</abbr></span
+            >、<span
+              class="term-tip"
+              data-term="平台"
+              data-module="github"
+              data-def="GitHub 平台"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">平台</abbr></span
+            >、<span
+              class="term-tip"
+              data-term="编译"
+              data-module="c"
+              data-def="将源代码转换为目标代码"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">编译</abbr></span
+            >优化而不同。使用 unsafe.Offsetof 而非<span
+              class="term-tip"
+              data-term="硬编码"
+              data-module="c"
+              data-def="直接写入代码的值"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">硬编码</abbr></span
+            >偏移量。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >string 是不<span
+                class="term-tip"
+                data-term="可变"
+                data-module="cpp"
+                data-def="可变"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">可变</abbr></span
+              >的</strong
+            >：<span
+              class="term-tip"
+              data-term="通过"
+              data-module="github"
+              data-def="通过"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">通过</abbr></span
+            >
+            unsafe 将 string 转为 []<span
+              class="term-tip"
+              data-term="byte"
+              data-module="cpp"
+              data-def="字节类型"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">byte</abbr></span
+            >
+            后修改<span
+              class="term-tip"
+              data-term="内容"
+              data-module="cpp"
+              data-def="内容部分"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">内容</abbr></span
+            >，会导致<span
+              class="term-tip"
+              data-term="未定义行为"
+              data-module="c"
+              data-def="语言规范未定义的行为"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">未定义行为</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              ><span
+                class="term-tip"
+                data-term="指针运算"
+                data-module="c"
+                data-def="对指针地址的算术运算"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指针运算</abbr></span
+              >越界</strong
+            >：<span
+              class="term-tip"
+              data-term="指针"
+              data-module="c"
+              data-def="存储内存地址的变量"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">指针</abbr></span
+            >偏移超出<span
+              class="term-tip"
+              data-term="对象"
+              data-module="cpp"
+              data-def="类的实例"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对象</abbr></span
+            >的内存<span
+              class="term-tip"
+              data-term="范围"
+              data-module="c"
+              data-def="取值区间"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">范围</abbr></span
+            >会导致<span
+              class="term-tip"
+              data-term="未定义行为"
+              data-module="c"
+              data-def="语言规范未定义的行为"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">未定义行为</abbr></span
+            >，可能崩溃或数据损坏。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              ><span
+                class="term-tip"
+                data-term="可移植性"
+                data-module="markdown"
+                data-def="Markdown 的可移植性指 Markdown 文件在不同工具和平台间的兼容程度。"
+                data-slug="markdown/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">可移植性</abbr></span
+              >差</strong
+            >：使用 unsafe 的代码在不同<span
+              class="term-tip"
+              data-term="平台"
+              data-module="github"
+              data-def="GitHub 平台"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">平台</abbr></span
+            >（32/64
+            <span
+              class="term-tip"
+              data-term="位"
+              data-module="c"
+              data-def="二进制数字，基本存储单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">位</abbr></span
+            >、不同<span
+              class="term-tip"
+              data-term="操作系统"
+              data-module="cs-fundamentals"
+              data-def="硬件与应用之间的中间层，提供进程、虚拟内存、文件三大抽象"
+              data-slug="cs-fundamentals/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">操作系统</abbr></span
+            >）上可能<span
+              class="term-tip"
+              data-term="行为"
+              data-module="vue3"
+              data-def="组件或应用的反应"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行为</abbr></span
+            >不同。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong
+              >违反 Go 1
+              <span
+                class="term-tip"
+                data-term="兼容性"
+                data-module="cpp"
+                data-def="兼容性要求"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">兼容性</abbr></span
+              >保证</strong
+            >：Go 团队明确<span
+              class="term-tip"
+              data-term="表示"
+              data-module="github"
+              data-def="表示"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">表示</abbr></span
+            >，使用 unsafe 的代码不享受 Go 1
+            <span
+              class="term-tip"
+              data-term="兼容性"
+              data-module="cpp"
+              data-def="兼容性要求"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">兼容性</abbr></span
+            >保证。
+          </p>
+        </li>
+      </ol>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="syncpool-与-unsafe"><a href="#syncpool-与-unsafe">sync.Pool 与 unsafe</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="标准库"
+          data-module="cpp"
+          data-def="标准库"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">标准库</abbr></span
+        >的 sync.Pool 内部使用了 unsafe 来<span
+          class="term-tip"
+          data-term="实现"
+          data-module="github"
+          data-def="实现"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">实现</abbr></span
+        >高效的<span
+          class="term-tip"
+          data-term="对象"
+          data-module="cpp"
+          data-def="类的实例"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对象</abbr></span
+        >复用。
+      </p>
+      <h3 id="原子操作"><a href="#原子操作">原子操作</a></h3>
+      <p>
+        unsafe.Pointer 配合
+        <span
+          class="term-tip"
+          data-term="atomic"
+          data-module="cpp"
+          data-def="原子操作库"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">atomic</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="包"
+          data-module="go"
+          data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+          data-slug="go/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">包</abbr></span
+        >实现原<span
+          class="term-tip"
+          data-term="子"
+          data-module="cpp"
+          data-def="子"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">子</abbr></span
+        >指针<span
+          class="term-tip"
+          data-term="操作"
+          data-module="github"
+          data-def="GitHub Actions 工作流"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">操作</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">sync/atomic</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ptr </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unsafe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 原子存储</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">atomic.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">StorePointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ptr, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">data))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 原子加载</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">MyType</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(atomic.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">LoadPointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ptr))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 原子交换</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">old </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> atomic.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">SwapPointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ptr, unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">newData))</span></span></code></pre>
+      <h3 id="reflectsliceheader-和-reflectstringheader">
+        <a href="#reflectsliceheader-和-reflectstringheader"
+          >reflect.SliceHeader 和 reflect.StringHeader</a
+        >
+      </h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="标准库"
+          data-module="cpp"
+          data-def="标准库"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">标准库</abbr></span
+        >提供了这些<span
+          class="term-tip"
+          data-term="类型"
+          data-module="c"
+          data-def="数据的分类"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">类型</abbr></span
+        >用于<span
+          class="term-tip"
+          data-term="安全"
+          data-module="cpp"
+          data-def="安全性"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">安全</abbr></span
+        >地<span
+          class="term-tip"
+          data-term="操作"
+          data-module="github"
+          data-def="GitHub Actions 工作流"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">操作</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="slice"
+          data-module="cpp"
+          data-def="数组切片"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">slice</abbr></span
+        >
+        和 string 的底层<span
+          class="term-tip"
+          data-term="结构"
+          data-module="cpp"
+          data-def="结构"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结构</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">reflect</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 创建 string 从 []byte</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">hdr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> reflect</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">StringHeader</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Data: (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">reflect</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">SliceHeader</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">bytes)).Data,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Len:  </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(bytes),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)(unsafe.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">hdr))</span></span></code></pre>
+    </article>
+  </body>
+</html>

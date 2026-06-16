@@ -1,0 +1,945 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>主从复制延迟原因与解决</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">主从复制延迟原因与解决</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            2 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          MySQL
+          主从复制延迟的根因分析：单线程回放、大事务、DDL、网络带宽，以及并行复制、半同步复制等解决方案。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-主从复制架构"><a href="#1-主从复制架构">1. 主从复制架构</a></h2>
+      <h3 id="11-复制流程"><a href="#11-复制流程">1.1 复制流程</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>主库 (Master)                        从库 (Slave)</span></span>
+<span class="line"><span>┌──────────────┐                    ┌──────────────┐</span></span>
+<span class="line"><span>│  Client SQL  │                    │  SQL Thread  │</span></span>
+<span class="line"><span>│      ↓       │                    │      ↑       │</span></span>
+<span class="line"><span>│  Binlog Dump │ ──── Binlog ────→  │  Relay Log   │</span></span>
+<span class="line"><span>│  Thread      │     (网络传输)      │  I/O Thread  │</span></span>
+<span class="line"><span>└──────────────┘                    └──────────────┘</span></span></code></pre>
+      <p>
+        <strong
+          >三<span
+            class="term-tip"
+            data-term="线程"
+            data-module="c"
+            data-def="执行的最小单位"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">线程</abbr></span
+          >模型</strong
+        >（MySQL 5.7+）：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="线程"
+                data-module="c"
+                data-def="执行的最小单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">线程</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="位置"
+                data-module="github"
+                data-def="位置"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位置</abbr></span
+              >
+            </th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Binlog Dump Thread</td>
+            <td>
+              主<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="发送"
+                data-module="cpp"
+                data-def="发送"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">发送</abbr></span
+              >
+              Binlog
+              <span
+                class="term-tip"
+                data-term="事件"
+                data-module="cpp"
+                data-def="事件对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">事件</abbr></span
+              >给从<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>I/O Thread</td>
+            <td>
+              从<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="接收"
+                data-module="github"
+                data-def="接收"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">接收</abbr></span
+              >
+              Binlog
+              <span
+                class="term-tip"
+                data-term="写入"
+                data-module="c"
+                data-def="输出数据到目标"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">写入</abbr></span
+              >
+              Relay Log
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="SQL"
+                data-module="mysql"
+                data-def="结构化查询语言"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SQL</abbr></span
+              >
+              Thread
+            </td>
+            <td>
+              从<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+            <td>
+              回放 Relay Log 中的<span
+                class="term-tip"
+                data-term="事件"
+                data-module="cpp"
+                data-def="事件对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">事件</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="12-延迟定义"><a href="#12-延迟定义">1.2 延迟定义</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>延迟 = 主库执行时间 - 从库回放完成时间</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>监控命令:</span></span>
+<span class="line"><span>SHOW SLAVE STATUS\G</span></span>
+<span class="line"><span>-- Seconds_Behind_Master: 延迟秒数</span></span></code></pre>
+      <h2 id="2-延迟根因分析"><a href="#2-延迟根因分析">2. 延迟根因分析</a></h2>
+      <h3 id="21-单线程回放瓶颈"><a href="#21-单线程回放瓶颈">2.1 单线程回放瓶颈</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="传统"
+          data-module="cpp"
+          data-def="传统的"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">传统</abbr></span
+        >从<span
+          class="term-tip"
+          data-term="库"
+          data-module="cpp"
+          data-def="可复用的代码集合"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">库</abbr></span
+        >只有<strong
+          >一个
+          <span
+            class="term-tip"
+            data-term="SQL"
+            data-module="mysql"
+            data-def="结构化查询语言"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">SQL</abbr></span
+          >
+          Thread</strong
+        >
+        回放<span
+          class="term-tip"
+          data-term="事务"
+          data-module="cpp"
+          data-def="事务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">事务</abbr></span
+        >，主<span
+          class="term-tip"
+          data-term="库"
+          data-module="cpp"
+          data-def="可复用的代码集合"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">库</abbr></span
+        >可以<span
+          class="term-tip"
+          data-term="并行"
+          data-module="github"
+          data-def="并行的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">并行</abbr></span
+        >写入，从<span
+          class="term-tip"
+          data-term="库"
+          data-module="cpp"
+          data-def="可复用的代码集合"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">库</abbr></span
+        >只能串<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >回放：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>主库（并行）:  T1 | T2 | T3 | T4  ← 同时执行</span></span>
+<span class="line"><span>从库（串行）:  T1 → T2 → T3 → T4  ← 逐个回放</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>如果主库 QPS=10000，从库回放速度 &#x3C; 10000 → 延迟持续增长</span></span></code></pre>
+      <h3 id="22-大事务"><a href="#22-大事务">2.2 大事务</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 单条大事务包含百万行修改</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DELETE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> logs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> created_at </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2025-01-01'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 500万行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 从库必须完整回放这个事务</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 回放期间无法回放其他事务 → 延迟飙升</span></span></code></pre>
+      <h3 id="23-ddl-操作"><a href="#23-ddl-操作">2.3 DDL 操作</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ALTER TABLE 需要拷贝全表数据</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> big_table </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ADD</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> COLUMN new_col </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 大表 ALTER 可能耗时数小时</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 从库回放时阻塞所有其他事务</span></span></code></pre>
+      <h3 id="24-从库硬件差异"><a href="#24-从库硬件差异">2.4 从库硬件差异</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="资源"
+                data-module="github"
+                data-def="资源"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">资源</abbr></span
+              >
+            </th>
+            <th>
+              主<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </th>
+            <th>
+              从<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="影响"
+                data-module="github"
+                data-def="影响"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">影响</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>CPU</td>
+            <td>32核</td>
+            <td>8核</td>
+            <td>
+              回放速<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >慢
+            </td>
+          </tr>
+          <tr>
+            <td>磁盘</td>
+            <td>NVMe SSD</td>
+            <td>HDD</td>
+            <td>刷盘慢</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="网络"
+                data-module="github"
+                data-def="网络"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网络</abbr></span
+              >
+            </td>
+            <td>10Gbps</td>
+            <td>1Gbps</td>
+            <td>Binlog 传输慢</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="25-主从不一致的查询"><a href="#25-主从不一致的查询">2.5 主从不一致的查询</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 从库上执行长查询，阻塞 SQL Thread</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 从库用于读查询时，长事务可能持有锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> big_table </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ...;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 扫描全表，持锁时间长</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- SQL Thread 等待锁释放 → 延迟</span></span></code></pre>
+      <h2 id="3-解决方案"><a href="#3-解决方案">3. 解决方案</a></h2>
+      <h3 id="31-多线程并行复制mts">
+        <a href="#31-多线程并行复制mts">3.1 多线程并行复制（MTS）</a>
+      </h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >级<span
+            class="term-tip"
+            data-term="并行"
+            data-module="github"
+            data-def="并行的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">并行</abbr></span
+          ></strong
+        >（MySQL 5.6）：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 按数据库维度并行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> slave_parallel_type </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'DATABASE'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> slave_parallel_workers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 8</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <p>
+        <span
+          class="term-tip"
+          data-term="限制"
+          data-module="github"
+          data-def="限制"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">限制</abbr></span
+        >：<span
+          class="term-tip"
+          data-term="单"
+          data-module="github"
+          data-def="单"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">单</abbr></span
+        >库场景无法<span
+          class="term-tip"
+          data-term="并行"
+          data-module="github"
+          data-def="并行的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">并行</abbr></span
+        >。
+      </p>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="组提交"
+            data-module="mysql"
+            data-def="合并多个提交一次写入"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">组提交</abbr></span
+          >并<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          ></strong
+        >（MySQL 5.7）：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 基于 Binlog Group Commit 的并行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> slave_parallel_type </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'LOGICAL_CLOCK'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> slave_parallel_workers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 16</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 同一组提交的事务可以并行回放</span></span></code></pre>
+      <p>
+        <strong
+          >WRITESET
+          <span
+            class="term-tip"
+            data-term="并行"
+            data-module="github"
+            data-def="并行的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">并行</abbr></span
+          ></strong
+        >（MySQL 8.0）：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 基于行修改的依赖关系并行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> binlog_transaction_dependency_tracking </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> WRITESET;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> slave_parallel_workers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 32</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> Global</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> transaction_write_set_extraction </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> XXHASH64;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 修改不同行的事务可以并行回放</span></span></code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="方案"
+                data-module="javascript"
+                data-def="数据结构定义"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">方案</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="并行"
+                data-module="github"
+                data-def="并行的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">并行</abbr></span
+              >度
+            </th>
+            <th>适用场景</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="DATABASE"
+                data-module="mysql"
+                data-def="数据库名称"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">DATABASE</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >数量
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >库业务
+            </td>
+          </tr>
+          <tr>
+            <td>LOGICAL_CLOCK</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="组提交"
+                data-module="mysql"
+                data-def="合并多个提交一次写入"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">组提交</abbr></span
+              >大小
+            </td>
+            <td>中等并发</td>
+          </tr>
+          <tr>
+            <td>WRITESET</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >级无冲突
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >并发<span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >库
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="32-半同步复制"><a href="#32-半同步复制">3.2 半同步复制</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 安装半同步插件</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">INSTALL PLUGIN rpl_semi_sync_master SONAME </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'semisync_master.so'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">INSTALL PLUGIN rpl_semi_sync_slave SONAME </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'semisync_slave.so'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 启用半同步</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rpl_semi_sync_master_enabled </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rpl_semi_sync_slave_enabled </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 等待超时（毫秒）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rpl_semi_sync_master_timeout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 3000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <p>
+        <span
+          class="term-tip"
+          data-term="半"
+          data-module="github"
+          data-def="半"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">半</abbr></span
+        >同步不<span
+          class="term-tip"
+          data-term="直接"
+          data-module="github"
+          data-def="直接的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">直接</abbr></span
+        >解决<span
+          class="term-tip"
+          data-term="延迟"
+          data-module="cpp"
+          data-def="延迟操作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">延迟</abbr></span
+        >，但<span
+          class="term-tip"
+          data-term="保证"
+          data-module="github"
+          data-def="保证"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">保证</abbr></span
+        >数据不丢失，从<span
+          class="term-tip"
+          data-term="库"
+          data-module="cpp"
+          data-def="可复用的代码集合"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">库</abbr></span
+        >至少收到 Binlog。
+      </p>
+      <h3 id="33-并行复制监控"><a href="#33-并行复制监控">3.3 并行复制监控</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看并行复制状态</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">SHOW SLAVE </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">STATUS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">\G</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 关键指标:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Seconds_Behind_Master: 延迟秒数</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Slave_SQL_Running_State: SQL线程状态</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Exec_Master_Log_Pos: 已回放位置</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- MySQL 8.0 性能库</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> performance_schema</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">replication_applier_status_by_worker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="34-大事务拆分"><a href="#34-大事务拆分">3.4 大事务拆分</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 反模式：单条大事务</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DELETE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> logs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> created_at </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2025-01-01'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 500万行</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 正确：分批删除</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案1：LIMIT 分批</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DELETE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> logs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> created_at </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2025-01-01'</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LIMIT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 10000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 重复执行直到影响行数为0</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案2：按时间分批</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DELETE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> logs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> created_at </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BETWEEN</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2024-01-01'</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2024-02-01'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DELETE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> logs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> created_at </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BETWEEN</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2024-02-01'</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2024-03-01'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- ...</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案3：pt-archiver 工具</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pt</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">archiver </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">--source h=host,D=db,t=logs \</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  --where "created_at &#x3C; '2025-01-01'" \</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  --purge --limit 10000 --commit-each</span></span></code></pre>
+      <h3 id="35-从库读流量优化"><a href="#35-从库读流量优化">3.5 从库读流量优化</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 1. 使用 READ COMMITTED 减少锁持有时间</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SESSION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> TRANSACTION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ISOLATION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEVEL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> READ</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> COMMITTED</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 2. 避免长事务</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SESSION</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> innodb_lock_wait_timeout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 3. 使用 pt-query-digest 分析慢查询</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- pt-query-digest slow.log</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 4. 从库使用 read_only</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> read_only</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> super_read_only </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h2 id="4-延迟监控与告警"><a href="#4-延迟监控与告警">4. 延迟监控与告警</a></h2>
+      <h3 id="41-监控指标"><a href="#41-监控指标">4.1 监控指标</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 延迟秒数</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">SHOW SLAVE </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">STATUS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">\G  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Seconds_Behind_Master</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Binlog 位置差异</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Master_Log_File vs Relay_Master_Log_File</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- Read_Master_Log_Pos vs Exec_Master_Log_Pos</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- MySQL 8.0 延迟直方图</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> performance_schema</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">replication_connection_status</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="42-延迟容忍策略"><a href="#42-延迟容忍策略">4.2 延迟容忍策略</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>应用层策略：</span></span>
+<span class="line"><span>1. 读写分离时，关键业务读主库</span></span>
+<span class="line"><span>2. 从库延迟超过阈值时，降级读主库</span></span>
+<span class="line"><span>3. 使用 ProxySQL / MaxSQL 自动路由</span></span>
+<span class="line"><span>4. 业务层缓存减少从库读压力</span></span></code></pre>
+    </article>
+  </body>
+</html>

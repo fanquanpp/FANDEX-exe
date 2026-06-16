@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Java与WebAssembly</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Java与WebAssembly</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            7 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">Java与Wasm交互</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        WebAssembly（简称
+        Wasm）是一种低级的二进制指令格式，可以在现代浏览器中接近原生速度运行。它不是用来替代
+        JavaScript 的，而是与 JavaScript
+        协同工作，让性能关键型代码（如图像处理、音视频编解码、加密计算）在网页端也能高效执行。
+      </p>
+      <p>
+        Java 与 WebAssembly 的结合有两个方向：一是用 Java 调用已有的 Wasm 模块，二是将 Java
+        代码编译为 Wasm 在浏览器中运行。前者适合在服务端复用 Wasm 生态中的现有模块，后者适合将 Java
+        逻辑直接部署到前端。
+      </p>
+      <p>
+        为什么需要关注 Java 与 Wasm 的交互？因为 Wasm 生态正在快速增长，很多 C/C++/Rust
+        编写的高性能库已经编译为 Wasm 格式，Java 应用可以通过 Wasm
+        运行时直接调用这些模块，而不需要通过 JNI 桥接原生代码，部署更简单，安全性也更高。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <h3 id="webassembly-核心概念"><a href="#webassembly-核心概念">WebAssembly 核心概念</a></h3>
+      <p>
+        Wasm
+        模块是一个二进制文件（.wasm），它定义了一组函数和内存。模块需要被实例化后才能调用。实例化时可以导入宿主环境提供的函数，模块也可以导出函数供宿主调用。
+      </p>
+      <p>
+        Wasm 使用线性内存模型，所有数据存储在一块连续的内存中，通过偏移量访问。Wasm
+        的值类型只有四种：i32、i64、f32、f64，所以 Java 的对象类型需要经过序列化或编码才能传递给
+        Wasm 函数。
+      </p>
+      <h3 id="java-中的-wasm-运行时"><a href="#java-中的-wasm-运行时">Java 中的 Wasm 运行时</a></h3>
+      <p>目前 Java 生态中主要的 Wasm 运行时有两个：</p>
+      <ul>
+        <li>
+          <strong>Chicory</strong>：纯 Java 实现的 Wasm 解释器，无需本地依赖，跨平台，适合嵌入 Java
+          应用
+        </li>
+        <li><strong>Wasmtime-Java</strong>：基于 Wasmtime 的 JNI 绑定，性能更好但需要本地库</li>
+      </ul>
+      <p>对于大多数场景，Chicory 是更简单的选择，因为它不需要安装任何本地依赖。</p>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <h3 id="添加-chicory-依赖"><a href="#添加-chicory-依赖">添加 Chicory 依赖</a></h3>
+      <p>在 Maven 项目中添加 Chicory 依赖：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="xml"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">dependency</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  &#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">groupId</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>com.dylibso.chicory&#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">groupId</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  &#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>runtime&#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  &#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">version</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>2024.10.1&#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">version</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">dependency</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+      <p>Gradle 项目中：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="groovy"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">implementation </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'com.dylibso.chicory:runtime:2024.10.1'</span></span></code></pre>
+      <h3 id="最简示例调用-wasm-函数">
+        <a href="#最简示例调用-wasm-函数">最简示例：调用 Wasm 函数</a>
+      </h3>
+      <p>假设有一个 Wasm 模块导出了一个 add 函数，接收两个 i32 参数并返回它们的和：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> com.dylibso.chicory.runtime.Instance;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> java.nio.file.Paths;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">public</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> WasmQuickStart</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    public</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> static</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[] </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">args</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 加载并实例化 Wasm 模块</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        Instance instance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Paths.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"module.wasm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 调用导出函数 add，传入参数 3 和 5</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"add"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">];</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        System.out.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"3 + 5 = "</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> +</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> result); </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 输出: 3 + 5 = 8</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>这就是最基本的使用方式：加载模块、实例化、调用导出函数。</p>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="1-加载-wasm-模块"><a href="#1-加载-wasm-模块">1. 加载 Wasm 模块</a></h3>
+      <p>Chicory 支持从文件路径、URL 或字节数组加载模块：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> com.dylibso.chicory.runtime.Instance;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> com.dylibso.chicory.wasm.Module;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> java.nio.file.Paths;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 方式一：从文件加载（最常用）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Instance instance1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Paths.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"module.wasm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 方式二：从 Module 对象加载（可复用同一模块创建多个实例）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Module module </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Module.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Paths.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"module.wasm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Instance instance2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(module).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Instance instance3 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(module).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 同一模块的不同实例</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 方式三：从字节数组加载</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[] wasmBytes </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Files.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">readAllBytes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Paths.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"module.wasm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Instance instance4 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(wasmBytes).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span></code></pre>
+      <h3 id="2-调用导出函数"><a href="#2-调用导出函数">2. 调用导出函数</a></h3>
+      <p>Wasm 函数的参数和返回值都是基本类型（i32、i64、f32、f64），通过 apply 方法传递和接收：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 调用无参函数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[] emptyResult </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"getCount"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 调用多参数函数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[] addResult </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"add"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">20</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 调用返回多个值的函数（Wasm 支持多返回值）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[] multiResult </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"swap"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">200</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> first </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> multiResult[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">];  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 第一个返回值</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> second </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> multiResult[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]; </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 第二个返回值</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 处理 64 位整数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">long</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[] longResult </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"hash"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">42L</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+      <h3 id="3-操作-wasm-线性内存"><a href="#3-操作-wasm-线性内存">3. 操作 Wasm 线性内存</a></h3>
+      <p>当需要传递复杂数据（如字符串、数组）时，需要通过 Wasm 的线性内存来交换数据：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> com.dylibso.chicory.runtime.Instance;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> com.dylibso.chicory.runtime.Memory;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Instance instance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Paths.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"process.wasm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Memory memory </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">memory</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 向 Wasm 内存写入字符串</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">String text </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "Hello Wasm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> offset </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 写入的起始偏移量</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> text.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">length</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); i</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 将每个字符写入内存的对应位置</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    memory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">writeByte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(offset </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i, (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) text.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">charAt</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(i));</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 写入字符串结束符</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">memory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">writeByte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(offset </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> text.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">length</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(), (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 调用处理函数，传入偏移量</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> resultOffset </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"processString"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(offset)[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">];</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 从 Wasm 内存读取返回的字符串</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">StringBuilder sb </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> new</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> StringBuilder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> readPos </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> resultOffset;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">true</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> memory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">readByte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(readPos);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">break</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 遇到结束符停止</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    sb.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">append</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">((</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">char</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) b);</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    readPos</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">String result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sb.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">toString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span></code></pre>
+      <h3 id="4-导入宿主函数给-wasm">
+        <a href="#4-导入宿主函数给-wasm">4. 导入宿主函数给 Wasm</a>
+      </h3>
+      <p>Wasm 模块可以导入宿主环境提供的函数，Chicory 允许你在 Java 端实现这些导入：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> com.dylibso.chicory.runtime.HostFunction;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> com.dylibso.chicory.runtime.Instance;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> com.dylibso.chicory.runtime.WasmValue;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 定义一个宿主函数，供 Wasm 模块调用</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">HostFunction logFunc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> new</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> HostFunction</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "env"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 导入模块名</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "log"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 导入函数名</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    List.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">of</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(WasmValue.Type.I32),  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 参数类型</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    List.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">of</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(),                       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 返回值类型</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    (instance, args) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 从 Wasm 内存读取字符串并打印</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ptr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> args[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">].</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">asInt</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        Memory mem </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">memory</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        StringBuilder msg </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> new</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> StringBuilder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (mem.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">readByte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ptr) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            msg.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">append</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">((</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">char</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) mem.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">readByte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ptr));</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            ptr</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        System.out.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"[Wasm] "</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> +</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> msg.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">toString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> new</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WasmValue</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]; </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 无返回值</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 实例化时注入宿主函数</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Instance instance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Paths.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"module.wasm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    .</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">addHostFunction</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(logFunc)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    .</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span></code></pre>
+      <h3 id="5-将-java-编译为-wasm">
+        <a href="#5-将-java-编译为-wasm">5. 将 Java 编译为 Wasm</a>
+      </h3>
+      <p>如果目标是把 Java 代码运行在浏览器中，可以使用 TeaVM 或 CheerpJ 等工具：</p>
+      <p><strong>TeaVM 方式</strong>：将 Java 字节码转译为 JavaScript/Wasm</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="xml"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">&#x3C;!-- Maven 插件配置 --></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">plugin</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  &#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">groupId</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>org.teavm&#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">groupId</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  &#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>teavm-maven-plugin&#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">artifactId</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  &#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">version</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>0.10.2&#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">version</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  &#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">configuration</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">targetType</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>WEBASSEMBLY&#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">targetType</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    &#x3C;</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">mainClass</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>com.example.ClientMain&#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">mainClass</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  &#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">configuration</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;/</span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">plugin</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span></code></pre>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// Java 端代码，会被编译为 Wasm</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">public</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ClientMain</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    public</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> static</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">String</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[] </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">args</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 这段代码将运行在浏览器中</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        System.out.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Hello from Java-Wasm!"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="场景一在服务端调用-wasm-图像处理库">
+        <a href="#场景一在服务端调用-wasm-图像处理库">场景一：在服务端调用 Wasm 图像处理库</a>
+      </h3>
+      <p>很多图像处理库（如 libwebp、libavif）已经编译为 Wasm，Java 应用可以通过 Chicory 调用：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 加载图像处理 Wasm 模块</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Instance imageProcessor </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Paths.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"image-utils.wasm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 将图像数据写入 Wasm 内存</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[] imageData </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Files.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">readAllBytes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Paths.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"input.png"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dataPtr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> imageProcessor.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"allocate"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(imageData.length)[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">];</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Memory mem </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> imageProcessor.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">memory</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> imageData.length; i</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    mem.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">writeByte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(dataPtr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i, imageData[i]);</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 调用处理函数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> resultPtr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> imageProcessor.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"convertToWebP"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(dataPtr, imageData.length)[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">];</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 读取处理结果...</span></span></code></pre>
+      <h3 id="场景二使用-wasm-沙箱执行不可信代码">
+        <a href="#场景二使用-wasm-沙箱执行不可信代码">场景二：使用 Wasm 沙箱执行不可信代码</a>
+      </h3>
+      <p>Wasm 的沙箱特性使其适合执行不可信的计算逻辑：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 加载用户提交的计算模块，在沙箱中运行</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Instance sandbox </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Paths.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user-code.wasm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    .</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">withMaxMemory</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 限制内存使用（单位：页，每页 64KB）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    .</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 安全地执行计算，Wasm 无法访问 Java 堆或文件系统</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">try</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[] result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sandbox.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"compute"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(inputData);</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">} </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">catch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (Exception </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // Wasm 执行出错不会影响 Java 进程</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    System.err.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"计算失败: "</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> +</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> e.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">getMessage</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="注意事项与常见错误"><a href="#注意事项与常见错误">注意事项与常见错误</a></h2>
+      <h3 id="类型不匹配"><a href="#类型不匹配">类型不匹配</a></h3>
+      <p>
+        Wasm 只有四种基本值类型，Java 的 long 对应 i64，但很多 Wasm 函数使用
+        i32。传递参数时注意类型对应关系：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 错误：Wasm 函数期望 i32，但传入了 long</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"process"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100L</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">); </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 可能导致类型错误</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 正确：确保传入 int 类型</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">export</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"process"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">apply</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+      <h3 id="内存越界"><a href="#内存越界">内存越界</a></h3>
+      <p>
+        Wasm 线性内存大小有限，默认可能只有几页（每页 64KB）。写入大量数据前需要确认内存空间足够：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 检查内存页数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pages </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">memory</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pages</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> totalBytes </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pages </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 65536</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 每页 64KB</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 如果空间不足，可以增长内存</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">memory</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">grow</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">); </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 增加 10 页</span></span></code></pre>
+      <h3 id="编码问题"><a href="#编码问题">编码问题</a></h3>
+      <p>Wasm 内存操作的是原始字节，Java 字符串需要手动编码为 UTF-8 字节再写入：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> java.nio.charset.StandardCharsets;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">String text </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "你好世界"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[] bytes </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> text.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">getBytes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(StandardCharsets.UTF_8);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> bytes.length; i</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    memory.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">writeByte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(offset </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i, bytes[i]);</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="不要混淆两个方向"><a href="#不要混淆两个方向">不要混淆两个方向</a></h3>
+      <p>
+        Java
+        <span
+          class="term-tip"
+          data-term="调用"
+          data-module="github"
+          data-def="调用"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">调用</abbr></span
+        >
+        Wasm（Chicory）和 Java
+        <span
+          class="term-tip"
+          data-term="编译"
+          data-module="c"
+          data-def="将源代码转换为目标代码"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">编译</abbr></span
+        >为 Wasm（TeaVM）是两个不同的场景。前者是在 Java
+        <span
+          class="term-tip"
+          data-term="进程"
+          data-module="c"
+          data-def="运行的程序实例"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">进程</abbr></span
+        >中运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >
+        Wasm
+        <span
+          class="term-tip"
+          data-term="模块"
+          data-module="github"
+          data-def="模块"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">模块</abbr></span
+        >，后者是把 Java 代码变成 Wasm 在<span
+          class="term-tip"
+          data-term="浏览器"
+          data-module="cpp"
+          data-def="浏览实体"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">浏览器</abbr></span
+        >中运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >。<span
+          class="term-tip"
+          data-term="根"
+          data-module="vue3"
+          data-def="根节点"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">根</abbr></span
+        >据需求选择正确的工具。
+      </p>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="wasm-组件模型"><a href="#wasm-组件模型">Wasm 组件模型</a></h3>
+      <p>
+        Wasm
+        <span
+          class="term-tip"
+          data-term="组件"
+          data-module="cpp"
+          data-def="组成整体的部分"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">组件</abbr></span
+        >模型是 Wasm
+        <span
+          class="term-tip"
+          data-term="规范"
+          data-module="html5"
+          data-def="HTML 标准文档"
+          data-slug="html5/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">规范</abbr></span
+        >的新<span
+          class="term-tip"
+          data-term="进展"
+          data-module="cpp"
+          data-def="进度"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">进展</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="支持"
+          data-module="cpp"
+          data-def="支持"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">支持</abbr></span
+        >更丰富的<span
+          class="term-tip"
+          data-term="类型"
+          data-module="c"
+          data-def="数据的分类"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">类型</abbr></span
+        >系统（<span
+          class="term-tip"
+          data-term="字符串"
+          data-module="cpp"
+          data-def="字符序列"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">字符串</abbr></span
+        >、<span
+          class="term-tip"
+          data-term="记录"
+          data-module="github"
+          data-def="记录"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">记录</abbr></span
+        >、<span
+          class="term-tip"
+          data-term="变体"
+          data-module="c"
+          data-def="可存储不同类型的值"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">变体</abbr></span
+        >等），不再局限于四种基本<span
+          class="term-tip"
+          data-term="类型"
+          data-module="c"
+          data-def="数据的分类"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">类型</abbr></span
+        >。Chicory 正在逐步<span
+          class="term-tip"
+          data-term="支持"
+          data-module="cpp"
+          data-def="支持"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">支持</abbr></span
+        >组件模型，未来可以<span
+          class="term-tip"
+          data-term="直接"
+          data-module="github"
+          data-def="直接的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">直接</abbr></span
+        >传递<span
+          class="term-tip"
+          data-term="字符串"
+          data-module="cpp"
+          data-def="字符序列"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">字符串</abbr></span
+        >和<span
+          class="term-tip"
+          data-term="结构体"
+          data-module="c"
+          data-def="组合不同类型的数据"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结构体</abbr></span
+        >，无需手动<span
+          class="term-tip"
+          data-term="操作"
+          data-module="github"
+          data-def="GitHub Actions 工作流"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">操作</abbr></span
+        >内存。
+      </p>
+      <h3 id="wasi-支持"><a href="#wasi-支持">WASI 支持</a></h3>
+      <p>
+        WASI（WebAssembly System Interface）为 Wasm
+        <span
+          class="term-tip"
+          data-term="提供"
+          data-module="github"
+          data-def="提供"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">提供</abbr></span
+        >了<span
+          class="term-tip"
+          data-term="标准化"
+          data-module="data-analysis"
+          data-def="将数据转换为均值为0、标准差为1的分布，z=(x-mu)/sigma"
+          data-slug="data-analysis/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">标准化</abbr></span
+        >的<span
+          class="term-tip"
+          data-term="系统"
+          data-module="cpp"
+          data-def="系统"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">系统</abbr></span
+        >接口（<span
+          class="term-tip"
+          data-term="文件"
+          data-module="github"
+          data-def="文件"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">文件</abbr></span
+        >访问、<span
+          class="term-tip"
+          data-term="网络"
+          data-module="github"
+          data-def="网络"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">网络</abbr></span
+        >等）。Chicory
+        <span
+          class="term-tip"
+          data-term="支持"
+          data-module="cpp"
+          data-def="支持"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">支持</abbr></span
+        >
+        WASI
+        <span
+          class="term-tip"
+          data-term="预览"
+          data-module="vue3"
+          data-def="预览效果"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">预览</abbr></span
+        >版，可以让 Wasm
+        <span
+          class="term-tip"
+          data-term="模块"
+          data-module="github"
+          data-def="模块"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">模块</abbr></span
+        >在受控<span
+          class="term-tip"
+          data-term="环境"
+          data-module="cpp"
+          data-def="运行环境"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">环境</abbr></span
+        >中访问<span
+          class="term-tip"
+          data-term="系统"
+          data-module="cpp"
+          data-def="系统"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">系统</abbr></span
+        >资<span
+          class="term-tip"
+          data-term="源"
+          data-module="cpp"
+          data-def="源"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">源</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="java"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> com.dylibso.chicory.wasi.WasiOptions;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 启用 WASI 支持，允许 Wasm 访问标准输入输出</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Instance instance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Instance.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(Paths.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"wasi-module.wasm"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    .</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">withWasi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(WasiOptions.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">builder</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        .</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">withStdout</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(System.out)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        .</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">withStderr</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(System.err)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        .</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">())</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    .</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span></code></pre>
+      <h3 id="性能考量"><a href="#性能考量">性能考量</a></h3>
+      <p>
+        Chicory 是纯 Java
+        <span
+          class="term-tip"
+          data-term="解释器"
+          data-module="javascript"
+          data-def="逐行执行代码的程序"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">解释器</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="执行"
+          data-module="github"
+          data-def="执行"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">执行</abbr></span
+        >
+        Wasm 的速<span
+          class="term-tip"
+          data-term="度"
+          data-module="algorithm"
+          data-def="与顶点关联的边数，有向图分为入度和出度"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">度</abbr></span
+        >比原生 Wasm
+        <span
+          class="term-tip"
+          data-term="运行时"
+          data-module="c"
+          data-def="程序执行的阶段"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">运行时</abbr></span
+        >（如 Wasmtime、Wasmer）慢。如果<span
+          class="term-tip"
+          data-term="性能"
+          data-module="github"
+          data-def="性能"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">性能</abbr></span
+        >是关键<span
+          class="term-tip"
+          data-term="需求"
+          data-module="github"
+          data-def="需求"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">需求</abbr></span
+        >，考虑使用 Wasmtime-Java。如果<span
+          class="term-tip"
+          data-term="部署"
+          data-module="cpp"
+          data-def="部署应用"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">部署</abbr></span
+        >便利性更重要（不想安装<span
+          class="term-tip"
+          data-term="本地"
+          data-module="github"
+          data-def="本地"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">本地</abbr></span
+        >库），Chicory 是更好的<span
+          class="term-tip"
+          data-term="选择"
+          data-module="cpp"
+          data-def="选择"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">选择</abbr></span
+        >。
+      </p>
+      <p>
+        <span
+          class="term-tip"
+          data-term="对"
+          data-module="github"
+          data-def="对"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对</abbr></span
+        >于<span
+          class="term-tip"
+          data-term="计算密集"
+          data-module="cpp"
+          data-def="CPU 密集型任务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">计算密集</abbr></span
+        >型<span
+          class="term-tip"
+          data-term="任务"
+          data-module="cpp"
+          data-def="任务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">任务</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="建议"
+          data-module="github"
+          data-def="建议"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">建议</abbr></span
+        >先用 Chicory
+        <span
+          class="term-tip"
+          data-term="原型"
+          data-module="javascript"
+          data-def="对象继承属性和方法的来源"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">原型</abbr></span
+        >验证，再<span
+          class="term-tip"
+          data-term="根"
+          data-module="vue3"
+          data-def="根节点"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">根</abbr></span
+        >据<span
+          class="term-tip"
+          data-term="性能"
+          data-module="github"
+          data-def="性能"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">性能</abbr></span
+        >需求决定是否<span
+          class="term-tip"
+          data-term="切换"
+          data-module="github"
+          data-def="切换"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">切换</abbr></span
+        >到 Wasmtime-Java。
+      </p>
+    </article>
+  </body>
+</html>

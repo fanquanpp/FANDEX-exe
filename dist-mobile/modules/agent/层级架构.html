@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>层级架构及其失败模式</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">层级架构及其失败模式</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            8 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/15
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">层级架构</span><span class="doc-tag">分解漂移</span
+          ><span class="doc-tag">共识循环</span><span class="doc-tag">深度2上限</span
+          ><span class="doc-tag">金丝雀问题</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          掌握层级架构的三种失败模式：任务分配错误、输出误读、共识循环，理解何时顺序优于层级
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="层级架构及其失败模式"><a href="#层级架构及其失败模式">层级架构及其失败模式</a></h1>
+      <blockquote>
+        <p>
+          层级是嵌套的监督者。经理Agent管理子经理，子经理管理工作者。CrewAI的<code>Process.hierarchical</code>是教科书版本：<code>manager_llm</code>动态委托任务并验证输出。LangGraph的等价物是<code>create_supervisor(create_supervisor(...))</code>。当任务是真实组织架构图时，这是自然模式。它也是最可能坍缩为管理循环的模式
+          — 经理Agent分配工作不当、误读子输出或无法达成共识。顺序通常击败它。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 + 构建 <strong>语言：</strong> Python（标准库）
+        <strong>前置条件：</strong> Phase 16 · 05（监督者模式） <strong>时间：</strong> ~60分钟
+      </p>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        一旦监督者模式理解了，自然的下一步是”如果工作者本身也是监督者呢？“团队有子团队；公司有部门的部门。层级架构镜像这一点。
+      </p>
+      <p>
+        问题在于：LLM经理与人类经理不同。人类经理对其下属知道什么有稳定的先验。LLM经理每轮从其上下文中的任何内容重新推理组织。该上下文中的微小漂移，整个树就错误分配工作。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="形状"><a href="#形状">形状</a></h3>
+      <div class="mermaid-output">
+        <div class="mermaid-svg" data-theme="light"></div>
+        <div class="mermaid-svg" data-theme="dark"></div>
+      </div>
+      <p>每个内部节点规划、委托和综合。只有叶子做工作。</p>
+      <h3 id="闪光点"><a href="#闪光点">闪光点</a></h3>
+      <ul>
+        <li>
+          <strong>清晰的组织映射。</strong>
+          如果真实任务是部门化的（“法律审查文档、财务审查文档、工程审查文档，然后为高管总结”），层级是显式的。
+        </li>
+        <li>
+          <strong>局部摘要。</strong>
+          每个子经理在顶层经理看到之前综合其团队的输出。顶层经理看到三个子经理摘要，不是十五个工作者输出。
+        </li>
+      </ul>
+      <h3 id="崩溃点"><a href="#崩溃点">崩溃点</a></h3>
+      <p>2026年事后分析不断发现的三种失败模式：</p>
+      <ol>
+        <li>
+          <strong>任务分配错误。</strong>
+          经理阅读目标，幻觉一个分解，并委托给错误的子经理。因为子经理忠实地在给定的内容上工作，错误只在顶层综合时浮出
+          — 距离人类本可以捕获它的地方隔了一层。
+        </li>
+        <li>
+          <strong>输出误读。</strong>
+          子经理返回”无法验证声明X。“顶层经理总结为”声明X未确认。“含义在每一层漂移。
+        </li>
+        <li>
+          <strong>共识循环。</strong>
+          两个子经理不同意；顶层经理要求他们协调；他们重新向下委托；工作者重新运行；子经理返回略有不同的答案；循环。CrewAI的<code>Process.hierarchical</code>用步数限制防范这一点，但限制本身现在是一个超参数。
+        </li>
+      </ol>
+      <h3 id="决定性问题"><a href="#决定性问题">决定性问题</a></h3>
+      <p>
+        顺序（线性管道）vs层级：你的任务是否真的有独立子团队，还是假装成树的一个线性流？如果是后者，使用顺序。如果是前者，使用层级但预算显式协调规则。
+      </p>
+      <h3 id="crewai的实现"><a href="#crewai的实现">CrewAI的实现</a></h3>
+      <p><code>Process.hierarchical</code>在专业crew上连接一个经理LLM。经理：</p>
+      <ul>
+        <li>接收顶层任务，</li>
+        <li>将子任务分配给crew，</li>
+        <li>评估crew输出，</li>
+        <li>决定是接受、重新委托还是迭代。</li>
+      </ul>
+      <h3 id="langgraph的实现"><a href="#langgraph的实现">LangGraph的实现</a></h3>
+      <p>
+        LangGraph使用嵌套的<code>create_supervisor</code>调用。内部监督者有自己的图；外部监督者将内部图视为不透明节点。这比CrewAI更干净用于调试（你可以分别步进每个图），但更难表达树的动态重塑。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code>运行3级层级：</p>
+      <ul>
+        <li>顶层经理：将任务拆分为”工程”和”法律”分支，</li>
+        <li>工案子经理：拆分为”前端”和”后端”工作者，</li>
+        <li>法律子经理：一个工作者。</li>
+      </ul>
+      <p>
+        演示对比了快乐路径（所有人都同意）vs<strong>扰动路径</strong>，其中顶层经理的分解将”法律”错误标记为”财务”，并观察错误级联
+        — 子经理忠实地做财务工作，顶层综合器报告财务发现，原始法律问题无人回答。
+      </p>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        <code>outputs/skill-hierarchy-fitness.md</code
+        >评估给定任务是否应使用层级、顺序或扁平监督者。输入：任务描述、组织结构、协调预算。输出：模式推荐以及需要防范的具体失败模式。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          运行
+          <code>code/main.py</code>
+          并比较快乐vs扰动路径。需要多少层经理传递，顶层输出才完全偏离用户问题？
+        </li>
+        <li>
+          添加第三层（顶层 -> 子 -> 子子 ->
+          工作者）。测量随着深度增长，扰动路径自我纠正vs完全偏离的频率。
+        </li>
+        <li>
+          在每个<span
+            class="term-tip"
+            data-term="子"
+            data-module="cpp"
+            data-def="子"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">子</abbr></span
+          >经理处实现一个”金丝雀”工作者，始终被问及原始用户问题不变。使用金丝雀答案检测分解漂移。当金丝雀与综合答案不一致时，经理应如何反应？
+        </li>
+        <li>
+          阅读CrewAI的<code>Process.hierarchical</code
+          ><span
+            class="term-tip"
+            data-term="文档"
+            data-module="vue3"
+            data-def="代码说明文档"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文档</abbr></span
+          >。识别CrewAI应用的一个具体护栏（步数<span
+            class="term-tip"
+            data-term="限制"
+            data-module="github"
+            data-def="限制"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">限制</abbr></span
+          >、manager_llm约束）并<span
+            class="term-tip"
+            data-term="描述"
+            data-module="github"
+            data-def="描述"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">描述</abbr></span
+          >它针<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >什么<span
+            class="term-tip"
+            data-term="失败"
+            data-module="github"
+            data-def="失败"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">失败</abbr></span
+          >模式。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >嵌套LangGraph监督者与CrewAI层级。哪个使共识<span
+            class="term-tip"
+            data-term="循环"
+            data-module="c"
+            data-def="重复执行的代码"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">循环</abbr></span
+          >更便宜地<span
+            class="term-tip"
+            data-term="检测"
+            data-module="github"
+            data-def="检测"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检测</abbr></span
+          >？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="层级"
+                data-module="github"
+                data-def="层级"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">层级</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="组织"
+                data-module="github"
+                data-def="团队账户和仓库集合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">组织</abbr></span
+              >架构<span
+                class="term-tip"
+                data-term="图"
+                data-module="algorithm"
+                data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图</abbr></span
+              >模式”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="监督者"
+                data-module="cpp"
+                data-def="监督者"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">监督者</abbr></span
+              >之上的<span
+                class="term-tip"
+                data-term="监督者"
+                data-module="cpp"
+                data-def="监督者"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">监督者</abbr></span
+              >；只有叶<span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >做<span
+                class="term-tip"
+                data-term="工作"
+                data-module="cpp"
+                data-def="工作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工作</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>经理LLM</td>
+            <td>”老板”</td>
+            <td>
+              在内部<span
+                class="term-tip"
+                data-term="节点"
+                data-module="github"
+                data-def="节点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">节点</abbr></span
+              >分解、<span
+                class="term-tip"
+                data-term="分配"
+                data-module="github"
+                data-def="将 Issue 指派给某人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分配</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >的LLM。
+            </td>
+          </tr>
+          <tr>
+            <td>分解漂移</td>
+            <td>”老板丢了主线”</td>
+            <td>
+              顶层经理的<span
+                class="term-tip"
+                data-term="拆分"
+                data-module="cpp"
+                data-def="拆分"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">拆分</abbr></span
+              >不再<span
+                class="term-tip"
+                data-term="覆盖"
+                data-module="c"
+                data-def="测试覆盖的代码范围"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">覆盖</abbr></span
+              >原始<span
+                class="term-tip"
+                data-term="问题"
+                data-module="github"
+                data-def="跟踪任务、缺陷、想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">问题</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              共识<span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >
+            </td>
+            <td>
+              ”无休止的<span
+                class="term-tip"
+                data-term="会议"
+                data-module="github"
+                data-def="会议"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">会议</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >经理不同意；顶层重新<span
+                class="term-tip"
+                data-term="委托"
+                data-module="cpp"
+                data-def="委托给其他"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">委托</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="工作"
+                data-module="cpp"
+                data-def="工作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工作</abbr></span
+              >者重新运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >直到预算耗尽。
+            </td>
+          </tr>
+          <tr>
+            <td>深度2上限</td>
+            <td>”不要超过2层”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="经验"
+                data-module="github"
+                data-def="经验"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">经验</abbr></span
+              >护栏：3+层坍缩<span
+                class="term-tip"
+                data-term="可观测性"
+                data-module="devops"
+                data-def="通过日志、指标和链路追踪三支柱理解系统内部状态的能力"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">可观测性</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              金丝雀<span
+                class="term-tip"
+                data-term="问题"
+                data-module="github"
+                data-def="跟踪任务、缺陷、想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">问题</abbr></span
+              >
+            </td>
+            <td>”每层的基准真相”</td>
+            <td>
+              始终被问及<span
+                class="term-tip"
+                data-term="原始"
+                data-module="vue3"
+                data-def="原始的、最初的"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">原始</abbr></span
+              >查询不变的<span
+                class="term-tip"
+                data-term="工作"
+                data-module="cpp"
+                data-def="工作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工作</abbr></span
+              >者，用于<span
+                class="term-tip"
+                data-term="检测"
+                data-module="github"
+                data-def="检测"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检测</abbr></span
+              >漂移。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="来源"
+                data-module="github"
+                data-def="来源"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">来源</abbr></span
+              >链
+            </td>
+            <td>”谁说了什么”</td>
+            <td>
+              从每个<span
+                class="term-tip"
+                data-term="综合"
+                data-module="github"
+                data-def="综合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">综合</abbr></span
+              >追溯到产生它的叶<span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >输出的<span
+                class="term-tip"
+                data-term="追踪"
+                data-module="c"
+                data-def="记录程序执行"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">追踪</abbr></span
+              >。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://docs.crewai.com/en/introduction"
+            >CrewAI introduction — Process.hierarchical</a
+          >
+          — 带经理LLM的教科书<span
+            class="term-tip"
+            data-term="层级"
+            data-module="github"
+            data-def="层级"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">层级</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://reference.langchain.com/python/langgraph-supervisor"
+            >LangGraph supervisor reference</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="通过"
+            data-module="github"
+            data-def="通过"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">通过</abbr></span
+          ><code>create_supervisor</code>的<span
+            class="term-tip"
+            data-term="嵌套"
+            data-module="typescript"
+            data-def="嵌套在其他类型中的类型"
+            data-slug="typescript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">嵌套</abbr></span
+          >监督者
+        </li>
+        <li>
+          <a href="https://www.anthropic.com/engineering/multi-agent-research-system"
+            >Anthropic engineering — Research system</a
+          >
+          — 为什么Anthropic故意<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >扁平<span
+            class="term-tip"
+            data-term="监督者"
+            data-module="cpp"
+            data-def="监督者"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">监督者</abbr></span
+          >而非<span
+            class="term-tip"
+            data-term="层级"
+            data-module="github"
+            data-def="层级"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">层级</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2503.13657"
+            >Cemri et al. — Why Do Multi-Agent LLM Systems Fail?</a
+          >
+          — MAST分<span
+            class="term-tip"
+            data-term="类"
+            data-module="cpp"
+            data-def="定义对象的结构和行为"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">类</abbr></span
+          >法；<span
+            class="term-tip"
+            data-term="关于"
+            data-module="github"
+            data-def="关于"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">关于</abbr></span
+          >协调<span
+            class="term-tip"
+            data-term="失败"
+            data-module="github"
+            data-def="失败"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">失败</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="部分"
+            data-module="github"
+            data-def="部分的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">部分</abbr></span
+          >记录了分解漂移
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

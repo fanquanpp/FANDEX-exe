@@ -1,0 +1,259 @@
+---
+import Layout from '@/components/Layout.astro'
+import SEO from '@/components/SEO.astro'
+import Breadcrumb from '@/components/Breadcrumb.astro'
+import { getCollection } from 'astro:content'
+import { getModule, categoryColors, getPrimaryCategory } from '@packages/shared/modules'
+import { readFileSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/** 读取构建时生成的标签索引数据，用于获取相关标签 */
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const tagIndexPath = join(__dirname, '..', '..', '..', '..', '..', 'metadata', 'tags', 'tag-index.json')
+let tagIndexData: Record<string, { slug: string; count: number; modules: string[]; related: string[] }> = {}
+try {
+  const raw = readFileSync(tagIndexPath, 'utf-8')
+  const parsed = JSON.parse(raw)
+  tagIndexData = parsed.tags || {}
+} catch {
+  // 标签索引文件不存在时降级为空对象
+}
+
+export async function getStaticPaths() {
+  const allDocs = await getCollection('docs')
+  const tagMap = new Map<string, typeof allDocs>()
+
+  for (const doc of allDocs) {
+    for (const tag of doc.data.tags || []) {
+      if (!tagMap.has(tag)) tagMap.set(tag, [])
+      tagMap.get(tag)!.push(doc)
+    }
+  }
+
+  return Array.from(tagMap.entries()).map(([tag, docs]) => ({
+    params: { tag },
+    props: { tag, docs },
+  }))
+}
+
+const { tag, docs } = Astro.props
+const sortedDocs = docs.sort((a, b) => (a.data.order || 0) - (b.data.order || 0))
+const base = import.meta.env.BASE_URL
+
+/** 从标签索引中获取当前标签的相关标签列表 */
+const tagInfo = tagIndexData[tag]
+const relatedTags = tagInfo?.related || []
+
+const moduleGroups = new Map<string, typeof sortedDocs>()
+for (const doc of sortedDocs) {
+  const mod = doc.data.module
+  if (!moduleGroups.has(mod)) moduleGroups.set(mod, [])
+  moduleGroups.get(mod)!.push(doc)
+}
+
+function slug(id: string) { return (id.split('/').pop() || id).replace(/\.(md|mdx)$/, '') }
+
+const breadcrumb = [
+  { label: '首页', href: `${base}` },
+  { label: '标签', href: `${base}tags/` },
+  { label: tag },
+]
+---
+
+<Layout title={`标签: ${tag}`}>
+  <SEO slot="head" title={`标签: ${tag}`} description={`包含标签 "${tag}" 的所有文档`} />
+
+  <div class="tag-page">
+    <Breadcrumb items={breadcrumb} />
+
+    <div class="tag-header">
+      <h1 class="tag-title">{tag}</h1>
+      <p class="tag-subtitle">{sortedDocs.length} 篇文档 | {moduleGroups.size} 个模块</p>
+    </div>
+
+    <div class="tag-groups">
+      {Array.from(moduleGroups.entries()).map(([mod, modDocs]) => {
+        const meta = getModule(mod)
+        return (
+          <section class="tag-group">
+            <h2 class="tag-group-title">
+              <span class="group-bar" style={`background:${meta ? categoryColors[getPrimaryCategory(meta)] : categoryColors.tools}`}></span>
+              <a href={`${base}${mod}/`} class="group-link">{meta?.title || mod}</a>
+              <span class="group-count">{modDocs.length}</span>
+            </h2>
+            <ul class="tag-doc-list">
+              {modDocs.map(doc => (
+                <li>
+                  <a href={`${base}${mod}/${slug(doc.id)}/`} class="tag-doc-link">
+                    {doc.data.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      })}
+    </div>
+
+    {relatedTags.length > 0 && (
+      <div class="related-tags">
+        <h2 class="related-title">相关标签</h2>
+        <div class="related-cloud">
+          {relatedTags.map((relatedTag) => (
+            <a href={`${base}tags/${relatedTag}/`} class="related-tag-item">
+              {relatedTag}
+            </a>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+</Layout>
+
+<style>
+.tag-page {
+  padding: var(--spacing-lg) var(--spacing-xl);
+  max-width: var(--content-width);
+  margin: 0 auto;
+}
+
+.tag-header {
+  margin-bottom: var(--spacing-xl);
+}
+
+.tag-title {
+  font-family: var(--font-display);
+  font-size: 1.4em;
+  margin: 0 0 var(--spacing-xs);
+  text-transform: capitalize;
+}
+
+.tag-subtitle {
+  font-size: 0.88em;
+  color: var(--color-text-secondary);
+  margin: 0;
+}
+
+.tag-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.tag-group {
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg);
+}
+
+.tag-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin: 0;
+  background: var(--color-bg-card);
+  border-bottom: 1px solid var(--color-border-light);
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.group-bar {
+  width: 3px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.group-link {
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.group-link:hover {
+  color: var(--color-primary);
+}
+
+.group-count {
+  font-size: 0.8em;
+  color: var(--color-text-tertiary);
+  margin-left: auto;
+}
+
+.tag-doc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tag-doc-list li {
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.tag-doc-list li:last-child {
+  border-bottom: none;
+}
+
+.tag-doc-link {
+  display: block;
+  padding: var(--spacing-sm) var(--spacing-md);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: 0.85em;
+  transition: all var(--transition-fast);
+}
+
+.tag-doc-link:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-primary);
+  padding-left: calc(var(--spacing-md) + 8px);
+}
+
+.related-tags {
+  margin-top: var(--spacing-xl);
+  padding: var(--spacing-md);
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg);
+}
+
+.related-title {
+  font-family: var(--font-display);
+  font-size: 0.85em;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 var(--spacing-md);
+  padding-bottom: var(--spacing-xs);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+.related-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.related-tag-item {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid var(--color-border-light);
+  background: var(--color-bg-card);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-size: 0.82em;
+  transition: all var(--transition-fast);
+}
+
+.related-tag-item:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: var(--color-bg-hover);
+}
+
+@media (max-width: 768px) {
+  .tag-page {
+    padding: var(--spacing-md);
+  }
+}
+</style>

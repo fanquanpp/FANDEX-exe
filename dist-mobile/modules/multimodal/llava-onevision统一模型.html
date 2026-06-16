@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLaVA-OneVision：单图像、多图像、视频统一模型</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">LLaVA-OneVision：单图像、多图像、视频统一模型</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            13 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">LLaVA-OneVision</span><span class="doc-tag">多图像推理</span
+          ><span class="doc-tag">视频理解</span><span class="doc-tag">课程训练</span
+          ><span class="doc-tag">token预算</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          理解LLaVA-OneVision如何通过统一token预算和课程训练实现三场景统一
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="llava-onevision单图像多图像视频统一模型">
+        <a href="#llava-onevision单图像多图像视频统一模型"
+          >LLaVA-OneVision：单图像、多图像、视频统一模型</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          在LLaVA-OneVision (Li等人,
+          2024年8月)之前，开源VLM世界有独立的谱系：LLaVA-1.5用于单图像，Mantis和VILA等多图像模型，Video-LLaVA和Video-LLaMA等视频模型。每个在其基准上获胜而在其他场景上失败。LLaVA-OneVision论证单一课程可以训练一个模型在所有三个场景中占优，并且涌现的任务迁移效应（单图像技能导出到视频，多图像推理导出到单图像）击败专家之和。方案出奇地简单：一个跨场景保持恒定的视觉token预算，加上从单图像到OneVision（多图像）到视频的显式课程。本课程阅读预算、课程和涌现行为。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python (stdlib, token预算求解器 +
+        课程规划器) <strong>前置知识:</strong> Phase 12 · 05 (LLaVA), Phase 12 · 06 (任意分辨率)
+        <strong>时间:</strong> ~180分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>设计在单图像、多图像和视频输入间保持恒定的视觉token预算。</li>
+        <li>安排从单图像到视频的训练课程而不发生灾难性遗忘。</li>
+        <li>解释为什么课程正确时单一模型在相同参数量下击败专家。</li>
+        <li>
+          说出LLaVA-OneVision报告的三种涌现能力：多摄像头推理、set-of-mark提示、iPhone截图agent。
+        </li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>图像、多图像和视频各自以不同方式压力测试模型。</p>
+      <p>
+        单图像想要高分辨率token（AnyRes，约2880视觉token）以捕获OCR和精细细节。每样本预算：一张图像，2880
+        token。
+      </p>
+      <p>
+        多图像想要多张中等分辨率图像（每张约576
+        token），以便跨图像推理适合上下文。每样本预算：4-8张图像，每张576，2300-4600 token。
+      </p>
+      <p>
+        视频想要许多低分辨率帧（池化后每帧约196
+        token）以捕获时间动态。每样本预算：8-32帧，每帧196，1600-6200 token。
+      </p>
+      <p>
+        如果你训练独立模型，你选择一个预算。如果你训练一个模型，你需要预算在场景间合理缩放而不爆上下文。
+      </p>
+      <p>
+        OneVision之前，默认答案是”训练一个场景，忽略其他”。Video-LLaVA通过额外训练阶段将视频改造到图像模型上。LLaVA-NeXT通过平铺添加多图像支持。没有一个干净地处理所有三种。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="onevision-token预算"><a href="#onevision-token预算">OneVision token预算</a></h3>
+      <p>LLaVA-OneVision选择约3000-4000 token每样本的统一视觉token预算，按场景不同分配：</p>
+      <ul>
+        <li>
+          单图像：AnyRes-9（3x3瓦片 + 缩略图），每个瓦片在384下729个patch，激进2x2双线性池化 →
+          每瓦片182。总计：9 * 182 + 182 = 1820 token。或AnyRes-4在729每瓦片 = 2916 + 729。
+        </li>
+        <li>
+          多图像：每张图像中等分辨率（384，不平铺），729 token无池化。预算6张图像 → 4374 token。
+        </li>
+        <li>
+          视频：32帧在384分辨率下，激进3x3双线性池化 → 每帧81 token。总计：32 * 81 = 2592 token。
+        </li>
+      </ul>
+      <p>
+        分配保持大致恒定的总token。LLM从不看到爆其上下文的batch。编码器按场景产生不同几何，但LLM消费相同预算。
+      </p>
+      <h3 id="三阶段课程"><a href="#三阶段课程">三阶段课程</a></h3>
+      <p>LLaVA-OneVision分三个阶段训练：</p>
+      <ol>
+        <li>
+          单图像SFT（阶段SI）。所有数据是单图像加文本。在高分辨率AnyRes输入上训练。这教会感知、OCR和细粒度理解。使用LLaVA-NeXT数据加OneVision特定单图像数据。
+        </li>
+        <li>
+          OneVision SFT（阶段OV）。混合单图像 + 多图像 +
+          视频（均匀采样帧）。在统一token预算上训练。这教会模型处理异构batch形状。无权重重置——从阶段SI继续。
+        </li>
+        <li>
+          任务迁移（阶段TT）。继续使用目标任务混合，通常根据产品偏向更多多图像或视频。可选部署微调。
+        </li>
+      </ol>
+      <p>
+        关键：课程顺序很重要。先训练视频或多图像比先训练单图像产生更差的图像性能，即使数据相同。论文明确消融了这一点。
+      </p>
+      <h3 id="为什么课程有效"><a href="#为什么课程有效">为什么课程有效</a></h3>
+      <p>
+        单图像训练建立感知基础。Patch
+        token携带细粒度视觉特征；LLM学习将它们与文本整合。多图像和视频引入结构挑战（哪张图像是哪张，先发生了什么），在没有强感知基础的情况下很难学习。
+      </p>
+      <p>
+        如果你从头一起训练所有场景，模型欠拟合感知（每batch有限的单图像数据）并过拟合结构（大量多图像/视频数据）。结果：一个遵循跨图像推理模式但视觉浅薄的模型。
+      </p>
+      <p>课程排序给你阶段SI的感知强度，然后阶段OV的组合/时间推理，而不丢失任何一个。</p>
+      <h3 id="涌现跨场景技能"><a href="#涌现跨场景技能">涌现跨场景技能</a></h3>
+      <p>LLaVA-OneVision论文报告了三种涌现能力：</p>
+      <ol>
+        <li>
+          多摄像头推理。分别训练多图像 +
+          视频；推理时，要求推理多摄像头驾驶场景。模型正确整合视图，尽管训练中从未见过该确切格式。
+        </li>
+        <li>
+          Set-of-mark提示。用户在图像中用编号标记标注对象；模型推理”标记3相对于标记7在做什么”。既未训练标记也未训练标注；从空间定位
+          + 多图像引用的组合中学习。
+        </li>
+        <li>
+          iPhone截图agent。用户提供iPhone屏幕截图并要求计划下一次点击。在UI截图、用户工作流视频和多图像前后对上训练。泛化到agent用例。
+        </li>
+      </ol>
+      <p>这些不是训练任务；它们从课程的结构组合中涌现。</p>
+      <h3 id="视觉token池化"><a href="#视觉token池化">视觉token池化</a></h3>
+      <p>
+        token预算需要池化。OneVision在2D patch网格上使用双线性插值：24x24 = 576 patch变为12x12 =
+        144（2x因子）或8x8 = 64（3x因子）。池化在patch网格空间而非token空间完成，以保留局部性。
+      </p>
+      <p>
+        每场景的池化因子选择本身是超参数。更少池化 = 更多token = 更丰富表示。更多池化 = 更少token =
+        更多帧/图像适合。
+      </p>
+      <h3 id="llava-onevision-15"><a href="#llava-onevision-15">LLaVA-OneVision-1.5</a></h3>
+      <p>
+        2025年跟进（LLaVA-OneVision-1.5, arXiv
+        2509.23661）在训练数据、模型权重和代码方面”完全开放”。在某些基准上匹配了专有差距，民主化了方案。相同课程，更多数据，更好基座LLM。无架构变化。
+      </p>
+      <h3 id="与qwen25-vl对比"><a href="#与qwen25-vl对比">与Qwen2.5-VL对比</a></h3>
+      <p>
+        Qwen2.5-VL（课程12.09）做出不同选择。它使用M-RoPE和动态FPS而非固定池化。其预算随输入缩放——1分钟视频使用比5秒视频更多token。LLaVA-OneVision固定预算并缩放池化。两者都有效；它们用可配置性换可预测性。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code
+        >是OneVision风格VLM的课程和预算规划器。给定每样本token预算和目标场景混合（比如40%单图像、30%多图像、30%视频），它：
+      </p>
+      <ul>
+        <li>为每个场景分配分辨率、池化因子和帧数。</li>
+        <li>检查每个场景是否适合共享预算。</li>
+        <li>报告预期token数量、LLM FLOPs以及哪些场景token不足。</li>
+        <li>打印逐阶段训练调度。</li>
+      </ul>
+      <p>用于规划OneVision微调或健全检查VLM部署的每请求成本。</p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-onevision-budget-planner.md</code>。给定目标任务分布和每样本预算，它输出AnyRes因子、每帧池化、视频帧数和课程阶段权重。每当你训练或微调统一场景VLM时使用。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            你的产品支持80%单图像、10%多图像（2-4张）、10%视频（8-16帧）。设计token预算。你从不需要重度多图像中节省的额外预算放在哪里？
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读LLaVA-OneVision第4.3节（涌现能力）。提出课程可能解锁但论文未报告的第四种涌现技能。
+          </p>
+        </li>
+        <li>
+          <p>
+            <span
+              class="term-tip"
+              data-term="交换"
+              data-module="github"
+              data-def="交换"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">交换</abbr></span
+            >课程顺序——先<span
+              class="term-tip"
+              data-term="训练"
+              data-module="github"
+              data-def="培训"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">训练</abbr></span
+            >多图像，然后单图像，然后视频。预测哪些基准会退化以及为什么。
+          </p>
+        </li>
+        <li>
+          <p>
+            论文<span
+              class="term-tip"
+              data-term="报告"
+              data-module="github"
+              data-def="报告"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">报告</abbr></span
+            >在每<span
+              class="term-tip"
+              data-term="样本"
+              data-module="data-analysis"
+              data-def="从总体中抽取的子集，统计量是描述样本特征的数量"
+              data-slug="data-analysis/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">样本</abbr></span
+            >仅8帧上<span
+              class="term-tip"
+              data-term="训练"
+              data-module="github"
+              data-def="培训"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">训练</abbr></span
+            >的视频基准。这能<span
+              class="term-tip"
+              data-term="泛化"
+              data-module="agent"
+              data-def="模型在未见过的新数据上保持良好性能的能力，是衡量模型质量的关键指标"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">泛化</abbr></span
+            >到<span
+              class="term-tip"
+              data-term="推理"
+              data-module="github"
+              data-def="推理"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">推理</abbr></span
+            >时的30秒视频吗？什么先崩溃——<span
+              class="term-tip"
+              data-term="token"
+              data-module="python"
+              data-def="词法分析的最小语法单元"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">token</abbr></span
+            >预算还是<span
+              class="term-tip"
+              data-term="时间"
+              data-module="cpp"
+              data-def="时间"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">时间</abbr></span
+            >推理？
+          </p>
+        </li>
+        <li>
+          <p>
+            24x24 patch到12x12的双<span
+              class="term-tip"
+              data-term="线性"
+              data-module="github"
+              data-def="线性的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">线性</abbr></span
+            >池化是每维4倍缩减。用stdlib Python实现<span
+              class="term-tip"
+              data-term="池化"
+              data-module="python"
+              data-def="复用有限资源的技术，如连接池、线程池"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">池化</abbr></span
+            >并<span
+              class="term-tip"
+              data-term="验证"
+              data-module="cpp"
+              data-def="验证"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">验证</abbr></span
+            >每个2x2块上的均<span
+              class="term-tip"
+              data-term="值"
+              data-module="cpp"
+              data-def="值"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">值</abbr></span
+            >匹配双<span
+              class="term-tip"
+              data-term="线性"
+              data-module="github"
+              data-def="线性的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">线性</abbr></span
+            >输出。
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>OneVision场景</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >图像、<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >图像或视频”
+            </td>
+            <td>
+              统一VLM处理的三种<span
+                class="term-tip"
+                data-term="输入"
+                data-module="c"
+                data-def="从外部获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输入</abbr></span
+              >形状之一；预算跨场景保持恒定
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Token"
+                data-module="agent"
+                data-def="大语言模型处理文本的最小单位，一个 token 约对应 0.75 个英文单词或 0.5-1 个中文字符"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Token</abbr></span
+              >预算
+            </td>
+            <td>
+              ”每<span
+                class="term-tip"
+                data-term="样本"
+                data-module="data-analysis"
+                data-def="从总体中抽取的子集，统计量是描述样本特征的数量"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">样本</abbr></span
+              >多少<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >”
+            </td>
+            <td>
+              LLM每<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >样本看到的总视觉<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >，通常3000-4000
+            </td>
+          </tr>
+          <tr>
+            <td>课程</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >顺序”
+            </td>
+            <td>
+              为涌现<span
+                class="term-tip"
+                data-term="迁移"
+                data-module="github"
+                data-def="迁移"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">迁移</abbr></span
+              >选择的<span
+                class="term-tip"
+                data-term="阶段"
+                data-module="github"
+                data-def="阶段"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">阶段</abbr></span
+              >排序（<span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >图像 →
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >图像 → 视频）
+            </td>
+          </tr>
+          <tr>
+            <td>
+              双<span
+                class="term-tip"
+                data-term="线性"
+                data-module="github"
+                data-def="线性的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">线性</abbr></span
+              >池化
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="Token"
+                data-module="agent"
+                data-def="大语言模型处理文本的最小单位，一个 token 约对应 0.75 个英文单词或 0.5-1 个中文字符"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Token</abbr></span
+              >缩减”
+            </td>
+            <td>
+              对patch网<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >(2D)<span
+                class="term-tip"
+                data-term="应用"
+                data-module="github"
+                data-def="GitHub 应用程序"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">应用</abbr></span
+              >双<span
+                class="term-tip"
+                data-term="线性"
+                data-module="github"
+                data-def="线性的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">线性</abbr></span
+              >插<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >以减少<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >数量同时<span
+                class="term-tip"
+                data-term="保留"
+                data-module="github"
+                data-def="保留"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保留</abbr></span
+              >局部性
+            </td>
+          </tr>
+          <tr>
+            <td>涌现技能</td>
+            <td>
+              ”没<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >但<span
+                class="term-tip"
+                data-term="有效"
+                data-module="cpp"
+                data-def="有效的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">有效</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >时出现的无需<span
+                class="term-tip"
+                data-term="匹配"
+                data-module="discrete-math"
+                data-def="图中一组没有公共顶点的边集合，最大匹配是边数最多的匹配"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">匹配</abbr></span
+              >训练数据的能力，由于课程<span
+                class="term-tip"
+                data-term="组合"
+                data-module="cpp"
+                data-def="组合多个值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">组合</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>AnyRes-k</td>
+            <td>
+              ”k瓦片<span
+                class="term-tip"
+                data-term="设置"
+                data-module="cpp"
+                data-def="设置"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">设置</abbr></span
+              >”
+            </td>
+            <td>
+              k个<span
+                class="term-tip"
+                data-term="固定"
+                data-module="cpp"
+                data-def="固定的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">固定</abbr></span
+              >分辨<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >子瓦片加一个缩略<span
+                class="term-tip"
+                data-term="图"
+                data-module="algorithm"
+                data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图</abbr></span
+              >，典型k ∈ {4, 9}
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >迁移
+            </td>
+            <td>
+              ”跨场景<span
+                class="term-tip"
+                data-term="泛化"
+                data-module="agent"
+                data-def="模型在未见过的新数据上保持良好性能的能力，是衡量模型质量的关键指标"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">泛化</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >共享骨干在<span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >图像上学到的技能<span
+                class="term-tip"
+                data-term="应用"
+                data-module="github"
+                data-def="GitHub 应用程序"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">应用</abbr></span
+              >到视频（反之亦然）
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2408.03326">Li等人 — LLaVA-OneVision (arXiv:2408.03326)</a>
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2509.23661"
+            >LLaVA-OneVision-1.5: Fully Open Framework (arXiv:2509.23661)</a
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2311.10122">Lin等人 — Video-LLaVA (arXiv:2311.10122)</a>
+        </li>
+        <li><a href="https://arxiv.org/abs/2312.07533">Lin等人 — VILA (arXiv:2312.07533)</a></li>
+        <li>
+          <a href="https://arxiv.org/abs/2409.12191">Wang等人 — Qwen2-VL (arXiv:2409.12191)</a>
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

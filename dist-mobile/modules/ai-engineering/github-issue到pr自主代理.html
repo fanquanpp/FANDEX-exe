@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitHub Issue到PR自主代理</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">GitHub Issue到PR自主代理</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">Issue到PR</span><span class="doc-tag">云沙盒</span
+          ><span class="doc-tag">GitHub App</span><span class="doc-tag">异步代理</span
+          ><span class="doc-tag">凭证范围</span><span class="doc-tag">预算强制</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          AWS Remote SWE Agents、Cursor Background Agents、OpenAI Codex cloud和Google
+          Jules都发布2026年相同产品形态：标记issue，获得PR。在云沙盒中运行代理，验证测试通过，发布带理由的review-ready
+          PR。难点在于自动复现仓库构建环境、防止凭证泄露、强制每仓库预算、确保代理不能force-push。构建自托管版本并在成本和通过率上与托管替代比较。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        异步云编码代理是与交互式编码代理（顶点01）分开的产品类别。UX是一个GitHub标签。你给issue打上<code
+          >@agent fix this</code
+        >标签，worker在云沙盒中启动，克隆仓库，运行测试，编辑文件，验证，并打开带代理理由的PR。无交互循环，无终端。
+      </p>
+      <p>
+        <span
+          class="term-tip"
+          data-term="工程"
+          data-module="github"
+          data-def="工程"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">工程</abbr></span
+        >挑战是具体的：<span
+          class="term-tip"
+          data-term="环境"
+          data-module="cpp"
+          data-def="运行环境"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">环境</abbr></span
+        >复现（<span
+          class="term-tip"
+          data-term="代理"
+          data-module="cpp"
+          data-def="代理对象"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">代理</abbr></span
+        >必须从零构建<span
+          class="term-tip"
+          data-term="仓库"
+          data-module="git"
+          data-def="仓库是 Git 存储项目历史和元数据的目录，包含所有文件的完整历史记录。"
+          data-slug="git/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">仓库</abbr></span
+        >而没有<span
+          class="term-tip"
+          data-term="缓存"
+          data-module="vue3"
+          data-def="存储数据供后续使用"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">缓存</abbr></span
+        >开发<span
+          class="term-tip"
+          data-term="镜像"
+          data-module="github"
+          data-def="镜像"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">镜像</abbr></span
+        >）、脆<span
+          class="term-tip"
+          data-term="弱"
+          data-module="cpp"
+          data-def="弱"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">弱</abbr></span
+        >测试（必须重新运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >或隔离）、凭证<span
+          class="term-tip"
+          data-term="范围"
+          data-module="c"
+          data-def="取值区间"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">范围</abbr></span
+        >（最小细粒度权限的GitHub App）、每仓库每日预算强制和no-force-push策略。
+      </p>
+      <h2 id="核心架构"><a href="#核心架构">核心架构</a></h2>
+      <h3 id="工作流"><a href="#工作流">工作流</a></h3>
+      <ol>
+        <li>
+          <strong
+            >Issue标签<span
+              class="term-tip"
+              data-term="触发"
+              data-module="javascript"
+              data-def="导致事件发生"
+              data-slug="javascript/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">触发</abbr></span
+            >。</strong
+          >
+          <span
+            class="term-tip"
+            data-term="GitHub"
+            data-module="github"
+            data-def="代码托管和协作平台"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">GitHub</abbr></span
+          >
+          webhook通知<span
+            class="term-tip"
+            data-term="代理"
+            data-module="cpp"
+            data-def="代理对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">代理</abbr></span
+          >。
+        </li>
+        <li>
+          <strong
+            >沙盒<span
+              class="term-tip"
+              data-term="启动"
+              data-module="github"
+              data-def="启动"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">启动</abbr></span
+            >。</strong
+          >
+          Docker容器<span
+            class="term-tip"
+            data-term="克隆"
+            data-module="github"
+            data-def="下载远程仓库到本地"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">克隆</abbr></span
+          >仓<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >，安装<span
+            class="term-tip"
+            data-term="依赖"
+            data-module="c"
+            data-def="两个计算之间的顺序关系"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">依赖</abbr></span
+          >。
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="代理"
+              data-module="cpp"
+              data-def="代理对象"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">代理</abbr></span
+            >执<span
+              class="term-tip"
+              data-term="行"
+              data-module="vue3"
+              data-def="数据行"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行</abbr></span
+            >。</strong
+          >
+          <span
+            class="term-tip"
+            data-term="计划"
+            data-module="github"
+            data-def="计划"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">计划</abbr></span
+          >-<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >动-<span
+            class="term-tip"
+            data-term="观察"
+            data-module="github"
+            data-def="观察"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">观察</abbr></span
+          >循<span
+            class="term-tip"
+            data-term="环"
+            data-module="discrete-math"
+            data-def="具有加法群和乘法半群结构且满足分配律的代数系统"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">环</abbr></span
+          >修复issue。
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="测试"
+              data-module="cpp"
+              data-def="测试"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">测试</abbr></span
+            >验证。</strong
+          >
+          运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >完整<span
+            class="term-tip"
+            data-term="测试"
+            data-module="cpp"
+            data-def="测试"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">测试</abbr></span
+          >套件。
+        </li>
+        <li>
+          <strong>PR创建。</strong> 发布带<span
+            class="term-tip"
+            data-term="理由"
+            data-module="github"
+            data-def="理由"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">理由</abbr></span
+          >的pull request。
+        </li>
+      </ol>
+      <h3 id="安全"><a href="#安全">安全</a></h3>
+      <ul>
+        <li>
+          <span
+            class="term-tip"
+            data-term="GitHub"
+            data-module="github"
+            data-def="代码托管和协作平台"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">GitHub</abbr></span
+          >
+          App最小<span
+            class="term-tip"
+            data-term="权限"
+            data-module="github"
+            data-def="权限"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">权限</abbr></span
+          >（仅读写代码、PR）。
+        </li>
+        <li>
+          每<span
+            class="term-tip"
+            data-term="仓库"
+            data-module="git"
+            data-def="仓库是 Git 存储项目历史和元数据的目录，包含所有文件的完整历史记录。"
+            data-slug="git/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">仓库</abbr></span
+          >每日预算强制。
+        </li>
+        <li>
+          No-force-<span
+            class="term-tip"
+            data-term="push"
+            data-module="cpp"
+            data-def="推入元素"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">push</abbr></span
+          >策略。
+        </li>
+        <li>
+          凭证<span
+            class="term-tip"
+            data-term="范围"
+            data-module="c"
+            data-def="取值区间"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">范围</abbr></span
+          >限制（无仓库secret访问）。
+        </li>
+      </ul>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Async cloud agent</td>
+            <td>
+              ”异步云<span
+                class="term-tip"
+                data-term="代理"
+                data-module="cpp"
+                data-def="代理对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">代理</abbr></span
+              >”
+            </td>
+            <td>
+              非<span
+                class="term-tip"
+                data-term="交互"
+                data-module="github"
+                data-def="交互"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">交互</abbr></span
+              >式云沙盒<span
+                class="term-tip"
+                data-term="编码"
+                data-module="cpp"
+                data-def="编写代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编码</abbr></span
+              >代理
+            </td>
+          </tr>
+          <tr>
+            <td>Environment reproduction</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="环境"
+                data-module="cpp"
+                data-def="运行环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">环境</abbr></span
+              >复现”
+            </td>
+            <td>
+              从零构建<span
+                class="term-tip"
+                data-term="仓库"
+                data-module="git"
+                data-def="仓库是 Git 存储项目历史和元数据的目录，包含所有文件的完整历史记录。"
+                data-slug="git/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">仓库</abbr></span
+              >开发<span
+                class="term-tip"
+                data-term="环境"
+                data-module="cpp"
+                data-def="运行环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">环境</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Credential scoping</td>
+            <td>
+              ”凭证<span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="限制"
+                data-module="github"
+                data-def="限制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限制</abbr></span
+              >代理的访问<span
+                class="term-tip"
+                data-term="权限"
+                data-module="github"
+                data-def="权限"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">权限</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Budget enforcement</td>
+            <td>”预算强制”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="限制"
+                data-module="github"
+                data-def="限制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限制</abbr></span
+              >每<span
+                class="term-tip"
+                data-term="仓库"
+                data-module="git"
+                data-def="仓库是 Git 存储项目历史和元数据的目录，包含所有文件的完整历史记录。"
+                data-slug="git/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">仓库</abbr></span
+              >每日<span
+                class="term-tip"
+                data-term="计算"
+                data-module="cpp"
+                data-def="计算过程"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">计算</abbr></span
+              >支出
+            </td>
+          </tr>
+          <tr>
+            <td>
+              No-force-<span
+                class="term-tip"
+                data-term="push"
+                data-module="cpp"
+                data-def="推入元素"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">push</abbr></span
+              >
+            </td>
+            <td>
+              ”禁止<span
+                class="term-tip"
+                data-term="强制推送"
+                data-module="github"
+                data-def="覆盖远程历史"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">强制推送</abbr></span
+              >”
+            </td>
+            <td>
+              防止<span
+                class="term-tip"
+                data-term="代理"
+                data-module="cpp"
+                data-def="代理对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">代理</abbr></span
+              >覆盖git历史
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          AWS Remote SWE Agents — 云<span
+            class="term-tip"
+            data-term="编码"
+            data-module="cpp"
+            data-def="编写代码"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编码</abbr></span
+          >代理
+        </li>
+        <li>
+          Cursor Background Agents — IDE后台<span
+            class="term-tip"
+            data-term="代理"
+            data-module="cpp"
+            data-def="代理对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">代理</abbr></span
+          >
+        </li>
+        <li>
+          OpenAI Codex cloud — 云<span
+            class="term-tip"
+            data-term="编码"
+            data-module="cpp"
+            data-def="编写代码"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编码</abbr></span
+          >代理
+        </li>
+        <li>
+          Google Jules — Google云<span
+            class="term-tip"
+            data-term="编码"
+            data-module="cpp"
+            data-def="编写代码"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编码</abbr></span
+          >代理
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

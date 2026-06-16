@@ -1,0 +1,1026 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>垃圾回收与GC调优</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">垃圾回收与GC调优</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            4 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">Go垃圾回收与GC调优详解：并发标记清除。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        Go 语言使用垃圾回收器（Garbage Collector，GC）自动管理堆内存，开发者无需手动释放内存。Go 的
+        GC 采用并发三色标记清除算法，在大多数场景下表现良好，但在高吞吐或低延迟要求的场景中，理解 GC
+        机制并进行调优至关重要。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <h3 id="gc-算法演进"><a href="#gc-算法演进">GC 算法演进</a></h3>
+      <p>Go 的 GC 经历了多个版本的演进：</p>
+      <ul>
+        <li>Go 1.0：STW（Stop The World）标记清除，暂停时间长</li>
+        <li>Go 1.5：并发三色标记清除，大幅降低延迟</li>
+        <li>Go 1.8：混合写屏障，进一步缩短 STW 时间</li>
+        <li>Go 1.19：引入 GOMEMLIMIT，更精确的内存控制</li>
+      </ul>
+      <h3 id="三色标记法"><a href="#三色标记法">三色标记法</a></h3>
+      <p>三色标记法将对象分为三种颜色：</p>
+      <ul>
+        <li>白色：尚未被访问，GC 结束后白色对象被回收</li>
+        <li>灰色：已被访问但其引用尚未被扫描</li>
+        <li>黑色：已被访问且其引用已全部扫描，存活对象</li>
+      </ul>
+      <p>标记过程：</p>
+      <ol>
+        <li>初始时所有对象为白色</li>
+        <li>将根对象（全局变量、栈变量等）标记为灰色</li>
+        <li>取出灰色对象，将其引用的对象标记为灰色，自身变为黑色</li>
+        <li>重复步骤 3 直到没有灰色对象</li>
+        <li>剩余白色对象即为可回收对象</li>
+      </ol>
+      <h3 id="写屏障"><a href="#写屏障">写屏障</a></h3>
+      <p>
+        并发<span
+          class="term-tip"
+          data-term="标记"
+          data-module="c"
+          data-def="标记数据位置的符号"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">标记</abbr></span
+        >期间，<span
+          class="term-tip"
+          data-term="用户代码"
+          data-module="cpp"
+          data-def="用户代码"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">用户代码</abbr></span
+        >可能修改<span
+          class="term-tip"
+          data-term="对象"
+          data-module="cpp"
+          data-def="类的实例"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对象</abbr></span
+        >引用<span
+          class="term-tip"
+          data-term="关系"
+          data-module="cpp"
+          data-def="关系"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">关系</abbr></span
+        >。写屏障（Write Barrier）在每次引用修改时记录变更，保证三色标记的正确性：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 伪代码：写屏障机制</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> writeBarrier</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">slot</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unsafe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ptr</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> unsafe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 记录被覆盖的引用（确保不会丢失灰色对象）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    shade</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">slot)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 更新引用</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">slot </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ptr</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <h3 id="观察-gc-行为"><a href="#观察-gc-行为">观察 GC 行为</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 开启 GC 跟踪</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">GODEBUG</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">gctrace</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">1</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ./myapp</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 输出示例：</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># gc 1 @0.003s 5%: 0.018+0.45+0.015 ms clock, 0.14+0.21/0.89/0.39+0.12 ms cpu, 4->4->0 MB, 5 MB goal, 8 P</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># gc 2 @0.012s 6%: 0.020+0.52+0.018 ms clock, 0.16+0.25/1.0/0.42+0.14 ms cpu, 4->4->1 MB, 5 MB goal, 8 P</span></span></code></pre>
+      <p>
+        <span
+          class="term-tip"
+          data-term="输出"
+          data-module="c"
+          data-def="向外部发送数据"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">输出</abbr></span
+        >字<span
+          class="term-tip"
+          data-term="段"
+          data-module="vue3"
+          data-def="URL 的一段"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">段</abbr></span
+        >含义：
+      </p>
+      <ul>
+        <li>gc N：第 N 次 GC</li>
+        <li>
+          @Xs：<span
+            class="term-tip"
+            data-term="程序"
+            data-module="c"
+            data-def="完成特定功能的代码集合"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">程序</abbr></span
+          >启动后 X 秒<span
+            class="term-tip"
+            data-term="触发"
+            data-module="javascript"
+            data-def="导致事件发生"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">触发</abbr></span
+          >
+        </li>
+        <li>N%：GC 占用 CPU 百分比</li>
+        <li>
+          0.018+0.45+0.015：STW 清除、并发<span
+            class="term-tip"
+            data-term="标记"
+            data-module="c"
+            data-def="标记数据位置的符号"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标记</abbr></span
+          >、STW
+          <span
+            class="term-tip"
+            data-term="标记"
+            data-module="c"
+            data-def="标记数据位置的符号"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标记</abbr></span
+          >终止<span
+            class="term-tip"
+            data-term="时间"
+            data-module="cpp"
+            data-def="时间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">时间</abbr></span
+          >
+        </li>
+        <li>
+          4->4->0 MB：GC 前<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >大小 -> GC 后<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >大小 -> 存活<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >大小
+        </li>
+        <li>
+          5 MB goal：下次 GC
+          <span
+            class="term-tip"
+            data-term="触发"
+            data-module="javascript"
+            data-def="导致事件发生"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">触发</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="目标"
+            data-module="cpp"
+            data-def="目标"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">目标</abbr></span
+          >堆<span
+            class="term-tip"
+            data-term="大小"
+            data-module="github"
+            data-def="大小"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">大小</abbr></span
+          >
+        </li>
+        <li>
+          8 P：<span
+            class="term-tip"
+            data-term="处理"
+            data-module="cpp"
+            data-def="处理"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">处理</abbr></span
+          >器<span
+            class="term-tip"
+            data-term="数量"
+            data-module="github"
+            data-def="数量"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">数量</abbr></span
+          >
+        </li>
+      </ul>
+      <h3 id="基本监控"><a href="#基本监控">基本监控</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">runtime/debug</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> monitorGC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stats </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">debug</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GCStats</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    debug.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ReadGCStats</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">stats)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"GC 次数: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stats.NumGC)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"GC 总暂停时间: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%v\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stats.PauseTotal)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"最近暂停时间: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%v\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stats.Pause[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="gc-调优参数"><a href="#gc-调优参数">GC 调优参数</a></h3>
+      <h4 id="gogc"><a href="#gogc">GOGC</a></h4>
+      <p>
+        GOGC
+        <span
+          class="term-tip"
+          data-term="控制"
+          data-module="github"
+          data-def="控制"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">控制</abbr></span
+        >堆<span
+          class="term-tip"
+          data-term="增长"
+          data-module="github"
+          data-def="增长"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">增长</abbr></span
+        >比例，决定 GC
+        <span
+          class="term-tip"
+          data-term="触发"
+          data-module="javascript"
+          data-def="导致事件发生"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">触发</abbr></span
+        >时机：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 默认值 100</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 含义：堆大小达到上次 GC 后存活大小的 (100+GOGC)/100 倍时触发 GC</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">GOGC</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">100</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 堆翻倍时触发（默认）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">GOGC</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">200</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 堆 3 倍时触发（减少 GC 频率，增加吞吐）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">GOGC</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">50</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   # 堆 1.5 倍时触发（增加 GC 频率，减少延迟）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">GOGC</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">off</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 禁用 GC（不推荐）</span></span></code></pre>
+      <p>
+        GOGC 的<span
+          class="term-tip"
+          data-term="影响"
+          data-module="github"
+          data-def="影响"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">影响</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>GOGC=50  → 更频繁的 GC，更小的堆，更低的延迟，更低的吞吐</span></span>
+<span class="line"><span>GOGC=100 → 平衡的默认值</span></span>
+<span class="line"><span>GOGC=200 → 更少的 GC，更大的堆，更高的延迟，更高的吞吐</span></span>
+<span class="line"><span>GOGC=off → 不进行 GC，堆无限增长</span></span></code></pre>
+      <h4 id="gomemlimit"><a href="#gomemlimit">GOMEMLIMIT</a></h4>
+      <p>
+        Go 1.19 引入，<span
+          class="term-tip"
+          data-term="设置"
+          data-module="cpp"
+          data-def="设置"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">设置</abbr></span
+        >运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >时的内存上限：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 设置内存上限为 1GB</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">GOMEMLIMIT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">1GiB</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ./myapp</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 设置为 512MB</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">GOMEMLIMIT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">512MiB</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ./myapp</span></span></code></pre>
+      <p>GOMEMLIMIT 的优势：</p>
+      <ul>
+        <li>
+          比 GOGC 更直观，<span
+            class="term-tip"
+            data-term="直接"
+            data-module="github"
+            data-def="直接的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">直接</abbr></span
+          >控制内存使用量
+        </li>
+        <li>
+          在<span
+            class="term-tip"
+            data-term="容器"
+            data-module="cpp"
+            data-def="存储多个元素的对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">容器</abbr></span
+          >环境中特别有用，防止 OOM
+        </li>
+        <li>
+          与 GOGC 配合使用，GC 会<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >更激进的<span
+            class="term-tip"
+            data-term="策略"
+            data-module="vue3"
+            data-def="解决问题的策略"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">策略</abbr></span
+          >
+        </li>
+      </ul>
+      <h3 id="gc-调优策略"><a href="#gc-调优策略">GC 调优策略</a></h3>
+      <h4 id="减少-gc-压力"><a href="#减少-gc-压力">减少 GC 压力</a></h4>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 1. 减少堆分配（使用栈分配）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 返回值而非指针（小对象）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Point</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{ X, Y </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">float64</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> NewPoint</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">x</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">y</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> float64</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Point</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 值返回，栈分配</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Point</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{x, y}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 2. 对象复用（sync.Pool）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> bufPool </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> sync</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    New: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">any</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> new</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">bytes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Buffer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> process</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    buf </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> bufPool.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">bytes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Buffer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    defer</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        buf.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Reset</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        bufPool.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Put</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(buf)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }()</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 使用 buf</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 3. 预分配容器大小</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 预分配，减少扩容</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">m </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">map</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h4 id="控制堆大小"><a href="#控制堆大小">控制堆大小</a></h4>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 避免长期持有大对象的引用</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> processLargeData</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> loadLargeData</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 大对象</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> extractNeeded</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(data)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // data 不再使用，可以被 GC 回收</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> result</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 使用指针而非值类型减少复制</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 但注意：过多的指针会增加 GC 扫描时间</span></span></code></pre>
+      <h3 id="gc-监控与诊断"><a href="#gc-监控与诊断">GC 监控与诊断</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">runtime</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">runtime/debug</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">time</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 定期打印 GC 统计信息</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> startGCMonitor</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    go</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        ticker </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">NewTicker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.Second)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ticker.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Stop</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ticker.C {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> m </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">runtime</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">MemStats</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            runtime.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ReadMemStats</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">m)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"堆分配: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> MB</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, m.HeapAlloc</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1024</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1024</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"系统分配: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> MB</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, m.Sys</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1024</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1024</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"GC 次数: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%d\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, m.NumGC)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"GC 暂停总时间: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%v\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, time.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Duration</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(m.PauseTotalNs))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="场景一web-服务-gc-调优">
+        <a href="#场景一web-服务-gc-调优">场景一：Web 服务 GC 调优</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 低延迟场景（API 网关）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">GOGC</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">50</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> GOMEMLIMIT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">2GiB</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ./gateway</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 高吞吐场景（数据处理）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">GOGC</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">200</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> GOMEMLIMIT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">4GiB</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ./processor</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 容器环境（Kubernetes）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">GOMEMLIMIT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">900MiB</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ./myapp</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 略小于 limits，留出安全余量</span></span></code></pre>
+      <h3 id="场景二减少内存分配"><a href="#场景二减少内存分配">场景二：减少内存分配</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 不推荐：频繁创建临时对象</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1024</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 每次请求都分配</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    process</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(data)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 推荐：使用 sync.Pool 复用</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dataPool </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> sync</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    New: </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">any</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1024</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) },</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> handler</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">w</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ResponseWriter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">r</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">http</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dataPool.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Get</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().([]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dataPool.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Put</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(data)</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    process</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(data)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="场景三排查-gc-问题"><a href="#场景三排查-gc-问题">场景三：排查 GC 问题</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _ </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">net/http/pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    go</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> http.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ListenAndServe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">":6060"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">nil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 业务代码</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 查看 GC 相关的 CPU 占用</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://localhost:6060/debug/pprof/profile</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 查看堆分配</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://localhost:6060/debug/pprof/heap</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 查看 alloc_objects（累计分配对象数）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pprof</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -alloc_objects</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> http://localhost:6060/debug/pprof/heap</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 使用 trace 查看 GC 暂停</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">go</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tool</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> trace</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> trace.out</span></span></code></pre>
+      <h2 id="注意事项"><a href="#注意事项">注意事项</a></h2>
+      <ul>
+        <li>
+          GOGC=off 会完全<span
+            class="term-tip"
+            data-term="禁用"
+            data-module="cpp"
+            data-def="禁用功能"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">禁用</abbr></span
+          >
+          GC，仅在确定没有<span
+            class="term-tip"
+            data-term="内存泄漏"
+            data-module="c"
+            data-def="分配的内存未释放"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">内存泄漏</abbr></span
+          >的短<span
+            class="term-tip"
+            data-term="生命周期"
+            data-module="cpp"
+            data-def="生命周期"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生命周期</abbr></span
+          >程序中使用
+        </li>
+        <li>
+          GOMEMLIMIT
+          <span
+            class="term-tip"
+            data-term="设置"
+            data-module="cpp"
+            data-def="设置"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设置</abbr></span
+          >过低会导致 GC 过于频繁，<span
+            class="term-tip"
+            data-term="影响"
+            data-module="github"
+            data-def="影响"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">影响</abbr></span
+          >吞吐
+        </li>
+        <li>
+          在<span
+            class="term-tip"
+            data-term="容器"
+            data-module="cpp"
+            data-def="存储多个元素的对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">容器</abbr></span
+          >中，GOMEMLIMIT 应<span
+            class="term-tip"
+            data-term="设置"
+            data-module="cpp"
+            data-def="设置"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设置</abbr></span
+          >为 memory limit 的 80-90%，留出<span
+            class="term-tip"
+            data-term="安全"
+            data-module="cpp"
+            data-def="安全性"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">安全</abbr></span
+          >余量
+        </li>
+        <li>
+          Go 1.19 之前在<span
+            class="term-tip"
+            data-term="容器"
+            data-module="cpp"
+            data-def="存储多个元素的对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">容器</abbr></span
+          >中需要手动<span
+            class="term-tip"
+            data-term="设置"
+            data-module="cpp"
+            data-def="设置"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设置</abbr></span
+          >
+          GOGC，因为<span
+            class="term-tip"
+            data-term="运行时"
+            data-module="c"
+            data-def="程序执行的阶段"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">运行时</abbr></span
+          >不会自动感知 cgroup
+          <span
+            class="term-tip"
+            data-term="限制"
+            data-module="github"
+            data-def="限制"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">限制</abbr></span
+          >
+        </li>
+        <li>
+          sync.Pool 的<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >可能在任意 GC 周期中被清除，不要<span
+            class="term-tip"
+            data-term="依赖"
+            data-module="c"
+            data-def="两个计算之间的顺序关系"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">依赖</abbr></span
+          >池中<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >的持久性
+        </li>
+        <li>
+          大量小<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >比少量大<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >造成更大的 GC
+          <span
+            class="term-tip"
+            data-term="压力"
+            data-module="github"
+            data-def="压力"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">压力</abbr></span
+          >
+        </li>
+      </ul>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="gc-软内存上限与硬内存上限">
+        <a href="#gc-软内存上限与硬内存上限">GC 软内存上限与硬内存上限</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// Go 1.19+ 可以在代码中设置内存上限</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">debug.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">SetMemoryLimit</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 30</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 1GB</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 同时设置 GOGC 和 MemoryLimit</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// GOGC 控制正常情况下的 GC 频率</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// MemoryLimit 作为内存使用的硬上限</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">debug.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">SetGCPercent</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)         </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// GOGC=100</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">debug.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">SetMemoryLimit</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 30</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)   </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 2GB 上限</span></span></code></pre>
+      <h3 id="手动触发-gc"><a href="#手动触发-gc">手动触发 GC</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 手动触发 GC（通常不需要）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">runtime.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 强制触发 GC 并等待完成</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">debug.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">FreeOSMemory</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 归还内存给操作系统</span></span></code></pre>
+      <h3 id="gc-友好的数据结构"><a href="#gc-友好的数据结构">GC 友好的数据结构</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 不推荐：大量指针导致 GC 扫描开销大</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Node</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*int</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">     // 指针</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Left  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Node</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 指针</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Right </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Node</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 指针</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 推荐：使用值类型或索引减少指针</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> CompactNode</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">      // 值类型，GC 不需要追踪</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Left  </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">      // 索引代替指针</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    Right </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 使用切片代替链表（内存连续，GC 友好）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">nodes </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CompactNode</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="ballast-扩展技术"><a href="#ballast-扩展技术">Ballast 扩展技术</a></h3>
+      <p>
+        在 Go 1.19 之前，使用 ballast（压舱物）技术降低 GC
+        <span
+          class="term-tip"
+          data-term="频率"
+          data-module="cpp"
+          data-def="频率"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">频率</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 分配一块大内存作为 ballast，降低 GC 频率</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// Go 1.19+ 推荐使用 GOMEMLIMIT 替代</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 分配 1GB ballast</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ballast </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">byte</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">30</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    defer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> runtime.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">KeepAlive</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ballast)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 业务代码</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        Go 1.19+
+        <span
+          class="term-tip"
+          data-term="推荐"
+          data-module="github"
+          data-def="推荐"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">推荐</abbr></span
+        >使用 GOMEMLIMIT
+        <span
+          class="term-tip"
+          data-term="替代"
+          data-module="c"
+          data-def="用实参替换形参"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">替代</abbr></span
+        >
+        ballast 技术。
+      </p>
+      <h3 id="使用-gctrace-分析-gc-模式">
+        <a href="#使用-gctrace-分析-gc-模式">使用 GCTrace 分析 GC 模式</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 编程方式获取 GC 信息</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">func</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> analyzeGC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stats </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">debug</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">GCStats</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    debug.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">ReadGCStats</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">stats)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 计算平均暂停时间</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    var</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> total </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">time</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Duration</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _, p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stats.Pause {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        total </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    avgPause </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> total </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Duration</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(stats.Pause))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"平均 GC 暂停: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%v\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, avgPause)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"最近 5 次 GC 暂停:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 5</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x26;&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(stats.Pause); i</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Printf</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"  </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%v\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, stats.Pause[i])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+    </article>
+  </body>
+</html>

@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>锁机制</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">锁机制</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          PostgreSQL锁机制：表级锁、行级锁、advisory锁的语法、兼容性与死锁处理
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-表级锁"><a href="#1-表级锁">1. 表级锁</a></h2>
+      <h3 id="11-锁模式"><a href="#11-锁模式">1.1 锁模式</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>锁模式</th>
+            <th>SQL 语句</th>
+            <th>冲突范围</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>ACCESS SHARE</td>
+            <td>SELECT</td>
+            <td>ACCESS EXCLUSIVE</td>
+          </tr>
+          <tr>
+            <td>ROW SHARE</td>
+            <td>SELECT FOR UPDATE/SHARE</td>
+            <td>EXCLUSIVE, ACCESS EXCLUSIVE</td>
+          </tr>
+          <tr>
+            <td>ROW EXCLUSIVE</td>
+            <td>UPDATE, DELETE, INSERT</td>
+            <td>SHARE, SHARE ROW EXCLUSIVE, EXCLUSIVE, ACCESS EXCLUSIVE</td>
+          </tr>
+          <tr>
+            <td>SHARE UPDATE EXCLUSIVE</td>
+            <td>VACUUM, ALTER INDEX</td>
+            <td>SHARE UPDATE EXCLUSIVE, SHARE, SHARE ROW EXCLUSIVE, EXCLUSIVE, ACCESS EXCLUSIVE</td>
+          </tr>
+          <tr>
+            <td>SHARE</td>
+            <td>CREATE INDEX</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="ROW"
+                data-module="mysql"
+                data-def="数据行"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ROW</abbr></span
+              >
+              EXCLUSIVE, SHARE
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+              EXCLUSIVE, SHARE ROW EXCLUSIVE, EXCLUSIVE, ACCESS EXCLUSIVE
+            </td>
+          </tr>
+          <tr>
+            <td>
+              SHARE
+              <span
+                class="term-tip"
+                data-term="ROW"
+                data-module="mysql"
+                data-def="数据行"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ROW</abbr></span
+              >
+              EXCLUSIVE
+            </td>
+            <td>—</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="ROW"
+                data-module="mysql"
+                data-def="数据行"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ROW</abbr></span
+              >
+              EXCLUSIVE, SHARE
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+              EXCLUSIVE, SHARE, SHARE
+              <span
+                class="term-tip"
+                data-term="ROW"
+                data-module="mysql"
+                data-def="数据行"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ROW</abbr></span
+              >
+              EXCLUSIVE, EXCLUSIVE, ACCESS EXCLUSIVE
+            </td>
+          </tr>
+          <tr>
+            <td>EXCLUSIVE</td>
+            <td>—</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="ROW"
+                data-module="mysql"
+                data-def="数据行"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ROW</abbr></span
+              >
+              SHARE,
+              <span
+                class="term-tip"
+                data-term="ROW"
+                data-module="mysql"
+                data-def="数据行"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ROW</abbr></span
+              >
+              EXCLUSIVE, SHARE
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+              EXCLUSIVE, SHARE, SHARE
+              <span
+                class="term-tip"
+                data-term="ROW"
+                data-module="mysql"
+                data-def="数据行"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ROW</abbr></span
+              >
+              EXCLUSIVE, EXCLUSIVE, ACCESS EXCLUSIVE
+            </td>
+          </tr>
+          <tr>
+            <td>ACCESS EXCLUSIVE</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="ALTER TABLE"
+                data-module="mysql"
+                data-def="修改表结构"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ALTER TABLE</abbr></span
+              >,
+              <span
+                class="term-tip"
+                data-term="DROP TABLE"
+                data-module="mysql"
+                data-def="删除表"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">DROP TABLE</abbr></span
+              >
+            </td>
+            <td>
+              所有<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 手动获取表锁</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">LOCK </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">TABLE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">IN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ACCESS EXCLUSIVE MODE;</span></span></code></pre>
+      <h2 id="2-行级锁"><a href="#2-行级锁">2. 行级锁</a></h2>
+      <h3 id="21-行锁类型"><a href="#21-行锁类型">2.1 行锁类型</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="锁"
+                data-module="python"
+                data-def="线程同步原语，同一时刻只允许一个线程持有"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">锁</abbr></span
+              >类型
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="语法"
+                data-module="c"
+                data-def="代码的结构规则"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语法</abbr></span
+              >
+            </th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="FOR"
+                data-module="mysql"
+                data-def="循环语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">FOR</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="SELECT"
+                data-module="mysql"
+                data-def="查询数据的 SQL 语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SELECT</abbr></span
+              >
+              …
+              <span
+                class="term-tip"
+                data-term="FOR"
+                data-module="mysql"
+                data-def="循环语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">FOR</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+            </td>
+            <td>
+              排他<span
+                class="term-tip"
+                data-term="行锁"
+                data-module="mysql"
+                data-def="行级别的锁"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行锁</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="FOR"
+                data-module="mysql"
+                data-def="循环语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">FOR</abbr></span
+              >
+              NO
+              <span
+                class="term-tip"
+                data-term="KEY"
+                data-module="mysql"
+                data-def="索引关键字"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">KEY</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="SELECT"
+                data-module="mysql"
+                data-def="查询数据的 SQL 语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SELECT</abbr></span
+              >
+              …
+              <span
+                class="term-tip"
+                data-term="FOR"
+                data-module="mysql"
+                data-def="循环语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">FOR</abbr></span
+              >
+              NO
+              <span
+                class="term-tip"
+                data-term="KEY"
+                data-module="mysql"
+                data-def="索引关键字"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">KEY</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="弱"
+                data-module="cpp"
+                data-def="弱"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">弱</abbr></span
+              >排他<span
+                class="term-tip"
+                data-term="锁"
+                data-module="python"
+                data-def="线程同步原语，同一时刻只允许一个线程持有"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">锁</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="FOR"
+                data-module="mysql"
+                data-def="循环语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">FOR</abbr></span
+              >
+              SHARE
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="SELECT"
+                data-module="mysql"
+                data-def="查询数据的 SQL 语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SELECT</abbr></span
+              >
+              …
+              <span
+                class="term-tip"
+                data-term="FOR"
+                data-module="mysql"
+                data-def="循环语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">FOR</abbr></span
+              >
+              SHARE
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="共享"
+                data-module="cpp"
+                data-def="共享"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">共享</abbr></span
+              >行<span
+                class="term-tip"
+                data-term="锁"
+                data-module="python"
+                data-def="线程同步原语，同一时刻只允许一个线程持有"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">锁</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="FOR"
+                data-module="mysql"
+                data-def="循环语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">FOR</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="KEY"
+                data-module="mysql"
+                data-def="索引关键字"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">KEY</abbr></span
+              >
+              SHARE
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="SELECT"
+                data-module="mysql"
+                data-def="查询数据的 SQL 语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SELECT</abbr></span
+              >
+              …
+              <span
+                class="term-tip"
+                data-term="FOR"
+                data-module="mysql"
+                data-def="循环语句"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">FOR</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="KEY"
+                data-module="mysql"
+                data-def="索引关键字"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">KEY</abbr></span
+              >
+              SHARE
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="弱"
+                data-module="cpp"
+                data-def="弱"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">弱</abbr></span
+              >共享<span
+                class="term-tip"
+                data-term="锁"
+                data-module="python"
+                data-def="线程同步原语，同一时刻只允许一个线程持有"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">锁</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="22-行锁兼容性"><a href="#22-行锁兼容性">2.2 行锁兼容性</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th></th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="KEY"
+                data-module="mysql"
+                data-def="索引关键字"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">KEY</abbr></span
+              >
+              SHARE
+            </th>
+            <th>SHARE</th>
+            <th>
+              NO
+              <span
+                class="term-tip"
+                data-term="KEY"
+                data-module="mysql"
+                data-def="索引关键字"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">KEY</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="KEY"
+                data-module="mysql"
+                data-def="索引关键字"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">KEY</abbr></span
+              >
+              SHARE
+            </td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>SHARE</td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>
+              NO
+              <span
+                class="term-tip"
+                data-term="KEY"
+                data-module="mysql"
+                data-def="索引关键字"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">KEY</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+            </td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+            </td>
+            <td></td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 行锁示例</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BEGIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FOR</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">UPDATE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> accounts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> balance </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">COMMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h2 id="3-advisory-锁"><a href="#3-advisory-锁">3. Advisory 锁</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 获取 advisory 锁</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_advisory_lock(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">12345</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);          </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 阻塞式</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_try_advisory_lock(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">12345</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);      </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 非阻塞式</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 释放</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_advisory_unlock(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">12345</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 会话级锁（连接断开自动释放）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_advisory_lock(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 双int参数</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 事务级锁（事务结束自动释放）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_advisory_xact_lock(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">12345</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+      <h2 id="4-查看锁"><a href="#4-查看锁">4. 查看锁</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> locktype, relation::regclass, mode, pid, granted</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_locks</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pid </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_backend_pid();</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看阻塞</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">blocker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">query</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">blocker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">query</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_locks blocked</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_locks blocker </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">locktype</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">locktype</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">database</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">database</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">relation</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DISTINCT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">relation</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NOT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">granted</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">granted</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocked</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> !=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> blocker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">pid</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+    </article>
+  </body>
+</html>

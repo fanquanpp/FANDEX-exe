@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MCP采样 — 服务器请求的LLM补全与Agent循环</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">MCP采样 — 服务器请求的LLM补全与Agent循环</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            13 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">MCP采样</span><span class="doc-tag">sampling</span
+          ><span class="doc-tag">Agent循环</span><span class="doc-tag">modelPreferences</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          掌握sampling机制使服务器能通过客户端LLM进行推理，实现无需API密钥的服务器端Agent循环
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="mcp采样--服务器请求的llm补全与agent循环">
+        <a href="#mcp采样--服务器请求的llm补全与agent循环"
+          >MCP采样 — 服务器请求的LLM补全与Agent循环</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          大多数MCP服务器是哑执行器：接受参数，运行代码，返回内容。Sampling让服务器翻转方向：它请求客户端的LLM做决策。这使得服务器托管的Agent循环无需服务器拥有任何模型凭证。SEP-1577，合并于2025-11-25，在sampling请求中添加了工具，使循环可以包含更深的推理。漂移风险提示：SEP-1577工具-in-sampling形状在2026年Q1之前是实验性的，SDK
+          API仍在稳定中。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库，sampling线束）
+        <strong>前置条件：</strong> Phase 13 · 07（MCP服务器），Phase 13 · 10（资源和提示）
+        <strong>时间：</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>
+          解释 <code>sampling/createMessage</code> 解决什么（无服务器端API密钥的服务器托管循环）。
+        </li>
+        <li>实现一个请求客户端在多轮提示上采样并返回补全的服务器。</li>
+        <li>使用 <code>modelPreferences</code>（成本/速度/智能优先级）指导客户端模型选择。</li>
+        <li>构建一个 <code>summarize_repo</code> 工具，通过sampling内部迭代而不是硬编码行为。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        一个有用的代码摘要MCP服务器需要：遍历文件树，选择要读取的文件，综合摘要，并返回。LLM推理在哪里发生？
+      </p>
+      <p>选项A：服务器调用自己的LLM。需要API密钥，服务器端计费，每用户昂贵。</p>
+      <p>
+        选项B：服务器返回原始内容；客户端的Agent做推理。有效但将服务器逻辑移入客户端提示，这很脆弱。
+      </p>
+      <p>
+        选项C：服务器通过
+        <code>sampling/createMessage</code>
+        请求客户端的LLM。服务器保留算法（读取哪些文件，做多少轮），客户端保留计费和模型选择。服务器完全没有凭证。
+      </p>
+      <p>Sampling是选项C。它是受信任服务器可以在不作为完整LLM宿主的情况下托管Agent循环的机制。</p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="samplingcreatemessage-请求">
+        <a href="#samplingcreatemessage-请求"><code>sampling/createMessage</code> 请求</a>
+      </h3>
+      <p>服务器发送：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "jsonrpc"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"2.0"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "id"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">42</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "method"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"sampling/createMessage"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "messages"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [{ </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"role"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"content"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"text"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"text"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"..."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> } }],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "systemPrompt"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"..."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "includeContext"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"none"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "modelPreferences"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">      "costPriority"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">      "speedPriority"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">      "intelligencePriority"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">      "hints"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [{ </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"name"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"claude-3-5-sonnet"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> }]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    },</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "maxTokens"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1024</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>客户端运行其LLM，返回：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "jsonrpc"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"2.0"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "id"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">42</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "result"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "role"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"assistant"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "content"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: { </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"text"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"text"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"..."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> },</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "model"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"claude-3-5-sonnet-20251022"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    "stopReason"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"endTurn"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="modelpreferences">
+        <a href="#modelpreferences"><code>modelPreferences</code></a>
+      </h3>
+      <p>三个浮点数总和为1.0：</p>
+      <ul>
+        <li><code>costPriority</code>：偏好更便宜的模型。</li>
+        <li><code>speedPriority</code>：偏好更快的模型。</li>
+        <li><code>intelligencePriority</code>：偏好更强大的模型。</li>
+      </ul>
+      <p>
+        加上
+        <code>hints</code
+        >：服务器偏好的命名模型。客户端可能或可能不遵守提示；客户端的用户配置始终优先。
+      </p>
+      <h3 id="includecontext">
+        <a href="#includecontext"><code>includeContext</code></a>
+      </h3>
+      <p>三个值：</p>
+      <ul>
+        <li><code>"none"</code> — 仅服务器提供的消息。默认。</li>
+        <li><code>"thisServer"</code> — 包含此服务器会话的先前消息。</li>
+        <li><code>"allServers"</code> — 包含所有会话上下文。</li>
+      </ul>
+      <p>
+        <code>includeContext</code>
+        在2025-11-25起被软弃用，因为它泄漏跨服务器上下文，这是安全问题。偏好
+        <code>"none"</code> 并在消息中传递显式上下文。
+      </p>
+      <h3 id="带工具的samplingsep-1577">
+        <a href="#带工具的samplingsep-1577">带工具的Sampling（SEP-1577）</a>
+      </h3>
+      <p>
+        2025-11-25新增：sampling请求可以包含
+        <code>tools</code>
+        数组。客户端使用这些工具运行完整的工具调用循环。这让服务器通过客户端的模型托管ReAct风格的Agent循环。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "messages"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#B31D28;--shiki-light-font-style:italic;--shiki-dark:#FDAEB7;--shiki-dark-font-style:italic">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  "tools"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"name"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"fetch_url"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"description"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"..."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"inputSchema"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span><span style="--shiki-light:#B31D28;--shiki-light-font-style:italic;--shiki-dark:#FDAEB7;--shiki-dark-font-style:italic">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  ]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        客户端循环：采样，如果调用则执行工具，再次采样，返回最终助手消息。这在2026年Q1之前是实验性的；SDK签名可能仍在变化。实现时请对照2025-11-25规范的client/sampling部分确认。
+      </p>
+      <h3 id="人在回路"><a href="#人在回路">人在回路</a></h3>
+      <p>
+        客户端必须在运行sample之前向用户展示服务器要求模型做什么。恶意服务器可以使用sampling操纵用户会话（“对用户说X以便他们点击Y”）。Claude
+        Desktop、VS Code和Cursor将sampling请求呈现为用户可以拒绝的确认对话框。
+      </p>
+      <p>
+        2026年共识：没有人工确认的sampling是红旗。网关（Phase 13 ·
+        17）可以自动批准低风险sampling并自动拒绝可疑的。
+      </p>
+      <h3 id="无api密钥的服务器托管循环">
+        <a href="#无api密钥的服务器托管循环">无API密钥的服务器托管循环</a>
+      </h3>
+      <p>典型用例：一个没有自己LLM访问的代码摘要MCP服务器。它做：</p>
+      <ol>
+        <li>遍历repo结构。</li>
+        <li>用”选择五个最可能描述此repo目的的文件”调用 <code>sampling/createMessage</code>。</li>
+        <li>读取那些文件。</li>
+        <li>用文件内容和”用3段总结repo”调用 <code>sampling/createMessage</code>。</li>
+        <li>将摘要作为 <code>tools/call</code> 结果返回。</li>
+      </ol>
+      <p>服务器从不触碰LLM API。客户端的用户使用自己的凭证为补全付费。</p>
+      <h3 id="安全风险unit-42披露2026年q1">
+        <a href="#安全风险unit-42披露2026年q1">安全风险（Unit 42披露，2026年Q1）</a>
+      </h3>
+      <ul>
+        <li>
+          <strong>隐蔽sampling。</strong>
+          一个总是用”从会话上下文回复用户的电子邮件”调用sampling的工具。Phase 13 · 15涵盖攻击向量。
+        </li>
+        <li>
+          <strong>通过sampling窃取资源。</strong> 服务器要求客户端摘要攻击者的负载，向用户计费。
+        </li>
+        <li>
+          <strong>循环炸弹。</strong> 服务器在紧密循环中调用sampling。客户端必须强制每会话速率限制。
+        </li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code>
+        提供一个假的服务器到客户端sampling线束。一个模拟的”summarize_repo”工具调用两轮sampling（选择文件，然后摘要），假客户端返回预设响应。线束展示：
+      </p>
+      <ul>
+        <li>服务器发送带 <code>modelPreferences</code> 的 <code>sampling/createMessage</code>。</li>
+        <li>客户端返回补全。</li>
+        <li>服务器继续其循环。</li>
+        <li>速率限制器限制每次工具调用的总sampling调用。</li>
+      </ul>
+      <p>关注点：</p>
+      <ul>
+        <li>服务器只暴露一个工具（<code>summarize_repo</code>）；所有推理在sampling调用中发生。</li>
+        <li>模型偏好权重客户端的模型选择；提示列出偏好模型。</li>
+        <li>循环在 <code>stopReason: "endTurn"</code> 时终止。</li>
+        <li><code>max_samples_per_tool = 5</code> 限制捕获失控循环。</li>
+      </ul>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        本课产生
+        <code>outputs/skill-sampling-loop-designer.md</code
+        >。给定需要LLM调用的服务器端算法（研究、摘要、规划），该技能设计基于sampling的实现，带有正确的modelPreferences、速率限制和安全确认。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            运行 <code>code/main.py</code>。将
+            <code>max_samples_per_tool</code> 改为2并观察速率限制截断。
+          </p>
+        </li>
+        <li>
+          <p>
+            实现SEP-1577工具-in-sampling变体：sampling请求携带
+            <code>tools</code>
+            数组。验证客户端侧循环在返回最终补全之前执行这些工具。注意漂移风险：SDK签名在2026年上半年可能仍在变化。
+          </p>
+        </li>
+        <li>
+          <p>
+            添加人在回路确认：在服务器的第一个
+            <code>sampling/createMessage</code>
+            之前，暂停并等待用户批准。被拒绝的调用返回类型化拒绝。
+          </p>
+        </li>
+        <li>
+          <p>
+            添加按<span
+              class="term-tip"
+              data-term="用户"
+              data-module="cpp"
+              data-def="用户"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">用户</abbr></span
+            >速<span
+              class="term-tip"
+              data-term="率"
+              data-module="cpp"
+              data-def="速率"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">率</abbr></span
+            >限制器，以<span
+              class="term-tip"
+              data-term="客户端"
+              data-module="github"
+              data-def="客户端"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">客户端</abbr></span
+            >会话为键。同一用户的同服务器循环应共享预算。
+          </p>
+        </li>
+        <li>
+          <p>
+            <span
+              class="term-tip"
+              data-term="设计"
+              data-module="github"
+              data-def="设计"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">设计</abbr></span
+            >一个使用sampling选择要<span
+              class="term-tip"
+              data-term="包"
+              data-module="go"
+              data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+              data-slug="go/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">包</abbr></span
+            >含的<span
+              class="term-tip"
+              data-term="块"
+              data-module="c"
+              data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">块</abbr></span
+            >的 <code>summarize_pdf</code>
+            <span
+              class="term-tip"
+              data-term="工具"
+              data-module="cpp"
+              data-def="工具"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">工具</abbr></span
+            >。草绘<span
+              class="term-tip"
+              data-term="发送"
+              data-module="cpp"
+              data-def="发送"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">发送</abbr></span
+            >的<span
+              class="term-tip"
+              data-term="消息"
+              data-module="github"
+              data-def="消息"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">消息</abbr></span
+            >。<code>modelPreferences.intelligencePriority</code> 在0.1 vs 0.9时如何改变<span
+              class="term-tip"
+              data-term="行为"
+              data-module="vue3"
+              data-def="组件或应用的反应"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行为</abbr></span
+            >？
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Sampling</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >到<span
+                class="term-tip"
+                data-term="客户"
+                data-module="cpp"
+                data-def="客户代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户</abbr></span
+              >端LLM调用”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >请求<span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >模型做补全
+            </td>
+          </tr>
+          <tr>
+            <td><code>sampling/createMessage</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="方法"
+                data-module="c"
+                data-def="关联到对象的函数"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">方法</abbr></span
+              >”
+            </td>
+            <td>
+              sampling请求的<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >-RPC方法
+            </td>
+          </tr>
+          <tr>
+            <td><code>modelPreferences</code></td>
+            <td>
+              ”模型<span
+                class="term-tip"
+                data-term="优先级"
+                data-module="cpp"
+                data-def="优先级"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">优先级</abbr></span
+              >”
+            </td>
+            <td>
+              成本/速<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="智能"
+                data-module="cpp"
+                data-def="智能"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">智能</abbr></span
+              >权重加名称<span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>includeContext</code></td>
+            <td>
+              ”跨<span
+                class="term-tip"
+                data-term="会话"
+                data-module="github"
+                data-def="会话"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">会话</abbr></span
+              >泄漏”
+            </td>
+            <td>
+              软弃用的<span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >包含<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>SEP-1577</td>
+            <td>
+              ”sampling中的<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >”
+            </td>
+            <td>
+              允许sampling中的<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >用于<span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >托管<span
+                class="term-tip"
+                data-term="ReAct"
+                data-module="agent"
+                data-def="结合推理与行动的智能体框架，交替执行思考步骤和工具调用步骤"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ReAct</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Human-in-the-loop</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >确认”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >在运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >前向<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >展示sampling请求
+            </td>
+          </tr>
+          <tr>
+            <td>Loop bomb</td>
+            <td>”失控sampling”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="服务器端"
+                data-module="javascript"
+                data-def="在服务器上执行的处理"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器端</abbr></span
+              >无限sampling循<span
+                class="term-tip"
+                data-term="环"
+                data-module="discrete-math"
+                data-def="具有加法群和乘法半群结构且满足分配律的代数系统"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">环</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >必须<span
+                class="term-tip"
+                data-term="速率限制"
+                data-module="github"
+                data-def="速率限制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">速率限制</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Covert sampling</td>
+            <td>
+              ”隐藏<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >”
+            </td>
+            <td>
+              恶意<span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >在sampling提示中隐藏<span
+                class="term-tip"
+                data-term="意图"
+                data-module="github"
+                data-def="意图"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">意图</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Resource theft</td>
+            <td>
+              ”使用<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >的LLM预算”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="服务器"
+                data-module="javascript"
+                data-def="提供服务的后端程序"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">服务器</abbr></span
+              >强制<span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >在不想要的sampling上花费
+            </td>
+          </tr>
+          <tr>
+            <td><code>stopReason</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >为何停止”
+            </td>
+            <td><code>endTurn</code>、<code>stopSequence</code> 或 <code>maxTokens</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://modelcontextprotocol.io/docs/concepts/sampling"
+            >MCP — Concepts: Sampling</a
+          >
+          — sampling的<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >级概述
+        </li>
+        <li>
+          <a href="https://modelcontextprotocol.io/specification/2025-11-25/client/sampling"
+            >MCP — Client sampling spec 2025-11-25</a
+          >
+          — 权威 <code>sampling/createMessage</code>
+          <span
+            class="term-tip"
+            data-term="形状"
+            data-module="github"
+            data-def="形状"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">形状</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://github.com/modelcontextprotocol/modelcontextprotocol"
+            >MCP — GitHub SEP-1577</a
+          >
+          — sampling中<span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="规范"
+            data-module="html5"
+            data-def="HTML 标准文档"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">规范</abbr></span
+          >演进提案（实验性）
+        </li>
+        <li>
+          <a href="https://unit42.paloaltonetworks.com/model-context-protocol-attack-vectors/"
+            >Unit 42 — MCP attack vectors</a
+          >
+          — 隐蔽sampling和<span
+            class="term-tip"
+            data-term="资源"
+            data-module="github"
+            data-def="资源"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">资源</abbr></span
+          >窃取<span
+            class="term-tip"
+            data-term="模式"
+            data-module="github"
+            data-def="模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模式</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://www.speakeasy.com/mcp/core-concepts/sampling"
+            >Speakeasy — MCP sampling core concept</a
+          >
+          — 带<span
+            class="term-tip"
+            data-term="客户端"
+            data-module="github"
+            data-def="客户端"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">客户端</abbr></span
+          >代码示例的演练
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

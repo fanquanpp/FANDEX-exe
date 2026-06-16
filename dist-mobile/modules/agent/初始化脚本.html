@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>初始化脚本 — 一次性支付启动税</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">初始化脚本 — 一次性支付启动税</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            6 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">初始化脚本</span><span class="doc-tag">启动探测</span
+          ><span class="doc-tag">确定性检查</span><span class="doc-tag">快速失败</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          构建确定性初始化脚本，探测运行时、依赖、路径和健康状态，将启动税从每次会话支付变为一次性支付
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="初始化脚本--一次性支付启动税">
+        <a href="#初始化脚本--一次性支付启动税">初始化脚本 — 一次性支付启动税</a>
+      </h1>
+      <blockquote>
+        <p>
+          每个冷启动的会话都支付一笔税。Agent读取相同文件，重试相同探测，重新发现相同路径。初始化脚本支付一次税并将答案写入状态。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库）
+        <strong>前置条件：</strong> Phase 14 · 32（最小工作台），Phase 14 · 34（仓库记忆）
+        <strong>时间：</strong> ~45分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>识别Agent永远不应该每个会话重做的工作。</li>
+        <li>构建探测运行时、依赖和仓库健康的确定性初始化脚本。</li>
+        <li>持久化探测结果，使Agent读取它而不是重新运行检查。</li>
+        <li>初始化失败时快速、大声地失败，在一个地方查找。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        打开一个会话。Agent猜测Python版本。猜测测试命令。列出仓库根目录五次以找到入口点。尝试导入未安装的包。问用户配置文件在哪里。等到它做出真正编辑时，一万个token已经用于应该是单个脚本的设置工作。
+      </p>
+      <p>
+        修复是一个初始化脚本，在Agent做任何其他事情之前运行并写入
+        <code>init_report.json</code>，Agent在启动时读取。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="初始化脚本探测什么"><a href="#初始化脚本探测什么">初始化脚本探测什么</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>探测</th>
+            <th>为何重要</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>运行时版本</td>
+            <td>错误的Python或Node版本意味着静默的错误版本bug</td>
+          </tr>
+          <tr>
+            <td>依赖可用性</td>
+            <td>缺少包后来的成本是现在捕获的十倍</td>
+          </tr>
+          <tr>
+            <td>测试命令</td>
+            <td>Agent必须知道如何验证；如果命令缺失，工作台就坏了</td>
+          </tr>
+          <tr>
+            <td>仓库路径</td>
+            <td>硬编码路径会漂移；解析一次并固定</td>
+          </tr>
+          <tr>
+            <td>环境变量</td>
+            <td>缺少 <code>OPENAI_API_KEY</code> 是失败表面，不是运行时谜团</td>
+          </tr>
+          <tr>
+            <td>状态+板新鲜度</td>
+            <td>崩溃会话的过时状态是陷阱</td>
+          </tr>
+          <tr>
+            <td>最后已知良好提交</td>
+            <td>会话结束时交接diff的锚点</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="快速失败大声失败在一个地方失败">
+        <a href="#快速失败大声失败在一个地方失败">快速失败，大声失败，在一个地方失败</a>
+      </h3>
+      <p>
+        探测失败意味着停止并向人类展示。没有”Agent会搞定的”。初始化的全部意义是在工作台损坏时拒绝启动。
+      </p>
+      <h3 id="幂等"><a href="#幂等">幂等</a></h3>
+      <p>
+        连续运行两次。第二次运行应该是空操作，除了新的时间戳。幂等性让你可以将脚本连接到CI、钩子或任务前斜杠命令。
+      </p>
+      <h3 id="初始化-vs-启动规则"><a href="#初始化-vs-启动规则">初始化 vs 启动规则</a></h3>
+      <p>
+        规则（Phase 14 ·
+        33）描述了行动前必须为真的条件。初始化是建立这些规则可以被检查的脚本。没有初始化的规则变成”小心”。没有规则的初始化变成一个精致的失败。
+      </p>
+      <h3 id="生产模式"><a href="#生产模式">生产模式</a></h3>
+      <ul>
+        <li>
+          <strong>最后已知良好提交锚定。</strong> 将当前提交与上次成功合并写入的
+          <code>LKG</code>
+          文件进行探测。如果diff超过预算（默认50个文件），拒绝启动并要求人类批准新基线。
+        </li>
+        <li>
+          <strong>带TTL的锁文件。</strong> 在首次成功探测通过后写入
+          <code>prereqs.lock</code>。后续运行信任锁N小时（默认24小时）并跳过昂贵探测。
+        </li>
+        <li>
+          <strong>热路径中无网络、无LLM、无惊喜。</strong>
+          初始化探测是确定性管道。调用LLM分类失败或命中外部服务检查许可证的探测不是探测；它是工作流。
+        </li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code>实现
+        <code>init_agent.py</code
+        >：五个探测（Python版本、依赖可用性、测试命令可解析性、必需环境变量、状态文件新鲜度），每个返回
+        <code>(name, status, detail)</code>，<span
+          class="term-tip"
+          data-term="写入"
+          data-module="c"
+          data-def="输出数据到目标"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">写入</abbr></span
+        >
+        <code>init_report.json</code>，在任何阻止级探测<span
+          class="term-tip"
+          data-term="失败"
+          data-module="github"
+          data-def="失败"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">失败</abbr></span
+        >时以非零<span
+          class="term-tip"
+          data-term="退出"
+          data-module="github"
+          data-def="退出"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">退出</abbr></span
+        >。
+      </p>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        <code>outputs/skill-init-script.md</code>访谈<span
+          class="term-tip"
+          data-term="项目"
+          data-module="github"
+          data-def="项目"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">项目</abbr></span
+        >，将<span
+          class="term-tip"
+          data-term="设置"
+          data-module="cpp"
+          data-def="设置"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">设置</abbr></span
+        >工作<span
+          class="term-tip"
+          data-term="分类"
+          data-module="vue3"
+          data-def="分组和组织"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">分类</abbr></span
+        >为探测，并发出<span
+          class="term-tip"
+          data-term="项目"
+          data-module="github"
+          data-def="项目"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">项目</abbr></span
+        >特定的 <code>init_agent.py</code> 加上在任何Agent步骤之前运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >它的CI工作<span
+          class="term-tip"
+          data-term="流"
+          data-module="cpp"
+          data-def="数据输入输出的抽象"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">流</abbr></span
+        >。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          添加一个探测，将当前<span
+            class="term-tip"
+            data-term="提交"
+            data-module="cpp"
+            data-def="持久化变更"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提交</abbr></span
+          >与最后已知良好<span
+            class="term-tip"
+            data-term="提交"
+            data-module="cpp"
+            data-def="持久化变更"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提交</abbr></span
+          >进行diff，如果超过50个<span
+            class="term-tip"
+            data-term="文件变更"
+            data-module="github"
+            data-def="文件修改"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文件变更</abbr></span
+          >则<span
+            class="term-tip"
+            data-term="拒绝"
+            data-module="github"
+            data-def="拒绝"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">拒绝</abbr></span
+          >启动。
+        </li>
+        <li>
+          将<span
+            class="term-tip"
+            data-term="脚本"
+            data-module="python"
+            data-def="可直接运行的 Python 程序文件"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">脚本</abbr></span
+          >连接到<span
+            class="term-tip"
+            data-term="写入"
+            data-module="c"
+            data-def="输出数据到目标"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">写入</abbr></span
+          >
+          <code>prereqs.lock</code>
+          <span
+            class="term-tip"
+            data-term="文件"
+            data-module="github"
+            data-def="文件"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文件</abbr></span
+          >，如果<span
+            class="term-tip"
+            data-term="锁"
+            data-module="python"
+            data-def="线程同步原语，同一时刻只允许一个线程持有"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">锁</abbr></span
+          >超过七天则<span
+            class="term-tip"
+            data-term="拒绝"
+            data-module="github"
+            data-def="拒绝"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">拒绝</abbr></span
+          >启动。
+        </li>
+        <li>
+          添加 <code>--fix</code>
+          <span
+            class="term-tip"
+            data-term="标志"
+            data-module="c"
+            data-def="表示状态的布尔变量"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标志</abbr></span
+          >，自动安装缺少的<span
+            class="term-tip"
+            data-term="开发依赖"
+            data-module="vue3"
+            data-def="仅开发时需要的依赖"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">开发依赖</abbr></span
+          >但永远不修改<span
+            class="term-tip"
+            data-term="运行时"
+            data-module="c"
+            data-def="程序执行的阶段"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">运行时</abbr></span
+          >依赖。
+        </li>
+        <li>
+          将探测从<span
+            class="term-tip"
+            data-term="硬编码"
+            data-module="c"
+            data-def="直接写入代码的值"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">硬编码</abbr></span
+          >函数<span
+            class="term-tip"
+            data-term="移动"
+            data-module="github"
+            data-def="移动"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">移动</abbr></span
+          >到YAML注册<span
+            class="term-tip"
+            data-term="表"
+            data-module="cpp"
+            data-def="表"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">表</abbr></span
+          >。辩护权衡。
+        </li>
+        <li>
+          为每个探测添加<span
+            class="term-tip"
+            data-term="时间"
+            data-module="cpp"
+            data-def="时间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">时间</abbr></span
+          >预算。运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >超过三秒的探测是<span
+            class="term-tip"
+            data-term="工作"
+            data-module="cpp"
+            data-def="工作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工作</abbr></span
+          >台异味。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>探测</td>
+            <td>
+              ”一个<span
+                class="term-tip"
+                data-term="检查"
+                data-module="cpp"
+                data-def="验证条件"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检查</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="返回"
+                data-module="vue3"
+                data-def="返回值"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">返回</abbr></span
+              >
+              <code>(name, status, detail)</code> 的确定性<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="初始化"
+                data-module="c"
+                data-def="声明时赋初值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">初始化</abbr></span
+              >报告
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="设置"
+                data-module="cpp"
+                data-def="设置"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">设置</abbr></span
+              >输出”
+            </td>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="状态"
+                data-module="cpp"
+                data-def="状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">状态</abbr></span
+              >旁<span
+                class="term-tip"
+                data-term="边"
+                data-module="github"
+                data-def="边"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">边</abbr></span
+              >写入的带探测<span
+                class="term-tip"
+                data-term="结果"
+                data-module="c"
+                data-def="函数返回的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结果</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="幂等"
+                data-module="javascript"
+                data-def="多次执行结果相同"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">幂等</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="安全"
+                data-module="cpp"
+                data-def="安全性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">安全</abbr></span
+              >重跑”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="连续"
+                data-module="calculus"
+                data-def="函数在某点的极限值等于函数值，图像在该点无间断"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连续</abbr></span
+              >两次运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >产生相同<span
+                class="term-tip"
+                data-term="报告"
+                data-module="github"
+                data-def="报告"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">报告</abbr></span
+              >，除<span
+                class="term-tip"
+                data-term="时间戳"
+                data-module="cpp"
+                data-def="时间戳"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间戳</abbr></span
+              >外
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="快速"
+                data-module="github"
+                data-def="快速的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">快速</abbr></span
+              >失败
+            </td>
+            <td>”不要吞咽”</td>
+            <td>
+              停止并向<span
+                class="term-tip"
+                data-term="人类"
+                data-module="github"
+                data-def="人类"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人类</abbr></span
+              >展示；无静默<span
+                class="term-tip"
+                data-term="回退"
+                data-module="vue3"
+                data-def="备选方案"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">回退</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="设置"
+                data-module="cpp"
+                data-def="设置"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">设置</abbr></span
+              >税
+            </td>
+            <td>”引导成本”</td>
+            <td>
+              Agent每个<span
+                class="term-tip"
+                data-term="会话"
+                data-module="github"
+                data-def="会话"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">会话</abbr></span
+              >花费在重新<span
+                class="term-tip"
+                data-term="发现"
+                data-module="github"
+                data-def="发现"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">发现</abbr></span
+              >明显事物上的<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a
+            href="https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents"
+            >Anthropic, Effective harnesses for long-running agents</a
+          >
+        </li>
+        <li>
+          <a href="https://www.augmentcode.com/guides/how-to-build-agents-md"
+            >Augment Code, How to Build Your AGENTS.md</a
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

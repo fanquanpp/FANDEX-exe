@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>图像修复、扩展与编辑</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">图像修复、扩展与编辑</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">图像修复</span><span class="doc-tag">Inpainting</span
+          ><span class="doc-tag">Outpainting</span><span class="doc-tag">SDEdit</span
+          ><span class="doc-tag">图像编辑</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          扩散模型在图像修复、外绘和编辑任务中的应用，从SDEdit到inpainting管线
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="图像修复扩展与编辑"><a href="#图像修复扩展与编辑">图像修复、扩展与编辑</a></h1>
+      <blockquote>
+        <p>
+          生成一张全新的图像是扩散模型的入门考试。真正的产品工作几乎总是”取这张现有图像，改变这个特定部分，保持其余不变。“修复、扩展和编辑是扩散模型在生产中最常见的三种模式——也是大多数工程陷阱所在之处。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置知识:</strong> Phase 8
+        · 07 (潜扩散), Phase 8 · 08 (ControlNet) <strong>时间:</strong> ~60 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        你有一张照片。你想要：(a) 移除一个对象并填充背景（修复），(b)
+        扩展画布并生成新内容（扩展/外绘），或 (c)
+        改变特定属性同时保持身份（编辑）。在所有三种情况下，你从一张真实图像开始，而不是纯噪声。扩散模型被设计为从噪声生成。如何桥接？
+      </p>
+      <p>
+        答案是<em>部分噪声</em>。你不需要从 <code>t=T</code> 开始（纯噪声），而是从中间时间步
+        <code>t = τ</code> 开始，其中 <code>τ &#x3C; T</code>。<code>τ</code>
+        越大，你改变得越多。<code>τ</code>
+        越小，你保留得越多。这个单一参数——噪声强度——控制编辑保真度与创作自由度之间的权衡。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <p>
+        <strong>修复 (Inpainting)。</strong> 给定图像 <code>x</code>、二值掩码 <code>m</code>（1 =
+        保留，0 =
+        重绘），和提示。在掩码区域运行扩散，非掩码区域保持不变。实现：在每个采样步骤，用原始图像的噪声版本替换非掩码潜变量。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>z_t_masked = m · z_t_diffusion + (1 - m) · z_t_original_noised</span></span></code></pre>
+      <p>
+        <strong>扩展 (Outpainting)。</strong>
+        修复的特例，其中掩码覆盖图像边界之外的区域。挑战：边界接缝。修复模型通常在边界附近产生不连续性。修复：在掩码边缘添加渐变过渡带。
+      </p>
+      <p>
+        <strong>SDEdit (Meng et al., 2021)。</strong> 通用编辑协议：(1) 将输入图像噪声化到步骤
+        <code>τ</code>，(2) 从步骤 <code>τ</code> 用新提示采样到步骤 0。<code>τ</code>
+        控制编辑强度。<code>τ = 0.3</code> = 轻微风格变化。<code>τ = 0.7</code> =
+        大幅内容变化。<code>τ = 1.0</code> = 完全重新生成。
+      </p>
+      <p>
+        <strong>DDIM 反演。</strong> 对于 SDEdit，你需要将图像噪声化到步骤
+        <code>τ</code>。最简单的方式是使用 DDIM 的确定性前向过程将
+        <code>x_0 → x_τ</code>。这给出”该图像在步骤 τ 会是什么样子”的精确估计。
+      </p>
+      <p>
+        <strong>基于提示的编辑。</strong> Prompt-to-Prompt (Hertz et al., 2022)
+        通过在原始和编辑生成之间共享交叉注意力图来编辑图像。将”一只猫坐在垫子上”改为”一只狗坐在垫子上”，交叉注意力图确保只有猫区域改变。
+      </p>
+      <h2 id="动手构建"><a href="#动手构建">动手构建</a></h2>
+      <p><code>code/main.py</code> 在 1-D 扩散模型上实现了玩具修复和 SDEdit。</p>
+      <h3 id="步骤-1将图像噪声化到步骤-τ">
+        <a href="#步骤-1将图像噪声化到步骤-τ">步骤 1：将图像噪声化到步骤 τ</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> noise_to_step</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x0, tau, alpha_bars, rng):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    a_bar </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> alpha_bars[tau]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    eps </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rng.gauss(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.sqrt(a_bar) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x0 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.sqrt(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a_bar) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> eps, eps</span></span></code></pre>
+      <h3 id="步骤-2修复采样循环"><a href="#步骤-2修复采样循环">步骤 2：修复采样循环</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> inpaint_sample</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(model, x_original, mask, tau, alpha_bars, T, rng):</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # Noise the original image to step tau</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    x_tau, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> noise_to_step(x_original, tau, alpha_bars, rng)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x_tau</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tau, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # Diffusion step</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        eps_hat </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model_forward(model, x, t)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> denoise_step(x, eps_hat, t, alpha_bars, rng)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # Replace masked-in regions with original (noised to same level)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x_orig_t, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> noise_to_step(x_original, t, alpha_bars, rng)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mask </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x_orig_t </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mask) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x</span></span></code></pre>
+      <h3 id="步骤-3sdedit"><a href="#步骤-3sdedit">步骤 3：SDEdit</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> sdedit</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(model, x_original, tau, alpha_bars, rng):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    x_tau, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> noise_to_step(x_original, tau, alpha_bars, rng)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x_tau</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tau, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        eps_hat </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model_forward(model, x, t)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> denoise_step(x, eps_hat, t, alpha_bars, rng)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x</span></span></code></pre>
+      <p>与修复相同但没有掩码——整个图像以强度 <code>τ</code> 重新生成。</p>
+      <h2 id="常见陷阱"><a href="#常见陷阱">常见陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>接缝伪影。</strong>
+          掩码边界处的硬过渡产生可见接缝。修复：使用渐变掩码（高斯模糊二值掩码，σ ≈ 10 像素）。
+        </li>
+        <li>
+          <strong>颜色不匹配。</strong>
+          修复区域与非修复区域的亮度/对比度不同。修复：在去噪后应用直方图匹配或颜色校正。
+        </li>
+        <li>
+          <strong>τ 太高。</strong> SDEdit 中 <code>τ > 0.7</code> 通常丢失原始图像的身份。从
+          <code>τ = 0.3</code> 开始，逐步增加。
+        </li>
+        <li>
+          <strong>τ 太低。</strong> <code>τ &#x3C; 0.2</code> 产生几乎不可见的编辑。当编辑不够时增加
+          <code>τ</code>。
+        </li>
+        <li>
+          <strong>掩码太紧。</strong> 紧贴对象的掩码留下边缘伪影。扩展掩码 10-20
+          像素以获得更好的混合。
+        </li>
+        <li>
+          <strong>上下文丢失。</strong> 修复模型需要看到周围上下文。如果掩码太大（>50%
+          的图像），质量下降。对于大区域，分块修复。
+        </li>
+        <li>
+          <strong>VAE 接缝。</strong> 在潜空间中修复时，VAE 解码器可能在掩码边界引入伪影，因为 VAE
+          不是为部分输入设计的。
+        </li>
+      </ul>
+      <h2 id="实际应用"><a href="#实际应用">实际应用</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>任务</th>
+            <th>推荐方法</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>对象移除</td>
+            <td>SDXL Inpainting + 渐变掩码</td>
+          </tr>
+          <tr>
+            <td>对象替换</td>
+            <td>SDXL Inpainting + 提示 + ControlNet</td>
+          </tr>
+          <tr>
+            <td>背景替换</td>
+            <td>Inpainting + 深度 ControlNet</td>
+          </tr>
+          <tr>
+            <td>画布扩展</td>
+            <td>Outpainting + 渐变边界</td>
+          </tr>
+          <tr>
+            <td>风格迁移</td>
+            <td>SDEdit (τ ≈ 0.3-0.5)</td>
+          </tr>
+          <tr>
+            <td>属性编辑</td>
+            <td>SDEdit 或 Prompt-to-Prompt</td>
+          </tr>
+          <tr>
+            <td>精细编辑</td>
+            <td>ControlNet + Inpainting</td>
+          </tr>
+          <tr>
+            <td>全图重绘</td>
+            <td>SDEdit (τ ≈ 0.5-0.8)</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="交付物"><a href="#交付物">交付物</a></h2>
+      <p>
+        保存 <code>outputs/skill-image-editor.md</code>。技能接收编辑任务描述 +
+        输入图像，输出：方法（inpainting / SDEdit / ControlNet）、掩码策略、τ
+        值、提示工程和后处理步骤。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong>简单。</strong> 运行 <code>code/main.py</code>，测试 τ = 0.2, 0.5, 0.8 的
+          SDEdit。描述每个 τ 级别保留了多少原始结构。
+        </li>
+        <li>
+          <strong>中等。</strong> 实现渐变掩码：用 σ=5
+          的高斯模糊模糊二值掩码。比较硬掩码与渐变掩码的修复质量。
+        </li>
+        <li>
+          <strong>困难。</strong> 用 diffusers 设置 SDXL inpainting
+          管线。创建一个掩码，移除图像中的对象，用新对象替换。报告 CLIP 分数和边界伪影评估。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们怎么说</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Inpainting</td>
+            <td>”图像修复”</td>
+            <td>在掩码区域重新生成内容，保留其余部分。</td>
+          </tr>
+          <tr>
+            <td>Outpainting</td>
+            <td>”图像扩展”</td>
+            <td>在图像边界之外生成新内容。</td>
+          </tr>
+          <tr>
+            <td>SDEdit</td>
+            <td>”噪声再生成”</td>
+            <td>将图像噪声化到步骤 τ，然后从 τ 重新采样。</td>
+          </tr>
+          <tr>
+            <td>τ (噪声强度)</td>
+            <td>“编辑强度”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="控制"
+                data-module="github"
+                data-def="控制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">控制</abbr></span
+              >保留<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >少原始内容 vs 生成多少新内容。
+            </td>
+          </tr>
+          <tr>
+            <td>DDIM 反演</td>
+            <td>”前向噪声化”</td>
+            <td>
+              确定性地将<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >噪声化到特定<span
+                class="term-tip"
+                data-term="步骤"
+                data-module="vue3"
+                data-def="处理步骤"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">步骤</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="渐变"
+                data-module="css"
+                data-def="CSS 渐变是 &#x60;<image>&#x60; 类型，不是颜色，可用于 &#x60;background-image&#x60;"
+                data-slug="css/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">渐变</abbr></span
+              >掩码
+            </td>
+            <td>”模糊掩码”</td>
+            <td>
+              掩码<span
+                class="term-tip"
+                data-term="边"
+                data-module="github"
+                data-def="边"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">边</abbr></span
+              >缘的<span
+                class="term-tip"
+                data-term="平滑"
+                data-module="github"
+                data-def="平滑"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">平滑</abbr></span
+              >过渡，避免硬接缝。
+            </td>
+          </tr>
+          <tr>
+            <td>Prompt-to-Prompt</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力<span
+                class="term-tip"
+                data-term="编辑"
+                data-module="cpp"
+                data-def="编辑操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编辑</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >共享交叉<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力<span
+                class="term-tip"
+                data-term="图"
+                data-module="algorithm"
+                data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图</abbr></span
+              >编辑特定<span
+                class="term-tip"
+                data-term="区域"
+                data-module="cpp"
+                data-def="区域"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">区域</abbr></span
+              >。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="生产笔记修复管线的延迟预算">
+        <a href="#生产笔记修复管线的延迟预算">生产笔记：修复管线的延迟预算</a>
+      </h2>
+      <p>
+        <span
+          class="term-tip"
+          data-term="生产"
+          data-module="github"
+          data-def="生产"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生产</abbr></span
+        >修复管线有三个<span
+          class="term-tip"
+          data-term="阶段"
+          data-module="github"
+          data-def="阶段"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">阶段</abbr></span
+        >：(1)
+        <span
+          class="term-tip"
+          data-term="编码"
+          data-module="cpp"
+          data-def="编写代码"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">编码</abbr></span
+        >输入<span
+          class="term-tip"
+          data-term="图像"
+          data-module="github"
+          data-def="图像"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">图像</abbr></span
+        >（VAE
+        <span
+          class="term-tip"
+          data-term="编码"
+          data-module="cpp"
+          data-def="编写代码"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">编码</abbr></span
+        >器），(2) 扩散采样（N 步），(3)
+        <span
+          class="term-tip"
+          data-term="解码"
+          data-module="javascript"
+          data-def="将编码数据还原为原始形式"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">解码</abbr></span
+        >输出<span
+          class="term-tip"
+          data-term="图像"
+          data-module="github"
+          data-def="图像"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">图像</abbr></span
+        >（VAE
+        <span
+          class="term-tip"
+          data-term="解码"
+          data-module="javascript"
+          data-def="将编码数据还原为原始形式"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">解码</abbr></span
+        >器）。在 512²
+        <span
+          class="term-tip"
+          data-term="分辨率"
+          data-module="github"
+          data-def="分辨率"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">分辨率</abbr></span
+        >下使用 SDXL：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="阶段"
+                data-module="github"
+                data-def="阶段"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">阶段</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="典型"
+                data-module="cpp"
+                data-def="典型的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">典型</abbr></span
+              >延迟 (L4 GPU)
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              VAE
+              <span
+                class="term-tip"
+                data-term="编码"
+                data-module="cpp"
+                data-def="编写代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编码</abbr></span
+              >
+            </td>
+            <td>~30 ms</td>
+          </tr>
+          <tr>
+            <td>扩散采样 (30 步)</td>
+            <td>~2.5 s</td>
+          </tr>
+          <tr>
+            <td>
+              VAE
+              <span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >
+            </td>
+            <td>~50 ms</td>
+          </tr>
+          <tr>
+            <td>总计</td>
+            <td>~2.6 s</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <span
+          class="term-tip"
+          data-term="对"
+          data-module="github"
+          data-def="对"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对</abbr></span
+        >于<span
+          class="term-tip"
+          data-term="实时"
+          data-module="cpp"
+          data-def="实时"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">实时</abbr></span
+        >应用（视频<span
+          class="term-tip"
+          data-term="修复"
+          data-module="github"
+          data-def="修复"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">修复</abbr></span
+        >、<span
+          class="term-tip"
+          data-term="交互"
+          data-module="github"
+          data-def="交互"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">交互</abbr></span
+        >式<span
+          class="term-tip"
+          data-term="编辑"
+          data-module="cpp"
+          data-def="编辑操作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">编辑</abbr></span
+        >），瓶颈始终是扩散采样。<span
+          class="term-tip"
+          data-term="选项"
+          data-module="github"
+          data-def="选项"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">选项</abbr></span
+        >：
+      </p>
+      <ul>
+        <li><strong>更少步数。</strong> 4-8 步使用蒸馏模型（SDXL-Turbo, LCM）。</li>
+        <li>
+          <strong
+            >分<span
+              class="term-tip"
+              data-term="块"
+              data-module="c"
+              data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">块</abbr></span
+            >处理。</strong
+          >
+          <span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >于<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >分辨<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >，只<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >掩码<span
+            class="term-tip"
+            data-term="区域"
+            data-module="cpp"
+            data-def="区域"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">区域</abbr></span
+          >运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >扩散，<span
+            class="term-tip"
+            data-term="跳过"
+            data-module="cpp"
+            data-def="跳过"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">跳过</abbr></span
+          >未遮罩<span
+            class="term-tip"
+            data-term="区域"
+            data-module="cpp"
+            data-def="区域"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">区域</abbr></span
+          >。
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="缓存"
+              data-module="vue3"
+              data-def="存储数据供后续使用"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">缓存</abbr></span
+            >。</strong
+          >
+          如果<span
+            class="term-tip"
+            data-term="用户"
+            data-module="cpp"
+            data-def="用户"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">用户</abbr></span
+          >编辑同一<span
+            class="term-tip"
+            data-term="图像"
+            data-module="github"
+            data-def="图像"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">图像</abbr></span
+          >的不同<span
+            class="term-tip"
+            data-term="区域"
+            data-module="cpp"
+            data-def="区域"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">区域</abbr></span
+          >，VAE
+          <span
+            class="term-tip"
+            data-term="编码"
+            data-module="cpp"
+            data-def="编写代码"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编码</abbr></span
+          >只需做一次。
+        </li>
+      </ul>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2108.01073"
+            >Meng et al. (2021). SDEdit: Guided Image Synthesis and Editing with Stochastic
+            Differential Equations</a
+          >
+          — SDEdit。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2208.01626"
+            >Hertz et al. (2022). Prompt-to-Prompt Image Editing with Cross Attention Control</a
+          >
+          — Prompt-to-Prompt。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2206.01379"
+            >Avrahami, Lutz, Ommer (2022). Blended Diffusion for Text-driven Editing of Natural
+            Images</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="混合"
+            data-module="github"
+            data-def="混合"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">混合</abbr></span
+          >扩散。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2112.10752"
+            >Rombach et al. (2022). High-Resolution Image Synthesis with Latent Diffusion Models</a
+          >
+          — Stable Diffusion
+          <span
+            class="term-tip"
+            data-term="修复"
+            data-module="github"
+            data-def="修复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">修复</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2212.05034"
+            >Xie et al. (2023). SmartBrush: Text and Shape Guided Object Inpainting</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="形状"
+            data-module="github"
+            data-def="形状"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">形状</abbr></span
+          >引导<span
+            class="term-tip"
+            data-term="修复"
+            data-module="github"
+            data-def="修复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">修复</abbr></span
+          >。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

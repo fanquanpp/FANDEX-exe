@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>多模态RAG与跨模态检索</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">多模态RAG与跨模态检索</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">多模态RAG</span><span class="doc-tag">跨模态检索</span
+          ><span class="doc-tag">融合策略</span><span class="doc-tag">生成接地</span
+          ><span class="doc-tag">MuRAG</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解跨文本、图像、音频和视频的多模态RAG检索融合与生成接地</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="多模态rag与跨模态检索"><a href="#多模态rag与跨模态检索">多模态RAG与跨模态检索</a></h1>
+      <blockquote>
+        <p>
+          视觉原生文档RAG是一个切片。生产多模态RAG更广——跨文本、图像、音频和视频检索，用于旅行规划(“找一个安静的自然光素食早午餐”)、医疗分诊(“什么伤情匹配这张照片+这些笔记”)、电商(“与这张自拍相似的穿搭，我的尺码”)和现场服务(“诊断这个引擎声音加零件照片”)等工作流。三篇2025年综述——Abootorabi等人、Mei等人、Zhao等人——编纂了子问题：跨模态检索、检索融合、生成接地、多模态评估。本课程阅读综述并设计生产管道。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python (stdlib,
+        带融合+接地生成器的跨模态检索器) <strong>前置知识:</strong> Phase 12 · 23 (ColPali), Phase
+        11 (RAG基础) <strong>时间:</strong> ~180分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>设计跨模态检索：文本→图像、图像→文本、音频→视频等。</li>
+        <li>比较三种融合策略：分数融合、注意力融合、MoE融合。</li>
+        <li>解释生成接地：当来源是混合模态时”引用你的来源”是什么样的。</li>
+        <li>说出2025年三篇规范多模态RAG综述及其子问题分类法。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>单模态RAG是已解决的模式：嵌入查询、嵌入块、检索、塞入LLM。多模态RAG需要：</p>
+      <ol>
+        <li>多个检索头(每种模态需要兼容空间中的嵌入)。</li>
+        <li>跨模态检索结果融合。</li>
+        <li>跨模态引用来源的生成接地。</li>
+        <li>覆盖跨模态信号的评估指标。</li>
+      </ol>
+      <p>2025年综述都得出相同分类法。</p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="跨模态检索"><a href="#跨模态检索">跨模态检索</a></h3>
+      <p>给定模态A的查询检索模态B的文档。三种模式：</p>
+      <ol>
+        <li>
+          <p>
+            共享嵌入空间。CLIP和CLAP在共享空间中产生文本+图像/文本+音频嵌入。跨模态余弦相似度直接工作。限于CLIP训练对。
+          </p>
+        </li>
+        <li>
+          <p>
+            每模态编码器 + 翻译。文本编码器 + 图像编码器 +
+            在空间间映射的小型翻译模块。Gupta等人的Sen2Sen和其他2024设计。灵活但增加复杂性。
+          </p>
+        </li>
+        <li>
+          <p>
+            VLM作为编码器。使用VLM的隐藏状态作为检索表示。VLM支持的任何模态都有效。更高质量，更昂贵。
+          </p>
+        </li>
+      </ol>
+      <p>选择：文本+图像用CLIP / SigLIP 2；文本+音频用CLAP；前沿质量跨模态用VLM隐藏状态。</p>
+      <h3 id="融合策略"><a href="#融合策略">融合策略</a></h3>
+      <p>你检索了10个结果：5张图像、3段文本、2个音频片段。如何合并？</p>
+      <p>
+        分数融合(最便宜)。每种模态有自己的检索器，每个返回分数。模态内归一化分数然后求和。简单，通常有效。
+      </p>
+      <p>注意力融合。拼接所有检索项，让小型注意力网络加权。需要训练。</p>
+      <p>MoE融合。门控网络路由到模态特定专家。不同查询类型路由不同——视觉问题权重图像更高。</p>
+      <p>
+        生产默认：分数融合加查询主导模态的轻微偏向。如果A/B测试在领域上显示明显收益则升级到MoE。
+      </p>
+      <h3 id="生成接地"><a href="#生成接地">生成接地</a></h3>
+      <p>LLM应该引用哪个检索项驱动了每个主张。对于多模态：</p>
+      <ul>
+        <li>文本来源：标准引用<code>[1]</code>。</li>
+        <li>图像来源：<code>[img 3]</code>带简短标题。</li>
+        <li>音频：<code>[audio 2 at 0:34]</code>。</li>
+      </ul>
+      <p>用接地感知数据训练生成器：训练目标中每个主张标记源索引。推理时模型自然发出引用。</p>
+      <h3 id="2025年综述"><a href="#2025年综述">2025年综述</a></h3>
+      <p>
+        Abootorabi等人(arXiv:2502.08826, “Ask in Any
+        Modality”)：多模态RAG分类法。覆盖检索、融合、生成。覆盖最广。
+      </p>
+      <p>
+        Mei等人(arXiv:2504.08748, “A Survey of Multimodal
+        RAG”)：聚焦子任务基准和失败模式。对评估设计有用。
+      </p>
+      <p>Zhao等人(arXiv:2503.18016)：视觉聚焦综述。ColPali家族工作强。</p>
+      <p>阅读全部三篇给你2025年春的最先进状态。大多数子问题仍然开放。</p>
+      <h3 id="murag--基础论文"><a href="#murag--基础论文">MuRAG — 基础论文</a></h3>
+      <p>
+        MuRAG (Chen等人,
+        2022)是首个多模态RAG。从多模态KB检索图像+文本，生成答案。在VLM浪潮前展示可行性。现代系统(REACT,
+        VisRAG, M3DocRAG)在其上构建。
+      </p>
+      <h3 id="生产旅行规划器示例"><a href="#生产旅行规划器示例">生产旅行规划器示例</a></h3>
+      <p>查询：“找一个安静的自然光素食早午餐。”</p>
+      <p>管道：</p>
+      <ol>
+        <li>分解查询。“安静”→音频/评论关键词；“素食早午餐”→菜单项；“自然光”→图像特征。</li>
+        <li>
+          每模态检索：
+          <ul>
+            <li>评论上文本检索：“素食早午餐，安静氛围。”</li>
+            <li>餐厅照片上图像检索：“自然光，通风。”</li>
+            <li>环境声音片段上音频检索：“低分贝，无音乐。”</li>
+          </ul>
+        </li>
+        <li>融合分数。每个餐厅有综合分数。</li>
+        <li>Top-k餐厅 → 带所有证据的VLM生成器 → 带引用的答案。</li>
+      </ol>
+      <p>这远超文本RAG。每种模态添加文本单独遗漏的信号。</p>
+      <h3 id="agent多模态rag"><a href="#agent多模态rag">Agent多模态RAG</a></h3>
+      <p>
+        多跳：如果首次检索未返回高置信答案，LLM重新表述并再次检索。Phase 14的Agent
+        RAG模式在此适用。示例：
+      </p>
+      <ul>
+        <li>检索初始top-10 → LLM问”太吵，过滤&#x3C;40 dB” → 重新检索。</li>
+        <li>检索图像 → LLM看到一张有菜单 → 检索菜单文本 → 回答。</li>
+      </ul>
+      <p>增加复杂性但处理单次检索无法处理的查询。</p>
+      <h3 id="评估"><a href="#评估">评估</a></h3>
+      <p>跨模态评估仍不成熟。常见代理：</p>
+      <ul>
+        <li>每模态Recall@k。</li>
+        <li>融合top-k准确率。</li>
+        <li>人工判断端到端满意度。</li>
+        <li>任务特定(完成预订、完成购买)。</li>
+      </ul>
+      <p>无标准基准覆盖所有模态。大多数论文在领域特定任务上评估。</p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code>：</p>
+      <ul>
+        <li>三个mock检索器(文本、图像、音频)在共享餐厅语料上操作。</li>
+        <li>用可配置权重组合模态分数的分数融合。</li>
+        <li>发出带引用最终答案的生成器存根。</li>
+        <li>置信度低时重新表述查询的简单Agent循环。</li>
+      </ul>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-multimodal-rag-designer.md</code>。给定带多模态查询流的产品规格，设计检索器、融合、生成器和评估。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>提出医疗分诊多模态RAG：查询 = 伤情照片 + 文本症状。什么模态从什么KB检索？</p>
+        </li>
+        <li>
+          <p>
+            分数融合是<span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >加权和。它有什么MoE融合避免的失败模式？
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读Abootorabi等<span
+              class="term-tip"
+              data-term="人"
+              data-module="github"
+              data-def="人"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">人</abbr></span
+            >的<span
+              class="term-tip"
+              data-term="分类"
+              data-module="vue3"
+              data-def="分组和组织"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">分类</abbr></span
+            >法(第3节)。三个<span
+              class="term-tip"
+              data-term="规范"
+              data-module="html5"
+              data-def="HTML 标准文档"
+              data-slug="html5/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">规范</abbr></span
+            >子<span
+              class="term-tip"
+              data-term="问题"
+              data-module="github"
+              data-def="跟踪任务、缺陷、想法"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">问题</abbr></span
+            >是什么，它们如何<span
+              class="term-tip"
+              data-term="映射"
+              data-module="c"
+              data-def="类型到另一类型的对应关系"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">映射</abbr></span
+            >到你<span
+              class="term-tip"
+              data-term="选择"
+              data-module="cpp"
+              data-def="选择"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">选择</abbr></span
+            >的<span
+              class="term-tip"
+              data-term="产品"
+              data-module="github"
+              data-def="产品"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">产品</abbr></span
+            >？
+          </p>
+        </li>
+        <li>
+          <p>
+            为旅<span
+              class="term-tip"
+              data-term="行"
+              data-module="vue3"
+              data-def="数据行"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行</abbr></span
+            >规划器<span
+              class="term-tip"
+              data-term="多"
+              data-module="github"
+              data-def="多个的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">多</abbr></span
+            >模态<span
+              class="term-tip"
+              data-term="RAG"
+              data-module="agent"
+              data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">RAG</abbr></span
+            >设计<span
+              class="term-tip"
+              data-term="评估"
+              data-module="cpp"
+              data-def="求值"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">评估</abbr></span
+            >规<span
+              class="term-tip"
+              data-term="格"
+              data-module="discrete-math"
+              data-def="任意两个元素都有上确界和下确界的偏序集"
+              data-slug="discrete-math/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">格</abbr></span
+            >。什么<span
+              class="term-tip"
+              data-term="指标"
+              data-module="github"
+              data-def="指标"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">指标</abbr></span
+            >覆盖<span
+              class="term-tip"
+              data-term="图像"
+              data-module="github"
+              data-def="图像"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">图像</abbr></span
+            >回忆、音频回忆和<span
+              class="term-tip"
+              data-term="组合"
+              data-module="cpp"
+              data-def="组合多个值"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">组合</abbr></span
+            >正确性？
+          </p>
+        </li>
+        <li>
+          <p>
+            Agent多跳<span
+              class="term-tip"
+              data-term="RAG"
+              data-module="agent"
+              data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">RAG</abbr></span
+            >每往返有<span
+              class="term-tip"
+              data-term="延迟"
+              data-module="cpp"
+              data-def="延迟操作"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">延迟</abbr></span
+            >税。在什么<span
+              class="term-tip"
+              data-term="查询"
+              data-module="cpp"
+              data-def="查询操作"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">查询</abbr></span
+            >难<span
+              class="term-tip"
+              data-term="度"
+              data-module="algorithm"
+              data-def="与顶点关联的边数，有向图分为入度和出度"
+              data-slug="algorithm/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">度</abbr></span
+            >下准确<span
+              class="term-tip"
+              data-term="率"
+              data-module="cpp"
+              data-def="速率"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">率</abbr></span
+            >增益<span
+              class="term-tip"
+              data-term="证明"
+              data-module="github"
+              data-def="证明"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">证明</abbr></span
+            >延迟合理？
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>跨模态检索</td>
+            <td>”查一种模态，检索另一种”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="文本"
+                data-module="cpp"
+                data-def="文本"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文本</abbr></span
+              >查询检索<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >查询检索<span
+                class="term-tip"
+                data-term="文本"
+                data-module="cpp"
+                data-def="文本"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文本</abbr></span
+              >；需要<span
+                class="term-tip"
+                data-term="共享"
+                data-module="cpp"
+                data-def="共享"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">共享</abbr></span
+              >空间或<span
+                class="term-tip"
+                data-term="翻译"
+                data-module="vue3"
+                data-def="国际化翻译"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">翻译</abbr></span
+              >器
+            </td>
+          </tr>
+          <tr>
+            <td>分数融合</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="合并"
+                data-module="github"
+                data-def="整合不同分支的更改"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">合并</abbr></span
+              >分数”
+            </td>
+            <td>
+              每模态检索分数的<span
+                class="term-tip"
+                data-term="加权"
+                data-module="vue3"
+                data-def="权重计算"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">加权</abbr></span
+              >和；最<span
+                class="term-tip"
+                data-term="简单"
+                data-module="github"
+                data-def="简单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">简单</abbr></span
+              >融合
+            </td>
+          </tr>
+          <tr>
+            <td>MoE融合</td>
+            <td>
+              ”模态<span
+                class="term-tip"
+                data-term="路由"
+                data-module="cs-fundamentals"
+                data-def="网络层功能，选择数据包从源到目的端的传输路径，常见协议有OSPF、BGP"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路由</abbr></span
+              >专家”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="门"
+                data-module="cs-fundamentals"
+                data-def="实现布尔运算的基本数字电路元件，包括与门、或门、非门等"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">门</abbr></span
+              >控<span
+                class="term-tip"
+                data-term="网络"
+                data-module="github"
+                data-def="网络"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网络</abbr></span
+              >按<span
+                class="term-tip"
+                data-term="查询"
+                data-module="cpp"
+                data-def="查询操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">查询</abbr></span
+              >选择<span
+                class="term-tip"
+                data-term="信任"
+                data-module="html5"
+                data-def="网站可信度"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信任</abbr></span
+              >哪种模态的分数
+            </td>
+          </tr>
+          <tr>
+            <td>
+              接地<span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="引用"
+                data-module="c"
+                data-def="变量的别名"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">引用</abbr></span
+              >你的<span
+                class="term-tip"
+                data-term="来源"
+                data-module="github"
+                data-def="来源"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">来源</abbr></span
+              >”
+            </td>
+            <td>
+              答案中每个主张<span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >源<span
+                class="term-tip"
+                data-term="索引"
+                data-module="c"
+                data-def="数组中元素的位置"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">索引</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>MuRAG</td>
+            <td>
+              ”首个<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >模态<span
+                class="term-tip"
+                data-term="RAG"
+                data-module="agent"
+                data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">RAG</abbr></span
+              >”
+            </td>
+            <td>
+              2022年建立<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >模态<span
+                class="term-tip"
+                data-term="RAG"
+                data-module="agent"
+                data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">RAG</abbr></span
+              >模式的论文
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Agent多<span
+                class="term-tip"
+                data-term="跳"
+                data-module="github"
+                data-def="跳"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">跳</abbr></span
+              >
+            </td>
+            <td>
+              ”重新<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >述和<span
+                class="term-tip"
+                data-term="重试"
+                data-module="vue3"
+                data-def="失败后重试"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">重试</abbr></span
+              >”
+            </td>
+            <td>
+              首次置信<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >低时LLM重新<span
+                class="term-tip"
+                data-term="查询"
+                data-module="cpp"
+                data-def="查询操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">查询</abbr></span
+              >检索器
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2502.08826"
+            >Abootorabi等人 — Ask in Any Modality (arXiv:2502.08826)</a
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2504.08748"
+            >Mei等人 — A Survey of Multimodal RAG (arXiv:2504.08748)</a
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2503.18016"
+            >Zhao等人 — Vision RAG Survey (arXiv:2503.18016)</a
+          >
+        </li>
+        <li><a href="https://arxiv.org/abs/2210.02928">Chen等人 — MuRAG (arXiv:2210.02928)</a></li>
+        <li><a href="https://arxiv.org/abs/2301.10382">Liu等人 — REACT (arXiv:2301.10382)</a></li>
+      </ul>
+    </article>
+  </body>
+</html>

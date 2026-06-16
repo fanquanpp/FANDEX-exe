@@ -1,0 +1,766 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kubernetes上的GPU自动伸缩 — Karpenter、KAI调度器、Gang调度</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">Kubernetes上的GPU自动伸缩 — Karpenter、KAI调度器、Gang调度</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            13 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">Kubernetes</span><span class="doc-tag">Karpenter</span
+          ><span class="doc-tag">KAI调度器</span><span class="doc-tag">Gang调度</span
+          ><span class="doc-tag">GPU自动伸缩</span><span class="doc-tag">HPA</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解三层GPU自动伸缩架构：节点供给、Gang调度和应用层信号</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="kubernetes上的gpu自动伸缩--karpenterkai调度器gang调度">
+        <a href="#kubernetes上的gpu自动伸缩--karpenterkai调度器gang调度"
+          >Kubernetes上的GPU自动伸缩 — Karpenter、KAI调度器、Gang调度</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          三层，不是一层。Karpenter动态供给节点(一分钟内，比Cluster
+          Autoscaler快40%)。KAI调度器处理gang调度、拓扑感知和层次化队列——它防止7-of-8部分分配陷阱，七个节点等待并烧钱只缺一个GPU。应用层自动伸缩器(NVIDIA
+          Dynamo Planner, llm-d Workload Variant
+          Autoscaler)基于推理特定信号伸缩——队列深度、KV缓存利用率——而非CPU/DCGM占空比。经典HPA陷阱是<code>DCGM_FI_DEV_GPU_UTIL</code>是占空比测量：100%可能是10个请求或100个。vLLM预分配KV缓存内存，所以内存从不触发缩容。本课程教你组合三层并避免默认Karpenter
+          <code>WhenEmptyOrUnderutilized</code>策略在推理中途终止运行中GPU作业。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib,
+        toy队列深度自动伸缩模拟器) <strong>前置知识:</strong> Phase 17 · 02 (推理平台经济学), Phase
+        17 · 04 (vLLM服务内部) <strong>时间:</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>画出三层自动伸缩(节点供给、gang调度、应用层)并命名每层使用的工具。</li>
+        <li>
+          解释为什么<code>DCGM_FI_DEV_GPU_UTIL</code>是vLLM错误的HPA信号并说出两个替代(队列深度、KV缓存利用率)。
+        </li>
+        <li>描述gang调度和KAI调度器防止的部分分配失败模式(8个GPU中7个空闲)。</li>
+        <li>
+          说出终止运行中GPU作业的Karpenter整合策略(<code>WhenEmptyOrUnderutilized</code>)并陈述2026年安全替代。
+        </li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        你的团队在Kubernetes上部署LLM服务。你用<code>DCGM_FI_DEV_GPU_UTIL</code>作为信号设置HPA。服务在营业时间固定在100%利用率。HPA从不扩容——它已经认为你满了。你手动添加副本；TTFT下降。HPA仍然不扩。信号在骗你。
+      </p>
+      <p>
+        另外，你用Cluster Autoscaler做节点。1M token
+        prompt凌晨2点到达；集群花3分钟供给节点，请求超时。
+      </p>
+      <p>
+        再来，你部署需要8个GPU跨2个节点的70B模型。集群有7个GPU空闲和1个分散在3个节点。Cluster
+        Autoscaler为缺少的1个GPU供给节点。七个节点等4分钟烧钱同时Kubernetes启动最后一个GPU。
+      </p>
+      <p>
+        三层，三种不同失败模式。2026年GPU感知自动伸缩不是”打开HPA”。而是组合节点供给、gang调度和应用信号自动伸缩。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="第1层--节点供给karpenter">
+        <a href="#第1层--节点供给karpenter">第1层 — 节点供给(Karpenter)</a>
+      </h3>
+      <p>
+        Karpenter监控待处理pod并在约45-60秒内供给节点(Cluster
+        Autoscaler对GPU节点通常需要90-120秒)。它按<code>NodePool</code>约束动态选择实例类型——如果你的pod需要8个H100且集群没有匹配节点，Karpenter直接供给一个而非扩展现有组。
+      </p>
+      <p>
+        <strong>整合陷阱</strong>：Karpenter默认<code
+          >consolidationPolicy: WhenEmptyOrUnderutilized</code
+        >对GPU池危险。它会终止运行中GPU节点以将pod迁移到更便宜的合适大小实例。对推理工作负载意味着驱逐运行中请求并在新节点上重新加载70B模型。损失是数分钟的容量加请求失败。
+      </p>
+      <p>GPU池安全设置：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="yaml"
+      ><code><span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">disruption</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  consolidationPolicy</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">WhenEmpty</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  consolidateAfter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">1h</span></span></code></pre>
+      <p>让Karpenter一小时后整合真正空节点但从不驱逐运行中作业。</p>
+      <h3 id="第2层--gang调度kai调度器">
+        <a href="#第2层--gang调度kai调度器">第2层 — Gang调度(KAI调度器)</a>
+      </h3>
+      <p>KAI调度器(项目”Karp”后更名)处理默认kube-scheduler不做的：</p>
+      <p>
+        <strong>Gang调度</strong> —
+        全有或全无调度。需要8个GPU的分布式推理pod要么全部8个一起启动要么都不启动。没有这个，你得到部分分配陷阱：8个pod中7个启动，无限等待，烧钱。
+      </p>
+      <p>
+        <strong>拓扑感知</strong> —
+        知道哪些GPU共享NVLink，哪些在同一机架上，哪些之间有InfiniBand。相应放置pod。DeepSeek-V3
+        67B张量并行工作负载必须停留在一个NVLink域；KAI调度器尊重这一点。
+      </p>
+      <p>
+        <strong>层次化队列</strong> —
+        多团队以优先级和配额竞争同一GPU池。团队A的生产紧迫只在优先级规则允许时被团队B的训练作业抢占。
+      </p>
+      <p>
+        KAI作为辅助调度器与kube-scheduler一起部署；你标注工作负载使用它。Ray和vLLM生产栈都集成。
+      </p>
+      <h3 id="第3层--应用层信号"><a href="#第3层--应用层信号">第3层 — 应用层信号</a></h3>
+      <p>
+        <strong>HPA陷阱</strong
+        >：<code>DCGM_FI_DEV_GPU_UTIL</code>是占空比指标——它测量GPU在每个采样间隔是否在工作。100%利用率可能意味着10个并发请求或100个；GPU都忙。按占空比伸缩是盲目伸缩。
+      </p>
+      <p>
+        更糟，vLLM和类似引擎预分配KV缓存内存(高达<code>--gpu-memory-utilization</code>)。内存使用即使在一个请求时也保持近90%。基于内存的HPA从不缩容。
+      </p>
+      <p><strong>2026年替代信号</strong>：</p>
+      <ul>
+        <li>队列深度(等待预填充的请求数)。</li>
+        <li>KV缓存利用率(分配给活跃序列的块比例)。</li>
+        <li>每副本P99 TTFT(你的SLA信号)。</li>
+        <li>Goodput(每秒满足所有SLO的请求)。</li>
+      </ul>
+      <p>
+        NVIDIA Dynamo Planner和llm-d Workload Variant
+        Autoscaler消费这些信号并扩缩副本。它们完全替代LLM服务的HPA。
+      </p>
+      <h3 id="何时用什么"><a href="#何时用什么">何时用什么</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>伸缩决策</th>
+            <th>工具</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>添加/移除节点</td>
+            <td>Karpenter</td>
+          </tr>
+          <tr>
+            <td>调度多GPU作业</td>
+            <td>KAI调度器</td>
+          </tr>
+          <tr>
+            <td>添加/移除副本</td>
+            <td>Dynamo Planner / llm-d WVA(或队列深度上的自定义HPA)</td>
+          </tr>
+          <tr>
+            <td>选择GPU类型</td>
+            <td>Karpenter NodePool</td>
+          </tr>
+          <tr>
+            <td>抢占低优先级</td>
+            <td>KAI调度器队列</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="分离预填充解码使一切复杂化">
+        <a href="#分离预填充解码使一切复杂化">分离预填充/解码使一切复杂化</a>
+      </h3>
+      <p>
+        如果你运行分离预填充/解码(Phase 17 ·
+        17)，你有两个具有不同伸缩触发器的pod类：预填充pod按队列深度伸缩，解码pod按KV缓存压力伸缩。llm-d将这些暴露为带每角色HPA的独立<code>Services</code>。不要尝试在两者前面放单一HPA。
+      </p>
+      <h3 id="冷启动在这里也很重要"><a href="#冷启动在这里也很重要">冷启动在这里也很重要</a></h3>
+      <p>
+        冷启动缓解(Phase 17 · 10)是节点供给时间对用户可见的地方。Karpenter
+        45-60秒预热加20GB模型加载加引擎初始化意味着从零请求需要2-5分钟。为SLO关键路径保持温池(<code>min_workers=1</code>)，或在应用层使用Modal风格检查点。
+      </p>
+      <h3 id="你应该记住的数字"><a href="#你应该记住的数字">你应该记住的数字</a></h3>
+      <ul>
+        <li>Karpenter节点供给：约45-60秒 vs Cluster Autoscaler约90-120秒(GPU节点)。</li>
+        <li>KAI调度器防止部分分配浪费——7-of-8陷阱。</li>
+        <li><code>DCGM_FI_DEV_GPU_UTIL</code>作为HPA信号：有问题；用队列深度或KV利用率。</li>
+        <li>
+          Karpenter <code>WhenEmptyOrUnderutilized</code>：终止运行中GPU作业。推理用<code
+            >WhenEmpty + consolidateAfter: 1h</code
+          >。
+        </li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code
+        >在突发GPU工作负载上模拟三层自动伸缩器。比较朴素HPA(占空比)、队列深度HPA和KAI
+        gang调度伸缩。报告未满足请求、空闲GPU分钟和综合分数。
+      </p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-gpu-autoscaler-plan.md</code>。给定集群拓扑、工作负载形状和SLO，它设计三层自动伸缩计划。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          运行<code>code/main.py</code>。在突发<span
+            class="term-tip"
+            data-term="工作"
+            data-module="cpp"
+            data-def="工作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工作</abbr></span
+          >负载下，朴素占空比HPA丢弃<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >少<span
+            class="term-tip"
+            data-term="请求"
+            data-module="vue3"
+            data-def="HTTP 请求"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">请求</abbr></span
+          >队列深度HPA能<span
+            class="term-tip"
+            data-term="捕获"
+            data-module="cpp"
+            data-def="lambda 捕获的变量"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">捕获</abbr></span
+          >？差异从哪来？
+        </li>
+        <li>
+          为在H100 SXM5上服务Llama 3.3 70B FP8的集<span
+            class="term-tip"
+            data-term="群"
+            data-module="discrete-math"
+            data-def="具有封闭性、结合律、单位元和逆元的代数结构，如整数加法群"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">群</abbr></span
+          >设计Karpenter
+          NodePool。指定<code>capacity-type</code>、<code>disruption.consolidationPolicy</code>、<code>consolidateAfter</code>和保持非GPU工作<span
+            class="term-tip"
+            data-term="负载"
+            data-module="github"
+            data-def="负载"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">负载</abbr></span
+          >离开这些<span
+            class="term-tip"
+            data-term="节点"
+            data-module="github"
+            data-def="节点"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">节点</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="污点"
+            data-module="github"
+            data-def="污点"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">污点</abbr></span
+          >。
+        </li>
+        <li>
+          你的团队<span
+            class="term-tip"
+            data-term="报告"
+            data-module="github"
+            data-def="报告"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">报告</abbr></span
+          >部署卡在Pending因为”GPU可用但pod不<span
+            class="term-tip"
+            data-term="调度"
+            data-module="c"
+            data-def="分配 CPU 时间给线程"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">调度</abbr></span
+          >”。<span
+            class="term-tip"
+            data-term="诊断"
+            data-module="cpp"
+            data-def="诊断信息"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">诊断</abbr></span
+          >——是Karpenter、kube-scheduler还是KAI调<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >器？哪些<span
+            class="term-tip"
+            data-term="指标"
+            data-module="github"
+            data-def="指标"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">指标</abbr></span
+          >确认？
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >自动伸缩<span
+            class="term-tip"
+            data-term="分离"
+            data-module="github"
+            data-def="分离"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分离</abbr></span
+          >预填充pod的<span
+            class="term-tip"
+            data-term="信号"
+            data-module="cs-fundamentals"
+            data-def="Unix系统中进程间异步通知机制，如SIGINT、SIGKILL"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">信号</abbr></span
+          >和不同的解码pod信号。论证两者。
+        </li>
+        <li>
+          计算24x7生产<span
+            class="term-tip"
+            data-term="服务"
+            data-module="cpp"
+            data-def="服务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">服务</abbr></span
+          >上<code>WhenEmptyOrUnderutilized</code>整合<span
+            class="term-tip"
+            data-term="陷阱"
+            data-module="c"
+            data-def="CPU 异常处理机制"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">陷阱</abbr></span
+          >的成本，平均每天60次P99 TTFT > 10s的<span
+            class="term-tip"
+            data-term="请求"
+            data-module="vue3"
+            data-def="HTTP 请求"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">请求</abbr></span
+          >丢弃<span
+            class="term-tip"
+            data-term="事件"
+            data-module="cpp"
+            data-def="事件对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">事件</abbr></span
+          >。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Karpenter</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="节点"
+                data-module="github"
+                data-def="节点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">节点</abbr></span
+              >供给器”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Kubernetes"
+                data-module="github"
+                data-def="容器编排平台"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Kubernetes</abbr></span
+              >节<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >自动伸缩器；亚<span
+                class="term-tip"
+                data-term="分钟"
+                data-module="github"
+                data-def="分钟"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分钟</abbr></span
+              >供给
+            </td>
+          </tr>
+          <tr>
+            <td>Cluster Autoscaler</td>
+            <td>”旧伸缩器”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Kubernetes"
+                data-module="github"
+                data-def="容器编排平台"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Kubernetes</abbr></span
+              >节<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >自动伸缩器前身；更慢，基于组
+            </td>
+          </tr>
+          <tr>
+            <td>
+              KAI调<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >器
+            </td>
+            <td>
+              ”GPU调<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >器”
+            </td>
+            <td>
+              用于gang +
+              <span
+                class="term-tip"
+                data-term="拓扑"
+                data-module="cpp"
+                data-def="拓扑"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">拓扑</abbr></span
+              >
+              +
+              <span
+                class="term-tip"
+                data-term="队列"
+                data-module="c"
+                data-def="先进先出的数据结构"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">队列</abbr></span
+              >的辅助<span
+                class="term-tip"
+                data-term="调度器"
+                data-module="c"
+                data-def="决定线程执行顺序的组件"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调度器</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Gang调<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </td>
+            <td>”全有或全无”</td>
+            <td>
+              原<span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >调度N个pod或推迟全部
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="拓扑"
+                data-module="cpp"
+                data-def="拓扑"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">拓扑</abbr></span
+              >感知
+            </td>
+            <td>”机架感知”</td>
+            <td>基于NVLink/IB/机架放置pod</td>
+          </tr>
+          <tr>
+            <td><code>DCGM_FI_DEV_GPU_UTIL</code></td>
+            <td>
+              ”GPU利用<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >”
+            </td>
+            <td>
+              占空比<span
+                class="term-tip"
+                data-term="指标"
+                data-module="github"
+                data-def="指标"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指标</abbr></span
+              >；不是LLM的伸缩<span
+                class="term-tip"
+                data-term="信号"
+                data-module="cs-fundamentals"
+                data-def="Unix系统中进程间异步通知机制，如SIGINT、SIGKILL"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信号</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="队列"
+                data-module="c"
+                data-def="先进先出的数据结构"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">队列</abbr></span
+              >深<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </td>
+            <td>
+              ”等待<span
+                class="term-tip"
+                data-term="请求"
+                data-module="vue3"
+                data-def="HTTP 请求"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">请求</abbr></span
+              >”
+            </td>
+            <td>
+              预<span
+                class="term-tip"
+                data-term="填充"
+                data-module="html5"
+                data-def="SVG 填充属性"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">填充</abbr></span
+              >约束伸缩的正确HPA信号
+            </td>
+          </tr>
+          <tr>
+            <td>
+              KV缓存利用<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >
+            </td>
+            <td>
+              ”内存<span
+                class="term-tip"
+                data-term="压力"
+                data-module="github"
+                data-def="压力"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">压力</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >约束伸缩的正确HPA信号
+            </td>
+          </tr>
+          <tr>
+            <td>整合</td>
+            <td>”Karpenter整合”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="终止"
+                data-module="cpp"
+                data-def="终止"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">终止</abbr></span
+              >节<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >到更便宜<span
+                class="term-tip"
+                data-term="实例"
+                data-module="github"
+                data-def="实例"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">实例</abbr></span
+              >类型
+            </td>
+          </tr>
+          <tr>
+            <td><code>WhenEmpty + 1h</code></td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="安全"
+                data-module="cpp"
+                data-def="安全性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">安全</abbr></span
+              >整合”
+            </td>
+            <td>
+              不驱逐运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >中GPU作业的<span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li><a href="https://github.com/kai-scheduler/KAI-Scheduler">KAI Scheduler GitHub</a></li>
+        <li>
+          <a href="https://karpenter.sh/docs/concepts/disruption/">Karpenter Disruption Controls</a>
+        </li>
+        <li>
+          <a
+            href="https://developer.nvidia.com/blog/deploying-disaggregated-llm-inference-workloads-on-kubernetes/"
+            >NVIDIA — Disaggregated LLM Inference on Kubernetes</a
+          >
+        </li>
+        <li><a href="https://github.com/llm-d/llm-d">llm-d GitHub</a></li>
+      </ul>
+    </article>
+  </body>
+</html>

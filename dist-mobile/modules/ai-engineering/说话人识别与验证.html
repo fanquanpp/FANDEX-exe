@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>说话人识别与验证</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">说话人识别与验证</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">说话人识别</span><span class="doc-tag">说话人验证</span
+          ><span class="doc-tag">ECAPA-TDNN</span><span class="doc-tag">EER</span
+          ><span class="doc-tag">嵌入</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">从i-vector到ECAPA-TDNN和WavLM，理解说话人识别的嵌入与评分</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="说话人识别与验证"><a href="#说话人识别与验证">说话人识别与验证</a></h1>
+      <blockquote>
+        <p>
+          ASR问”他们说了什么？“说话人识别问”谁说的？“数学看起来一样 — 嵌入加余弦 —
+          但每个生产决策都取决于一个EER数字。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 6
+        · 02（频谱图与Mel），Phase 5 · 22（嵌入模型） <strong>时间:</strong> ~45 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        用户说一个口令。你想知道：这是他们声称的那个人吗（<em>验证</em>，1:1），还是你注册库中的第一个人（<em>识别</em>，1:N）？或者都不是
+        — 这是一个未知说话人吗（<em>开集</em>）？
+      </p>
+      <p>
+        2018年前：GMM-UBM +
+        i-vector。合理的EER但对通道偏移（电话vs笔记本）和情绪脆弱。2018-2022：x-vector（用角度间隔训练的TDNN骨干）。2022+：ECAPA-TDNN和WavLM-large嵌入。到2026年，该领域由三个模型和一个指标主导。
+      </p>
+      <p>
+        这个指标是<strong>EER</strong> — 等错误率。设置决策阈值使错误接受率 =
+        错误拒绝率。交叉点就是EER。用于每篇论文、每个排行榜、每个采购电话。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <p>
+        <strong>流水线。</strong>
+        注册：录制目标说话人5-30秒；计算固定维度嵌入（ECAPA-TDNN为192维，WavLM-large为256维）。验证：获取测试话语嵌入；计算余弦相似度；与阈值比较。
+      </p>
+      <p>
+        <strong>ECAPA-TDNN（2020，2026年仍占主导）。</strong> 强调通道注意力、传播和聚合 -
+        时延神经网络。1D卷积块带挤压激励、多头注意力池化，后接线性层到192维。在VoxCeleb
+        1+2（2,700说话人，110万话语）上用加性角度间隔损失（AAM-softmax）训练。
+      </p>
+      <p>
+        <strong>WavLM-SV（2022+）。</strong> 用AAM损失微调预训练的WavLM-large
+        SSL骨干。更高质量但更慢 — 300+ MB vs 15 MB。
+      </p>
+      <p><strong>x-vector（基线）。</strong> TDNN + 统计池化。经典；在CPU/边缘设备上仍有用。</p>
+      <p>
+        <strong>AAM-softmax。</strong> 标准softmax在角度空间中添加间隔
+        <code>m</code>：对正确类别使用 <code>cos(θ + m)</code>。强制类间角度分离。典型
+        <code>m=0.2</code>，缩放 <code>s=30</code>。
+      </p>
+      <h3 id="评分"><a href="#评分">评分</a></h3>
+      <ul>
+        <li><strong>余弦</strong>在注册和测试嵌入之间。基于阈值的决策。</li>
+        <li>
+          <strong>PLDA（概率LDA）。</strong>
+          将嵌入投影到潜在空间，其中同说话人vs不同说话人有闭式似然比。在余弦之上添加可减少10-20%
+          EER。2020年前的标准；现在仅在闭集设置中使用。
+        </li>
+        <li>
+          <strong>分数归一化。</strong> <code>S-norm</code> 或
+          <code>AS-norm</code>：对冒名顶替者的均值和标准差归一化每个分数。跨域评估必需。
+        </li>
+      </ul>
+      <h3 id="你应该知道的数字2026">
+        <a href="#你应该知道的数字2026">你应该知道的数字（2026）</a>
+      </h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>模型</th>
+            <th>VoxCeleb1-O EER</th>
+            <th>参数</th>
+            <th>吞吐量 (A100)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>x-vector (经典)</td>
+            <td>3.10%</td>
+            <td>5 M</td>
+            <td>400倍实时</td>
+          </tr>
+          <tr>
+            <td>ECAPA-TDNN</td>
+            <td>0.87%</td>
+            <td>15 M</td>
+            <td>200倍实时</td>
+          </tr>
+          <tr>
+            <td>WavLM-SV large</td>
+            <td>0.42%</td>
+            <td>316 M</td>
+            <td>20倍实时</td>
+          </tr>
+          <tr>
+            <td>Pyannote 3.1 分割 + 嵌入</td>
+            <td>0.65%</td>
+            <td>6 M</td>
+            <td>100倍实时</td>
+          </tr>
+          <tr>
+            <td>ReDimNet (2024)</td>
+            <td>0.39%</td>
+            <td>24 M</td>
+            <td>100倍实时</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="说话人分离"><a href="#说话人分离">说话人分离</a></h3>
+      <p>
+        多说话人片段中”谁在什么时候说话”。流水线：VAD → 分割 → 对每段嵌入 →
+        聚类（层次聚类或谱聚类）→ 平滑边界。现代技术栈：<code>pyannote.audio</code>
+        3.1，将说话人分割 + 嵌入 + 聚类封装在一次调用中。2026年AMI上的SOTA
+        DER约15%（从2022年的23%下降）。
+      </p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1从mfcc统计量构建简单嵌入">
+        <a href="#步骤-1从mfcc统计量构建简单嵌入">步骤 1：从MFCC统计量构建简单嵌入</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> embed_mfcc_stats</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(signal, sr):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    frames </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> featurize_mfcc(signal, sr, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">n_mfcc</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">13</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    mean </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(f[i] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> f </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> frames) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(frames) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">13</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    std </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        math.sqrt(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">((f[i] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mean[i]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">**</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> f </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> frames) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(frames))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">13</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mean </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> std  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 26维</span></span></code></pre>
+      <p>
+        不是SOTA — 仅用于教学。<code>code/main.py</code> 在合成说话人数据上使用此方法作为概念验证。
+      </p>
+      <h3 id="步骤-2余弦相似度--阈值">
+        <a href="#步骤-2余弦相似度--阈值">步骤 2：余弦相似度 + 阈值</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> cosine</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(a, b):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    dot </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> y </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x, y </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> zip</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(a, b))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    na </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.sqrt(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    nb </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.sqrt(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dot </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (na </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nb) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> na </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nb </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">else</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.0</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> verify</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(enroll, test, threshold</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.75</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cosine(enroll, test) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> threshold</span></span></code></pre>
+      <h3 id="步骤-3从相似度对计算eer">
+        <a href="#步骤-3从相似度对计算eer">步骤 3：从相似度对计算EER</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> eer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(same_scores, diff_scores):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    thresholds </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sorted</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(same_scores </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> diff_scores))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    best </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1.0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1.0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># (fa, fr, threshold)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> thresholds:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> same_scores </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(same_scores)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        fa </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> diff_scores </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(diff_scores)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> abs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(fa </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> fr) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> abs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(best[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            best </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (fa, fr, t)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (best[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, best[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span></code></pre>
+      <p>返回 (eer, eer处阈值)。两者都要报告。</p>
+      <h3 id="步骤-4使用speechbrain的生产系统">
+        <a href="#步骤-4使用speechbrain的生产系统">步骤 4：使用SpeechBrain的生产系统</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> speechbrain.pretrained </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EncoderClassifier</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">clf </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EncoderClassifier.from_hparams(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">source</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"speechbrain/spkrec-ecapa-voxceleb"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 注册：平均3-5个干净样本的嵌入</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">enroll </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.stack([clf.encode_batch(load(x)) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> enrollment_clips]).mean(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 验证</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">score </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> clf.similarity(enroll, clf.encode_batch(load(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"test.wav"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))).item()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">verdict </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> score </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.25</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   # ECAPA典型阈值；在你的数据上调整</span></span></code></pre>
+      <h3 id="步骤-5使用pyannote进行说话人分离">
+        <a href="#步骤-5使用pyannote进行说话人分离">步骤 5：使用pyannote进行说话人分离</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pyannote.audio </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Pipeline</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">pipe </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Pipeline.from_pretrained(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"pyannote/speaker-diarization-3.1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">diarization </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pipe(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"meeting.wav"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">num_speakers</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> turn, _, speaker </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> diarization.itertracks(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">yield_label</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">turn.start</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.1f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">–</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">turn.end</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.1f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  {</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">speaker</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>2026年技术栈：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>选择</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>闭集1:1验证，边缘设备</td>
+            <td>ECAPA-TDNN + 余弦阈值</td>
+          </tr>
+          <tr>
+            <td>开集验证，云端</td>
+            <td>WavLM-SV + AS-norm</td>
+          </tr>
+          <tr>
+            <td>说话人分离（会议、播客）</td>
+            <td><code>pyannote/speaker-diarization-3.1</code></td>
+          </tr>
+          <tr>
+            <td>反欺骗（重放/深度伪造检测）</td>
+            <td>AASIST或RawNet2</td>
+          </tr>
+          <tr>
+            <td>小型嵌入式（KWS + 注册）</td>
+            <td>Titanet-Small (NeMo)</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="陷阱"><a href="#陷阱">陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>通道不匹配。</strong> 在VoxCeleb（网络视频）上训练的模型 ≠
+          电话音频。始终在目标通道上评估。
+        </li>
+        <li><strong>短话语。</strong> 测试音频少于3秒时EER急剧下降。</li>
+        <li><strong>带噪声注册。</strong> 一个嘈杂的注册会毒化锚点。使用>=3个干净样本并取平均。</li>
+        <li><strong>跨条件固定阈值。</strong> 始终在目标领域的保留开发集上调整阈值。</li>
+        <li><strong>非归一化嵌入上的余弦。</strong> 先L2归一化；否则幅度占主导。</li>
+      </ul>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>
+        将结果保存为 <code>outputs/skill-speaker-verifier.md</code>。<span
+          class="term-tip"
+          data-term="选择"
+          data-module="cpp"
+          data-def="选择"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">选择</abbr></span
+        >模型、<span
+          class="term-tip"
+          data-term="注册"
+          data-module="github"
+          data-def="注册"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">注册</abbr></span
+        >协议、阈<span
+          class="term-tip"
+          data-term="值"
+          data-module="cpp"
+          data-def="值"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">值</abbr></span
+        >调整<span
+          class="term-tip"
+          data-term="计划"
+          data-module="github"
+          data-def="计划"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">计划</abbr></span
+        >和欺诈防护措施。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >。</strong
+          >
+          运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >
+          <code>code/main.py</code>。构建合成”说话<span
+            class="term-tip"
+            data-term="人"
+            data-module="github"
+            data-def="人"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">人</abbr></span
+          >”（不同音调<span
+            class="term-tip"
+            data-term="特征"
+            data-module="c"
+            data-def="语言提供的功能"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">特征</abbr></span
+          >），<span
+            class="term-tip"
+            data-term="注册"
+            data-module="github"
+            data-def="注册"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">注册</abbr></span
+          >，在100对<span
+            class="term-tip"
+            data-term="试验"
+            data-module="github"
+            data-def="试用"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">试验</abbr></span
+          >列<span
+            class="term-tip"
+            data-term="表"
+            data-module="cpp"
+            data-def="表"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">表</abbr></span
+          >上计算EER。
+        </li>
+        <li>
+          <strong>中等。</strong> 在30个VoxCeleb1话语（5说话<span
+            class="term-tip"
+            data-term="人"
+            data-module="github"
+            data-def="人"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">人</abbr></span
+          >
+          x 6个）上使用SpeechBrain ECAPA。用余弦vs PLDA计算EER。
+        </li>
+        <li>
+          <strong>困难。</strong> 使用 <code>pyannote.audio</code> 构建<span
+            class="term-tip"
+            data-term="完整"
+            data-module="github"
+            data-def="完整"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">完整</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="注册"
+            data-module="github"
+            data-def="注册"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">注册</abbr></span
+          >
+          →
+          <span
+            class="term-tip"
+            data-term="分离"
+            data-module="github"
+            data-def="分离"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分离</abbr></span
+          >
+          →
+          <span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >流水线。在AMI开发集上评估DER。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>EER</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="核"
+                data-module="data-analysis"
+                data-def="KDE中用于平滑估计的窗口函数，常用高斯核"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">核</abbr></span
+              >心<span
+                class="term-tip"
+                data-term="指标"
+                data-module="github"
+                data-def="指标"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指标</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="错误"
+                data-module="cpp"
+                data-def="错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">错误</abbr></span
+              >接受 =
+              <span
+                class="term-tip"
+                data-term="错误"
+                data-module="cpp"
+                data-def="错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">错误</abbr></span
+              >拒绝时的阈<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >
+            </td>
+            <td>1:1</td>
+            <td>”这是Alice吗？“</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="识别"
+                data-module="github"
+                data-def="识别"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">识别</abbr></span
+              >
+            </td>
+            <td>1:N</td>
+            <td>”谁在说话？“</td>
+          </tr>
+          <tr>
+            <td>开集</td>
+            <td>
+              可能有<span
+                class="term-tip"
+                data-term="未知"
+                data-module="cpp"
+                data-def="未知"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">未知</abbr></span
+              >者
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="测试"
+                data-module="cpp"
+                data-def="测试"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">测试</abbr></span
+              >集可<span
+                class="term-tip"
+                data-term="包"
+                data-module="go"
+                data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+                data-slug="go/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">包</abbr></span
+              >含未<span
+                class="term-tip"
+                data-term="注册"
+                data-module="github"
+                data-def="注册"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注册</abbr></span
+              >说话<span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="注册"
+                data-module="github"
+                data-def="注册"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注册</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="注册"
+                data-module="github"
+                data-def="注册"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注册</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="计算"
+                data-module="cpp"
+                data-def="计算过程"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">计算</abbr></span
+              >说话<span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="参考"
+                data-module="github"
+                data-def="参考"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参考</abbr></span
+              >嵌入。
+            </td>
+          </tr>
+          <tr>
+            <td>AAM-softmax</td>
+            <td>
+              损失<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >
+            </td>
+            <td>
+              带加性角<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >间隔的softmax；强制聚<span
+                class="term-tip"
+                data-term="类"
+                data-module="cpp"
+                data-def="定义对象的结构和行为"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类</abbr></span
+              >分离。
+            </td>
+          </tr>
+          <tr>
+            <td>PLDA</td>
+            <td>
+              经典<span
+                class="term-tip"
+                data-term="评分"
+                data-module="vue3"
+                data-def="计算分数"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评分</abbr></span
+              >
+            </td>
+            <td>
+              概率LDA；<span
+                class="term-tip"
+                data-term="嵌入"
+                data-module="agent"
+                data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">嵌入</abbr></span
+              >之上的<span
+                class="term-tip"
+                data-term="似然"
+                data-module="github"
+                data-def="似然"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">似然</abbr></span
+              >比<span
+                class="term-tip"
+                data-term="评分"
+                data-module="vue3"
+                data-def="计算分数"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评分</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>DER</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="分离"
+                data-module="github"
+                data-def="分离"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分离</abbr></span
+              >指标
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="分离"
+                data-module="github"
+                data-def="分离"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分离</abbr></span
+              >错误<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >
+              — 遗漏 + 误报 + 混淆。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://www.danielpovey.com/files/2018_icassp_xvectors.pdf"
+            >Snyder et al. (2018). X-Vectors: Robust DNN Embeddings for Speaker Recognition</a
+          >
+          — 经典深<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >嵌入论文。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2005.07143">Desplanques et al. (2020). ECAPA-TDNN</a> —
+          2020-2026主导<span
+            class="term-tip"
+            data-term="架构"
+            data-module="vue3"
+            data-def="代码和系统的组织结构"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">架构</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2110.13900"
+            >Chen et al. (2022). WavLM: Large-Scale Self-Supervised Pre-Training for Full Stack
+            Speech Processing</a
+          >
+          — 用于SV和<span
+            class="term-tip"
+            data-term="分离"
+            data-module="github"
+            data-def="分离"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分离</abbr></span
+          >的SSL骨干。
+        </li>
+        <li>
+          <a href="https://github.com/pyannote/pyannote-audio"
+            >Bredin et al. (2023). pyannote.audio 3.1</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="生产"
+            data-module="github"
+            data-def="生产"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产</abbr></span
+          >级<span
+            class="term-tip"
+            data-term="分离"
+            data-module="github"
+            data-def="分离"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分离</abbr></span
+          >
+          +
+          <span
+            class="term-tip"
+            data-term="嵌入"
+            data-module="agent"
+            data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">嵌入</abbr></span
+          >技术<span
+            class="term-tip"
+            data-term="栈"
+            data-module="c"
+            data-def="后进先出的数据结构"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">栈</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://www.robots.ox.ac.uk/~vgg/data/voxceleb/">VoxCeleb排行榜 (更新至2026)</a>
+          — 当前各模型EER排名。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

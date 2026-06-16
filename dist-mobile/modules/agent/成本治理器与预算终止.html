@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>成本治理器与预算终止</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">成本治理器与预算终止</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            6 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          每个自主 Agent 都需要三个预算：max_turns（迭代次数）、max_budget_usd（美元上限）和
+          max_wallclock_s（挂钟秒数）。Claude Code 在每次运行时强制执行所有三个。LangGraph
+          的运行时在每个超步检查预算。没有这些，长时间范围 Agent ...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="成本治理器与预算终止开关">
+        <a href="#成本治理器与预算终止开关">成本治理器与预算终止开关</a>
+      </h1>
+      <blockquote>
+        <p>
+          每个自主 Agent
+          都需要三个预算：<code>max_turns</code>（迭代次数）、<code>max_budget_usd</code>（美元上限）和
+          <code>max_wallclock_s</code>（挂钟秒数）。Claude Code
+          在每次运行时强制执行所有三个。LangGraph 的运行时在每个超步检查预算。没有这些，长时间范围
+          Agent 会静默消耗无限资源——无论是 token、计算还是挂钟时间。成本治理器是安全层 0。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 <strong>语言：</strong> Python (stdlib, 带三个预算的运行时门控)
+        <strong>前置条件：</strong> Phase 15 · 01 (长时间范围Agent), Phase 15 · 12 (持久执行)
+        <strong>时间：</strong> ~30 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        没有预算的 Agent 是一个资源泄漏。LLM
+        调用花费金钱。工具调用花费时间。长时间范围运行花费挂钟时间。三者中任何一个无限制的 Agent
+        最终会消耗超出你愿意支付的。
+      </p>
+      <p>
+        预算终止开关是自主性的最低安全层。Claude Code 在每次运行时强制执行
+        <code>max_turns</code>、<code>max_budget_usd</code> 和
+        <code>max_wallclock_s</code>。LangGraph 的运行时在每个超步检查预算。任何没有等价物的生产
+        Agent 系统都是在裸奔。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="三个预算"><a href="#三个预算">三个预算</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>预算</th>
+            <th>测量什么</th>
+            <th>典型默认值</th>
+            <th>强制执行点</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>max_turns</code></td>
+            <td>Agent 循环迭代次数</td>
+            <td>50-200</td>
+            <td>每次迭代</td>
+          </tr>
+          <tr>
+            <td><code>max_budget_usd</code></td>
+            <td>LLM 调用累计美元成本</td>
+            <td>
+              <span class="katex"
+                ><span class="katex-html" aria-hidden="true"
+                  ><span class="base"
+                    ><span class="strut" style="height: 0.7278em; vertical-align: -0.0833em"></span
+                    ><span class="mord">1</span><span class="mord">−</span></span
+                  ></span
+                ></span
+              >100 取决于任务
+            </td>
+            <td>每次工具调用后</td>
+          </tr>
+          <tr>
+            <td><code>max_wallclock_s</code></td>
+            <td>从运行开始的挂钟秒数</td>
+            <td>300-3600</td>
+            <td>每次迭代</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>所有三个独立强制执行。任何一个超限终止运行。</p>
+      <h3 id="为什么三个都需要"><a href="#为什么三个都需要">为什么三个都需要</a></h3>
+      <ul>
+        <li>
+          <strong>仅 max_turns</strong>：Agent 可以在单次迭代中发出昂贵的 LLM 调用。200 次迭代 ×
+          <span class="katex"
+            ><span class="katex-html" aria-hidden="true"
+              ><span class="base"
+                ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+                ><span class="mord">0.50/</span><span class="mord cjk_fallback">调用</span
+                ><span class="mspace" style="margin-right: 0.2778em"></span
+                ><span class="mrel">=</span></span
+              ></span
+            ></span
+          >100。
+        </li>
+        <li>
+          <strong>仅 max_budget_usd</strong>：Agent
+          可以在免费操作上永远循环（文件读取、本地计算）。零美元但无限挂钟时间。
+        </li>
+        <li><strong>仅 max_wallclock_s</strong>：Agent 可以在时间预算内快速消耗 token。</li>
+      </ul>
+      <p>三个预算覆盖三个独立资源维度。任何两个都不充分。</p>
+      <h3 id="预算耗尽时会发生什么"><a href="#预算耗尽时会发生什么">预算耗尽时会发生什么</a></h3>
+      <p>
+        运行终止。Agent 的状态持久化到检查点 (Lesson
+        12)。终止原因记录：哪个预算超限、当前进度和部分结果。
+      </p>
+      <p>两个设计选择很重要：</p>
+      <ol>
+        <li>
+          <strong>优雅 vs 硬终止。</strong> 优雅终止给 Agent
+          一次迭代总结进度。硬终止立即杀死进程。优雅更好但需要 Agent 在预算中留出空间进行总结迭代。
+        </li>
+        <li>
+          <strong>部分结果交付。</strong> Agent
+          是否将其部分工作交付给用户？通常是的——部分代码比没有好。但部分结果必须标记为不完整，以免用户误以为任务已完成。
+        </li>
+      </ol>
+      <h3 id="每工具预算"><a href="#每工具预算">每工具预算</a></h3>
+      <p>
+        除了全局预算外，一些系统强制执行每工具预算。示例：不超过 N 次
+        <code>WebFetch</code> 调用，不超过 M 次 <code>Shell</code> 执行。这防止 Agent
+        在单个工具上消耗其全局预算。
+      </p>
+      <h3 id="成本估算"><a href="#成本估算">成本估算</a></h3>
+      <p>在运行前，根据任务复杂性估算成本：</p>
+      <ul>
+        <li>
+          <span
+            class="term-tip"
+            data-term="简单"
+            data-module="github"
+            data-def="简单"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">简单</abbr></span
+          >任务（1-5 次工具调用）：约 $0.01-0.10
+        </li>
+        <li>
+          中等<span
+            class="term-tip"
+            data-term="任务"
+            data-module="cpp"
+            data-def="任务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">任务</abbr></span
+          >（10-30 次<span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >调用）：约 $0.10-1.00
+        </li>
+        <li>
+          复杂<span
+            class="term-tip"
+            data-term="任务"
+            data-module="cpp"
+            data-def="任务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">任务</abbr></span
+          >（50+ 次<span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >调用）：约 $1.00-10.00
+        </li>
+        <li>
+          长<span
+            class="term-tip"
+            data-term="时间"
+            data-module="cpp"
+            data-def="时间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">时间</abbr></span
+          >范围<span
+            class="term-tip"
+            data-term="研究"
+            data-module="github"
+            data-def="研究"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">研究</abbr></span
+          >（100+ 次<span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >调用）：约 $10.00-100.00
+        </li>
+      </ul>
+      <p>
+        <span
+          class="term-tip"
+          data-term="设置"
+          data-module="cpp"
+          data-def="设置"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">设置</abbr></span
+        >预算为估算的 2-3 倍以考虑意外<span
+          class="term-tip"
+          data-term="复杂性"
+          data-module="github"
+          data-def="复杂性"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">复杂性</abbr></span
+        >。
+      </p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p>
+        <code>code/main.py</code>
+        <span
+          class="term-tip"
+          data-term="实现"
+          data-module="github"
+          data-def="实现"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">实现</abbr></span
+        >带三个预算的<span
+          class="term-tip"
+          data-term="运行时"
+          data-module="c"
+          data-def="程序执行的阶段"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">运行时</abbr></span
+        >门控。<span
+          class="term-tip"
+          data-term="模拟"
+          data-module="cpp"
+          data-def="模拟"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">模拟</abbr></span
+        >
+        Agent 运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >；当任何预算超限时运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >终止并<span
+          class="term-tip"
+          data-term="记录"
+          data-module="github"
+          data-def="记录"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">记录</abbr></span
+        >原因。
+      </p>
+      <p>
+        运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >
+          <code>code/main.py</code>。<span
+            class="term-tip"
+            data-term="观察"
+            data-module="github"
+            data-def="观察"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">观察</abbr></span
+          >哪个预算首先<span
+            class="term-tip"
+            data-term="触发"
+            data-module="javascript"
+            data-def="导致事件发生"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">触发</abbr></span
+          >。更改<span
+            class="term-tip"
+            data-term="参数"
+            data-module="c"
+            data-def="函数定义时的变量"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参数</abbr></span
+          >使不同预算首先<span
+            class="term-tip"
+            data-term="触发"
+            data-module="javascript"
+            data-def="导致事件发生"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">触发</abbr></span
+          >。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >优雅<span
+            class="term-tip"
+            data-term="终止"
+            data-module="cpp"
+            data-def="终止"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">终止</abbr></span
+          >：当预算达到 90% 时，给 Agent 一次<span
+            class="term-tip"
+            data-term="总结"
+            data-module="cpp"
+            data-def="总结"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">总结</abbr></span
+          >迭代的额外<span
+            class="term-tip"
+            data-term="机会"
+            data-module="github"
+            data-def="机会"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">机会</abbr></span
+          >。
+        </li>
+        <li>
+          添加每<span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >预算：不超过 5 次 <code>WebFetch</code>
+          <span
+            class="term-tip"
+            data-term="调用"
+            data-module="github"
+            data-def="调用"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">调用</abbr></span
+          >。当<span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >预算超限时会<span
+            class="term-tip"
+            data-term="发生"
+            data-module="github"
+            data-def="发生"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发生</abbr></span
+          >什么？
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="设计"
+            data-module="github"
+            data-def="设计"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设计</abbr></span
+          >一个成本估算器，<span
+            class="term-tip"
+            data-term="根"
+            data-module="vue3"
+            data-def="根节点"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">根</abbr></span
+          >据<span
+            class="term-tip"
+            data-term="任务"
+            data-module="cpp"
+            data-def="任务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">任务</abbr></span
+          >描述和模型<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >输出<span
+            class="term-tip"
+            data-term="建议"
+            data-module="github"
+            data-def="建议"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">建议</abbr></span
+          >的 <code>max_budget_usd</code>。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>max_turns</td>
+            <td>
+              Agent
+              <span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >迭代次数上限
+            </td>
+          </tr>
+          <tr>
+            <td>max_budget_usd</td>
+            <td>
+              LLM
+              <span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >累计美<span
+                class="term-tip"
+                data-term="元"
+                data-module="github"
+                data-def="元"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">元</abbr></span
+              >成本上限
+            </td>
+          </tr>
+          <tr>
+            <td>max_wallclock_s</td>
+            <td>
+              挂钟<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >上限
+            </td>
+          </tr>
+          <tr>
+            <td>
+              优雅<span
+                class="term-tip"
+                data-term="终止"
+                data-module="cpp"
+                data-def="终止"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">终止</abbr></span
+              >
+            </td>
+            <td>
+              给 Agent 一次<span
+                class="term-tip"
+                data-term="总结"
+                data-module="cpp"
+                data-def="总结"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">总结</abbr></span
+              >迭代的<span
+                class="term-tip"
+                data-term="机会"
+                data-module="github"
+                data-def="机会"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">机会</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              硬<span
+                class="term-tip"
+                data-term="终止"
+                data-module="cpp"
+                data-def="终止"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">终止</abbr></span
+              >
+            </td>
+            <td>
+              立即杀死<span
+                class="term-tip"
+                data-term="进程"
+                data-module="c"
+                data-def="运行的程序实例"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">进程</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              每<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >预算
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >个<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >调用次数上限
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="部分"
+                data-module="github"
+                data-def="部分的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">部分</abbr></span
+              >结果
+            </td>
+            <td>
+              预算耗尽时的不<span
+                class="term-tip"
+                data-term="完整"
+                data-module="github"
+                data-def="完整"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">完整</abbr></span
+              >工作<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </article>
+  </body>
+</html>

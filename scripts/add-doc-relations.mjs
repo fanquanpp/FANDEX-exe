@@ -17,7 +17,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 /** 文档根目录 */
-const DOCS_DIR = join(import.meta.dirname, '..', 'src', 'content', 'docs');
+const DOCS_DIR = join(import.meta.dirname, '..', 'apps', 'web', 'src', 'content', 'docs');
 
 /**
  * 模块依赖关系映射

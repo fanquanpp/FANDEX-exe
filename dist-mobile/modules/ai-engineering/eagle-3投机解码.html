@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EAGLE-3投机解码：树验证器方法</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">EAGLE-3投机解码：树验证器方法</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">投机解码</span><span class="doc-tag">EAGLE-3</span
+          ><span class="doc-tag">树验证器</span><span class="doc-tag">draft模型</span
+          ><span class="doc-tag">推理加速</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解EAGLE-3如何通过树状投机和自验证实现2.5-3.5x推理加速</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="eagle-3投机解码树验证器方法">
+        <a href="#eagle-3投机解码树验证器方法">EAGLE-3投机解码：树验证器方法</a>
+      </h1>
+      <blockquote>
+        <p>
+          投机解码用小型draft模型猜测目标模型会发出什么，然后目标模型在一次前向传播中并行验证所有猜测。猜对了，你获得N个token而非1。猜错了，你回退到第一个错误。经典投机解码使用线性draft序列——一个token接一个。EAGLE-3
+          (Li等人, 2024年12月)构建draft token的树而非链，在相同验证预算下指数级增加猜测空间。在Llama
+          3.3 70B上，EAGLE-3实现2.5-3.5x加速，接受率约88%。2026年vLLM
+          v0.18.0附带EAGLE-3作为GPU投机解码路径。本课程阅读树验证器方法并构建一个toy版本。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib, toy树投机调度器)
+        <strong>前置知识:</strong> Phase 17 · 04 (vLLM服务内部) <strong>时间:</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>解释投机解码的验证-接受语义：draft token如何被接受或拒绝以及为什么没有质量损失。</li>
+        <li>画出EAGLE-3的树draft结构并解释为什么树比链在相同验证预算下覆盖更多token。</li>
+        <li>说出决定加速比的三个因素：接受率、draft树深度和验证成本。</li>
+        <li>描述vLLM v0.18.0中EAGLE-3的集成路径以及何时使用它vs N-gram投机。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        自回归解码每步发出一个token。对70B模型，每次前向传播约10-30ms，但每步只产生1个token。GPU计算能力大部分浪费——70B模型在解码期间是内存带宽受限，而非计算受限。
+      </p>
+      <p>
+        投机解码利用空闲计算。小型draft模型(或轻量级启发式)猜测接下来K个token。目标模型在一次前向传播中验证所有K个猜测。如果K=5且4个正确，你一步获得5个token而非1——5x加速。如果只有1个正确，你获得2个token——2x。最坏情况(0正确)你获得1个token——与没有投机相同。没有质量损失因为目标模型总是验证。
+      </p>
+      <p>
+        EAGLE-3的关键创新：线性draft序列一次猜测一条路径。树draft同时猜测多条路径。验证成本相同(一次目标模型前向传播)，但树覆盖更多可能性。更高的接受率，更高的加速比。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="验证-接受语义"><a href="#验证-接受语义">验证-接受语义</a></h3>
+      <p>
+        给定draft token序列<code>[d_1, d_2, d_3, d_4, d_5]</code>，目标模型在<code
+          >[d_1, d_2, d_3, d_4, d_5]</code
+        >上运行一次前向传播并产生<code>[p_1, p_2, p_3, p_4, p_5]</code>。
+      </p>
+      <p>
+        接受规则：如果<code>d_i</code>是目标模型在<code>d_1..d_{i-1}</code>下会发出的最高概率token，则接受<code>d_i</code>。即，<code
+          >d_i == argmax(p_i)</code
+        >。
+      </p>
+      <p>
+        从左到右扫描。第一个不匹配处，停止。接受所有匹配的token加上目标模型在那个位置的正确token。结果与目标模型自回归运行完全相同——没有质量损失。
+      </p>
+      <h3 id="树draft-vs-链draft"><a href="#树draft-vs-链draft">树draft vs 链draft</a></h3>
+      <p>
+        链draft：<code>d_1 → d_2 → d_3 → d_4 → d_5</code
+        >。5个猜测token，一条路径。如果d_3错误，d_4和d_5从未被检查。浪费。
+      </p>
+      <p>
+        树draft：d_1分支到{d_2a, d_2b}。d_2a分支到{d_3a, d_3b}。d_2b分支到{d_3c,
+        d_3d}。5个猜测token，4条路径。如果d_2a错误，d_2b仍可能正确。树覆盖更多可能性。
+      </p>
+      <p>
+        EAGLE-3构建draft树，其中每个节点是从draft模型的特征预测的token。树结构在验证前确定。目标模型一次验证整棵树(通过掩码注意力确保每个token只看到其祖先)。
+      </p>
+      <h3 id="接受率和加速比"><a href="#接受率和加速比">接受率和加速比</a></h3>
+      <p>加速比 = 1 / (1 - 接受率 * 平均draft长度)。</p>
+      <p>
+        EAGLE-3在Llama 3.3 70B上报告约88%接受率。平均接受长度约3.2
+        token。理论加速比约3.5x。实践中，由于验证开销和树构建成本，约2.5-3.0x。
+      </p>
+      <h3 id="eagle-3的draft模型"><a href="#eagle-3的draft模型">EAGLE-3的draft模型</a></h3>
+      <p>
+        EAGLE-3不使用独立draft模型。相反，它使用目标模型的特征(来自最后一层隐藏状态)加轻量级MLP头来预测下一个token。这避免了维护独立draft模型的内存成本。
+      </p>
+      <p>
+        draft头在目标模型的输出特征上训练，使用标准下一token预测损失。参数开销约100-200M参数(对70B模型不到1%)。
+      </p>
+      <h3 id="vllm集成"><a href="#vllm集成">vLLM集成</a></h3>
+      <p>
+        vLLM v0.18.0支持EAGLE-3通过<code>--speculative-model eagle3</code
+        >标志。限制：不能与分块预填充组合。如果工作负载是长prompt +
+        投机，选择EAGLE-3不带分块预填充。
+      </p>
+      <p>
+        N-gram投机(vLLM中默认GPU投机)使用输入中n-gram的简单匹配——无draft模型，无训练，但加速比较低(约1.2-1.5x)。N-gram与分块预填充兼容。
+      </p>
+      <h3 id="何时使用投机解码"><a href="#何时使用投机解码">何时使用投机解码</a></h3>
+      <ul>
+        <li>解码密集型工作负载(长输出，短prompt)：投机获胜最大。</li>
+        <li>预填充密集型(长prompt，短输出)：投机帮助不大因为预填充已经计算密集。</li>
+        <li>高并发：投机减少每请求的解码步骤，释放GPU给更多请求。</li>
+        <li>低并发：投机可能不帮助因为GPU已经欠载。</li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code>模拟链vs树投机解码。比较相同接受率下的加速比。</p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-spec-decider.md</code>。给定<span
+          class="term-tip"
+          data-term="工作"
+          data-module="cpp"
+          data-def="工作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">工作</abbr></span
+        >负载profile，决定是否<span
+          class="term-tip"
+          data-term="启用"
+          data-module="cpp"
+          data-def="启用功能"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">启用</abbr></span
+        >投机<span
+          class="term-tip"
+          data-term="解码"
+          data-module="javascript"
+          data-def="将编码数据还原为原始形式"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">解码</abbr></span
+        >以及选择哪种变体(EAGLE-3 vs N-gram)。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <span
+            class="term-tip"
+            data-term="计算"
+            data-module="cpp"
+            data-def="计算过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">计算</abbr></span
+          >接受率0.85、平均draft长度4的加速比。与EAGLE-3报告的2.5-3.5x比较。
+        </li>
+        <li>
+          为什么EAGLE-3不能与分<span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >预<span
+            class="term-tip"
+            data-term="填充"
+            data-module="html5"
+            data-def="SVG 填充属性"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">填充</abbr></span
+          >组合？技术冲突是什么？
+        </li>
+        <li>
+          画出5
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >链draft和5
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >树draft(<span
+            class="term-tip"
+            data-term="分支"
+            data-module="git"
+            data-def="分支是指向提交对象的可变指针，Git 的分支是轻量级且高效的，允许在同一仓库中并行开发。"
+            data-slug="git/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分支</abbr></span
+          >因子2)。<span
+            class="term-tip"
+            data-term="树"
+            data-module="algorithm"
+            data-def="n个节点的有限集合，连通无环图，n个节点有n-1条边"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">树</abbr></span
+          >覆盖<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >少条<span
+            class="term-tip"
+            data-term="路径"
+            data-module="github"
+            data-def="路径"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">路径</abbr></span
+          >？
+        </li>
+        <li>
+          你的<span
+            class="term-tip"
+            data-term="工作"
+            data-module="cpp"
+            data-def="工作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工作</abbr></span
+          >负载是90%短<span
+            class="term-tip"
+            data-term="输出"
+            data-module="c"
+            data-def="向外部发送数据"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">输出</abbr></span
+          >(10
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >)和10%长<span
+            class="term-tip"
+            data-term="输出"
+            data-module="c"
+            data-def="向外部发送数据"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">输出</abbr></span
+          >(500
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >)。投机<span
+            class="term-tip"
+            data-term="解码"
+            data-module="javascript"
+            data-def="将编码数据还原为原始形式"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解码</abbr></span
+          >帮助哪个？整体加速比是<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >少？
+        </li>
+        <li>
+          阅读EAGLE-3论文第3节。<span
+            class="term-tip"
+            data-term="描述"
+            data-module="github"
+            data-def="描述"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">描述</abbr></span
+          >树构建算法以及它如何<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >分支<span
+            class="term-tip"
+            data-term="因子"
+            data-module="github"
+            data-def="因子"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">因子</abbr></span
+          >。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              投机<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >
+            </td>
+            <td>
+              ”猜测和<span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >”
+            </td>
+            <td>
+              Draft模型猜测<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="目标"
+                data-module="cpp"
+                data-def="目标"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目标</abbr></span
+              >模型<span
+                class="term-tip"
+                data-term="并行"
+                data-module="github"
+                data-def="并行的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">并行</abbr></span
+              >验证
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >-接受
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="检查"
+                data-module="cpp"
+                data-def="验证条件"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检查</abbr></span
+              >猜测”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="目标"
+                data-module="cpp"
+                data-def="目标"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目标</abbr></span
+              >模型确认draft
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >是否<span
+                class="term-tip"
+                data-term="匹配"
+                data-module="discrete-math"
+                data-def="图中一组没有公共顶点的边集合，最大匹配是边数最多的匹配"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">匹配</abbr></span
+              >；无<span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >损失
+            </td>
+          </tr>
+          <tr>
+            <td>树draft</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >路径猜测”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="分支"
+                data-module="git"
+                data-def="分支是指向提交对象的可变指针，Git 的分支是轻量级且高效的，允许在同一仓库中并行开发。"
+                data-slug="git/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分支</abbr></span
+              >的draft
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >树；比链<span
+                class="term-tip"
+                data-term="覆盖"
+                data-module="c"
+                data-def="测试覆盖的代码范围"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">覆盖</abbr></span
+              >更<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >可能性
+            </td>
+          </tr>
+          <tr>
+            <td>链draft</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >路径猜测”
+            </td>
+            <td>
+              线性draft
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >序列；经典投机<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              接受<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >
+            </td>
+            <td>
+              ”猜测正确<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="目标"
+                data-module="cpp"
+                data-def="目标"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目标</abbr></span
+              >模型接受的draft
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >比例
+            </td>
+          </tr>
+          <tr>
+            <td>Draft头</td>
+            <td>
+              ”轻量<span
+                class="term-tip"
+                data-term="预测"
+                data-module="github"
+                data-def="预测"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">预测</abbr></span
+              >器”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="目标"
+                data-module="cpp"
+                data-def="目标"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目标</abbr></span
+              >模型<span
+                class="term-tip"
+                data-term="特征"
+                data-module="c"
+                data-def="语言提供的功能"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特征</abbr></span
+              >上的MLP头<span
+                class="term-tip"
+                data-term="预测"
+                data-module="github"
+                data-def="预测"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">预测</abbr></span
+              >下一个<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li><a href="https://arxiv.org/abs/2412.10418">Li等人 — EAGLE-3 (arXiv:2412.10418)</a></li>
+        <li>
+          <a href="https://arxiv.org/abs/2302.01318"
+            >Leviathan等人 — Fast Inference from Transformers via Speculative Decoding
+            (arXiv:2302.01318)</a
+          >
+        </li>
+        <li>
+          <a href="https://docs.vllm.ai/en/latest/features/spec_decode/"
+            >vLLM Speculative Decoding Documentation</a
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

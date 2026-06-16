@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>分块策略与RAG</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">分块策略与RAG</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">分块</span><span class="doc-tag">RAG</span
+          ><span class="doc-tag">语义分块</span><span class="doc-tag">递归分块</span
+          ><span class="doc-tag">文档摄取</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解固定大小、句子感知、语义和递归分块策略及其对RAG的影响</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="分块策略与rag"><a href="#分块策略与rag">分块策略与RAG</a></h1>
+      <blockquote>
+        <p>
+          80%的RAG失败可追溯到摄取和分块，不是模型。团队花几周调提示，而检索悄悄每三次查询返回错误上下文。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 5
+        · 14（信息检索），Phase 5 · 22（嵌入模型） <strong>时间:</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        你有一份50页的PDF。嵌入模型接受512个token。你需要将文档分割成块，使每个块：(1)
+        足够小以适应嵌入模型，(2) 足够大以携带有意义的信息，(3) 在语义边界上断开而非句子中间。
+      </p>
+      <p>分块是RAG中最被低估的步骤。错误的分块策略破坏检索，无论嵌入模型或LLM有多好。</p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <p>
+        <strong>固定大小分块。</strong>
+        每块N个token，重叠M个token。简单、可预测、忽略语义边界。适合快速基线。
+      </p>
+      <p>
+        <strong>句子感知分块。</strong>
+        在句子边界上分割。使用spaCy或NLTK的句子分割器。保留句子完整性。可能产生非常短或非常长的块。
+      </p>
+      <p>
+        <strong>语义分块。</strong>
+        计算相邻句子的嵌入相似度。当相似度低于阈值时分割。在语义边界上断开。计算成本高但质量更好。
+      </p>
+      <p>
+        <strong>递归分块。</strong> 使用分隔符层次结构（段落 → 句子 →
+        字符）。尝试在最高级别分割，如果块太大则降级。LangChain的默认策略。
+      </p>
+      <p>
+        <strong>父文档模式。</strong>
+        检索小”子”块以提高精确度。当同一父节的多个子块出现时，换入父块以保留上下文。持续提升答案质量。
+      </p>
+      <h3 id="分块参数"><a href="#分块参数">分块参数</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>参数</th>
+            <th>典型值</th>
+            <th>影响</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>块大小</td>
+            <td>256-1024 token</td>
+            <td>更小 = 更精确检索，更少上下文</td>
+          </tr>
+          <tr>
+            <td>重叠</td>
+            <td>10-25%</td>
+            <td>防止跨块边界信息丢失</td>
+          </tr>
+          <tr>
+            <td>分隔符</td>
+            <td>句子、段落、标题</td>
+            <td>语义边界保持完整性</td>
+          </tr>
+          <tr>
+            <td>最小块大小</td>
+            <td>50-100 token</td>
+            <td>过小的块合并</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1固定大小分块"><a href="#步骤-1固定大小分块">步骤 1：固定大小分块</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> fixed_chunk</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text, chunk_size</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">512</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, overlap</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">50</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> text.split()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    chunks </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        end </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chunk_size</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        chunk </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> " "</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.join(tokens[start:end])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        chunks.append(chunk)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chunk_size </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> overlap</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chunks</span></span></code></pre>
+      <h3 id="步骤-2递归分块"><a href="#步骤-2递归分块">步骤 2：递归分块</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> recursive_chunk</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text, max_size</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">512</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, separators</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> separators </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">is</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        separators </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">". "</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">" "</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">""</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text.split()) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> max_size:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [text]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    sep </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> separators[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    remaining </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> separators[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    parts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> text.split(sep)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    chunks </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ""</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> part </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> parts:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        candidate </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sep </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> part).strip() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> part</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(candidate.split()) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> max_size:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> candidate</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                chunks.append(current)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(part.split()) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> max_size </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> remaining:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                chunks.extend(recursive_chunk(part, max_size, remaining))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> part</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        chunks.append(current)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chunks</span></span></code></pre>
+      <h3 id="步骤-3语义分块"><a href="#步骤-3语义分块">步骤 3：语义分块</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sentence_transformers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> SentenceTransformer</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> numpy </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> np</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> SentenceTransformer(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"sentence-transformers/all-MiniLM-L6-v2"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> semantic_chunk</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text, threshold</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    sentences </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> text.split(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">". "</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(sentences) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [text]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    embeddings </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.encode(sentences, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">normalize_embeddings</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    similarities </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">float</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(embeddings[i] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">@</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> embeddings[i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(embeddings) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    chunks </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [sentences[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i, sim </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> enumerate</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(similarities):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sim </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> threshold:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            chunks.append(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">". "</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.join(current))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            current </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [sentences[i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            current.append(sentences[i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        chunks.append(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">". "</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.join(current))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chunks</span></span></code></pre>
+      <h3 id="步骤-4评估分块质量"><a href="#步骤-4评估分块质量">步骤 4：评估分块质量</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> chunk_quality</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(chunks, questions, answers, embed_model, top_k</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    total_recall </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> q, a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> zip</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(questions, answers):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        q_emb </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> embed_model.encode([q], </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">normalize_embeddings</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        chunk_embs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> embed_model.encode(chunks, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">normalize_embeddings</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        sims </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (chunk_embs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">@</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> q_emb.T).flatten()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        top_indices </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> np.argsort(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">sims)[:top_k]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        relevant_text </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> " "</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.join(chunks[i] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> top_indices)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        overlap </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(a.lower().split()) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(relevant_text.lower().split()))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        total </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(a.lower().split()))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        total_recall </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> overlap </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> total </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> total </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">else</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> total_recall </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(questions)</span></span></code></pre>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>选择</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>快速基线</td>
+            <td>固定大小，256 token，10%重叠</td>
+          </tr>
+          <tr>
+            <td>通用文档</td>
+            <td>递归分块，512 token</td>
+          </tr>
+          <tr>
+            <td>技术文档/手册</td>
+            <td>语义分块 + 标题感知</td>
+          </tr>
+          <tr>
+            <td>法律/合规</td>
+            <td>句子感知，保留条款完整性</td>
+          </tr>
+          <tr>
+            <td>代码</td>
+            <td>AST感知分块（函数/类边界）</td>
+          </tr>
+          <tr>
+            <td>长文档</td>
+            <td>父文档模式</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="2026年生产rag的来之不易的经验">
+        <a href="#2026年生产rag的来之不易的经验">2026年生产RAG的来之不易的经验</a>
+      </h3>
+      <ul>
+        <li><strong>80%的RAG失败可追溯到摄取和分块，不是模型。</strong> 先修复分块。</li>
+        <li><strong>分块策略比分块大小更重要。</strong> 固定大小分割破坏表格、代码和嵌套标题。</li>
+        <li><strong>父文档模式持续提升答案质量。</strong> 检索小”子”块，换入父块。</li>
+        <li><strong>k_rerank=3通常最优。</strong> 超过这个的每个额外块增加成本但不提升质量。</li>
+        <li>
+          <strong>上下文预算低于8K token。</strong> 在该限制下持续命中意味着重排序器阈值太松。
+        </li>
+      </ul>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>将结果保存为 <code>outputs/skill-chunking-picker.md</code>。</p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >。</strong
+          >
+          在相同<span
+            class="term-tip"
+            data-term="文档"
+            data-module="vue3"
+            data-def="代码说明文档"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文档</abbr></span
+          >上<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >固定<span
+            class="term-tip"
+            data-term="大小"
+            data-module="github"
+            data-def="大小"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">大小</abbr></span
+          >和<span
+            class="term-tip"
+            data-term="递归"
+            data-module="c"
+            data-def="函数调用自身"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">递归</abbr></span
+          >分<span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >。测量<span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >大小分布。
+        </li>
+        <li>
+          <strong>中等。</strong> 在技术<span
+            class="term-tip"
+            data-term="文档"
+            data-module="vue3"
+            data-def="代码说明文档"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文档</abbr></span
+          >上<span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >语义分<span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >。与<span
+            class="term-tip"
+            data-term="递归"
+            data-module="c"
+            data-def="函数调用自身"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">递归</abbr></span
+          >分<span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >比较检索recall@5。
+        </li>
+        <li>
+          <strong>困难。</strong>
+          <span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >父<span
+            class="term-tip"
+            data-term="文档"
+            data-module="vue3"
+            data-def="代码说明文档"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文档</abbr></span
+          >模式。测量有和无父<span
+            class="term-tip"
+            data-term="文档"
+            data-module="vue3"
+            data-def="代码说明文档"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文档</abbr></span
+          >提升的答案<span
+            class="term-tip"
+            data-term="质量"
+            data-module="github"
+            data-def="质量"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">质量</abbr></span
+          >。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              分<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >
+            </td>
+            <td>
+              切<span
+                class="term-tip"
+                data-term="文档"
+                data-module="vue3"
+                data-def="代码说明文档"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文档</abbr></span
+              >
+            </td>
+            <td>
+              将<span
+                class="term-tip"
+                data-term="文档"
+                data-module="vue3"
+                data-def="代码说明文档"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文档</abbr></span
+              >分割为<span
+                class="term-tip"
+                data-term="嵌入"
+                data-module="agent"
+                data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">嵌入</abbr></span
+              >模型可<span
+                class="term-tip"
+                data-term="处理"
+                data-module="cpp"
+                data-def="处理"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">处理</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="片段"
+                data-module="c"
+                data-def="内存块的组成部分"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">片段</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>重叠</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="安全"
+                data-module="cpp"
+                data-def="安全性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">安全</abbr></span
+              >网
+            </td>
+            <td>
+              相邻<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >之间<span
+                class="term-tip"
+                data-term="共享"
+                data-module="cpp"
+                data-def="共享"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">共享</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >，防止<span
+                class="term-tip"
+                data-term="边界"
+                data-module="java"
+                data-def="泛型类型参数的约束，上界 &#x60;extends&#x60;、下界 &#x60;super&#x60;"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">边界</abbr></span
+              >信息丢失。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="语义"
+                data-module="cpp"
+                data-def="语义"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语义</abbr></span
+              >分<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="智能"
+                data-module="cpp"
+                data-def="智能"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">智能</abbr></span
+              >分割
+            </td>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="语义"
+                data-module="cpp"
+                data-def="语义"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语义</abbr></span
+              >相似<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >下降处<span
+                class="term-tip"
+                data-term="分割"
+                data-module="github"
+                data-def="分割"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分割</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              父<span
+                class="term-tip"
+                data-term="文档"
+                data-module="vue3"
+                data-def="代码说明文档"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文档</abbr></span
+              >
+            </td>
+            <td>
+              小检索大<span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >
+            </td>
+            <td>
+              检索小<span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >块，<span
+                class="term-tip"
+                data-term="返回"
+                data-module="vue3"
+                data-def="返回值"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">返回</abbr></span
+              >大父<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>摄取</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="文档"
+                data-module="vue3"
+                data-def="代码说明文档"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文档</abbr></span
+              >入<span
+                class="term-tip"
+                data-term="流水线"
+                data-module="cs-fundamentals"
+                data-def="将指令执行分为取指、译码、执行、访存、写回等阶段重叠执行的技术"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流水线</abbr></span
+              >
+            </td>
+            <td>
+              分<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >
+              +
+              <span
+                class="term-tip"
+                data-term="嵌入"
+                data-module="agent"
+                data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">嵌入</abbr></span
+              >
+              +
+              <span
+                class="term-tip"
+                data-term="索引"
+                data-module="c"
+                data-def="数组中元素的位置"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">索引</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="完整"
+                data-module="github"
+                data-def="完整"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">完整</abbr></span
+              >文档<span
+                class="term-tip"
+                data-term="处理"
+                data-module="cpp"
+                data-def="处理"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">处理</abbr></span
+              >过程。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://python.langchain.com/docs/concepts/text_splitters/"
+            >LangChain — 文本分割器</a
+          >
+          — 分<span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >策略<span
+            class="term-tip"
+            data-term="参考"
+            data-module="github"
+            data-def="参考"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参考</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://docs.llamaindex.ai/en/stable/module_guides/loading/node_parsers/"
+            >LlamaIndex — 节点解析器</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="语义"
+            data-module="cpp"
+            data-def="语义"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">语义</abbr></span
+          >分<span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >实现。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2312.10997"
+            >Gao et al. (2023). Retrieval-Augmented Generation for Large Language Models: A
+            Survey</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="RAG"
+            data-module="agent"
+            data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">RAG</abbr></span
+          >综合调查。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

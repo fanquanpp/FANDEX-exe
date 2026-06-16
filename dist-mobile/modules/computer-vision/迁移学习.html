@@ -1,0 +1,896 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>迁移学习</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">迁移学习</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">迁移学习</span><span class="doc-tag">微调</span
+          ><span class="doc-tag">冻结</span><span class="doc-tag">预训练</span
+          ><span class="doc-tag">领域适应</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">迁移学习是在别人的权重上构建，只训练你的任务所改变的部分。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="迁移学习"><a href="#迁移学习">迁移学习</a></h1>
+      <blockquote>
+        <p>迁移学习是在别人的权重上构建，只训练你的任务所改变的部分。</p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置知识:</strong> Phase 4
+        Lesson 03 (CNN从LeNet到ResNet), Phase 4 Lesson 04 (图像分类) <strong>时间:</strong> 约60分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>加载预训练ImageNet骨干，冻结它，替换分类头，并在新数据集上训练到收敛</li>
+        <li>
+          解释”特征提取”（冻结骨干）和”微调”（解冻部分或全部骨干）之间的区别，以及何时使用每种方式
+        </li>
+        <li>
+          实现差分学习率——骨干使用较低学习率，头部使用较高学习率——并解释为什么这防止灾难性遗忘
+        </li>
+        <li>诊断常见的迁移学习失败模式：过拟合小数据集、忘记预训练特征、领域偏移</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        从零在ImageNet上训练ResNet-50需要8个V100
+        GPU运行约90个epoch，大约一周。从零在1000张医学图像上训练相同模型需要10分钟，但准确率是垃圾，因为1000张图像不足以学习通用视觉特征。
+      </p>
+      <p>
+        迁移学习解决了这两个问题。你在ImageNet上预训练（或下载预训练权重），冻结大部分网络，只训练一个小头或微调最后几层。结果：10分钟训练，90%+准确率，单GPU。
+      </p>
+      <p>
+        这个模式如此普遍，以至于”从零训练”在2026年是例外，不是默认。每个生产视觉系统——医学影像、卫星分析、零售、农业——都从预训练骨干开始。问题不是是否迁移学习，而是迁移多少以及如何迁移。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="迁移谱"><a href="#迁移谱">迁移谱</a></h3>
+      <div class="mermaid-output">
+        <div class="mermaid-svg" data-theme="light"></div>
+        <div class="mermaid-svg" data-theme="dark"></div>
+      </div>
+      <p>经验法则：</p>
+      <ul>
+        <li>
+          <strong>数据少，领域近</strong>（例如，1000张自然图像，10类）→ 冻结骨干，训练线性头。
+        </li>
+        <li>
+          <strong>数据中等，领域中等</strong>（例如，10k卫星图像）→ 解冻最后2-3个阶段，差分学习率。
+        </li>
+        <li>
+          <strong>数据多，领域远</strong>（例如，100k医学X光）→
+          完全微调，低学习率，可能从ImageNet权重热启动。
+        </li>
+      </ul>
+      <p>
+        “领域距离”是直觉的：自然图像到自然图像是近的。自然图像到X光是远的。自然图像到卫星是中等的。
+      </p>
+      <h3 id="冻结和解冻"><a href="#冻结和解冻">冻结和解冻</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 特征提取：冻结骨干</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> param </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.parameters():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    param.requires_grad </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> False</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model.fc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(model.fc.in_features, num_classes)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 部分微调：冻结stem和layer1，解冻其余</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name, param </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.named_parameters():</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "layer1"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "layer2"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        param.requires_grad </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> False</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 完全微调：解冻全部</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> param </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.parameters():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    param.requires_grad </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> True</span></span></code></pre>
+      <p>
+        冻结设置<code>requires_grad = False</code
+        >，这意味着该参数在反向传播期间不接收梯度更新。节省内存（没有梯度存储）和计算（没有优化器步进）。代价：冻结层不能适应新任务。
+      </p>
+      <h3 id="差分学习率"><a href="#差分学习率">差分学习率</a></h3>
+      <p>
+        当你解冻骨干层时，使用比新头低得多的学习率。骨干已经学习了有用的特征；大学习率会破坏它们（灾难性遗忘）。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">optimizer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.optim.SGD([</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: model.fc.parameters(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lr"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1e-2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},           </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 头：快速学习</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: model.layer4.parameters(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lr"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1e-3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 深层骨干：慢学习</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: model.layer3.parameters(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lr"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1e-4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 中层骨干：更慢</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: model.layer1.parameters(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lr"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1e-5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 浅层骨干：几乎不动</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">momentum</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.9</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">weight_decay</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5e-4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>10倍衰减是常见默认值。头获得完整学习率，每个更深的骨干组获得十分之一。</p>
+      <h3 id="灾难性遗忘"><a href="#灾难性遗忘">灾难性遗忘</a></h3>
+      <p>
+        当你在新任务上用过高学习率微调整个网络时，网络快速适应新数据，但忘记了预训练特征。症状：训练损失在前几个epoch下降，然后验证准确率崩溃，因为早期层停止产生通用边缘/纹理检测器。
+      </p>
+      <p>
+        修复：差分学习率，或从特征提取开始训练几个epoch，然后解冻并微调低学习率。这种”热身然后微调”模式是大多数生产管线使用的。
+      </p>
+      <h3 id="领域偏移"><a href="#领域偏移">领域偏移</a></h3>
+      <p>预训练权重来自ImageNet（自然图像）。当你的目标域不同时：</p>
+      <ul>
+        <li>
+          <strong>医学影像</strong> —
+          灰度、高对比度、与ImageNet完全不同的纹理。早期层（边缘检测器）仍然有用。后期层（物体部分检测器）没用。
+        </li>
+        <li>
+          <strong>卫星图像</strong> — 俯视、多光谱、没有自然物体。早期层有用。中期层需要微调。
+        </li>
+        <li><strong>文档/OCR</strong> — 高对比度二值图像。早期层可能需要重新训练。</li>
+      </ul>
+      <p>经验法则：领域越远，你需要解冻和微调的层越多。</p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤1加载预训练resnet-18">
+        <a href="#步骤1加载预训练resnet-18">步骤1：加载预训练ResNet-18</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.nn </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torchvision.models </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> resnet18, ResNet18_Weights</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> resnet18(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">weights</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ResNet18_Weights.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">IMAGENET1K_V1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Original fc: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model.fc</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Total params: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(p.numel() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.parameters())</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:,</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>
+        ResNet-18有11.7M参数。最后的全连接层是<code>Linear(512, 1000)</code
+        >——1000个ImageNet类。你的任务有不同的类别数。
+      </p>
+      <h3 id="步骤2替换头并冻结骨干">
+        <a href="#步骤2替换头并冻结骨干">步骤2：替换头并冻结骨干</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">num_classes </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 5</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 例如，花朵分类</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 冻结骨干</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> param </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.parameters():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    param.requires_grad </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> False</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 替换头</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model.fc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(model.fc.in_features, num_classes)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 只有fc有梯度</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">trainable </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(p.numel() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.parameters() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p.requires_grad)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">total </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(p.numel() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.parameters())</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Trainable: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">trainable</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:,</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> / </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">total</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:,</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{100</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">trainable</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">total</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.1f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">%)"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>2,565个可训练参数，共11.7M。你只训练0.02%的模型。</p>
+      <h3 id="步骤3特征提取训练"><a href="#步骤3特征提取训练">步骤3：特征提取训练</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.optim </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> SGD</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.optim.lr_scheduler </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> CosineAnnealingLR</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">optimizer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> SGD(model.fc.parameters(), </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">lr</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.01</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">momentum</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.9</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">scheduler </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> CosineAnnealingLR(optimizer, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">T_max</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 标准训练循环（简化）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> train_epoch</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(model, loader, optimizer, device):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    model.train()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x, y </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> loader:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x, y </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x.to(device), y.to(device)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        loss </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.functional.cross_entropy(model(x), y)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        optimizer.zero_grad()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        loss.backward()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        optimizer.step()</span></span></code></pre>
+      <p>只有<code>model.fc</code>接收梯度。骨干权重与ImageNet离开时完全相同。</p>
+      <h3 id="步骤4差分学习率微调"><a href="#步骤4差分学习率微调">步骤4：差分学习率微调</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 解冻layer3和layer4</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name, param </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.named_parameters():</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "layer3"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "layer4"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "fc"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        param.requires_grad </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> True</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">optimizer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> SGD([</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: model.fc.parameters(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lr"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1e-2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: model.layer4.parameters(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lr"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1e-3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: model.layer3.parameters(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lr"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1e-4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">momentum</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.9</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">weight_decay</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5e-4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>头学习快，深层骨干慢适应，浅层骨干保持冻结。</p>
+      <h3 id="步骤5渐进解冻"><a href="#步骤5渐进解冻">步骤5：渐进解冻</a></h3>
+      <p>一种实用的策略：从冻结开始，训练几个epoch，然后逐层解冻。</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> progressive_unfreeze</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(model, epoch_schedule):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """epoch_schedule: {epoch: [layer_names_to_unfreeze]}"""</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> epoch, layers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sorted</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(epoch_schedule.items()):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> epoch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> current_epoch:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name, param </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.named_parameters():</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> any</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(layer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> layer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> layers):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    param.requires_grad </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> True</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 示例：epoch 0冻结，epoch 3解冻layer4，epoch 6解冻layer3</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">schedule </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"layer4"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">6</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"layer3"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]}</span></span></code></pre>
+      <p>
+        渐进解冻是fast.ai的默认方法，也是生产中最安全的方法。它防止早期训练不稳定性，同时仍允许深层适应。
+      </p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        对于真实世界迁移学习，<code>torchvision</code>预训练模型是起点。以下是2026年的完整配方：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torchvision.models </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> resnet50, ResNet50_Weights</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torchvision </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> transforms</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 加载预训练模型</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> resnet50(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">weights</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ResNet50_Weights.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">IMAGENET1K_V2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 替换头</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">num_classes </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 10</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model.fc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Sequential(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    nn.Dropout(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.25</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    nn.Linear(model.fc.in_features, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">256</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    nn.ReLU(),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    nn.Linear(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">256</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, num_classes),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 差分学习率</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">optimizer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.optim.AdamW([</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: model.fc.parameters(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lr"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1e-3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: model.layer4.parameters(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lr"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1e-4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"params"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: model.layer3.parameters(), </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lr"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5e-5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">weight_decay</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.01</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 标准ImageNet预处理</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">transform </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> transforms.Compose([</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    transforms.Resize(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">256</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    transforms.CenterCrop(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">224</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    transforms.ToTensor(),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    transforms.Normalize(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">mean</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.485</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.456</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.406</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">std</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.229</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.224</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.225</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span></code></pre>
+      <p>V2权重（IMAGENET1K_V2）使用比V1更好的训练配方，在大多数迁移场景中值得1-2%的提升。</p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>本课产出：</p>
+      <ul>
+        <li>
+          <code>outputs/prompt-transfer-strategy.md</code> —
+          一个提示，根据数据集大小、领域距离和计算预算推荐迁移策略（冻结/部分微调/完全微调）。
+        </li>
+        <li>
+          <code>outputs/skill-differential-lr-setup.md</code> —
+          一个技能，给定骨干架构和解冻计划，生成差分学习率优化器配置。
+        </li>
+      </ul>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong>(简单)</strong>
+          在CIFAR-10上用冻结ResNet-18骨干训练5个epoch。然后解冻layer4并微调5个epoch。比较验证准确率。
+        </li>
+        <li>
+          <strong>(中等)</strong> 实现渐进解冻：从冻结开始，每5个epoch解冻一个额外层组（layer4 ->
+          layer3 -> layer2）。与一步解冻所有层比较。
+        </li>
+        <li>
+          <strong>(困难)</strong>
+          在灰度图像数据集（例如，将CIFAR-10转换为灰度）上微调ResNet-18。修改第一层以接受1通道输入。比较三种初始化策略：随机、从RGB权重平均、从RGB权重复制一个通道。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们怎么说</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>迁移学习</td>
+            <td>”预训练”</td>
+            <td>
+              使用在不同<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >上<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >的模型的权重作为新<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >的起<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="特征"
+                data-module="c"
+                data-def="语言提供的功能"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特征</abbr></span
+              >提取
+            </td>
+            <td>”冻结骨干”</td>
+            <td>
+              保持预<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >权重<span
+                class="term-tip"
+                data-term="固定"
+                data-module="cpp"
+                data-def="固定的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">固定</abbr></span
+              >，只<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >新的<span
+                class="term-tip"
+                data-term="分类"
+                data-module="vue3"
+                data-def="分组和组织"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分类</abbr></span
+              >头
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="微调"
+                data-module="agent"
+                data-def="在预训练模型基础上使用特定领域数据进一步训练，使模型适应特定任务"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">微调</abbr></span
+              >
+            </td>
+            <td>”解冻”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="允许"
+                data-module="github"
+                data-def="允许"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">允许</abbr></span
+              >部分或全部预<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >权重在新数据上<span
+                class="term-tip"
+                data-term="更新"
+                data-module="c"
+                data-def="修改变量值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">更新</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>冻结</td>
+            <td>”requires_grad=False”</td>
+            <td>
+              阻止<span
+                class="term-tip"
+                data-term="参数"
+                data-module="c"
+                data-def="函数定义时的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参数</abbr></span
+              >在反向传播<span
+                class="term-tip"
+                data-term="期间"
+                data-module="github"
+                data-def="期间"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">期间</abbr></span
+              >接收<span
+                class="term-tip"
+                data-term="梯度"
+                data-module="calculus"
+                data-def="多元函数各偏导数构成的向量 ∇f，指向函数值增长最快的方向"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">梯度</abbr></span
+              >更新
+            </td>
+          </tr>
+          <tr>
+            <td>
+              差分学习<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >
+            </td>
+            <td>
+              ”不同层不同学习<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >”
+            </td>
+            <td>
+              骨干使用较低学习<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="头"
+                data-module="github"
+                data-def="头"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">头</abbr></span
+              >使用较<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >学习<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >，以<span
+                class="term-tip"
+                data-term="保留"
+                data-module="github"
+                data-def="保留"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保留</abbr></span
+              >预<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >特征
+            </td>
+          </tr>
+          <tr>
+            <td>灾难性遗忘</td>
+            <td>
+              ”忘记旧<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >”
+            </td>
+            <td>
+              在新<span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >上用过<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >学习<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >微调时，<span
+                class="term-tip"
+                data-term="网络"
+                data-module="github"
+                data-def="网络"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网络</abbr></span
+              >丢失预<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >中学到的<span
+                class="term-tip"
+                data-term="特征"
+                data-module="c"
+                data-def="语言提供的功能"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特征</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="领域"
+                data-module="github"
+                data-def="领域"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">领域</abbr></span
+              >偏移
+            </td>
+            <td>”数据不同”</td>
+            <td>
+              预<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >数据分布和<span
+                class="term-tip"
+                data-term="目标"
+                data-module="cpp"
+                data-def="目标"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目标</abbr></span
+              >数据分布之间的差异
+            </td>
+          </tr>
+          <tr>
+            <td>渐进解冻</td>
+            <td>”逐层解冻”</td>
+            <td>
+              从冻结骨干开始，<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >几个epoch，然后逐层解冻
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/1411.1792"
+            >How transferable are features in deep neural networks? (Yosinski et al., 2014)</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="关于"
+            data-module="github"
+            data-def="关于"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">关于</abbr></span
+          >哪些层<span
+            class="term-tip"
+            data-term="迁移"
+            data-module="github"
+            data-def="迁移"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">迁移</abbr></span
+          >和哪些不<span
+            class="term-tip"
+            data-term="迁移"
+            data-module="github"
+            data-def="迁移"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">迁移</abbr></span
+          >的奠基性实验
+        </li>
+        <li>
+          <a href="https://www.cse.ust.hk/~qyang/Docs/2009/tkde_transfer_learning.pdf"
+            >A Survey on Transfer Learning (Pan &#x26; Yang, 2010)</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="迁移"
+            data-module="github"
+            data-def="迁移"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">迁移</abbr></span
+          >学习<span
+            class="term-tip"
+            data-term="方法"
+            data-module="c"
+            data-def="关联到对象的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">方法</abbr></span
+          >的全<span
+            class="term-tip"
+            data-term="面"
+            data-module="cpp"
+            data-def="面对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">面</abbr></span
+          >分<span
+            class="term-tip"
+            data-term="类"
+            data-module="cpp"
+            data-def="定义对象的结构和行为"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">类</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://docs.fast.ai/transfer.html">fast.ai Transfer Learning Guide</a> —
+          渐进解冻和差分学习<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >的实用<span
+            class="term-tip"
+            data-term="指南"
+            data-module="vue3"
+            data-def="使用指南文档"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">指南</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1811.08883"
+            >Rethinking ImageNet Pre-training (He et al., 2019)</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="表"
+            data-module="cpp"
+            data-def="表"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">表</abbr></span
+          >明从<span
+            class="term-tip"
+            data-term="随机"
+            data-module="github"
+            data-def="随机的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">随机</abbr></span
+          >初始化<span
+            class="term-tip"
+            data-term="训练"
+            data-module="github"
+            data-def="培训"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">训练</abbr></span
+          >可以<span
+            class="term-tip"
+            data-term="匹配"
+            data-module="discrete-math"
+            data-def="图中一组没有公共顶点的边集合，最大匹配是边数最多的匹配"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">匹配</abbr></span
+          >预<span
+            class="term-tip"
+            data-term="训练"
+            data-module="github"
+            data-def="培训"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">训练</abbr></span
+          >，但需要更长<span
+            class="term-tip"
+            data-term="时间"
+            data-module="cpp"
+            data-def="时间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">时间</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

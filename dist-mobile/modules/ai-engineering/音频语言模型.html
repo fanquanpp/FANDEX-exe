@@ -1,0 +1,913 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>音频语言模型</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">音频语言模型</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">音频语言模型</span><span class="doc-tag">LALM</span
+          ><span class="doc-tag">Qwen2.5-Omni</span><span class="doc-tag">MMAU</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解Qwen2.5-Omni、Audio Flamingo等音频语言模型的架构与评估</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="音频语言模型--qwen25-omniaudio-flamingogpt-4o-audio">
+        <a href="#音频语言模型--qwen25-omniaudio-flamingogpt-4o-audio"
+          >音频语言模型 — Qwen2.5-Omni、Audio Flamingo、GPT-4o Audio</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          2026年音频语言模型对语音 + 环境声音 + 音乐进行推理。Qwen2.5-Omni-7B在MMAU-Pro上匹配GPT-4o
+          Audio。Audio Flamingo Next在LongAudioBench上击败Gemini 2.5
+          Pro。开源与闭源之间的差距基本已关闭 — 除了多音频任务，所有模型都接近随机。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 6
+        · 04（ASR），Phase 12 · 03（视觉语言模型），Phase 7 · 10（音频Transformer）
+        <strong>时间:</strong> ~45 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>你有5秒音频：狗叫，有人喊”stop!”，然后静音。有用的问题跨越多个维度：</p>
+      <ul>
+        <li><strong>转录。</strong> “说了什么？” — ASR领域。</li>
+        <li><strong>语义推理。</strong> “这个人有危险吗？” — 需要联合理解狗叫 + 喊叫 + 静音。</li>
+        <li><strong>音乐推理。</strong> “什么乐器演奏旋律？”</li>
+        <li><strong>长音频检索。</strong> “在这个90分钟讲座中，讲师在哪里解释了梯度下降？”</li>
+      </ul>
+      <p>
+        用一个提示回答所有这些问题的单一模型就是<strong>音频语言模型</strong>（LALM /
+        ALM）。与纯ASR不同：LALM产生自由形式的自然语言答案，而不仅仅是转录。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="三组件模板"><a href="#三组件模板">三组件模板</a></h3>
+      <p>每个2026年LALM都有相同的骨架：</p>
+      <ol>
+        <li>
+          <strong>音频编码器。</strong> Whisper编码器 · BEATs · CLAP · WavLM ·
+          或每个模型的自定义编码器。
+        </li>
+        <li><strong>投影器。</strong> 线性或MLP，将音频编码器特征桥接到LLM的token嵌入空间。</li>
+        <li>
+          <strong>LLM。</strong> 基于Llama / Qwen / Gemma的解码器。接收交错文本 +
+          音频token；生成文本。
+        </li>
+      </ol>
+      <p>训练：</p>
+      <ul>
+        <li><strong>阶段1。</strong> 冻结编码器 + LLM；仅在ASR/标注数据上训练投影器。</li>
+        <li>
+          <strong>阶段2。</strong> 在指令跟随音频任务（QA、推理、音乐理解）上进行全量/LoRA微调。
+        </li>
+        <li>
+          <strong>阶段3（可选）。</strong>
+          语音输入/语音输出添加语音解码器。Qwen2.5-Omni和AF3-Chat这样做。
+        </li>
+      </ul>
+      <h3 id="2026年模型地图"><a href="#2026年模型地图">2026年模型地图</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>模型</th>
+            <th>骨干</th>
+            <th>音频编码器</th>
+            <th>输出模态</th>
+            <th>访问</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Qwen2.5-Omni-7B</td>
+            <td>Qwen2.5-7B</td>
+            <td>自定义 + Whisper</td>
+            <td>文本 + 语音</td>
+            <td>Apache-2.0</td>
+          </tr>
+          <tr>
+            <td>Qwen3-Omni</td>
+            <td>Qwen3</td>
+            <td>自定义</td>
+            <td>文本 + 语音</td>
+            <td>Apache-2.0</td>
+          </tr>
+          <tr>
+            <td>Audio Flamingo 3</td>
+            <td>Qwen2</td>
+            <td>AF-CLAP</td>
+            <td>文本</td>
+            <td>NVIDIA非商业</td>
+          </tr>
+          <tr>
+            <td>Audio Flamingo Next</td>
+            <td>Qwen2</td>
+            <td>AF-CLAP v2</td>
+            <td>文本</td>
+            <td>NVIDIA非商业</td>
+          </tr>
+          <tr>
+            <td>SALMONN</td>
+            <td>Vicuna</td>
+            <td>Whisper + BEATs</td>
+            <td>文本</td>
+            <td>Apache-2.0</td>
+          </tr>
+          <tr>
+            <td>LTU / LTU-AS</td>
+            <td>Llama</td>
+            <td>CAV-MAE</td>
+            <td>文本</td>
+            <td>Apache-2.0</td>
+          </tr>
+          <tr>
+            <td>GAMA</td>
+            <td>Llama</td>
+            <td>AST + Q-Former</td>
+            <td>文本</td>
+            <td>Apache-2.0</td>
+          </tr>
+          <tr>
+            <td>Gemini 2.5 Flash/Pro (闭源)</td>
+            <td>Gemini</td>
+            <td>专有</td>
+            <td>文本 + 语音</td>
+            <td>API</td>
+          </tr>
+          <tr>
+            <td>GPT-4o Audio (闭源)</td>
+            <td>GPT-4o</td>
+            <td>专有</td>
+            <td>文本 + 语音</td>
+            <td>API</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="基准现实检查2026"><a href="#基准现实检查2026">基准现实检查（2026）</a></h3>
+      <p><strong>MMAU-Pro。</strong> 1800个QA对，覆盖语音/声音/音乐/混合。包含多音频子集。</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>模型</th>
+            <th>总体</th>
+            <th>语音</th>
+            <th>声音</th>
+            <th>音乐</th>
+            <th>多音频</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Gemini 2.5 Pro</td>
+            <td>~60%</td>
+            <td>73.4%</td>
+            <td>51.9%</td>
+            <td>64.9%</td>
+            <td>~22%</td>
+          </tr>
+          <tr>
+            <td>Gemini 2.5 Flash</td>
+            <td>~57%</td>
+            <td>73.4%</td>
+            <td>50.5%</td>
+            <td>64.9%</td>
+            <td>21.2%</td>
+          </tr>
+          <tr>
+            <td>GPT-4o Audio</td>
+            <td>52.5%</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>26.5%</td>
+          </tr>
+          <tr>
+            <td>Qwen2.5-Omni-7B</td>
+            <td>52.2%</td>
+            <td>57.4%</td>
+            <td>47.6%</td>
+            <td>61.5%</td>
+            <td>~20%</td>
+          </tr>
+          <tr>
+            <td>Audio Flamingo 3</td>
+            <td>~54%</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+          <tr>
+            <td>Audio Flamingo Next</td>
+            <td>LongAudioBench SOTA</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+            <td>—</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <strong>多音频列对所有人都是致命的。</strong> 4选项多选的随机概率 =
+        25%；大多数模型得分就在附近。LALM仍然难以比较两个片段。
+      </p>
+      <h3 id="2026年lalm有用的地方"><a href="#2026年lalm有用的地方">2026年LALM有用的地方</a></h3>
+      <ul>
+        <li><strong>呼叫中心录音合规审计。</strong> “客服是否提到了必要的披露？”</li>
+        <li><strong>无障碍。</strong> 向听障用户描述声音事件（不仅仅是转录）。</li>
+        <li><strong>内容审核。</strong> 检测暴力语言 + 威胁语气 + 背景上下文。</li>
+        <li><strong>播客/会议章节化。</strong> 语义摘要，不仅仅是说话人轮次。</li>
+        <li><strong>音乐目录分析。</strong> “找到所有B段转调的曲目。“</li>
+      </ul>
+      <h3 id="它们还不太行的地方"><a href="#它们还不太行的地方">它们还不太行的地方</a></h3>
+      <ul>
+        <li>细粒度音乐理论（和弦级别以下）。</li>
+        <li>长对话中的说话人归因推理（超过10分钟退化）。</li>
+        <li>多音频比较（22-26%几乎等于随机）。</li>
+        <li>实时流式推理（大多数是离线批量推理）。</li>
+      </ul>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1查询qwen25-omni">
+        <a href="#步骤-1查询qwen25-omni">步骤 1：查询Qwen2.5-Omni</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> transformers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoModelForCausalLM, AutoProcessor</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">processor </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoProcessor.from_pretrained(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Qwen/Qwen2.5-Omni-7B"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoModelForCausalLM.from_pretrained(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Qwen/Qwen2.5-Omni-7B"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">torch_dtype</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"auto"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">audio, sr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> load_wav(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"clip.wav"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">sr</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">16000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">messages </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [{</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "role"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    "content"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"audio"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"audio"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: audio},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"text"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"text"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"What sounds do you hear, and what's happening?"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ],</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">inputs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> processor.apply_chat_template(messages, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">tokenize</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">return_tensors</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"pt"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">output </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.generate(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">**</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">inputs, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">max_new_tokens</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">200</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(processor.decode(output[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">skip_special_tokens</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span></code></pre>
+      <h3 id="步骤-2投影器模式"><a href="#步骤-2投影器模式">步骤 2：投影器模式</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.nn </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> AudioProjector</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">nn</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Module</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, audio_dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1280</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, llm_dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">4096</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        super</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">__init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.down </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(audio_dim, llm_dim)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.act </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.GELU()</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.up </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(llm_dim, llm_dim)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> forward</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, audio_features):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.up(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.act(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.down(audio_features)))</span></span></code></pre>
+      <p>就是这样。投影器通常是1-3个线性层。在ASR对（音频 → 转录）上训练它是阶段1的预文本任务。</p>
+      <h3 id="步骤-3mmau--longaudiobench基准测试">
+        <a href="#步骤-3mmau--longaudiobench基准测试">步骤 3：MMAU / LongAudioBench基准测试</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> datasets </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> load_dataset</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">mmau </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> load_dataset(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"MMAU/MMAU-Pro"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">correct </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> item </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mmau[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"test"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    answer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> call_model(item[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"audio"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], item[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"question"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">], item[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"choices"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> answer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> item[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"correct_choice"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        correct </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Accuracy: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">correct </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(mmau[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'test'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.3f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>分别报告每个类别（语音/声音/音乐/多音频）。汇总数字会隐藏模型失败的地方。</p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>任务</th>
+            <th>2026年选择</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>自由形式音频QA（开源）</td>
+            <td>Qwen2.5-Omni-7B</td>
+          </tr>
+          <tr>
+            <td>最佳开源长音频</td>
+            <td>Audio Flamingo Next</td>
+          </tr>
+          <tr>
+            <td>最佳闭源</td>
+            <td>Gemini 2.5 Pro</td>
+          </tr>
+          <tr>
+            <td>语音输入/语音输出代理</td>
+            <td>Qwen2.5-Omni或GPT-4o Audio</td>
+          </tr>
+          <tr>
+            <td>音乐推理</td>
+            <td>Audio Flamingo 3或2（音乐专用AF-CLAP）</td>
+          </tr>
+          <tr>
+            <td>呼叫中心审计</td>
+            <td>Gemini 2.5 Pro via API，配合你的策略文档RAG</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="陷阱"><a href="#陷阱">陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>过度信任多音频。</strong> 如果你的<span
+            class="term-tip"
+            data-term="任务"
+            data-module="cpp"
+            data-def="任务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">任务</abbr></span
+          >需要”哪个<span
+            class="term-tip"
+            data-term="片段"
+            data-module="c"
+            data-def="内存块的组成部分"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">片段</abbr></span
+          >有X”，随机概率水平的性能是真实的。
+        </li>
+        <li>
+          <strong
+            >长音频<span
+              class="term-tip"
+              data-term="退化"
+              data-module="c"
+              data-def="数组退化为指针"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">退化</abbr></span
+            >。</strong
+          >
+          超过10分钟，大<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >数模型的说话<span
+            class="term-tip"
+            data-term="人"
+            data-module="github"
+            data-def="人"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">人</abbr></span
+          >归因会崩溃。先<span
+            class="term-tip"
+            data-term="分离"
+            data-module="github"
+            data-def="分离"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分离</abbr></span
+          >（课程6），再<span
+            class="term-tip"
+            data-term="摘要"
+            data-module="github"
+            data-def="摘要"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">摘要</abbr></span
+          >。
+        </li>
+        <li>
+          <strong
+            >静音上的<span
+              class="term-tip"
+              data-term="幻觉"
+              data-module="agent"
+              data-def="大语言模型生成看似合理但实际不正确或虚构内容的现象"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">幻觉</abbr></span
+            >。</strong
+          >
+          使用Whisper编码器的LALM继承了相同的Whisper风<span
+            class="term-tip"
+            data-term="格"
+            data-module="discrete-math"
+            data-def="任意两个元素都有上确界和下确界的偏序集"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">格</abbr></span
+          >问题。VAD门控。
+        </li>
+        <li>
+          <strong>基准挑樱桃。</strong> 供应商博客文章突出最佳<span
+            class="term-tip"
+            data-term="类别"
+            data-module="typescript"
+            data-def="术语分类"
+            data-slug="typescript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">类别</abbr></span
+          >。自己运行MMAU-Pro多音频<span
+            class="term-tip"
+            data-term="子集"
+            data-module="cpp"
+            data-def="子集"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">子集</abbr></span
+          >。
+        </li>
+      </ul>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>
+        将<span
+          class="term-tip"
+          data-term="结果"
+          data-module="c"
+          data-def="函数返回的值"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结果</abbr></span
+        >保存为 <code>outputs/skill-alm-picker.md</code>。为给定音频理解<span
+          class="term-tip"
+          data-term="任务"
+          data-module="cpp"
+          data-def="任务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">任务</abbr></span
+        >选择LALM + 基准<span
+          class="term-tip"
+          data-term="子集"
+          data-module="cpp"
+          data-def="子集"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">子集</abbr></span
+        >
+        +
+        <span
+          class="term-tip"
+          data-term="输出"
+          data-module="c"
+          data-def="向外部发送数据"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">输出</abbr></span
+        >模态（文本vs语音）。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >。</strong
+          >
+          运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >
+          <code>code/main.py</code>，查看玩具<span
+            class="term-tip"
+            data-term="投影"
+            data-module="c"
+            data-def="提取类型的部分属性"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">投影</abbr></span
+          >器<span
+            class="term-tip"
+            data-term="模式"
+            data-module="github"
+            data-def="模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模式</abbr></span
+          >
+          + 假LALM路由（音频<span
+            class="term-tip"
+            data-term="嵌入"
+            data-module="agent"
+            data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">嵌入</abbr></span
+          >、文本<span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >）→ 输出<span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>中等。</strong> 在100个MMAU-Pro语音项上评分Qwen2.5-Omni-7B。与论文<span
+            class="term-tip"
+            data-term="报告"
+            data-module="github"
+            data-def="报告"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">报告</abbr></span
+          >数<span
+            class="term-tip"
+            data-term="字"
+            data-module="c"
+            data-def="CPU一次处理的数据单位"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">字</abbr></span
+          >比较。
+        </li>
+        <li>
+          <strong>困难。</strong> 构建<span
+            class="term-tip"
+            data-term="最小"
+            data-module="github"
+            data-def="最小的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">最小</abbr></span
+          >音频<span
+            class="term-tip"
+            data-term="标注"
+            data-module="agent"
+            data-def="为训练数据添加标签或结构化信息的过程，是监督学习的基础环节"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标注</abbr></span
+          >基线：BEATs编码器 + 2层<span
+            class="term-tip"
+            data-term="投影"
+            data-module="c"
+            data-def="提取类型的部分属性"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">投影</abbr></span
+          >器 + 冻结Llama-3.2-1B。仅在AudioCaps上<span
+            class="term-tip"
+            data-term="微调"
+            data-module="agent"
+            data-def="在预训练模型基础上使用特定领域数据进一步训练，使模型适应特定任务"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">微调</abbr></span
+          >投影器。在Clotho-AQA上与SALMONN比较。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>LALM</td>
+            <td>音频ChatGPT</td>
+            <td>
+              音频<span
+                class="term-tip"
+                data-term="编码"
+                data-module="cpp"
+                data-def="编写代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编码</abbr></span
+              >器 +
+              <span
+                class="term-tip"
+                data-term="投影"
+                data-module="c"
+                data-def="提取类型的部分属性"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">投影</abbr></span
+              >器 + LLM解码器。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="投影"
+                data-module="c"
+                data-def="提取类型的部分属性"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">投影</abbr></span
+              >器
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="适配器"
+                data-module="vue3"
+                data-def="适配不同接口的包装器"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">适配器</abbr></span
+              >
+            </td>
+            <td>
+              将音频<span
+                class="term-tip"
+                data-term="特征"
+                data-module="c"
+                data-def="语言提供的功能"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特征</abbr></span
+              >映射到LLM嵌入<span
+                class="term-tip"
+                data-term="空间"
+                data-module="cpp"
+                data-def="空间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">空间</abbr></span
+              >的小型MLP。
+            </td>
+          </tr>
+          <tr>
+            <td>MMAU</td>
+            <td>基准</td>
+            <td>
+              跨语音、<span
+                class="term-tip"
+                data-term="声音"
+                data-module="github"
+                data-def="声音"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">声音</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="音乐"
+                data-module="github"
+                data-def="音乐"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">音乐</abbr></span
+              >的10k音频QA对。
+            </td>
+          </tr>
+          <tr>
+            <td>MMAU-Pro</td>
+            <td>更难的MMAU</td>
+            <td>
+              1800个<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >音频/<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >密集<span
+                class="term-tip"
+                data-term="问题"
+                data-module="github"
+                data-def="跟踪任务、缺陷、想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">问题</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>LongAudioBench</td>
+            <td>
+              长音频<span
+                class="term-tip"
+                data-term="评估"
+                data-module="cpp"
+                data-def="求值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评估</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >分钟<span
+                class="term-tip"
+                data-term="片段"
+                data-module="c"
+                data-def="内存块的组成部分"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">片段</abbr></span
+              >配<span
+                class="term-tip"
+                data-term="语义"
+                data-module="cpp"
+                data-def="语义"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语义</abbr></span
+              >查询。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              语音<span
+                class="term-tip"
+                data-term="输入"
+                data-module="c"
+                data-def="从外部获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输入</abbr></span
+              >/语音<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >
+            </td>
+            <td>语音原生</td>
+            <td>
+              模型摄入语音并发出语音，无需<span
+                class="term-tip"
+                data-term="文本"
+                data-module="cpp"
+                data-def="文本"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文本</abbr></span
+              >中转。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2407.10759">Chu et al. (2024). Qwen2-Audio</a> —
+          <span
+            class="term-tip"
+            data-term="参考"
+            data-module="github"
+            data-def="参考"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参考</abbr></span
+          >架构。
+        </li>
+        <li>
+          <a href="https://huggingface.co/Qwen/Qwen2.5-Omni-7B">Alibaba (2025). Qwen2.5-Omni</a> —
+          语音入-语音出。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2507.08128">NVIDIA (2025). Audio Flamingo 3</a> — 开<span
+            class="term-tip"
+            data-term="源"
+            data-module="cpp"
+            data-def="源"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">源</abbr></span
+          >长音频领先者。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2604.10905">NVIDIA (2026). Audio Flamingo Next</a> —
+          LongAudioBench SOTA。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2310.13289">Tang et al. (2023). SALMONN</a> — 双<span
+            class="term-tip"
+            data-term="编码"
+            data-module="cpp"
+            data-def="编写代码"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编码</abbr></span
+          >器先驱。
+        </li>
+        <li>
+          <a href="https://mmaubenchmark.github.io/">MMAU-Pro排行榜</a> — 2026年<span
+            class="term-tip"
+            data-term="实时"
+            data-module="cpp"
+            data-def="实时"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实时</abbr></span
+          >排名。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

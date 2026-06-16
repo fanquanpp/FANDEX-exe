@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>验证门 — Agent不能自己打分</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">验证门 — Agent不能自己打分</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            8 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">验证门</span><span class="doc-tag">确定性检查</span
+          ><span class="doc-tag">阻止级</span><span class="doc-tag">覆盖日志</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          构建确定性验证门，组合规则报告、范围报告、反馈记录和diff，产出任务完成裁决
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="验证门--agent不能自己打分">
+        <a href="#验证门--agent不能自己打分">验证门 — Agent不能自己打分</a>
+      </h1>
+      <blockquote>
+        <p>
+          Agent不能将自己的工作标记为完成。验证门读取作用域契约、反馈日志、规则报告和diff，回答一个单一问题：这个任务真的完成了吗？如果门说不，任务就没有完成，无论聊天说什么。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库）
+        <strong>前置条件：</strong> Phase 14 · 33（规则），Phase 14 · 36（范围），Phase 14 ·
+        37（反馈） <strong>时间：</strong> ~55分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>将验证门定义为工作台工件上的确定性函数。</li>
+        <li>组合规则报告、范围报告、反馈记录和diff为单一裁决。</li>
+        <li>发出审查Agent和CI都可以读取的 <code>verification_report.json</code>。</li>
+        <li>在任何阻止级失败上拒绝推进任务，无例外。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>Agent太容易声明成功。三种失败形状主导：</p>
+      <ul>
+        <li>“看起来不错。” 模型读取自己的diff并决定它是正确的。</li>
+        <li>“测试通过了。” 充满信心地说。没有测试实际运行的记录。</li>
+        <li>“验收满足。” 验收标准被宽松解释为”任何类似完成的东西”。</li>
+      </ul>
+      <p>
+        工作台修复是一个单一验证门，读取Agent已经产生的工件并做出判断。门是确定性的。门在版本控制中。门连接到CI。Agent无法贿赂它。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="门检查什么"><a href="#门检查什么">门检查什么</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>检查</th>
+            <th>来源工件</th>
+            <th>严重性</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>所有验收命令已运行</td>
+            <td><code>feedback_record.jsonl</code></td>
+            <td>阻止</td>
+          </tr>
+          <tr>
+            <td>所有验收命令退出零</td>
+            <td><code>feedback_record.jsonl</code></td>
+            <td>阻止</td>
+          </tr>
+          <tr>
+            <td>范围检查无禁止写入</td>
+            <td><code>scope_report.json</code></td>
+            <td>阻止</td>
+          </tr>
+          <tr>
+            <td>范围检查无范围外写入</td>
+            <td><code>scope_report.json</code></td>
+            <td>阻止或警告</td>
+          </tr>
+          <tr>
+            <td>所有阻止级规则通过</td>
+            <td><code>rule_report.json</code></td>
+            <td>阻止</td>
+          </tr>
+          <tr>
+            <td>反馈中无 <code>null</code> 退出码</td>
+            <td><code>feedback_record.jsonl</code></td>
+            <td>阻止</td>
+          </tr>
+          <tr>
+            <td>触及文件匹配 <code>scope.allowed_files</code></td>
+            <td>两者</td>
+            <td>警告</td>
+          </tr>
+        </tbody>
+      </table>
+      <p><code>warn</code> 发现注释裁决；<code>block</code> 发现阻止 <code>passed: true</code>。</p>
+      <h3 id="确定性不是概率性"><a href="#确定性不是概率性">确定性，不是概率性</a></h3>
+      <p>
+        门必须每次为相同工件集产生相同裁决。无LLM评判。LLM评判属于审查者侧（Phase 14 ·
+        39），那里目标是定性评估，不是状态。
+      </p>
+      <h3 id="一个报告一个路径"><a href="#一个报告一个路径">一个报告，一个路径</a></h3>
+      <p>
+        门每个任务关闭发出一个 <code>verification_report.json</code>，写入
+        <code>outputs/verification/&#x3C;task_id>.json</code
+        >。CI消费相同路径。不同路径的多个门分叉真相来源。
+      </p>
+      <h3 id="无例外拒绝"><a href="#无例外拒绝">无例外拒绝</a></h3>
+      <p>
+        阻止级发现不能被Agent覆盖。它们只能被人类覆盖，带有记录的 <code>override_reason</code> 和
+        <code>overridden_by</code> 用户id。覆盖是签名变更，不是Agent决策。
+      </p>
+      <h3 id="生产模式"><a href="#生产模式">生产模式</a></h3>
+      <ul>
+        <li>
+          <strong>纵深防御，不是单一门。</strong> 预提交钩子 -> CI状态检查 -> 工具前认证钩子 ->
+          合并前门。每层是确定性的，所以一层的失败被下一层捕获。
+        </li>
+        <li>
+          <strong>确定性检查防御，模型评判仅用于细微差别。</strong>
+          可验证奖励（单元测试、Schema检查、退出码）回答”代码是否解决了问题？” —
+          LLM评分标准回答”代码是否可读、安全、风格一致？“门运行第一类；审查者运行第二类。
+        </li>
+        <li>
+          <strong>签名覆盖日志，不是Slack线程。</strong> 每次覆盖在
+          <code>outputs/verification/overrides.jsonl</code>
+          中发出一行：时间戳、发现代码、原因、签名用户、当前HEAD提交。
+        </li>
+        <li>
+          <strong>覆盖率下限作为一等检查。</strong> <code>coverage_report.json</code> 馈入
+          <code>coverage_floor</code
+          >（默认80%）检查。如果测量覆盖率低于下限或低于上一次合并的下限超过1个百分点，门失败。
+        </li>
+        <li>
+          <strong><code>--strict</code> 模式将警告提升为阻止。</strong>
+          对于发布分支、阻断发布的PR或事件后分类，<code>--strict</code> 使每个警告成为硬性失败。
+        </li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code>实现：每个输入工件的加载器、<code
+          >verify(task_id, artifacts) -> VerdictReport</code
+        >
+        纯函数、打印器，以及三个任务场景（干净通过、范围蔓延、缺少验收）的演示。
+      </p>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        <code>outputs/skill-verification-gate.md</code
+        >将门连接到特定项目：哪些验收命令馈入它、哪些规则是阻止级、哪些范围外写入被容忍、覆盖审计日志如何存储。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          添加 <code>coverage_floor</code>
+          <span
+            class="term-tip"
+            data-term="检查"
+            data-module="cpp"
+            data-def="验证条件"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检查</abbr></span
+          >：<span
+            class="term-tip"
+            data-term="测试"
+            data-module="cpp"
+            data-def="测试"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">测试</abbr></span
+          >命令必须产生至少80%<span
+            class="term-tip"
+            data-term="覆盖率"
+            data-module="javascript"
+            data-def="测试覆盖代码的比例"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">覆盖率</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="报告"
+            data-module="github"
+            data-def="报告"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">报告</abbr></span
+          >。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="支持"
+            data-module="cpp"
+            data-def="支持"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">支持</abbr></span
+          >将每个 <code>warn</code>
+          <span
+            class="term-tip"
+            data-term="提升"
+            data-module="github"
+            data-def="提升"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提升</abbr></span
+          >为 <code>block</code> 的 <code>--strict</code>
+          <span
+            class="term-tip"
+            data-term="模式"
+            data-module="github"
+            data-def="模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模式</abbr></span
+          >。<span
+            class="term-tip"
+            data-term="文档"
+            data-module="vue3"
+            data-def="代码说明文档"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文档</abbr></span
+          >化<span
+            class="term-tip"
+            data-term="严格模式"
+            data-module="github"
+            data-def="严格模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">严格模式</abbr></span
+          >是正确<span
+            class="term-tip"
+            data-term="默认值"
+            data-module="github"
+            data-def="默认值"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">默认值</abbr></span
+          >的情况。
+        </li>
+        <li>
+          使<span
+            class="term-tip"
+            data-term="门"
+            data-module="cs-fundamentals"
+            data-def="实现布尔运算的基本数字电路元件，包括与门、或门、非门等"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">门</abbr></span
+          >除了<span
+            class="term-tip"
+            data-term="JSON"
+            data-module="html5"
+            data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">JSON</abbr></span
+          >之外还产生<span
+            class="term-tip"
+            data-term="Markdown"
+            data-module="markdown"
+            data-def="Markdown 是 John Gruber 于 2004 年创建的轻量级标记语言，使用简洁的语法编写格式化文本，可转换为 HTML 或其他格式。"
+            data-slug="markdown/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Markdown</abbr></span
+          >摘要。辩护哪些<span
+            class="term-tip"
+            data-term="字段"
+            data-module="cpp"
+            data-def="字段"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">字段</abbr></span
+          >属于<span
+            class="term-tip"
+            data-term="摘要"
+            data-module="github"
+            data-def="摘要"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">摘要</abbr></span
+          >。
+        </li>
+        <li>
+          添加 <code>time_since_last_human_touch</code>
+          <span
+            class="term-tip"
+            data-term="检查"
+            data-module="cpp"
+            data-def="验证条件"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检查</abbr></span
+          >：<span
+            class="term-tip"
+            data-term="人类"
+            data-module="github"
+            data-def="人类"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">人类</abbr></span
+          >按键60秒内<span
+            class="term-tip"
+            data-term="编辑"
+            data-module="cpp"
+            data-def="编辑操作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编辑</abbr></span
+          >的任何<span
+            class="term-tip"
+            data-term="文件"
+            data-module="github"
+            data-def="文件"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文件</abbr></span
+          >免于<span
+            class="term-tip"
+            data-term="范围"
+            data-module="c"
+            data-def="取值区间"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">范围</abbr></span
+          >外<span
+            class="term-tip"
+            data-term="标记"
+            data-module="c"
+            data-def="标记数据位置的符号"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标记</abbr></span
+          >。
+        </li>
+        <li>
+          在你<span
+            class="term-tip"
+            data-term="产品"
+            data-module="github"
+            data-def="产品"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">产品</abbr></span
+          >的真实Agent diff上运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >门。<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >少<span
+            class="term-tip"
+            data-term="发现"
+            data-module="github"
+            data-def="发现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发现</abbr></span
+          >是<span
+            class="term-tip"
+            data-term="真实"
+            data-module="github"
+            data-def="真实的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">真实</abbr></span
+          >的，<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >少是<span
+            class="term-tip"
+            data-term="噪音"
+            data-module="github"
+            data-def="噪音"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">噪音</abbr></span
+          >？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >门
+            </td>
+            <td>
+              ”阻止事物的<span
+                class="term-tip"
+                data-term="检查"
+                data-module="cpp"
+                data-def="验证条件"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检查</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="工作"
+                data-module="cpp"
+                data-def="工作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工作</abbr></span
+              >台工件上的确定性<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >产生<span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="失败"
+                data-module="github"
+                data-def="失败"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">失败</abbr></span
+              >裁决
+            </td>
+          </tr>
+          <tr>
+            <td>阻止级</td>
+            <td>
+              ”硬性<span
+                class="term-tip"
+                data-term="失败"
+                data-module="github"
+                data-def="失败"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">失败</abbr></span
+              >”
+            </td>
+            <td>
+              阻止 <code>passed: true</code> 并需要<span
+                class="term-tip"
+                data-term="签名"
+                data-module="cpp"
+                data-def="签名"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">签名</abbr></span
+              >覆盖的<span
+                class="term-tip"
+                data-term="发现"
+                data-module="github"
+                data-def="发现"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">发现</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="覆盖"
+                data-module="c"
+                data-def="测试覆盖的代码范围"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">覆盖</abbr></span
+              >日志
+            </td>
+            <td>
+              ”为什么我们让它<span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >”
+            </td>
+            <td>
+              带原因和用户id的<span
+                class="term-tip"
+                data-term="签名"
+                data-module="cpp"
+                data-def="签名"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">签名</abbr></span
+              >条目，由审查<span
+                class="term-tip"
+                data-term="审计"
+                data-module="sql"
+                data-def="记录数据库操作日志的安全功能，用于合规审查和安全追踪"
+                data-slug="sql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">审计</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              验收<span
+                class="term-tip"
+                data-term="命令"
+                data-module="github"
+                data-def="命令指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">命令</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="证明"
+                data-module="github"
+                data-def="证明"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">证明</abbr></span
+              >”
+            </td>
+            <td>
+              零<span
+                class="term-tip"
+                data-term="退出"
+                data-module="github"
+                data-def="退出"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">退出</abbr></span
+              >意味着 <code>done</code> 的shell命令
+            </td>
+          </tr>
+          <tr>
+            <td>
+              一个<span
+                class="term-tip"
+                data-term="报告"
+                data-module="github"
+                data-def="报告"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">报告</abbr></span
+              >路径
+            </td>
+            <td>
+              ”真相<span
+                class="term-tip"
+                data-term="来源"
+                data-module="github"
+                data-def="来源"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">来源</abbr></span
+              >”
+            </td>
+            <td>
+              <code>outputs/verification/&#x3C;task_id>.json</code>，CI和<span
+                class="term-tip"
+                data-term="人类"
+                data-module="github"
+                data-def="人类"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人类</abbr></span
+              >都消费
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://www.anthropic.com/engineering/harness-design-long-running-apps"
+            >Anthropic, Harness design for long-running application development</a
+          >
+        </li>
+        <li>
+          <a
+            href="https://microservices.io/post/architecture/2026/03/09/genai-development-platform-part-1-development-guardrails.html"
+            >microservices.io, GenAI dev platform: guardrails</a
+          >
+        </li>
+        <li>
+          <a href="https://github.com/logi-cmd/agent-guardrails">logi-cmd/agent-guardrails</a> —
+          <span
+            class="term-tip"
+            data-term="范围"
+            data-module="c"
+            data-def="取值区间"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">范围</abbr></span
+          >+变异<span
+            class="term-tip"
+            data-term="测试"
+            data-module="cpp"
+            data-def="测试"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">测试</abbr></span
+          >门
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

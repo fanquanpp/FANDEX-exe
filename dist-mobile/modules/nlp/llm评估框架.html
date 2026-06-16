@@ -1,0 +1,851 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLM评估框架</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">LLM评估框架</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            8 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">LLM评估</span><span class="doc-tag">RAGAS</span
+          ><span class="doc-tag">DeepEval</span><span class="doc-tag">G-Eval</span
+          ><span class="doc-tag">LLM-as-judge</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解RAGAS、DeepEval、G-Eval等LLM评估框架的核心方法与校准</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="llm评估--ragasdeepevalg-eval">
+        <a href="#llm评估--ragasdeepevalg-eval">LLM评估 — RAGAS、DeepEval、G-Eval</a>
+      </h1>
+      <blockquote>
+        <p>
+          精确匹配和F1遗漏语义等价。人工审查不可扩展。LLM-as-judge是生产答案 —
+          加上足够的校准来信任这个数字。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 5
+        · 13（问答系统），Phase 5 · 14（信息检索） <strong>时间:</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        你的RAG系统回答：“June 29th, 2007.” 金标准参考是：“June 29, 2007.”
+        精确匹配得分0。F1得分约75%。人类会打100分。
+      </p>
+      <p>
+        现在乘以10,000个测试用例。再乘以检索器、分块、提示或模型的每次变更。你需要一个理解含义、大规模廉价运行、不对回归撒谎、并暴露正确失败模式的评估器。
+      </p>
+      <p>2026年有三个框架拥有这个问题。</p>
+      <ul>
+        <li>
+          <strong>RAGAS。</strong>
+          检索增强生成评估。四个RAG指标（忠实度、答案相关性、上下文精确度、上下文召回）配合NLI +
+          LLM-judge后端。研究支持，轻量级。
+        </li>
+        <li>
+          <strong>DeepEval。</strong> LLM的pytest。G-Eval、任务完成、幻觉、偏见指标。CI/CD原生。
+        </li>
+        <li>
+          <strong>G-Eval。</strong>
+          一种方法（也是DeepEval指标）：LLM-as-judge配合思维链、自定义标准、0-1评分。
+        </li>
+      </ul>
+      <p>三者都依赖LLM-as-judge。本课程为该方法及其信任层建立直觉。</p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <p>
+        <strong>LLM-as-judge。</strong> 用LLM按评分标准对输出评分替代静态指标。给定
+        <code>(query, context, answer)</code>，提示评判LLM：“在忠实度上评分0-1。” 返回分数。
+      </p>
+      <p>
+        为什么有效：LLM以极低成本近似人类判断。GPT-4o-mini约<span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord">0.003/</span><span class="mord cjk_fallback">评分案例，使</span
+              ><span class="mord">1000</span
+              ><span class="mord cjk_fallback">样本回归评估运行成本低于</span></span
+            ></span
+          ></span
+        >5。
+      </p>
+      <p>为什么静默失败：</p>
+      <ol>
+        <li>
+          <strong>评判偏差。</strong>
+          评判者偏好更长的答案、来自自己模型家族的答案、匹配提示风格的答案。
+        </li>
+        <li>
+          <strong>JSON解析失败。</strong> 坏JSON → NaN分数 →
+          静默排除在聚合之外。RAGAS用户知道这种痛苦。用try/except + 显式失败模式门控。
+        </li>
+        <li><strong>模型版本漂移。</strong> 升级评判者改变每个指标。冻结评判模型 + 版本。</li>
+      </ol>
+      <p><strong>RAG四指标。</strong></p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>指标</th>
+            <th>问题</th>
+            <th>后端</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>忠实度</td>
+            <td>答案中的每个主张是否来自检索上下文？</td>
+            <td>基于NLI的蕴含</td>
+          </tr>
+          <tr>
+            <td>答案相关性</td>
+            <td>答案是否回应了问题？</td>
+            <td>从答案生成假设问题；与真实问题比较</td>
+          </tr>
+          <tr>
+            <td>上下文精确度</td>
+            <td>检索的块中，有多少比例是相关的？</td>
+            <td>LLM-judge</td>
+          </tr>
+          <tr>
+            <td>上下文召回</td>
+            <td>检索是否返回了所有需要的信息？</td>
+            <td>对照金标准答案的LLM-judge</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <strong>G-Eval。</strong> 定义自定义标准：“答案是否引用了正确的来源？”
+        框架自动扩展为思维链评估步骤，然后评分0-1。适合RAGAS不覆盖的领域特定质量维度。
+      </p>
+      <p>
+        <strong>校准。</strong>
+        永远不要信任原始评判分数，直到你有了与人工标签的相关性。运行100个手工标注示例。绘制评判vs人工。计算Spearman
+        rho。如果rho &#x3C; 0.7，你的评判评分标准需要改进。
+      </p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1用nli的忠实度ragas风格">
+        <a href="#步骤-1用nli的忠实度ragas风格">步骤 1：用NLI的忠实度（RAGAS风格）</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> transformers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pipeline</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">nli </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pipeline(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"text-classification"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">               model</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"MoritzLaurer/DeBERTa-v3-large-mnli-fever-anli-ling-wanli"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">               top_k</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> atomic_claims</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(answer, llm):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    prompt </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"""Break this answer into simple factual claims (one per line):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">answer</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"""</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> llm(prompt).splitlines()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> faithfulness</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(answer, context, llm):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    claims </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> atomic_claims(answer, llm)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> claims:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.0</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    supported </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> claim </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> claims:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nli({</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"text"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: context, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"text_pair"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: claim})[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        entail </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> next</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">((s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"label"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "entailment"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">), </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> entail </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> entail[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"score"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            supported </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> supported </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(claims)</span></span></code></pre>
+      <p>将答案分解为原子主张。对每个主张对照检索上下文做NLI检查。忠实度 = 被支持的比例。</p>
+      <h3 id="步骤-2答案相关性"><a href="#步骤-2答案相关性">步骤 2：答案相关性</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> answer_relevance</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(question, answer, encoder, llm, n</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    prompt </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Write </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">n</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> questions this answer could be the answer to:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">\n{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">answer</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    generated </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [line </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> line </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> llm(prompt).splitlines() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> line.strip()][:n]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> generated:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.0</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    q_emb </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> encoder.encode([question], </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">normalize_embeddings</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    g_embs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> encoder.encode(generated, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">normalize_embeddings</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    sims </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">float</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(q_emb </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">@</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> g_emb) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> g_emb </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> g_embs]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(sims) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(sims)</span></span></code></pre>
+      <p>如果答案暗示的问题与被问的不同，相关性下降。</p>
+      <h3 id="步骤-3g-eval自定义指标">
+        <a href="#步骤-3g-eval自定义指标">步骤 3：G-Eval自定义指标</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deepeval.metrics </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> GEval</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deepeval.test_case </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> LLMTestCaseParams, LLMTestCase</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">metric </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> GEval(</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Correctness"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    criteria</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"The answer should be factually accurate and match the expected output."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    evaluation_steps</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        "Read the expected output."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        "Read the actual output."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        "List factual claims in the actual output."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        "For each claim, mark supported or unsupported by the expected output."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        "Return score = fraction supported."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ],</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    evaluation_params</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[LLMTestCaseParams.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">INPUT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, LLMTestCaseParams.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">ACTUAL_OUTPUT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, LLMTestCaseParams.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">EXPECTED_OUTPUT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">test </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> LLMTestCase(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">input</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"When was the first iPhone released?"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">                   actual_output</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"June 29th, 2007."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">                   expected_output</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"June 29, 2007."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">metric.measure(test)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(metric.score, metric.reason)</span></span></code></pre>
+      <p>评估步骤就是评分标准。显式步骤比隐式”评分0-1”提示更稳定。</p>
+      <h3 id="步骤-4ci门控"><a href="#步骤-4ci门控">步骤 4：CI门控</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> test_rag_system</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    cases </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> load_regression_cases()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> case </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cases:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        faith_score </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> faithfulness(case.answer, case.context, llm)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        assert</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> faith_score </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.85</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"faithfulness regression on </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">case.id</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span></code></pre>
+      <p>作为pytest文件发布。在每个PR上运行。在回归时阻止合并。</p>
+      <h2 id="陷阱"><a href="#陷阱">陷阱</a></h2>
+      <ul>
+        <li><strong>无校准。</strong> 与人工标签0.3相关的评判是噪声。发布前要求校准运行。</li>
+        <li>
+          <strong>自评估。</strong> 使用相同LLM生成和评判使分数膨胀10-20%。使用不同模型家族做评判。
+        </li>
+        <li>
+          <strong>成对评判中的位置偏差。</strong>
+          评判者偏好首先呈现的选项。始终随机化顺序并双向运行。
+        </li>
+        <li>
+          <strong>原始聚合隐藏失败。</strong> 平均分0.85通常隐藏5%的灾难性失败。始终检查底部分位数。
+        </li>
+        <li>
+          <strong>金标准数据集腐烂。</strong>
+          未版本化的评估集随时间漂移，破坏纵向比较。每次变更都标记数据集。
+        </li>
+        <li>
+          <strong>LLM成本。</strong> 大规模时，评判调用主导成本。使用满足校准阈值的最便宜模型。
+        </li>
+      </ul>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>用例</th>
+            <th>框架</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>RAG质量监控</td>
+            <td>RAGAS（4指标）</td>
+          </tr>
+          <tr>
+            <td>CI/CD回归门控</td>
+            <td>DeepEval + pytest</td>
+          </tr>
+          <tr>
+            <td>自定义领域标准</td>
+            <td>DeepEval中的G-Eval</td>
+          </tr>
+          <tr>
+            <td>在线实时流量监控</td>
+            <td>RAGAS无参考模式</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >工参与抽查
+            </td>
+            <td>LangSmith或Phoenix</td>
+          </tr>
+          <tr>
+            <td>
+              红队/<span
+                class="term-tip"
+                data-term="安全"
+                data-module="cpp"
+                data-def="安全性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">安全</abbr></span
+              >评估
+            </td>
+            <td>Promptfoo + DeepEval</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <span
+          class="term-tip"
+          data-term="典型"
+          data-module="cpp"
+          data-def="典型的"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">典型</abbr></span
+        >技术<span
+          class="term-tip"
+          data-term="栈"
+          data-module="c"
+          data-def="后进先出的数据结构"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">栈</abbr></span
+        >：RAGAS用于<span
+          class="term-tip"
+          data-term="监控"
+          data-module="devops"
+          data-def="持续采集和展示系统指标（CPU、内存、延迟等）的过程，用于了解系统运行状态"
+          data-slug="devops/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">监控</abbr></span
+        >，DeepEval用于CI，G-Eval用于新<span
+          class="term-tip"
+          data-term="维度"
+          data-module="cpp"
+          data-def="维度数量"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">维度</abbr></span
+        >。运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >全部三个；它们的分歧是有用的。
+      </p>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>
+        将<span
+          class="term-tip"
+          data-term="结果"
+          data-module="c"
+          data-def="函数返回的值"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结果</abbr></span
+        >保存为 <code>outputs/skill-eval-architect.md</code>。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >。</strong
+          >
+          在10个带已知<span
+            class="term-tip"
+            data-term="幻觉"
+            data-module="agent"
+            data-def="大语言模型生成看似合理但实际不正确或虚构内容的现象"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">幻觉</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="RAG"
+            data-module="agent"
+            data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">RAG</abbr></span
+          >示例上使用RAGAS。<span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >忠实<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >指标<span
+            class="term-tip"
+            data-term="捕获"
+            data-module="cpp"
+            data-def="lambda 捕获的变量"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">捕获</abbr></span
+          >每一个。
+        </li>
+        <li>
+          <strong>中等。</strong> 手工标注50个QA答案0-1正确性。用G-Eval评分。测量评判与<span
+            class="term-tip"
+            data-term="人"
+            data-module="github"
+            data-def="人"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">人</abbr></span
+          >工之间的Spearman rho。
+        </li>
+        <li>
+          <strong>困难。</strong> 用DeepEval构建pytest CI门控。故意<span
+            class="term-tip"
+            data-term="退化"
+            data-module="c"
+            data-def="数组退化为指针"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">退化</abbr></span
+          >检索器。<span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >门控<span
+            class="term-tip"
+            data-term="失败"
+            data-module="github"
+            data-def="失败"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">失败</abbr></span
+          >。<span
+            class="term-tip"
+            data-term="通过"
+            data-module="github"
+            data-def="通过"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">通过</abbr></span
+          >阈<span
+            class="term-tip"
+            data-term="值"
+            data-module="cpp"
+            data-def="值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">值</abbr></span
+          >检查添加底<span
+            class="term-tip"
+            data-term="部分"
+            data-module="github"
+            data-def="部分的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">部分</abbr></span
+          >位数<span
+            class="term-tip"
+            data-term="告警"
+            data-module="devops"
+            data-def="当监控指标超过预设阈值时自动发送通知的机制，确保运维团队及时响应异常"
+            data-slug="devops/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">告警</abbr></span
+          >。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>LLM-as-judge</td>
+            <td>用LLM评分</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >评判模型按<span
+                class="term-tip"
+                data-term="评分"
+                data-module="vue3"
+                data-def="计算分数"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评分</abbr></span
+              >标准<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >输出评分0-1。
+            </td>
+          </tr>
+          <tr>
+            <td>RAGAS</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="RAG"
+                data-module="agent"
+                data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">RAG</abbr></span
+              >指标<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+            <td>
+              4个无参考<span
+                class="term-tip"
+                data-term="RAG"
+                data-module="agent"
+                data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">RAG</abbr></span
+              >指标的开<span
+                class="term-tip"
+                data-term="源"
+                data-module="cpp"
+                data-def="源"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">源</abbr></span
+              >评估<span
+                class="term-tip"
+                data-term="框架"
+                data-module="cpp"
+                data-def="框架"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">框架</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              忠实<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </td>
+            <td>答案有依据吗？</td>
+            <td>
+              答案主张被检索<span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >蕴含的<span
+                class="term-tip"
+                data-term="比例"
+                data-module="vue3"
+                data-def="缩放比例"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">比例</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >精确<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </td>
+            <td>
+              检索的<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >相关吗？
+            </td>
+            <td>
+              top-K块中实际重要的<span
+                class="term-tip"
+                data-term="比例"
+                data-module="vue3"
+                data-def="缩放比例"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">比例</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >召回
+            </td>
+            <td>检索找到了一切吗？</td>
+            <td>
+              金<span
+                class="term-tip"
+                data-term="标准"
+                data-module="c"
+                data-def="语言规范文档"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标准</abbr></span
+              >答案主张被检索<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >支持的<span
+                class="term-tip"
+                data-term="比例"
+                data-module="vue3"
+                data-def="缩放比例"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">比例</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>G-Eval</td>
+            <td>自定义LLM评判</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="评分"
+                data-module="vue3"
+                data-def="计算分数"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评分</abbr></span
+              >标准 +
+              <span
+                class="term-tip"
+                data-term="思维链"
+                data-module="agent"
+                data-def="通过在提示中展示逐步推理过程来引导模型进行复杂推理的技术"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">思维链</abbr></span
+              >评估<span
+                class="term-tip"
+                data-term="步骤"
+                data-module="vue3"
+                data-def="处理步骤"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">步骤</abbr></span
+              >
+              + 0-1评分。
+            </td>
+          </tr>
+          <tr>
+            <td>校准</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="信任"
+                data-module="html5"
+                data-def="网站可信度"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信任</abbr></span
+              >但<span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >
+            </td>
+            <td>
+              评判分数与<span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >工分数之间的Spearman相关。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2309.15217">Es et al. (2023). RAGAS</a> — RAGAS论文。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2303.16634">Liu et al. (2023). G-Eval</a> — G-Eval论文。
+        </li>
+        <li>
+          <a href="https://deepeval.com/docs/metrics-introduction">DeepEval文档</a> — 开<span
+            class="term-tip"
+            data-term="源"
+            data-module="cpp"
+            data-def="源"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">源</abbr></span
+          >生产技术<span
+            class="term-tip"
+            data-term="栈"
+            data-module="c"
+            data-def="后进先出的数据结构"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">栈</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2306.05685">Zheng et al. (2023). Judging LLM-as-a-Judge</a>
+          — 偏差、校准、<span
+            class="term-tip"
+            data-term="限制"
+            data-module="github"
+            data-def="限制"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">限制</abbr></span
+          >。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

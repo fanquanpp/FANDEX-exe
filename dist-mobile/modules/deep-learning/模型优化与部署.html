@@ -1,0 +1,1745 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>模型优化与部署</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">模型优化与部署</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">模型量化、剪枝、知识蒸馏、ONNX、TensorRT部署优化。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-模型优化概述"><a href="#1-模型优化概述">1. 模型优化概述</a></h2>
+      <p>模型优化旨在在<strong>保持精度</strong>的前提下，减少模型大小、降低延迟、减少功耗。</p>
+      <p>
+        精度与效率是模型优化的两端，量化、剪枝、蒸馏等技术在两者之间寻找平衡：压缩模型体积、加速推理速度，以尽可能小的精度损失换取效率提升。
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th align="left">优化维度</th>
+            <th align="left">目标</th>
+            <th align="left">方法</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="left">模型大小</td>
+            <td align="left">减少存储和内存</td>
+            <td align="left">量化、剪枝、蒸馏</td>
+          </tr>
+          <tr>
+            <td align="left">推理延迟</td>
+            <td align="left">减少响应时间</td>
+            <td align="left">算子融合、量化</td>
+          </tr>
+          <tr>
+            <td align="left">吞吐量</td>
+            <td align="left">增加QPS</td>
+            <td align="left">批处理、并行</td>
+          </tr>
+          <tr>
+            <td align="left">功耗</td>
+            <td align="left">降低能耗</td>
+            <td align="left">量化、稀疏计算</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="2-量化"><a href="#2-量化">2. 量化</a></h2>
+      <h3 id="21-量化原理"><a href="#21-量化原理">2.1 量化原理</a></h3>
+      <p>将浮点参数映射到低精度整数：</p>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.7167em; vertical-align: -0.2861em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal">x</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.0359em"
+                              >q</span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1.2em; vertical-align: -0.35em"></span
+              ><span class="mord text"><span class="mord">round</span></span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="minner"
+                ><span class="mopen delimcenter" style="top: 0em"
+                  ><span class="delimsizing size1">(</span></span
+                ><span class="mord"
+                  ><span class="mopen nulldelimiter"></span
+                  ><span class="mfrac"
+                    ><span class="vlist-t vlist-t2"
+                      ><span class="vlist-r"
+                        ><span class="vlist" style="height: 0.6954em"
+                          ><span style="top: -2.655em"
+                            ><span class="pstrut" style="height: 3em"></span
+                            ><span class="sizing reset-size6 size3 mtight"
+                              ><span class="mord mtight"
+                                ><span class="mord mathnormal mtight" style="margin-right: 0.0576em"
+                                  >S</span
+                                ></span
+                              ></span
+                            ></span
+                          ><span style="top: -3.23em"
+                            ><span class="pstrut" style="height: 3em"></span
+                            ><span
+                              class="frac-line"
+                              style="border-bottom-width: 0.04em"
+                            ></span></span
+                          ><span style="top: -3.394em"
+                            ><span class="pstrut" style="height: 3em"></span
+                            ><span class="sizing reset-size6 size3 mtight"
+                              ><span class="mord mtight"
+                                ><span class="mord mathnormal mtight">x</span></span
+                              ></span
+                            ></span
+                          ></span
+                        ><span class="vlist-s">​</span></span
+                      ><span class="vlist-r"
+                        ><span class="vlist" style="height: 0.345em"
+                          ><span></span></span></span></span></span
+                  ><span class="mclose nulldelimiter"></span></span
+                ><span class="mclose delimcenter" style="top: 0em"
+                  ><span class="delimsizing size1">)</span></span
+                ></span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">+</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.6833em"></span
+              ><span class="mord mathnormal" style="margin-right: 0.0715em">Z</span></span
+            ></span
+          ></span
+        >
+      </p>
+      <p>
+        其中
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.6833em"></span
+              ><span class="mord mathnormal" style="margin-right: 0.0576em">S</span></span
+            ></span
+          ></span
+        >
+        为缩放因子（Scale），<span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.6833em"></span
+              ><span class="mord mathnormal" style="margin-right: 0.0715em">Z</span></span
+            ></span
+          ></span
+        >
+        为零点（Zero Point）。
+      </p>
+      <p><strong>反量化</strong>：</p>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.4831em"></span
+              ><span class="mord mathnormal">x</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">≈</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.6833em"></span
+              ><span class="mord mathnormal" style="margin-right: 0.0576em">S</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">⋅</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1.0361em; vertical-align: -0.2861em"></span
+              ><span class="mopen">(</span
+              ><span class="mord"
+                ><span class="mord mathnormal">x</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.0359em"
+                              >q</span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">−</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord mathnormal" style="margin-right: 0.0715em">Z</span
+              ><span class="mclose">)</span></span
+            ></span
+          ></span
+        >
+      </p>
+      <h3 id="22-量化类型"><a href="#22-量化类型">2.2 量化类型</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th align="left">类型</th>
+            <th align="left">说明</th>
+            <th align="left">精度损失</th>
+            <th align="left">难度</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="left">训练后量化（PTQ）</td>
+            <td align="left">训练完成后量化</td>
+            <td align="left">中</td>
+            <td align="left">低</td>
+          </tr>
+          <tr>
+            <td align="left">量化感知训练（QAT）</td>
+            <td align="left">训练时模拟量化</td>
+            <td align="left">小</td>
+            <td align="left">高</td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="动态"
+                data-module="github"
+                data-def="动态的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">动态</abbr></span
+              >量化
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="运行时"
+                data-module="c"
+                data-def="程序执行的阶段"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">运行时</abbr></span
+              >量化权重
+            </td>
+            <td align="left">小</td>
+            <td align="left">低</td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="静态"
+                data-module="cpp"
+                data-def="静态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">静态</abbr></span
+              >量化
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="离线"
+                data-module="github"
+                data-def="离线的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">离线</abbr></span
+              >校准量化<span
+                class="term-tip"
+                data-term="参数"
+                data-module="c"
+                data-def="函数定义时的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参数</abbr></span
+              >
+            </td>
+            <td align="left">中</td>
+            <td align="left">中</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="23-ptq训练后量化"><a href="#23-ptq训练后量化">2.3 PTQ（训练后量化）</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.quantization </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quant</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 静态量化</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model.eval()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model.qconfig </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quant.get_default_qconfig(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'fbgemm'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">prepared </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quant.prepare(model)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 用校准数据运行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">with</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.no_grad():</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> calib_loader:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        prepared(batch)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">quantized </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quant.convert(prepared)</span></span></code></pre>
+      <h3 id="24-qat量化感知训练"><a href="#24-qat量化感知训练">2.4 QAT（量化感知训练）</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model.train()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model.qconfig </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quant.get_default_qat_qconfig(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'fbgemm'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">prepared </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quant.prepare_qat(model)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 正常训练</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> epoch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(num_epochs):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> train_loader:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        loss </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> train_step(prepared, batch)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">quantized </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> quant.convert(prepared)</span></span></code></pre>
+      <p>
+        <strong>伪量化</strong>：在前向传播中<span
+          class="term-tip"
+          data-term="模拟"
+          data-module="cpp"
+          data-def="模拟"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">模拟</abbr></span
+        >量化<span
+          class="term-tip"
+          data-term="效果"
+          data-module="cpp"
+          data-def="效果作用"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">效果</abbr></span
+        >，反向传播使用STE（Straight-Through Estimator）。
+      </p>
+      <h3 id="25-量化精度对比"><a href="#25-量化精度对比">2.5 量化精度对比</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th align="left">
+              精<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </th>
+            <th align="left">
+              每<span
+                class="term-tip"
+                data-term="参数"
+                data-module="c"
+                data-def="函数定义时的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参数</abbr></span
+              >比特
+            </th>
+            <th align="left">相对FP32内存</th>
+            <th align="left">
+              <span
+                class="term-tip"
+                data-term="典型"
+                data-module="cpp"
+                data-def="典型的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">典型</abbr></span
+              >精<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >损失
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="left">FP32</td>
+            <td align="left">32bit</td>
+            <td align="left">1×</td>
+            <td align="left">—</td>
+          </tr>
+          <tr>
+            <td align="left">FP16</td>
+            <td align="left">16bit</td>
+            <td align="left">0.5×</td>
+            <td align="left">&#x3C;1%</td>
+          </tr>
+          <tr>
+            <td align="left">INT8</td>
+            <td align="left">8bit</td>
+            <td align="left">0.25×</td>
+            <td align="left">1~3%</td>
+          </tr>
+          <tr>
+            <td align="left">INT4</td>
+            <td align="left">4bit</td>
+            <td align="left">0.125×</td>
+            <td align="left">3~8%</td>
+          </tr>
+          <tr>
+            <td align="left">
+              二<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >
+            </td>
+            <td align="left">1bit</td>
+            <td align="left">0.03×</td>
+            <td align="left">>10%</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="3-剪枝"><a href="#3-剪枝">3. 剪枝</a></h2>
+      <h3 id="31-剪枝类型"><a href="#31-剪枝类型">3.1 剪枝类型</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th align="left">
+              <span
+                class="term-tip"
+                data-term="类型"
+                data-module="c"
+                data-def="数据的分类"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型</abbr></span
+              >
+            </th>
+            <th align="left">
+              粒<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </th>
+            <th align="left">说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="left">
+              非<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >化剪枝
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >个权重
+            </td>
+            <td align="left">
+              灵活但<span
+                class="term-tip"
+                data-term="硬件"
+                data-module="github"
+                data-def="硬件设备"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">硬件</abbr></span
+              >不友好
+            </td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >化剪枝
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="通道"
+                data-module="github"
+                data-def="通道"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通道</abbr></span
+              >/层
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="硬件"
+                data-module="github"
+                data-def="硬件设备"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">硬件</abbr></span
+              >友好，实际加速
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="32-剪枝策略"><a href="#32-剪枝策略">3.2 剪枝策略</a></h3>
+      <p>
+        <strong
+          >幅<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >剪枝</strong
+        >：移除绝<span
+          class="term-tip"
+          data-term="对"
+          data-module="github"
+          data-def="对"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对</abbr></span
+        >值<span
+          class="term-tip"
+          data-term="最小"
+          data-module="github"
+          data-def="最小的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">最小</abbr></span
+        >的权重
+      </p>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.9805em; vertical-align: -0.2861em"></span
+              ><span class="mord"
+                ><span class="mord text"><span class="mord">mask</span></span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3117em"
+                        ><span style="top: -2.55em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0572em"
+                                >ij</span
+                              ></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 3em; vertical-align: -1.25em"></span
+              ><span class="minner"
+                ><span class="mopen delimcenter" style="top: 0em"
+                  ><span class="delimsizing size4">{</span></span
+                ><span class="mord"
+                  ><span class="mtable"
+                    ><span class="col-align-l"
+                      ><span class="vlist-t vlist-t2"
+                        ><span class="vlist-r"
+                          ><span class="vlist" style="height: 1.69em"
+                            ><span style="top: -3.69em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"><span class="mord">1</span></span></span
+                            ><span style="top: -2.25em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"><span class="mord">0</span></span></span
+                            ></span
+                          ><span class="vlist-s">​</span></span
+                        ><span class="vlist-r"
+                          ><span class="vlist" style="height: 1.19em"
+                            ><span></span></span></span></span></span
+                    ><span class="arraycolsep" style="width: 1em"></span
+                    ><span class="col-align-l"
+                      ><span class="vlist-t vlist-t2"
+                        ><span class="vlist-r"
+                          ><span class="vlist" style="height: 1.69em"
+                            ><span style="top: -3.69em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"
+                                ><span class="mord">∣</span
+                                ><span class="mord"
+                                  ><span class="mord mathnormal" style="margin-right: 0.0269em"
+                                    >w</span
+                                  ><span class="msupsub"
+                                    ><span class="vlist-t vlist-t2"
+                                      ><span class="vlist-r"
+                                        ><span class="vlist" style="height: 0.3117em"
+                                          ><span
+                                            style="
+                                              top: -2.55em;
+                                              margin-left: -0.0269em;
+                                              margin-right: 0.05em;
+                                            "
+                                            ><span class="pstrut" style="height: 2.7em"></span
+                                            ><span class="sizing reset-size6 size3 mtight"
+                                              ><span class="mord mtight"
+                                                ><span
+                                                  class="mord mathnormal mtight"
+                                                  style="margin-right: 0.0572em"
+                                                  >ij</span
+                                                ></span
+                                              ></span
+                                            ></span
+                                          ></span
+                                        ><span class="vlist-s">​</span></span
+                                      ><span class="vlist-r"
+                                        ><span class="vlist" style="height: 0.2861em"
+                                          ><span></span></span></span></span></span></span
+                                ><span class="mord">∣</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mrel">></span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mord mathnormal" style="margin-right: 0.1132em"
+                                  >τ</span
+                                ></span
+                              ></span
+                            ><span style="top: -2.25em"
+                              ><span class="pstrut" style="height: 3.008em"></span
+                              ><span class="mord"
+                                ><span class="mord">∣</span
+                                ><span class="mord"
+                                  ><span class="mord mathnormal" style="margin-right: 0.0269em"
+                                    >w</span
+                                  ><span class="msupsub"
+                                    ><span class="vlist-t vlist-t2"
+                                      ><span class="vlist-r"
+                                        ><span class="vlist" style="height: 0.3117em"
+                                          ><span
+                                            style="
+                                              top: -2.55em;
+                                              margin-left: -0.0269em;
+                                              margin-right: 0.05em;
+                                            "
+                                            ><span class="pstrut" style="height: 2.7em"></span
+                                            ><span class="sizing reset-size6 size3 mtight"
+                                              ><span class="mord mtight"
+                                                ><span
+                                                  class="mord mathnormal mtight"
+                                                  style="margin-right: 0.0572em"
+                                                  >ij</span
+                                                ></span
+                                              ></span
+                                            ></span
+                                          ></span
+                                        ><span class="vlist-s">​</span></span
+                                      ><span class="vlist-r"
+                                        ><span class="vlist" style="height: 0.2861em"
+                                          ><span></span></span></span></span></span></span
+                                ><span class="mord">∣</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mrel">≤</span
+                                ><span class="mspace" style="margin-right: 0.2778em"></span
+                                ><span class="mord mathnormal" style="margin-right: 0.1132em"
+                                  >τ</span
+                                ></span
+                              ></span
+                            ></span
+                          ><span class="vlist-s">​</span></span
+                        ><span class="vlist-r"
+                          ><span class="vlist" style="height: 1.19em"
+                            ><span></span></span></span></span></span></span></span
+                ><span class="mclose nulldelimiter"></span></span></span></span
+        ></span>
+      </p>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="迭代"
+            data-module="github"
+            data-def="迭代"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">迭代</abbr></span
+          >剪枝</strong
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. 训练模型至收敛</span></span>
+<span class="line"><span>2. 剪枝：移除p%最小权重</span></span>
+<span class="line"><span>3. 微调：恢复精度</span></span>
+<span class="line"><span>4. 重复2-3直到目标稀疏度</span></span></code></pre>
+      <h3 id="33-结构化剪枝"><a href="#33-结构化剪枝">3.3 结构化剪枝</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 基于L1范数的通道剪枝</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.nn.utils.prune </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> prune</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 非结构化</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">prune.l1_unstructured(model.fc1, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'weight'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">amount</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 结构化（整个通道）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">prune.ln_structured(model.fc1, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'weight'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">amount</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">n</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="34-稀疏训练"><a href="#34-稀疏训练">3.4 稀疏训练</a></h3>
+      <p><strong>RigL</strong>：周期性移除和生长权重</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. 前向+反向传播</span></span>
+<span class="line"><span>2. 移除最小幅度的权重</span></span>
+<span class="line"><span>3. 在梯度最大的位置生长新权重</span></span>
+<span class="line"><span>4. 保持恒定稀疏度</span></span></code></pre>
+      <h2 id="4-知识蒸馏"><a href="#4-知识蒸馏">4. 知识蒸馏</a></h2>
+      <h3 id="41-基本原理"><a href="#41-基本原理">4.1 基本原理</a></h3>
+      <p>
+        用**大模型（教师）<strong
+          ><span
+            class="term-tip"
+            data-term="指导"
+            data-module="github"
+            data-def="指导"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">指导</abbr></span
+          ></strong
+        >小模型（学生）**<span
+          class="term-tip"
+          data-term="训练"
+          data-module="github"
+          data-def="培训"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">训练</abbr></span
+        >：
+      </p>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.6833em"></span
+              ><span class="mord mathcal">L</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.4445em"></span
+              ><span class="mord mathnormal" style="margin-right: 0.0037em">α</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">⋅</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord"
+                ><span class="mord mathcal">L</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3283em"
+                        ><span style="top: -2.55em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0715em"
+                                >C</span
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0576em"
+                                >E</span
+                              ></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mopen">(</span
+              ><span class="mord mathnormal" style="margin-right: 0.0359em">y</span
+              ><span class="mpunct">,</span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.0359em">y</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: -0.0359em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">s</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mclose">)</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">+</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mopen">(</span><span class="mord">1</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">−</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord mathnormal" style="margin-right: 0.0037em">α</span
+              ><span class="mclose">)</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">⋅</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.8141em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+                ><span class="msupsub"
+                  ><span class="vlist-t"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.8141em"
+                        ><span style="top: -3.063em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">2</span></span
+                          ></span
+                        ></span
+                      ></span
+                    ></span
+                  ></span
+                ></span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">⋅</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord"
+                ><span class="mord mathcal">L</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3283em"
+                        ><span style="top: -2.55em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0715em"
+                                >K</span
+                              ><span class="mord mathnormal mtight">L</span></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mopen">(</span
+              ><span class="mord mathnormal" style="margin-right: 0.0359em">σ</span
+              ><span class="mopen">(</span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.044em">z</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2806em"
+                        ><span style="top: -2.55em; margin-left: -0.044em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">t</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mord">/</span
+              ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+              ><span class="mclose">)</span><span class="mpunct">,</span
+              ><span class="mspace" style="margin-right: 0.1667em"></span
+              ><span class="mord mathnormal" style="margin-right: 0.0359em">σ</span
+              ><span class="mopen">(</span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.044em">z</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: -0.044em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">s</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mord">/</span
+              ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+              ><span class="mclose">))</span></span
+            ></span
+          ></span
+        >
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th align="left">
+              <span
+                class="term-tip"
+                data-term="符号"
+                data-module="c"
+                data-def="标识符的内部表示"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">符号</abbr></span
+              >
+            </th>
+            <th align="left">含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="left">
+              <span class="katex"
+                ><span class="katex-html" aria-hidden="true"
+                  ><span class="base"
+                    ><span class="strut" style="height: 0.625em; vertical-align: -0.1944em"></span
+                    ><span class="mord"
+                      ><span class="mord mathnormal" style="margin-right: 0.0359em">y</span
+                      ><span class="msupsub"
+                        ><span class="vlist-t vlist-t2"
+                          ><span class="vlist-r"
+                            ><span class="vlist" style="height: 0.1514em"
+                              ><span
+                                style="top: -2.55em; margin-left: -0.0359em; margin-right: 0.05em"
+                                ><span class="pstrut" style="height: 2.7em"></span
+                                ><span class="sizing reset-size6 size3 mtight"
+                                  ><span class="mord mathnormal mtight">s</span></span
+                                ></span
+                              ></span
+                            ><span class="vlist-s">​</span></span
+                          ><span class="vlist-r"
+                            ><span class="vlist" style="height: 0.15em"
+                              ><span></span></span></span></span></span></span></span></span
+              ></span>
+            </td>
+            <td align="left">
+              学生模型<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span class="katex"
+                ><span class="katex-html" aria-hidden="true"
+                  ><span class="base"
+                    ><span class="strut" style="height: 0.625em; vertical-align: -0.1944em"></span
+                    ><span class="mord"
+                      ><span class="mord mathnormal" style="margin-right: 0.044em">z</span
+                      ><span class="msupsub"
+                        ><span class="vlist-t vlist-t2"
+                          ><span class="vlist-r"
+                            ><span class="vlist" style="height: 0.2806em"
+                              ><span
+                                style="top: -2.55em; margin-left: -0.044em; margin-right: 0.05em"
+                                ><span class="pstrut" style="height: 2.7em"></span
+                                ><span class="sizing reset-size6 size3 mtight"
+                                  ><span class="mord mathnormal mtight">t</span></span
+                                ></span
+                              ></span
+                            ><span class="vlist-s">​</span></span
+                          ><span class="vlist-r"
+                            ><span class="vlist" style="height: 0.15em"
+                              ><span></span></span></span></span></span></span
+                    ><span class="mpunct">,</span
+                    ><span class="mspace" style="margin-right: 0.1667em"></span
+                    ><span class="mord"
+                      ><span class="mord mathnormal" style="margin-right: 0.044em">z</span
+                      ><span class="msupsub"
+                        ><span class="vlist-t vlist-t2"
+                          ><span class="vlist-r"
+                            ><span class="vlist" style="height: 0.1514em"
+                              ><span
+                                style="top: -2.55em; margin-left: -0.044em; margin-right: 0.05em"
+                                ><span class="pstrut" style="height: 2.7em"></span
+                                ><span class="sizing reset-size6 size3 mtight"
+                                  ><span class="mord mathnormal mtight">s</span></span
+                                ></span
+                              ></span
+                            ><span class="vlist-s">​</span></span
+                          ><span class="vlist-r"
+                            ><span class="vlist" style="height: 0.15em"
+                              ><span></span></span></span></span></span></span></span></span
+              ></span>
+            </td>
+            <td align="left">教师/学生logits</td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span class="katex"
+                ><span class="katex-html" aria-hidden="true"
+                  ><span class="base"
+                    ><span class="strut" style="height: 0.6833em"></span
+                    ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span></span
+                  ></span
+                ></span
+              >
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="温度参数"
+                data-module="agent"
+                data-def="控制模型生成随机性的超参数，值越高输出越多样，值越低输出越确定"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">温度参数</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span class="katex"
+                ><span class="katex-html" aria-hidden="true"
+                  ><span class="base"
+                    ><span class="strut" style="height: 0.4306em"></span
+                    ><span class="mord mathnormal" style="margin-right: 0.0037em">α</span></span
+                  ></span
+                ></span
+              >
+            </td>
+            <td align="left">损失权重</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="42-温度softmax"><a href="#42-温度softmax">4.2 温度Softmax</a></h3>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord mathnormal" style="margin-right: 0.0359em">σ</span
+              ><span class="mopen">(</span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.044em">z</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3117em"
+                        ><span style="top: -2.55em; margin-left: -0.044em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">i</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mord">/</span
+              ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+              ><span class="mclose">)</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1.9079em; vertical-align: -0.8372em"></span
+              ><span class="mord"
+                ><span class="mopen nulldelimiter"></span
+                ><span class="mfrac"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 1.0707em"
+                        ><span style="top: -2.485em"
+                          ><span class="pstrut" style="height: 3em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mop mtight"
+                                ><span
+                                  class="mop op-symbol small-op mtight"
+                                  style="position: relative; top: 0em"
+                                  >∑</span
+                                ><span class="msupsub"
+                                  ><span class="vlist-t vlist-t2"
+                                    ><span class="vlist-r"
+                                      ><span class="vlist" style="height: 0.1496em"
+                                        ><span
+                                          style="
+                                            top: -2.1786em;
+                                            margin-left: 0em;
+                                            margin-right: 0.0714em;
+                                          "
+                                          ><span class="pstrut" style="height: 2.5em"></span
+                                          ><span class="sizing reset-size3 size1 mtight"
+                                            ><span
+                                              class="mord mathnormal mtight"
+                                              style="margin-right: 0.0572em"
+                                              >j</span
+                                            ></span
+                                          ></span
+                                        ></span
+                                      ><span class="vlist-s">​</span></span
+                                    ><span class="vlist-r"
+                                      ><span class="vlist" style="height: 0.4603em"
+                                        ><span></span></span></span></span></span></span
+                              ><span class="mspace mtight" style="margin-right: 0.1952em"></span
+                              ><span class="mord mtight"
+                                ><span class="mord mathnormal mtight">e</span
+                                ><span class="msupsub"
+                                  ><span class="vlist-t"
+                                    ><span class="vlist-r"
+                                      ><span class="vlist" style="height: 1.0071em"
+                                        ><span style="top: -3.0072em; margin-right: 0.0714em"
+                                          ><span class="pstrut" style="height: 2.5357em"></span
+                                          ><span class="sizing reset-size3 size1 mtight"
+                                            ><span class="mord mtight"
+                                              ><span class="mord mtight"
+                                                ><span
+                                                  class="mord mathnormal mtight"
+                                                  style="margin-right: 0.044em"
+                                                  >z</span
+                                                ><span class="msupsub"
+                                                  ><span class="vlist-t vlist-t2"
+                                                    ><span class="vlist-r"
+                                                      ><span class="vlist" style="height: 0.3448em"
+                                                        ><span
+                                                          style="
+                                                            top: -2.3448em;
+                                                            margin-left: -0.044em;
+                                                            margin-right: 0.1em;
+                                                          "
+                                                          ><span
+                                                            class="pstrut"
+                                                            style="height: 2.6595em"
+                                                          ></span
+                                                          ><span
+                                                            class="mord mathnormal mtight"
+                                                            style="margin-right: 0.0572em"
+                                                            >j</span
+                                                          ></span
+                                                        ></span
+                                                      ><span class="vlist-s">​</span></span
+                                                    ><span class="vlist-r"
+                                                      ><span class="vlist" style="height: 0.5092em"
+                                                        ><span></span></span></span></span></span></span
+                                              ><span class="mord mtight">/</span
+                                              ><span
+                                                class="mord mathnormal mtight"
+                                                style="margin-right: 0.1389em"
+                                                >T</span
+                                              ></span
+                                            ></span
+                                          ></span
+                                        ></span
+                                      ></span
+                                    ></span
+                                  ></span
+                                ></span
+                              ></span
+                            ></span
+                          ></span
+                        ><span style="top: -3.23em"
+                          ><span class="pstrut" style="height: 3em"></span
+                          ><span class="frac-line" style="border-bottom-width: 0.04em"></span></span
+                        ><span style="top: -3.394em"
+                          ><span class="pstrut" style="height: 3em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mtight"
+                                ><span class="mord mathnormal mtight">e</span
+                                ><span class="msupsub"
+                                  ><span class="vlist-t"
+                                    ><span class="vlist-r"
+                                      ><span class="vlist" style="height: 0.9667em"
+                                        ><span style="top: -2.9667em; margin-right: 0.0714em"
+                                          ><span class="pstrut" style="height: 2.5357em"></span
+                                          ><span class="sizing reset-size3 size1 mtight"
+                                            ><span class="mord mtight"
+                                              ><span class="mord mtight"
+                                                ><span
+                                                  class="mord mathnormal mtight"
+                                                  style="margin-right: 0.044em"
+                                                  >z</span
+                                                ><span class="msupsub"
+                                                  ><span class="vlist-t vlist-t2"
+                                                    ><span class="vlist-r"
+                                                      ><span class="vlist" style="height: 0.3448em"
+                                                        ><span
+                                                          style="
+                                                            top: -2.3448em;
+                                                            margin-left: -0.044em;
+                                                            margin-right: 0.1em;
+                                                          "
+                                                          ><span
+                                                            class="pstrut"
+                                                            style="height: 2.6595em"
+                                                          ></span
+                                                          ><span class="mord mathnormal mtight"
+                                                            >i</span
+                                                          ></span
+                                                        ></span
+                                                      ><span class="vlist-s">​</span></span
+                                                    ><span class="vlist-r"
+                                                      ><span class="vlist" style="height: 0.3147em"
+                                                        ><span></span></span></span></span></span></span
+                                              ><span class="mord mtight">/</span
+                                              ><span
+                                                class="mord mathnormal mtight"
+                                                style="margin-right: 0.1389em"
+                                                >T</span
+                                              ></span
+                                            ></span
+                                          ></span
+                                        ></span
+                                      ></span
+                                    ></span
+                                  ></span
+                                ></span
+                              ></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.8372em"
+                        ><span></span></span></span></span></span
+                ><span class="mclose nulldelimiter"></span></span></span></span
+        ></span>
+      </p>
+      <ul>
+        <li>
+          <span class="katex"
+            ><span class="katex-html" aria-hidden="true"
+              ><span class="base"
+                ><span class="strut" style="height: 0.7224em; vertical-align: -0.0391em"></span
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+                ><span class="mspace" style="margin-right: 0.2778em"></span
+                ><span class="mrel">></span
+                ><span class="mspace" style="margin-right: 0.2778em"></span></span
+              ><span class="base"
+                ><span class="strut" style="height: 0.6444em"></span
+                ><span class="mord">1</span></span
+              ></span
+            ></span
+          >：软化<span
+            class="term-tip"
+            data-term="概率"
+            data-module="github"
+            data-def="概率"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">概率</abbr></span
+          >分布，传递更<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >”暗<span
+            class="term-tip"
+            data-term="知识"
+            data-module="github"
+            data-def="知识"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">知识</abbr></span
+          >”
+        </li>
+        <li>
+          <span class="katex"
+            ><span class="katex-html" aria-hidden="true"
+              ><span class="base"
+                ><span class="strut" style="height: 0.6833em"></span
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">T</span
+                ><span class="mspace" style="margin-right: 0.2778em"></span
+                ><span class="mrel">=</span
+                ><span class="mspace" style="margin-right: 0.2778em"></span></span
+              ><span class="base"
+                ><span class="strut" style="height: 0.6444em"></span
+                ><span class="mord">1</span></span
+              ></span
+            ></span
+          >：标准Softmax
+        </li>
+      </ul>
+      <h3 id="43-蒸馏变体"><a href="#43-蒸馏变体">4.3 蒸馏变体</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th align="left">
+              <span
+                class="term-tip"
+                data-term="方法"
+                data-module="c"
+                data-def="关联到对象的函数"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">方法</abbr></span
+              >
+            </th>
+            <th align="left">
+              蒸馏<span
+                class="term-tip"
+                data-term="内容"
+                data-module="cpp"
+                data-def="内容部分"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内容</abbr></span
+              >
+            </th>
+            <th align="left">说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="响应"
+                data-module="vue3"
+                data-def="服务端响应"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">响应</abbr></span
+              >蒸馏
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="最终"
+                data-module="cpp"
+                data-def="最终的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最终</abbr></span
+              >输出logits
+            </td>
+            <td align="left">最基本</td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="特征"
+                data-module="c"
+                data-def="语言提供的功能"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特征</abbr></span
+              >蒸馏
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="中间"
+                data-module="github"
+                data-def="中间的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">中间</abbr></span
+              >层<span
+                class="term-tip"
+                data-term="特征"
+                data-module="c"
+                data-def="语言提供的功能"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特征</abbr></span
+              >
+            </td>
+            <td align="left">
+              传递<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >信息
+            </td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="关系"
+                data-module="cpp"
+                data-def="关系"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">关系</abbr></span
+              >蒸馏
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="样本"
+                data-module="data-analysis"
+                data-def="从总体中抽取的子集，统计量是描述样本特征的数量"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">样本</abbr></span
+              >间<span
+                class="term-tip"
+                data-term="关系"
+                data-module="cpp"
+                data-def="关系"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">关系</abbr></span
+              >
+            </td>
+            <td align="left">
+              传递相似性<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td align="left">自蒸馏</td>
+            <td align="left">同一模型不同层</td>
+            <td align="left">无需教师模型</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="5-onnx与部署"><a href="#5-onnx与部署">5. ONNX与部署</a></h2>
+      <h3 id="51-onnx导出"><a href="#51-onnx导出">5.1 ONNX导出</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.onnx</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">dummy_input </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.randn(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">224</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">224</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">torch.onnx.export(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    model, dummy_input, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"model.onnx"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    input_names</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'input'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    output_names</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'output'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    dynamic_axes</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'input'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'batch'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'output'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'batch'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}},</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    opset_version</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">14</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="52-onnx-runtime"><a href="#52-onnx-runtime">5.2 ONNX Runtime</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> onnxruntime </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ort</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">session </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ort.InferenceSession(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"model.onnx"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">input_name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> session.get_inputs()[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">].name</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">output </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> session.run(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, {input_name: input_data})</span></span></code></pre>
+      <h3 id="53-tensorrt"><a href="#53-tensorrt">5.3 TensorRT</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># ONNX → TensorRT</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tensorrt </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> trt</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">logger </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> trt.Logger(trt.Logger.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">WARNING</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">builder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> trt.Builder(logger)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">network </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> builder.create_network(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(trt.NetworkDefinitionCreationFlag.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">EXPLICIT_BATCH</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">parser </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> trt.OnnxParser(network, logger)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">with</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> open</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"model.onnx"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"rb"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> f:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    parser.parse(f.read())</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">config </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> builder.create_builder_config()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">config.set_memory_pool_limit(trt.MemoryPoolType.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">WORKSPACE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 30</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 1GB</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">engine </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> builder.build_serialized_network(network, config)</span></span></code></pre>
+      <h3 id="54-部署方案对比"><a href="#54-部署方案对比">5.4 部署方案对比</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th align="left">
+              <span
+                class="term-tip"
+                data-term="方案"
+                data-module="javascript"
+                data-def="数据结构定义"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">方案</abbr></span
+              >
+            </th>
+            <th align="left">
+              <span
+                class="term-tip"
+                data-term="延迟"
+                data-module="cpp"
+                data-def="延迟操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">延迟</abbr></span
+              >优化
+            </th>
+            <th align="left">
+              精<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </th>
+            <th align="left">易用性</th>
+            <th align="left">适用场景</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="left">PyTorch原生</td>
+            <td align="left">基准</td>
+            <td align="left">FP32</td>
+            <td align="left">高</td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="开发"
+                data-module="github"
+                data-def="开发"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">开发</abbr></span
+              >调试
+            </td>
+          </tr>
+          <tr>
+            <td align="left">ONNX Runtime</td>
+            <td align="left">2~3x</td>
+            <td align="left">FP32/FP16/INT8</td>
+            <td align="left">高</td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="通用"
+                data-module="cpp"
+                data-def="通用"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通用</abbr></span
+              >部署
+            </td>
+          </tr>
+          <tr>
+            <td align="left">TensorRT</td>
+            <td align="left">3~10x</td>
+            <td align="left">FP16/INT8</td>
+            <td align="left">中</td>
+            <td align="left">NVIDIA GPU</td>
+          </tr>
+          <tr>
+            <td align="left">OpenVINO</td>
+            <td align="left">3~8x</td>
+            <td align="left">FP16/INT8</td>
+            <td align="left">中</td>
+            <td align="left">Intel CPU/GPU</td>
+          </tr>
+          <tr>
+            <td align="left">TFLite</td>
+            <td align="left">2~5x</td>
+            <td align="left">INT8</td>
+            <td align="left">高</td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="移动端"
+                data-module="vue3"
+                data-def="移动设备"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">移动端</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td align="left">Core ML</td>
+            <td align="left">2~5x</td>
+            <td align="left">FP16/INT8</td>
+            <td align="left">高</td>
+            <td align="left">Apple设备</td>
+          </tr>
+        </tbody>
+      </table>
+    </article>
+  </body>
+</html>

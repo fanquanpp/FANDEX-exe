@@ -1,0 +1,324 @@
+---
+import Layout from '@/components/Layout.astro'
+import SEO from '@/components/SEO.astro'
+import { modules } from '@packages/shared/modules'
+---
+
+<Layout title="搜索">
+  <SEO slot="head" title="搜索 - FANDEX" description="全文搜索知识库" type="website" />
+  <div class="search-page">
+    <h1 class="search-title">搜索</h1>
+    <div class="search-filters">
+      <select id="filter-module" class="search-filter-select">
+        <option value="">全部模块</option>
+        {modules.map(m => <option value={m.id}>{m.title}</option>)}
+      </select>
+      <select id="filter-difficulty" class="search-filter-select">
+        <option value="">全部难度</option>
+        <option value="beginner">Beginner</option>
+        <option value="intermediate">Intermediate</option>
+        <option value="advanced">Advanced</option>
+      </select>
+      <select id="filter-mode" class="search-filter-select">
+        <option value="keyword">关键词搜索</option>
+        <option value="semantic">语义搜索</option>
+      </select>
+    </div>
+    <div id="search" class="search-container"></div>
+    <div id="semantic-results" class="semantic-results hidden"></div>
+    <noscript>
+      <p class="search-noscript">需要启用 JavaScript 才能使用搜索功能</p>
+    </noscript>
+  </div>
+</Layout>
+
+<style>
+.search-page {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-2xl);
+}
+
+.search-title {
+  font-family: var(--font-display);
+  font-size: 1.4em;
+  margin-bottom: var(--spacing-lg);
+}
+
+.search-filters {
+  display: flex;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.search-filter-select {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 0;
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-size: 0.85em;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.search-container {
+  min-height: 400px;
+}
+
+.search-noscript {
+  color: var(--color-text-tertiary);
+  text-align: center;
+  padding: var(--spacing-2xl);
+}
+
+.hidden {
+  display: none;
+}
+
+.semantic-results {
+  min-height: 200px;
+}
+
+.semantic-result-item {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--color-border-light);
+  transition: background-color 0.15s ease;
+}
+
+.semantic-result-item:hover {
+  background-color: var(--color-bg-hover);
+}
+
+.semantic-result-title {
+  font-family: var(--font-display);
+  font-size: 1em;
+  margin: 0 0 var(--spacing-xs);
+}
+
+.semantic-result-title a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.semantic-result-title a:hover {
+  text-decoration: underline;
+}
+
+.semantic-result-meta {
+  display: flex;
+  gap: var(--spacing-sm);
+  font-size: 0.8em;
+  color: var(--color-text-secondary);
+}
+
+.semantic-result-score {
+  font-size: 0.75em;
+  color: var(--color-text-tertiary);
+}
+
+.semantic-empty {
+  text-align: center;
+  padding: var(--spacing-2xl);
+  color: var(--color-text-tertiary);
+}
+
+.semantic-loading {
+  text-align: center;
+  padding: var(--spacing-2xl);
+  color: var(--color-text-secondary);
+}
+
+:global(.pagefind-ui) {
+  --pagefind-ui-scale: 1;
+  --pagefind-ui-primary: var(--color-primary);
+  --pagefind-ui-text: var(--color-text);
+  --pagefind-ui-background: var(--color-bg);
+  --pagefind-ui-border: var(--color-border);
+  --pagefind-ui-tag: var(--color-bg-card);
+  --pagefind-ui-border-width: 1px;
+  --pagefind-ui-border-radius: 4px;
+  --pagefind-ui-image-border-radius: 4px;
+  --pagefind-ui-image-box-ratio: 3 / 2;
+  --pagefind-ui-font: var(--font-display);
+}
+</style>
+
+<script>
+  /**
+   * 搜索页面初始化逻辑
+   *
+   * 支持两种搜索模式：
+   * - 关键词搜索：使用 Pagefind 全文索引
+   * - 语义搜索：使用 AI 嵌入向量计算相似度
+   *
+   * 流程：初始化 Pagefind -> 监听模式切换 -> 执行搜索 -> 渲染结果
+   */
+
+  /** Pagefind UI 实例 */
+  let pagefindUI: Record<string, Function> | null = null;
+
+  /** 当前搜索模式 */
+  let currentMode = 'keyword';
+
+  /** 搜索防抖定时器 */
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  async function initPagefind() {
+    const base = import.meta.env.BASE_URL;
+    const searchEl = document.getElementById('search');
+    const semanticEl = document.getElementById('semantic-results');
+    if (!searchEl || !semanticEl) return;
+
+    if (import.meta.env.DEV) {
+      searchEl.innerHTML = '<p style="color:var(--color-text-tertiary);text-align:center;padding:2em;">开发模式下未生成搜索索引，请运行 npm.cmd run build 后使用。</p>';
+      return;
+    }
+
+    try {
+      const pagefind = await import(/* @vite-ignore */ `${base}pagefind/pagefind.js`);
+      await pagefind.options({ baseUrl: base, basePath: `${base}pagefind/` });
+      await pagefind.init();
+
+      pagefindUI = new (pagefind as Record<string, unknown>).UI({
+        element: '#search',
+        showSubResults: true,
+        showImages: false,
+      }) as Record<string, Function>;
+
+      const filterModule = document.getElementById('filter-module') as HTMLSelectElement;
+      const filterDifficulty = document.getElementById('filter-difficulty') as HTMLSelectElement;
+      const filterMode = document.getElementById('filter-mode') as HTMLSelectElement;
+
+      /**
+       * 应用 Pagefind 过滤器
+       */
+      function applyFilters() {
+        if (!pagefindUI) return;
+        const filters: Record<string, string> = {};
+        if (filterModule?.value) filters.module = filterModule.value;
+        if (filterDifficulty?.value) filters.difficulty = filterDifficulty.value;
+        pagefindUI.filter(filters);
+      }
+
+      /**
+       * 切换搜索模式
+       *
+       * 流程：更新当前模式 -> 切换容器可见性 -> 如需语义搜索则触发
+       */
+      function switchMode() {
+        const mode = filterMode?.value || 'keyword';
+        currentMode = mode;
+
+        if (mode === 'semantic') {
+          searchEl.classList.add('hidden');
+          semanticEl.classList.remove('hidden');
+        } else {
+          searchEl.classList.remove('hidden');
+          semanticEl.classList.add('hidden');
+        }
+      }
+
+      filterModule?.addEventListener('change', applyFilters);
+      filterDifficulty?.addEventListener('change', applyFilters);
+      filterMode?.addEventListener('change', switchMode);
+
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get('q');
+      if (q) {
+        pagefindUI.triggerSearch(q);
+      }
+    } catch (e) {
+      const searchEl = document.getElementById('search');
+      if (searchEl) {
+        searchEl.innerHTML = '<p style="color:var(--color-text-tertiary);text-align:center;padding:2em;">搜索索引尚未构建，请先运行 npm run build</p>';
+      }
+    }
+  }
+
+  /**
+   * 执行语义搜索
+   *
+   * 输入：查询字符串
+   * 输出：void（渲染结果到 DOM）
+   * 流程：动态加载搜索服务 -> 调用搜索 -> 渲染结果
+   */
+  async function performSemanticSearch(query: string) {
+    const semanticEl = document.getElementById('semantic-results');
+    if (!semanticEl) return;
+
+    if (!query || query.trim().length === 0) {
+      semanticEl.innerHTML = '<p class="semantic-empty">输入关键词开始语义搜索</p>';
+      return;
+    }
+
+    semanticEl.innerHTML = '<p class="semantic-loading">正在搜索...</p>';
+
+    try {
+      /* 动态导入搜索服务，避免首屏加载不必要代码 */
+      const { getSearchService } = await import('@/services/search/search-service');
+      const searchService = getSearchService();
+      const results = await searchService.search(query, 'semantic', 20);
+
+      if (results.length === 0) {
+        semanticEl.innerHTML = '<p class="semantic-empty">未找到相关结果</p>';
+        return;
+      }
+
+      const base = import.meta.env.BASE_URL || '/';
+      const html = results
+        .map((r) => {
+          const scorePercent = Math.round(r.score * 100);
+          return `
+            <div class="semantic-result-item">
+              <h3 class="semantic-result-title">
+                <a href="${base}${r.slug}/">${r.title}</a>
+              </h3>
+              <div class="semantic-result-meta">
+                <span>${r.module}</span>
+                <span class="semantic-result-score">${scorePercent}% 匹配</span>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      semanticEl.innerHTML = html;
+    } catch (error) {
+      semanticEl.innerHTML = '<p class="semantic-empty">语义搜索暂时不可用，请使用关键词搜索</p>';
+      console.error('语义搜索执行失败:', error);
+    }
+  }
+
+  /**
+   * 监听 Pagefind 搜索输入，同步到语义搜索
+   */
+  function setupSearchSync() {
+    const observer = new MutationObserver(() => {
+      if (currentMode !== 'semantic') return;
+      const input = document.querySelector('.pagefind-ui__search-input') as HTMLInputElement;
+      if (input) {
+        input.addEventListener('input', () => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            performSemanticSearch(input.value);
+          }, 300);
+        });
+      }
+    });
+
+    const searchEl = document.getElementById('search');
+    if (searchEl) {
+      observer.observe(searchEl, { childList: true, subtree: true });
+    }
+  }
+
+  document.addEventListener('astro:page-load', () => {
+    initPagefind();
+    setupSearchSync();
+  });
+  initPagefind();
+  setupSearchSync();
+</script>

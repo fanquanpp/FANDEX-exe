@@ -1,0 +1,423 @@
+---
+/**
+ * 文档详情页路由
+ * 动态路由 [module]/[slug]，为每篇文档生成独立页面
+ * 包含面包屑导航、前置知识提示、文档内容、知识检测、上下篇导航
+ */
+import Layout from '@/components/Layout.astro'
+import SEO from '@/components/SEO.astro'
+import Sidebar from '@/components/Sidebar.astro'
+import Breadcrumb from '@/components/Breadcrumb.astro'
+import DocNav from '@/components/DocNav.astro'
+import AIQuiz from '@/components/AIQuiz.astro'
+import AITutor from '@/components/AITutor.astro'
+import ProgressToggle from '@/islands/ProgressToggle.vue'
+import QuizBlock from '@/islands/QuizBlock.vue'
+import { getModule, modulePrerequisites, docSlug, categoryColors, getPrimaryCategory, modules } from '@packages/shared/modules'
+import { getCollection, render } from 'astro:content'
+
+/** 生成静态路径：为每篇文档创建一个页面 */
+export async function getStaticPaths() {
+  const docs = await getCollection('docs')
+  return docs.map(doc => {
+    const slug = docSlug(doc.id)
+    return {
+      params: { module: doc.data.module, slug },
+      props: { doc },
+    }
+  })
+}
+
+const { doc } = Astro.props as any
+const { module, slug } = Astro.params as { module: string; slug: string }
+// 渲染 Markdown 内容并获取标题列表
+const { Content, headings } = await render(doc)
+const meta = getModule(module || '')
+
+// 预获取排序后的文档列表，传递给 Sidebar 避免重复查询
+const allModuleDocs = await getCollection('docs', ({ data }) => data.module === module)
+const sortedDocs = allModuleDocs.sort((a, b) => (a.data.order || 0) - (b.data.order || 0))
+
+/** 计算预计阅读时间（分钟），优先使用 frontmatter 中的值 */
+function computeReadingTime(body: string, readingTime?: number): number {
+  if (readingTime && readingTime > 0) return readingTime
+  // 去除代码块和 Markdown 标记后，按每分钟 300 字估算
+  const stripped = body.replace(/```[\s\S]*?```/g, '').replace(/[#*`~\[\]()>_\-!|]/g, '')
+  const chars = stripped.replace(/\s/g, '').length
+  return Math.max(1, Math.ceil(chars / 300))
+}
+
+const readingTime = computeReadingTime(doc.body || '', doc.data.readingTime)
+
+/* 可用模块 ID 列表，用于 AI Tutor 推荐服务 */
+const availableModuleIds = modules.map((m: { id: string }) => m.id)
+const availableModulesJson = JSON.stringify(availableModuleIds)
+
+/* frontmatter quiz 数据序列化，用于 AI Quiz 降级 */
+const fallbackQuizJson = JSON.stringify(doc.data.quiz || [])
+
+// 面包屑导航数据
+const breadcrumb = [
+  { label: '首页', href: `${import.meta.env.BASE_URL}` },
+  { label: meta?.title || module, href: `${import.meta.env.BASE_URL}${module}/` },
+  { label: doc.data.title },
+]
+---
+
+<Layout title={doc.data.title}>
+  <SEO
+    slot="head"
+    title={doc.data.title}
+    description={doc.data.description}
+    canonical={`${Astro.site}${Astro.url.pathname}`}
+  />
+  <Sidebar slot="sidebar" moduleId={module} currentSlug={slug} headings={headings} sortedDocs={sortedDocs} />
+
+  <div class="doc-page">
+    <!-- 面包屑导航 -->
+    <Breadcrumb items={breadcrumb} hasSidebar />
+    <!-- 前置知识提示 -->
+    {(() => {
+      const prereqs = doc.data.prerequisites?.length > 0
+        ? doc.data.prerequisites
+        : (modulePrerequisites[module] || [])
+      if (prereqs.length === 0) return null
+      return (
+        <div class="prereq-notice">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span>前置知识: {prereqs.map((p: string, i: number) => {
+            const parts = p.split('/')
+            const modId = parts[0]
+            const modMeta = getModule(modId)
+            const label = modMeta ? modMeta.title : p
+            const href = parts.length > 1 ? `${import.meta.env.BASE_URL}${p}/` : `${import.meta.env.BASE_URL}${modId}/`
+            return (<>{i > 0 && '、'}<a href={href}>{label}</a></>)
+          })}</span>
+        </div>
+      )
+    })()}
+    <!-- 文章主体 -->
+    <article class="prose"
+      data-pagefind-body
+      data-pagefind-filter={`difficulty:${doc.data.difficulty || 'intermediate'}, module:${module}${doc.data.category ? ', category:' + doc.data.category : ''}`}
+      style={`--module-color:${categoryColors[getPrimaryCategory(meta)]}`}
+    >
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">{doc.data.title}</h1>
+        <div class="doc-title-actions">
+          <ProgressToggle client:load slug={`${module}/${slug}`} />
+          <!-- 阅读模式切换按钮组 -->
+          <div class="reading-mode-btns" id="reading-mode-btns">
+            <button class="reading-mode-btn reading-mode-focus-btn" id="reading-mode-focus-btn" aria-label="专注模式" title="专注模式 (F)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="16" />
+              </svg>
+              专注
+            </button>
+            <button class="reading-mode-btn reading-mode-study-btn" id="reading-mode-study-btn" aria-label="学习模式" title="学习模式">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+              </svg>
+              学习
+            </button>
+          </div>
+          <!-- 退出专注模式按钮：仅专注模式下显示 -->
+          <button class="reading-mode-exit-focus" id="reading-mode-exit-focus" aria-label="退出专注模式" title="退出专注模式 (Esc)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="16" />
+            </svg>
+            退出专注
+          </button>
+          <!-- 退出学习模式按钮：仅学习模式下显示 -->
+          <button class="reading-mode-exit-study" id="reading-mode-exit-study" aria-label="退出学习模式" title="退出学习模式 (Esc)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+            </svg>
+            退出学习
+          </button>
+          <!-- 学习计时器：仅学习模式下显示（预留框架） -->
+          <div class="study-timer" id="study-timer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+            <span id="study-timer-display">00:00</span>
+          </div>
+        </div>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            {readingTime} min
+          </span>
+          <span class={`doc-meta-item doc-difficulty diff-${doc.data.difficulty || 'intermediate'}`}>
+            {doc.data.difficulty === 'beginner' ? 'Beginner' : doc.data.difficulty === 'advanced' ? 'Advanced' : 'Intermediate'}
+          </span>
+          {doc.data.updated && (
+            <span class="doc-meta-item doc-updated">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              {new Date(doc.data.updated).toLocaleDateString('zh-CN')}
+            </span>
+          )}
+        </div>
+        <!-- 标签列表 -->
+        {doc.data.tags && doc.data.tags.length > 0 && (
+          <div class="doc-tags">
+            {doc.data.tags.map((tag: string) => (
+              <a href={`${import.meta.env.BASE_URL}tags/${tag}/`} class="doc-tag">{tag}</a>
+            ))}
+          </div>
+        )}
+        <!-- 文档描述 -->
+        {doc.data.description && (
+          <p class="doc-description">{doc.data.description}</p>
+        )}
+      </header>
+      <!-- 文档正文内容 -->
+      <Content />
+    </article>
+    <!-- 知识检测组件：frontmatter 预设题目，进入视口时加载 -->
+    <QuizBlock client:visible quiz={doc.data.quiz || []} />
+    <!-- AI Quiz 组件：AI 出题功能，用户点击后才调用 AI -->
+    <AIQuiz
+      moduleId={module}
+      slug={slug}
+      title={doc.data.title}
+      summary={doc.data.summary || doc.data.description || ''}
+      fallbackQuiz={fallbackQuizJson}
+    />
+    <!-- AI Tutor 组件：学习推荐和进度统计 -->
+    <AITutor
+      moduleId={module}
+      availableModules={availableModulesJson}
+    />
+    <!-- 上下篇导航 -->
+    <DocNav moduleId={module} currentSlug={slug} />
+  </div>
+</Layout>
+
+<script>
+  // ========== 阅读模式按钮交互 ==========
+  const focusBtn = document.getElementById('reading-mode-focus-btn')
+  const studyBtn = document.getElementById('reading-mode-study-btn')
+  const exitFocusBtn = document.getElementById('reading-mode-exit-focus')
+  const exitStudyBtn = document.getElementById('reading-mode-exit-study')
+
+  /**
+   * 初始化阅读模式按钮事件绑定
+   * 动态导入 reading-mode 模块，绑定按钮点击事件
+   */
+  async function initReadingModeButtons(): Promise<void> {
+    const { toggleFocusMode, toggleStudyMode, setReadingMode, getReadingMode, onReadingModeChange } = await import('@/lib/reading-mode')
+
+    // 专注模式按钮：切换专注模式
+    if (focusBtn) {
+      focusBtn.addEventListener('click', () => {
+        toggleFocusMode()
+      })
+    }
+
+    // 学习模式按钮：切换学习模式
+    if (studyBtn) {
+      studyBtn.addEventListener('click', () => {
+        toggleStudyMode()
+      })
+    }
+
+    // 退出专注模式按钮
+    if (exitFocusBtn) {
+      exitFocusBtn.addEventListener('click', () => {
+        setReadingMode('standard')
+      })
+    }
+
+    // 退出学习模式按钮
+    if (exitStudyBtn) {
+      exitStudyBtn.addEventListener('click', () => {
+        setReadingMode('standard')
+      })
+    }
+
+    /**
+     * 根据当前阅读模式更新按钮激活状态
+     * @param mode - 当前阅读模式
+     */
+    function updateButtonStates(mode: string): void {
+      if (focusBtn) {
+        focusBtn.classList.toggle('active', mode === 'focus')
+      }
+      if (studyBtn) {
+        studyBtn.classList.toggle('active', mode === 'study')
+      }
+    }
+
+    // 初始化按钮状态
+    updateButtonStates(getReadingMode())
+
+    // 监听模式变更事件，同步更新按钮状态
+    onReadingModeChange((mode) => {
+      updateButtonStates(mode)
+    })
+  }
+
+  // 页面加载时初始化按钮
+  initReadingModeButtons()
+  document.addEventListener('astro:page-load', initReadingModeButtons)
+</script>
+
+<style>
+/* 文档页面容器 */
+.doc-page {
+  padding: var(--spacing-md) var(--spacing-lg) var(--spacing-2xl);
+  width: 100%;
+  min-height: 100%;
+}
+
+/* 前置知识提示条 */
+.prereq-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  border-left: 3px solid #f59e0b;
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+}
+
+.prereq-notice svg {
+  flex-shrink: 0;
+  color: #f59e0b;
+}
+
+.prereq-notice a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.prereq-notice a:hover {
+  text-decoration: underline;
+}
+
+/* 文档头部元信息区域 */
+.doc-header {
+  margin-bottom: var(--spacing-lg);
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 1px solid var(--color-border-light);
+}
+
+/* 标题行：粘性定位，包含标题和进度按钮 */
+.doc-title-row {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) 0;
+  border-bottom: 1px solid var(--color-border-light);
+  margin-bottom: var(--spacing-sm);
+}
+
+.doc-header {
+  margin-bottom: var(--spacing-xl);
+}
+
+.doc-title-row .doc-title {
+  margin-bottom: 0;
+}
+
+/* 标题行右侧操作区域：进度按钮 + 阅读模式按钮 */
+.doc-title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* 文档标题 */
+.doc-title {
+  margin-bottom: var(--spacing-sm);
+  font-size: 1.6em;
+  line-height: 1.3;
+}
+
+/* 元信息行 */
+.doc-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+  margin-bottom: var(--spacing-sm);
+}
+
+.doc-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-size: 0.78em;
+  color: var(--color-text-tertiary);
+}
+
+/* 标签列表 */
+.doc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--spacing-sm);
+}
+
+/* 单个标签 */
+.doc-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 0.72em;
+  font-family: var(--font-display);
+  color: var(--color-text-secondary);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-light);
+  text-decoration: none;
+  transition: all var(--transition-fast);
+}
+
+.doc-tag:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--color-bg-hover);
+}
+
+/* 文档描述 */
+.doc-description {
+  margin-top: var(--spacing-sm);
+  font-size: 0.92em;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .doc-page {
+    padding: var(--spacing-sm) var(--spacing-md) var(--spacing-2xl);
+  }
+
+  .doc-title {
+    font-size: 1.3em;
+  }
+
+  .doc-meta {
+    gap: 6px;
+  }
+}
+</style>

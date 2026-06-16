@@ -1,0 +1,971 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>缓存穿透击穿雪崩</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">缓存穿透击穿雪崩</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            2 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          Redis
+          缓存三大问题：缓存穿透（布隆过滤器）、缓存击穿（互斥锁）、缓存雪崩（随机TTL）的原理与解决方案。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-缓存穿透"><a href="#1-缓存穿透">1. 缓存穿透</a></h2>
+      <h3 id="11-问题描述"><a href="#11-问题描述">1.1 问题描述</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="查询"
+          data-module="cpp"
+          data-def="查询操作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">查询</abbr></span
+        ><strong
+          >不<span
+            class="term-tip"
+            data-term="存在"
+            data-module="github"
+            data-def="存在"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">存在</abbr></span
+          >的数据</strong
+        >，<span
+          class="term-tip"
+          data-term="缓存"
+          data-module="vue3"
+          data-def="存储数据供后续使用"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">缓存</abbr></span
+        >无法命中，<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >直达<span
+          class="term-tip"
+          data-term="数据库"
+          data-module="github"
+          data-def="数据库"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">数据库</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>用户请求: GET /user/999999 (不存在)</span></span>
+<span class="line"><span>  → Redis: MISS (无缓存)</span></span>
+<span class="line"><span>  → MySQL: MISS (无数据)</span></span>
+<span class="line"><span>  → 返回空，不缓存</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>下次请求: GET /user/999999</span></span>
+<span class="line"><span>  → Redis: MISS</span></span>
+<span class="line"><span>  → MySQL: MISS</span></span>
+<span class="line"><span>  → ... 重复穿透</span></span></code></pre>
+      <h3 id="12-攻击场景"><a href="#12-攻击场景">1.2 攻击场景</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>恶意请求大量不存在的ID:</span></span>
+<span class="line"><span>  GET /user/-1</span></span>
+<span class="line"><span>  GET /user/99999999</span></span>
+<span class="line"><span>  GET /user/abc</span></span>
+<span class="line"><span>  → 全部穿透到数据库 → 数据库压力过大</span></span></code></pre>
+      <h3 id="13-解决方案"><a href="#13-解决方案">1.3 解决方案</a></h3>
+      <p>
+        <strong
+          >方案1：<span
+            class="term-tip"
+            data-term="缓存"
+            data-module="vue3"
+            data-def="存储数据供后续使用"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">缓存</abbr></span
+          >空<span
+            class="term-tip"
+            data-term="值"
+            data-module="cpp"
+            data-def="值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">值</abbr></span
+          ></strong
+        >
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> get_user</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(user_id):</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # 查缓存</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.get(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">user_id</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">is</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "NULL"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> None</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 缓存的空值</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> json.loads(data)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # 查数据库</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> db.query(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"SELECT * FROM users WHERE id = </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">%s</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, user_id)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        redis.setex(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">user_id</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3600</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, json.dumps(data))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 缓存空值，短TTL</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        redis.setex(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">user_id</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">60</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"NULL"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data</span></span></code></pre>
+      <p>
+        <strong
+          >方案2：<span
+            class="term-tip"
+            data-term="布隆过滤器"
+            data-module="algorithm"
+            data-def="用位数组近似表示集合的概率数据结构，查询O(k)，存在假阳性但无假阴性"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">布隆过滤器</abbr></span
+          ></strong
+        >
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>前置过滤：查询前先检查布隆过滤器</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>                    ┌──────────────┐</span></span>
+<span class="line"><span>请求 → 布隆过滤器 → │ 可能存在     │ → 查缓存 → 查数据库</span></span>
+<span class="line"><span>                    │ 一定不存在   │ → 直接返回</span></span>
+<span class="line"><span>                    └──────────────┘</span></span></code></pre>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 初始化：将所有有效ID加入布隆过滤器</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> db.query(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"SELECT id FROM users"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    bf.add(user_id)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> get_user</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(user_id):</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # 布隆过滤器检查</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> bf.exists(user_id):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> None</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 一定不存在</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # 正常查询流程</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.get(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">user_id</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> json.loads(data)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> db.query(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        redis.setex(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">user_id</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3600</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, json.dumps(data))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data</span></span></code></pre>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="布隆过滤器"
+            data-module="algorithm"
+            data-def="用位数组近似表示集合的概率数据结构，查询O(k)，存在假阳性但无假阴性"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">布隆过滤器</abbr></span
+          >原理</strong
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>位数组 + 多个哈希函数</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>添加元素 x:</span></span>
+<span class="line"><span>  h1(x) % m → 位置设为1</span></span>
+<span class="line"><span>  h2(x) % m → 位置设为1</span></span>
+<span class="line"><span>  h3(x) % m → 位置设为1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>查询元素 y:</span></span>
+<span class="line"><span>  检查 h1(y), h2(y), h3(y) 位置是否全为1</span></span>
+<span class="line"><span>  全为1 → 可能存在（有误判率）</span></span>
+<span class="line"><span>  有0   → 一定不存在</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>误判率: P ≈ (1 - e^(-kn/m))^k</span></span>
+<span class="line"><span>  m: 位数组大小</span></span>
+<span class="line"><span>  k: 哈希函数数量</span></span>
+<span class="line"><span>  n: 已插入元素数量</span></span></code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="方案"
+                data-module="javascript"
+                data-def="数据结构定义"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">方案</abbr></span
+              >
+            </th>
+            <th>
+              优<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >
+            </th>
+            <th>
+              缺<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >空<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="简单"
+                data-module="github"
+                data-def="简单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">简单</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="通用"
+                data-module="cpp"
+                data-def="通用"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通用</abbr></span
+              >
+            </td>
+            <td>
+              浪费内存、短TTL需<span
+                class="term-tip"
+                data-term="维护"
+                data-module="github"
+                data-def="维护"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">维护</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="布隆过滤器"
+                data-module="algorithm"
+                data-def="用位数组近似表示集合的概率数据结构，查询O(k)，存在假阳性但无假阴性"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">布隆过滤器</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="空间"
+                data-module="cpp"
+                data-def="空间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">空间</abbr></span
+              >高效
+            </td>
+            <td>
+              有误判<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >、需<span
+                class="term-tip"
+                data-term="预加载"
+                data-module="html5"
+                data-def="预先加载关键资源"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">预加载</abbr></span
+              >、不<span
+                class="term-tip"
+                data-term="支持"
+                data-module="cpp"
+                data-def="支持"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">支持</abbr></span
+              >删除
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="2-缓存击穿"><a href="#2-缓存击穿">2. 缓存击穿</a></h2>
+      <h3 id="21-问题描述"><a href="#21-问题描述">2.1 问题描述</a></h3>
+      <p>
+        <strong>热点Key过期</strong
+        ><span
+          class="term-tip"
+          data-term="瞬间"
+          data-module="github"
+          data-def="瞬间"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">瞬间</abbr></span
+        >，大量并发<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >同时穿透到<span
+          class="term-tip"
+          data-term="数据库"
+          data-module="github"
+          data-def="数据库"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">数据库</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>热点Key: "hot:item:1" (TTL=3600s)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>T=3600s: Key过期</span></span>
+<span class="line"><span>  1000个并发请求同时到达</span></span>
+<span class="line"><span>  → 全部MISS</span></span>
+<span class="line"><span>  → 1000个请求同时查数据库</span></span>
+<span class="line"><span>  → 数据库压力飙升</span></span></code></pre>
+      <h3 id="22-解决方案"><a href="#22-解决方案">2.2 解决方案</a></h3>
+      <p>
+        <strong
+          >方案1：<span
+            class="term-tip"
+            data-term="互斥锁"
+            data-module="go"
+            data-def="提供独占锁定的同步原语，保护共享资源在并发访问时的安全性"
+            data-slug="go/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">互斥锁</abbr></span
+          >（Mutex Lock）</strong
+        >
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> get_hot_data</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(key):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.get(key)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> json.loads(data)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # 尝试获取互斥锁</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    lock_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lock:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">key</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.set(lock_key, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">nx</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ex</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 5秒锁超时</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        try</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 获得锁，查数据库</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> db.query(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                redis.setex(key, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3600</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, json.dumps(data))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        finally</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            redis.delete(lock_key)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 未获得锁，等待重试</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        time.sleep(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> get_hot_data(key)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 递归重试</span></span></code></pre>
+      <p>
+        <strong
+          >方案2：<span
+            class="term-tip"
+            data-term="逻辑"
+            data-module="github"
+            data-def="逻辑"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">逻辑</abbr></span
+          >过期</strong
+        >
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> get_hot_data</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(key):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.get(key)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        obj </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> json.loads(data)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> obj[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'expire_time'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.time():</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> obj[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'data'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 逻辑未过期</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 逻辑过期，异步更新</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            threading.Thread(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">target</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">refresh_cache, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">args</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(key,)).start()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> obj[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'data'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 返回旧数据</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> None</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> refresh_cache</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(key):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    lock_key </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"lock:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">key</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.set(lock_key, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"1"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">nx</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ex</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> db.query(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        obj </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">            'data'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: data,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">            'expire_time'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: time.time() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 3600</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        redis.set(key, json.dumps(obj))  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 不设TTL</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        redis.delete(lock_key)</span></span></code></pre>
+      <p>
+        <strong
+          >方案3：永不过期 + 异步<span
+            class="term-tip"
+            data-term="刷新"
+            data-module="cpp"
+            data-def="刷新"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">刷新</abbr></span
+          ></strong
+        >
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 缓存不设TTL，由后台任务定期刷新</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 适合数据量小、更新频率固定的场景</span></span></code></pre>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="方案"
+                data-module="javascript"
+                data-def="数据结构定义"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">方案</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="一致性"
+                data-module="github"
+                data-def="一致性"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">一致性</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="可用性"
+                data-module="vue3"
+                data-def="系统可用的程度"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">可用性</abbr></span
+              >
+            </th>
+            <th>
+              复杂<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="互斥锁"
+                data-module="go"
+                data-def="提供独占锁定的同步原语，保护共享资源在并发访问时的安全性"
+                data-slug="go/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">互斥锁</abbr></span
+              >
+            </td>
+            <td>强一致</td>
+            <td>等待</td>
+            <td>低</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="逻辑"
+                data-module="github"
+                data-def="逻辑"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">逻辑</abbr></span
+              >过期
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="最终"
+                data-module="cpp"
+                data-def="最终的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最终</abbr></span
+              >一致
+            </td>
+            <td>高</td>
+            <td>中</td>
+          </tr>
+          <tr>
+            <td>永不过期</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="最终"
+                data-module="cpp"
+                data-def="最终的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最终</abbr></span
+              >一致
+            </td>
+            <td>
+              最<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >
+            </td>
+            <td>低</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="3-缓存雪崩"><a href="#3-缓存雪崩">3. 缓存雪崩</a></h2>
+      <h3 id="31-问题描述"><a href="#31-问题描述">3.1 问题描述</a></h3>
+      <p>
+        大量Key<strong>同时过期</strong>，或<span
+          class="term-tip"
+          data-term="缓存"
+          data-module="vue3"
+          data-def="存储数据供后续使用"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">缓存</abbr></span
+        >服务宕机，导致<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >全部穿透到<span
+          class="term-tip"
+          data-term="数据库"
+          data-module="github"
+          data-def="数据库"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">数据库</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>场景1: 大量Key同时过期</span></span>
+<span class="line"><span>  10000个Key的TTL都是 3600s</span></span>
+<span class="line"><span>  1小时后全部过期 → 10000个请求同时查数据库</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>场景2: Redis 宕机</span></span>
+<span class="line"><span>  Redis不可用 → 所有请求穿透到数据库</span></span></code></pre>
+      <h3 id="32-解决方案"><a href="#32-解决方案">3.2 解决方案</a></h3>
+      <p><strong>方案1：随机TTL</strong></p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> random</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">base_ttl </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 3600</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 基础TTL: 1小时</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">random_ttl </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> random.randint(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">600</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 随机0-10分钟</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">redis.setex(key, base_ttl </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> random_ttl, value)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># TTL: 3600 ~ 4200 秒，分散过期时间</span></span></code></pre>
+      <p>
+        <strong
+          >方案2：<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >级<span
+            class="term-tip"
+            data-term="缓存"
+            data-module="vue3"
+            data-def="存储数据供后续使用"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">缓存</abbr></span
+          ></strong
+        >
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>请求 → 本地缓存 (Caffeine/Guava)</span></span>
+<span class="line"><span>     → Redis 缓存</span></span>
+<span class="line"><span>     → 数据库</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>L1 本地缓存: TTL=60s，容量小</span></span>
+<span class="line"><span>L2 Redis:    TTL=3600s，容量大</span></span>
+<span class="line"><span>L3 数据库:   持久化</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>即使 Redis 宕机，本地缓存仍可挡住部分请求</span></span></code></pre>
+      <p>
+        <strong
+          >方案3：熔断<span
+            class="term-tip"
+            data-term="降级"
+            data-module="html5"
+            data-def="在旧浏览器优雅降级"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">降级</abbr></span
+          ></strong
+        >
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> circuitbreaker </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> circuit</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">@circuit</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">failure_threshold</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">recovery_timeout</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">30</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> get_data</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(key):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redis.get(key)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> json.loads(data)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> db.query(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 熔断后返回降级数据</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> get_data_fallback</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(key):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"message"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"服务繁忙，请稍后重试"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>
+        <strong
+          >方案4：Redis
+          <span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >可用</strong
+        >
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>- Redis Sentinel: 自动故障转移</span></span>
+<span class="line"><span>- Redis Cluster: 分片 + 副本</span></span>
+<span class="line"><span>- 跨机房部署: 异地多活</span></span></code></pre>
+      <h2 id="4-综合防护策略"><a href="#4-综合防护策略">4. 综合防护策略</a></h2>
+      <h3 id="41-防护层次"><a href="#41-防护层次">4.1 防护层次</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>┌─────────────────────────────────────────┐</span></span>
+<span class="line"><span>│ 1. 限流：控制请求速率                      │</span></span>
+<span class="line"><span>├─────────────────────────────────────────┤</span></span>
+<span class="line"><span>│ 2. 布隆过滤器：拦截无效请求                  │</span></span>
+<span class="line"><span>├─────────────────────────────────────────┤</span></span>
+<span class="line"><span>│ 3. 本地缓存：L1 缓存                       │</span></span>
+<span class="line"><span>├─────────────────────────────────────────┤</span></span>
+<span class="line"><span>│ 4. Redis 缓存：L2 缓存（随机TTL）           │</span></span>
+<span class="line"><span>├─────────────────────────────────────────┤</span></span>
+<span class="line"><span>│ 5. 互斥锁：防止击穿                        │</span></span>
+<span class="line"><span>├─────────────────────────────────────────┤</span></span>
+<span class="line"><span>│ 6. 熔断降级：保护数据库                     │</span></span>
+<span class="line"><span>├─────────────────────────────────────────┤</span></span>
+<span class="line"><span>│ 7. 数据库：最终数据源                       │</span></span>
+<span class="line"><span>└─────────────────────────────────────────┘</span></span></code></pre>
+      <h3 id="42-监控指标"><a href="#42-监控指标">4.2 监控指标</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>- 缓存命中率: hit / (hit + miss) > 95%</span></span>
+<span class="line"><span>- 穿透率: miss / total &#x3C; 5%</span></span>
+<span class="line"><span>- 数据库QPS: 不超过阈值</span></span>
+<span class="line"><span>- Redis 内存使用: &#x3C; 80%</span></span>
+<span class="line"><span>- Key 过期分布: 是否集中</span></span></code></pre>
+    </article>
+  </body>
+</html>

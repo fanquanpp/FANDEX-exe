@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>流式语音对话</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">流式语音对话</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            12 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">全双工</span><span class="doc-tag">Moshi</span
+          ><span class="doc-tag">Hibiki</span><span class="doc-tag">流式语音</span
+          ><span class="doc-tag">Mimi</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          理解Moshi、Hibiki的全双工架构和Mimi编解码token上的流式语音对话
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="流式语音对话--moshihibiki与全双工对话">
+        <a href="#流式语音对话--moshihibiki与全双工对话"
+          >流式语音对话 — Moshi、Hibiki与全双工对话</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          2024-2026年重新定义了语音AI。Moshi发布了一个同时听和说的单模型，延迟200
+          ms。Hibiki逐块进行语音到语音翻译。两者都放弃了ASR → LLM →
+          TTS流水线，转而采用基于Mimi编解码token的统一全双工架构。这是新的参考设计。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 6
+        · 13（神经音频编解码），Phase 6 · 11（实时音频），Phase 7 · 05（完整Transformer）
+        <strong>时间:</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        基于课程11 + 12构建的每个语音代理都有一个约300-500
+        ms的根本延迟下限：VAD触发、STT处理、LLM推理、TTS生成。每个阶段都有自己的最小延迟。你可以调优和并行化，但流水线形状限制了你的上限。
+      </p>
+      <p>
+        Moshi（Kyutai，2024-2026）问了一个不同的问题：如果没有流水线呢？如果一个模型直接接收音频并输出音频，持续不断地，文本作为中间”内心独白”而非必要阶段？
+      </p>
+      <p>
+        答案是<strong>全双工语音到语音</strong>。理论延迟160 ms（80 ms Mimi帧 + 80
+        ms声学延迟）。在单张L4 GPU上实际延迟200 ms。这是最佳级联语音代理延迟的一半。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="moshi架构"><a href="#moshi架构">Moshi架构</a></h3>
+      <p><strong>输入。</strong> 两个Mimi编解码流，都在12.5 Hz × 8码本：</p>
+      <ul>
+        <li>流1：用户音频（Mimi编码，持续到达）</li>
+        <li>流2：Moshi自己的音频（由Moshi生成）</li>
+      </ul>
+      <p>
+        <strong>Transformer。</strong>
+        一个7B参数的时间Transformer处理两个流和一个文本”内心独白”流。在每个80 ms步骤中，它：
+      </p>
+      <ol>
+        <li>消费最新的用户Mimi token（8个码本）。</li>
+        <li>消费最近的Moshi Mimi token（8个码本，如已生成）。</li>
+        <li>生成下一个Moshi文本token（内心独白）。</li>
+        <li>生成下一个Moshi Mimi token（8个码本，通过小型深度Transformer）。</li>
+      </ol>
+      <p>
+        所有三个流 — 用户音频、Moshi音频、Moshi文本 —
+        并行运行。Moshi可以在说话时听到用户；可以在用户打断时自我中断；可以发出背景回应（“嗯嗯”）而不打断主要话语。
+      </p>
+      <p>
+        <strong>深度Transformer。</strong> 在一帧内，8个码本不是并行预测的 —
+        它们有码本间依赖。一个小的2层”深度Transformer”在80
+        ms内顺序预测它们。这是AR编解码LM的标准分解（VALL-E、VibeVoice也使用）。
+      </p>
+      <h3 id="为什么内心独白文本有帮助">
+        <a href="#为什么内心独白文本有帮助">为什么内心独白文本有帮助</a>
+      </h3>
+      <p>
+        没有显式文本，模型必须在其声学流中隐式建模语言。Moshi的洞察：强制它在音频旁边发出文本token。文本流本质上是Moshi所说内容的转录。这提高了语义连贯性，使替换语言模型头更容易，并免费给你转录。
+      </p>
+      <h3 id="hibiki流式语音到语音翻译">
+        <a href="#hibiki流式语音到语音翻译">Hibiki：流式语音到语音翻译</a>
+      </h3>
+      <p>
+        相同架构，在翻译对上训练。源语言音频输入，目标语言音频输出，持续不断。Hibiki-Zero（2026年2月）消除了词级对齐训练数据的需求
+        — 使用句子级数据 + GRPO强化学习进行延迟优化。
+      </p>
+      <p>最初支持四种语言对；可以用约1000小时适应新语言。</p>
+      <h3 id="更广泛的kyutai技术栈2026">
+        <a href="#更广泛的kyutai技术栈2026">更广泛的Kyutai技术栈（2026）</a>
+      </h3>
+      <ul>
+        <li><strong>Moshi</strong> — 全双工对话（法语优先，英语良好支持）</li>
+        <li><strong>Hibiki / Hibiki-Zero</strong> — 同时语音翻译</li>
+        <li><strong>Kyutai STT</strong> — 流式ASR（500 ms或2.5 s前瞻）</li>
+        <li><strong>Kyutai Pocket TTS</strong> — 100M参数TTS，CPU运行（2026年1月）</li>
+        <li><strong>Unmute</strong> — 在公共服务器上组合这些的完整流水线</li>
+      </ul>
+      <p>L40S GPU上的吞吐量：64个并发会话，3倍实时。</p>
+      <h3 id="sesame-csm--表亲"><a href="#sesame-csm--表亲">Sesame CSM — 表亲</a></h3>
+      <p>
+        Sesame CSM (2025) 使用类似想法 — 带Mimi编解码头的Llama-3骨干。但CSM是单向的（接收上下文 +
+        文本，产生语音），而非全双工。它是市场上最好的”语音存在感”TTS；但与Moshi的全双工能力不完全相同。
+      </p>
+      <h3 id="2026年性能数字"><a href="#2026年性能数字">2026年性能数字</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>模型</th>
+            <th>延迟</th>
+            <th>用途</th>
+            <th>许可</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Moshi</td>
+            <td>200 ms (L4)</td>
+            <td>全双工英语/法语对话</td>
+            <td>CC-BY 4.0</td>
+          </tr>
+          <tr>
+            <td>Hibiki</td>
+            <td>12.5 Hz帧率</td>
+            <td>法语 ↔ 英语流式翻译</td>
+            <td>CC-BY 4.0</td>
+          </tr>
+          <tr>
+            <td>Hibiki-Zero</td>
+            <td>相同</td>
+            <td>5个语言对，无需对齐数据</td>
+            <td>CC-BY 4.0</td>
+          </tr>
+          <tr>
+            <td>Sesame CSM-1B</td>
+            <td>200 ms TTFA</td>
+            <td>上下文条件TTS</td>
+            <td>Apache-2.0</td>
+          </tr>
+          <tr>
+            <td>GPT-4o Realtime</td>
+            <td>~300 ms</td>
+            <td>闭源，OpenAI API</td>
+            <td>商业</td>
+          </tr>
+          <tr>
+            <td>Gemini 2.5 Live</td>
+            <td>~350 ms</td>
+            <td>闭源，Google API</td>
+            <td>商业</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1接口"><a href="#步骤-1接口">步骤 1：接口</a></h3>
+      <p>
+        Moshi暴露一个WebSocket服务器，接收80 ms的Mimi编码音频块并返回80
+        ms的Mimi编码音频块。双向。持续不断。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> asyncio</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> websockets</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> moshi.client_utils </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> encode_audio_mimi, decode_audio_mimi</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">async</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> moshi_chat</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">():</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    async</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> with</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> websockets.connect(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"ws://localhost:8998/api/chat"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ws:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        mic_task </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> asyncio.create_task(stream_mic_to(ws))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        spk_task </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> asyncio.create_task(stream_from_to_speaker(ws))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        await</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> asyncio.gather(mic_task, spk_task)</span></span></code></pre>
+      <h3 id="步骤-2全双工循环"><a href="#步骤-2全双工循环">步骤 2：全双工循环</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">async</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> stream_mic_to</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ws):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    async</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chunk_80ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mic_stream_at_12_5_hz():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        mimi_tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> encode_audio_mimi(chunk_80ms)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        await</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ws.send(serialize(mimi_tokens))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">async</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> stream_from_to_speaker</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ws):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    async</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> msg </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ws:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        mimi_tokens, text_token </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> deserialize(msg)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        audio </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> decode_audio_mimi(mimi_tokens)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        await</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> play(audio)</span></span></code></pre>
+      <p>两个方向同时运行。Python asyncio或Rust futures是标准传输。</p>
+      <h3 id="步骤-3训练目标概念性">
+        <a href="#步骤-3训练目标概念性">步骤 3：训练目标（概念性）</a>
+      </h3>
+      <p>对于每个80 ms帧 <code>t</code>：</p>
+      <ul>
+        <li>
+          输入：<code>user_mimi[0..t]</code>，<code>moshi_mimi[0..t-1]</code>，<code
+            >moshi_text[0..t-1]</code
+          >
+        </li>
+        <li>预测：<code>moshi_text[t]</code>，然后 <code>moshi_mimi[t, codebook_0..7]</code></li>
+      </ul>
+      <p>文本在音频之前预测（内心独白）；音频在深度Transformer内按码本顺序预测。</p>
+      <h3 id="步骤-4moshi赢在哪里和不赢在哪里">
+        <a href="#步骤-4moshi赢在哪里和不赢在哪里">步骤 4：Moshi赢在哪里和不赢在哪里</a>
+      </h3>
+      <p>Moshi赢在：</p>
+      <ul>
+        <li>廉价硬件上端到端低于250 ms。</li>
+        <li>自然背景回应和打断。</li>
+        <li>没有流水线粘合代码。</li>
+      </ul>
+      <p>Moshi不赢在：</p>
+      <ul>
+        <li>工具调用（未为此训练；需要单独的LLM路径）。</li>
+        <li>长推理（Moshi是8B级对话模型，不是Claude/GPT-4）。</li>
+        <li>小众话题的事实准确性。</li>
+        <li>大多数生产企业用例（2026年仍使用流水线）。</li>
+      </ul>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>选择</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>最低延迟语音伴侣</td>
+            <td>Moshi</td>
+          </tr>
+          <tr>
+            <td>实时翻译通话</td>
+            <td>Hibiki</td>
+          </tr>
+          <tr>
+            <td>语音演示/研究</td>
+            <td>Moshi, CSM</td>
+          </tr>
+          <tr>
+            <td>带工具的企业代理</td>
+            <td>流水线（课程12），不是Moshi</td>
+          </tr>
+          <tr>
+            <td>自定义语音上下文TTS</td>
+            <td>Sesame CSM</td>
+          </tr>
+          <tr>
+            <td>语音到语音，任意语言</td>
+            <td>GPT-4o Realtime或Gemini 2.5 Live（商业）</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="陷阱"><a href="#陷阱">陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>有限的工具调用。</strong> Moshi是对话模型，不是代理框架。与流水线组合用于工具。
+        </li>
+        <li><strong>特定声音条件化。</strong> Moshi使用单一训练人格；克隆是单独的训练运行。</li>
+        <li>
+          <strong>语言覆盖。</strong> 法语 + 英语优秀；<span
+            class="term-tip"
+            data-term="其他"
+            data-module="github"
+            data-def="其他"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">其他</abbr></span
+          >有限。Hibiki-Zero有帮助，但仍需训练数据。
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="资源"
+              data-module="github"
+              data-def="资源"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">资源</abbr></span
+            >成本。</strong
+          >
+          完整Moshi会话占用GPU槽<span
+            class="term-tip"
+            data-term="位"
+            data-module="c"
+            data-def="二进制数字，基本存储单位"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">位</abbr></span
+          >；不是廉价的<span
+            class="term-tip"
+            data-term="共享"
+            data-module="cpp"
+            data-def="共享"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">共享</abbr></span
+          >租户<span
+            class="term-tip"
+            data-term="部署"
+            data-module="cpp"
+            data-def="部署应用"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">部署</abbr></span
+          >模式。
+        </li>
+      </ul>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>
+        将<span
+          class="term-tip"
+          data-term="结果"
+          data-module="c"
+          data-def="函数返回的值"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结果</abbr></span
+        >保存为 <code>outputs/skill-duplex-pipeline.md</code>。为语音<span
+          class="term-tip"
+          data-term="代理"
+          data-module="cpp"
+          data-def="代理对象"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">代理</abbr></span
+        >工作<span
+          class="term-tip"
+          data-term="负载"
+          data-module="github"
+          data-def="负载"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">负载</abbr></span
+        >选择<span
+          class="term-tip"
+          data-term="流"
+          data-module="cpp"
+          data-def="数据输入输出的抽象"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">流</abbr></span
+        >水线vs全双工<span
+          class="term-tip"
+          data-term="架构"
+          data-module="vue3"
+          data-def="代码和系统的组织结构"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">架构</abbr></span
+        >，并说明<span
+          class="term-tip"
+          data-term="理由"
+          data-module="github"
+          data-def="理由"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">理由</abbr></span
+        >。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >。</strong
+          >
+          运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >
+          <code>code/main.py</code>。它以<span
+            class="term-tip"
+            data-term="符号"
+            data-module="c"
+            data-def="标识符的内部表示"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">符号</abbr></span
+          >方式<span
+            class="term-tip"
+            data-term="模拟"
+            data-module="cpp"
+            data-def="模拟"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模拟</abbr></span
+          >双<span
+            class="term-tip"
+            data-term="流"
+            data-module="cpp"
+            data-def="数据输入输出的抽象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">流</abbr></span
+          >
+          + 内心独白<span
+            class="term-tip"
+            data-term="架构"
+            data-module="vue3"
+            data-def="代码和系统的组织结构"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">架构</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>中等。</strong> 从HuggingFace拉取Moshi，运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >服务器，<span
+            class="term-tip"
+            data-term="测试"
+            data-module="cpp"
+            data-def="测试"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">测试</abbr></span
+          >一次<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >话。测量从<span
+            class="term-tip"
+            data-term="用户"
+            data-module="cpp"
+            data-def="用户"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">用户</abbr></span
+          >语音结束到Moshi回应开始的挂钟<span
+            class="term-tip"
+            data-term="延迟"
+            data-module="cpp"
+            data-def="延迟操作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">延迟</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>困难。</strong> 取你课程12的<span
+            class="term-tip"
+            data-term="流水线"
+            data-module="cs-fundamentals"
+            data-def="将指令执行分为取指、译码、执行、访存、写回等阶段重叠执行的技术"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">流水线</abbr></span
+          >代理，在20个<span
+            class="term-tip"
+            data-term="匹配"
+            data-module="discrete-math"
+            data-def="图中一组没有公共顶点的边集合，最大匹配是边数最多的匹配"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">匹配</abbr></span
+          >测试话语上与Moshi比较P50延迟。写出<span
+            class="term-tip"
+            data-term="流水线"
+            data-module="cs-fundamentals"
+            data-def="将指令执行分为取指、译码、执行、访存、写回等阶段重叠执行的技术"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">流水线</abbr></span
+          >在<span
+            class="term-tip"
+            data-term="架构"
+            data-module="vue3"
+            data-def="代码和系统的组织结构"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">架构</abbr></span
+          >上何时仍然赢。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>全双工</td>
+            <td>同时听说</td>
+            <td>
+              同一模型上两个音频<span
+                class="term-tip"
+                data-term="流"
+                data-module="cpp"
+                data-def="数据输入输出的抽象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流</abbr></span
+              >同时活跃。
+            </td>
+          </tr>
+          <tr>
+            <td>内心独白</td>
+            <td>
+              模型的<span
+                class="term-tip"
+                data-term="文本"
+                data-module="cpp"
+                data-def="文本"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文本</abbr></span
+              >流
+            </td>
+            <td>
+              Moshi在音频<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >旁<span
+                class="term-tip"
+                data-term="边"
+                data-module="github"
+                data-def="边"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">边</abbr></span
+              >发出文本<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>深度Transformer</td>
+            <td>
+              码本间<span
+                class="term-tip"
+                data-term="预测"
+                data-module="github"
+                data-def="预测"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">预测</abbr></span
+              >器
+            </td>
+            <td>在一个80 ms帧内预测8个码本的小型Transformer。</td>
+          </tr>
+          <tr>
+            <td>Mimi</td>
+            <td>
+              Kyutai的编<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >
+            </td>
+            <td>
+              12.5 Hz × 8码本；<span
+                class="term-tip"
+                data-term="语义"
+                data-module="cpp"
+                data-def="语义"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语义</abbr></span
+              >+声学；驱动Moshi。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="流"
+                data-module="cpp"
+                data-def="数据输入输出的抽象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流</abbr></span
+              >式S2S
+            </td>
+            <td>
+              音频→音频<span
+                class="term-tip"
+                data-term="实时"
+                data-module="cpp"
+                data-def="实时"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">实时</abbr></span
+              >
+            </td>
+            <td>
+              逐<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >翻译/<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >话，无<span
+                class="term-tip"
+                data-term="流水线"
+                data-module="cs-fundamentals"
+                data-def="将指令执行分为取指、译码、执行、访存、写回等阶段重叠执行的技术"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流水线</abbr></span
+              >阶<span
+                class="term-tip"
+                data-term="段"
+                data-module="vue3"
+                data-def="URL 的一段"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">段</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              背景<span
+                class="term-tip"
+                data-term="回应"
+                data-module="github"
+                data-def="回应"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">回应</abbr></span
+              >
+            </td>
+            <td>”嗯嗯”反应</td>
+            <td>
+              Moshi可以在不打断自己<span
+                class="term-tip"
+                data-term="轮"
+                data-module="github"
+                data-def="轮"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轮</abbr></span
+              >次的情况下发出小<span
+                class="term-tip"
+                data-term="确认"
+                data-module="vue3"
+                data-def="验证用户意图"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">确认</abbr></span
+              >。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/html/2410.00037v2"
+            >Défossez et al. (2024). Moshi — speech-text foundation model</a
+          >
+          — 论文。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2602.12345">Kyutai Labs (2026). Hibiki-Zero</a> — 无需<span
+            class="term-tip"
+            data-term="对齐"
+            data-module="agent"
+            data-def="确保 AI 系统的行为与人类价值观和意图一致的技术和治理方法"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对齐</abbr></span
+          >数据的<span
+            class="term-tip"
+            data-term="流"
+            data-module="cpp"
+            data-def="数据输入输出的抽象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">流</abbr></span
+          >式<span
+            class="term-tip"
+            data-term="翻译"
+            data-module="vue3"
+            data-def="国际化翻译"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">翻译</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://www.sesame.com/research/crossing_the_uncanny_valley_of_voice"
+            >Sesame (2025). Crossing the uncanny valley of voice</a
+          >
+          — CSM规<span
+            class="term-tip"
+            data-term="格"
+            data-module="discrete-math"
+            data-def="任意两个元素都有上确界和下确界的偏序集"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">格</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://github.com/kyutai-labs/moshi">Kyutai — Moshi仓库</a> — 安装 +
+          <span
+            class="term-tip"
+            data-term="服务器"
+            data-module="javascript"
+            data-def="提供服务的后端程序"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">服务器</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://platform.openai.com/docs/guides/realtime">OpenAI — Realtime API</a> —
+          闭<span
+            class="term-tip"
+            data-term="源"
+            data-module="cpp"
+            data-def="源"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">源</abbr></span
+          >商业同<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://github.com/kyutai-labs/delayed-streams-modeling"
+            >Kyutai — Delayed Streams Modeling</a
+          >
+          — 底层的STT/TTS框架。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

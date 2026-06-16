@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>C++20协程</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">C++20协程</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">C++20协程详解：co_await、co_yield、co_return。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        C++20
+        引入了原生协程支持，为异步编程和惰性求值提供了语言级别的基础设施。协程是一种可以暂停执行并在后续恢复的函数，通过
+        <code>co_await</code>、<code>co_yield</code> 和
+        <code>co_return</code> 三个关键字实现函数的挂起与恢复。C++20 协程属于无栈协程（Stackless
+        Coroutine），其状态保存在堆上分配的协程帧中，相比有栈协程开销更低。
+      </p>
+      <p>
+        协程的核心价值在于：让异步代码拥有同步代码的可读性，同时保持异步非阻塞的执行效率。在网络编程、IO
+        密集型应用和生成器场景中，协程能显著简化代码逻辑。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <h3 id="协程关键字"><a href="#协程关键字">协程关键字</a></h3>
+      <ul>
+        <li><code>co_await</code>：挂起协程，等待异步操作完成并获取结果</li>
+        <li><code>co_yield</code>：挂起协程并产出一个值，协程可在后续恢复继续执行</li>
+        <li><code>co_return</code>：从协程返回，标志协程执行结束</li>
+      </ul>
+      <h3 id="协程的生命周期"><a href="#协程的生命周期">协程的生命周期</a></h3>
+      <p>一个协程函数被调用时，编译器会自动创建协程帧，其中包含以下核心组件：</p>
+      <ul>
+        <li><strong>promise_type</strong>：控制协程行为的策略对象，定义挂起、恢复和返回的行为</li>
+        <li><strong>coroutine_handle</strong>：协程句柄，用于外部恢复或销毁协程</li>
+        <li><strong>协程帧</strong>：存储局部变量、参数和挂起点的状态</li>
+      </ul>
+      <h3 id="协程与普通函数的区别"><a href="#协程与普通函数的区别">协程与普通函数的区别</a></h3>
+      <p>
+        普通函数一旦开始执行就会运行到结束，而协程可以在执行过程中暂停，将控制权交还给调用者，并在稍后从暂停的位置继续执行。函数体内只要出现了
+        <code>co_await</code>、<code>co_yield</code> 或
+        <code>co_return</code> 中的任何一个，该函数就被编译器识别为协程。
+      </p>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <h3 id="最简单的-generator"><a href="#最简单的-generator">最简单的 Generator</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="cpp"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#include</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> &#x3C;coroutine></span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#include</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> &#x3C;iostream></span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 一个简化的 Generator 实现</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">template</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">typename</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> T</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">struct</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Generator</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    struct</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> promise_type</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        T current_value;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        Generator</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> get_return_object</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Generator{</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">coroutine_handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">promise_type</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">from_promise</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">this</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)};</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">suspend_always</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> initial_suspend</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}; }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">suspend_always</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> final_suspend</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">noexcept</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}; }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">suspend_always</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> yield_value</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">T</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> value</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            current_value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> value;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {};</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> return_void</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {}</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> unhandled_exception</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">terminate</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    };</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::coroutine_handle</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">promise_type</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> handle;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 迭代器支持 range-based for</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    struct</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> iterator</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::coroutine_handle</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">promise_type</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> handle;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        bool</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> operator</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">!=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">default_sentinel_t</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> !</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">handle.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">done</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        iterator</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> operator</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { handle.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">resume</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">this</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        T</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> operator</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> handle.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">promise</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().current_value; }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    };</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    iterator</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> begin</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { handle.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">resume</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {handle}; }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">default_sentinel_t</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> end</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}; }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 使用 co_yield 生成整数序列</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Generator</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">> </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> start</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> end</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> start; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> end; </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">i) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        co_yield</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">auto</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> val : </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::cout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> val </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> " "</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 输出: 0 1 2 3 4</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="协程-promise-类型"><a href="#协程-promise-类型">协程 Promise 类型</a></h3>
+      <p>promise_type 是协程行为的核心控制器，每个协程都必须定义关联的 promise_type：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="cpp"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">struct</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Task</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    struct</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> promise_type</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 创建协程返回对象</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        Task</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> get_return_object</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Task{</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">coroutine_handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">promise_type</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">from_promise</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">this</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)};</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 初始挂起策略：suspend_never 表示协程立即开始执行</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">suspend_never</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> initial_suspend</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}; }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 最终挂起策略：suspend_never 表示协程结束后自动销毁</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">suspend_never</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> final_suspend</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">noexcept</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}; }</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // co_return 对应的处理</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> return_void</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {}</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 异常处理</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> unhandled_exception</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">terminate</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    };</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::coroutine_handle</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">promise_type</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> handle;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">};</span></span></code></pre>
+      <h3 id="co_await-机制详解"><a href="#co_await-机制详解">co_await 机制详解</a></h3>
+      <p><code>co_await</code> 的执行流程分为三个步骤：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="cpp"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">auto</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> co_await</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> awaitable;</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 步骤 1: 调用 awaitable.await_ready()</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">//   如果返回 true，表示结果已就绪，直接获取结果，不挂起协程</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 步骤 2: 如果 await_ready() 返回 false，调用 awaitable.await_suspend(handle)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">//   handle 是当前协程的句柄，可在此安排恢复协程的时机</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 步骤 3: 协程恢复时，调用 awaitable.await_resume() 获取最终结果</span></span></code></pre>
+      <p>自定义 Awaitable 对象：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="cpp"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#include</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> &#x3C;chrono></span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#include</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> &#x3C;thread></span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 自定义延时等待对象</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">struct</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Delay</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> milliseconds;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 检查是否已就绪（始终返回 false，需要等待）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    bool</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_ready</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> false</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 挂起协程，在另一个线程上延时后恢复</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_suspend</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">coroutine_handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;> </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">thread</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ms</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> milliseconds</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]() {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">this_thread</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">sleep_for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">chrono</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">milliseconds</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ms));</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            handle.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">resume</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 延时结束后恢复协程</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">detach</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 恢复后获取结果（此处无返回值）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_resume</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 使用自定义 Awaitable</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Task</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> delayedGreeting</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::cout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "开始等待..."</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::endl;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    co_await</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Delay{</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">};</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 等待 1000 毫秒</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::cout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "等待结束!"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::endl;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="co_yield-与生成器"><a href="#co_yield-与生成器">co_yield 与生成器</a></h3>
+      <p>
+        <code>co_yield value</code> 等价于
+        <code>co_await promise.yield_value(value)</code>，用于惰性<span
+          class="term-tip"
+          data-term="生成"
+          data-module="vue3"
+          data-def="创建代码或数据"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生成</abbr></span
+        >值<span
+          class="term-tip"
+          data-term="序列"
+          data-module="github"
+          data-def="序列"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">序列</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="cpp"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 斐波那契数列生成器</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Generator</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">> </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">fibonacci</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">true</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        co_yield</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        auto</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> temp </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> temp </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 使用 take 视图获取前 10 个斐波那契数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">auto</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> val : </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">fibonacci</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::cout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> val </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> " "</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">break</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 输出: 0 1 1 2 3 5 8 13 21 34</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="异步任务链"><a href="#异步任务链">异步任务链</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="cpp"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 模拟异步网络请求</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">struct</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> AsyncRead</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::string data;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    bool</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_ready</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> !</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">data.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">empty</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_suspend</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">coroutine_handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;> </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">h</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        // 模拟异步 IO 完成后恢复</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">thread</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">this</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">h</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]() {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">this_thread</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">sleep_for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">chrono</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">milliseconds</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">));</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            data </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "服务端响应数据"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            h.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">resume</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }).</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">detach</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">string</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_resume</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> data; }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Task</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> fetchData</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::cout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "发起请求..."</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::endl;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    auto</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> response </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> co_await</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AsyncRead{};</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 异步等待</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::cout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "收到: "</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> response </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::endl;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="惰性数据管道"><a href="#惰性数据管道">惰性数据管道</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="cpp"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 按行读取日志文件并过滤</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Generator</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">> </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">readLines</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">string</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> filename</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::ifstream </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">file</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(filename);</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::string line;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">getline</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(file, line)) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        co_yield</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> line;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 使用时按需处理，不会一次性加载全部内容</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">auto&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> line : </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">readLines</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"app.log"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (line.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">find</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"ERROR"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">!=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::npos) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::cout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> line </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::endl;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="注意事项"><a href="#注意事项">注意事项</a></h2>
+      <ul>
+        <li>
+          C++20
+          <span
+            class="term-tip"
+            data-term="协程"
+            data-module="c"
+            data-def="可暂停和恢复的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协程</abbr></span
+          >是<span
+            class="term-tip"
+            data-term="语言"
+            data-module="github"
+            data-def="编程语言"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">语言</abbr></span
+          >级<span
+            class="term-tip"
+            data-term="特性"
+            data-module="cpp"
+            data-def="特性"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">特性</abbr></span
+          >，但<span
+            class="term-tip"
+            data-term="标准库"
+            data-module="cpp"
+            data-def="标准库"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标准库</abbr></span
+          >仅<span
+            class="term-tip"
+            data-term="提供"
+            data-module="github"
+            data-def="提供"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提供</abbr></span
+          >了基础<span
+            class="term-tip"
+            data-term="框架"
+            data-module="cpp"
+            data-def="框架"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">框架</abbr></span
+          >（如 <code>std::coroutine_handle</code>），尚未<span
+            class="term-tip"
+            data-term="提供"
+            data-module="github"
+            data-def="提供"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提供</abbr></span
+          >现成的<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >级抽象（如 <code>std::generator</code> 在 C++23 才正式加入），需要自<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >实现或使用第三方<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="协程"
+            data-module="c"
+            data-def="可暂停和恢复的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协程</abbr></span
+          >帧在<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >上<span
+            class="term-tip"
+            data-term="分配"
+            data-module="github"
+            data-def="将 Issue 指派给某人"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分配</abbr></span
+          >，频繁创建短<span
+            class="term-tip"
+            data-term="生命周期"
+            data-module="cpp"
+            data-def="生命周期"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生命周期</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="协程"
+            data-module="c"
+            data-def="可暂停和恢复的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协程</abbr></span
+          >可能带来内存开销，应考虑复用<span
+            class="term-tip"
+            data-term="协程"
+            data-module="c"
+            data-def="可暂停和恢复的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协程</abbr></span
+          >或使用<span
+            class="term-tip"
+            data-term="自定义"
+            data-module="github"
+            data-def="自定义"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">自定义</abbr></span
+          >分配器
+        </li>
+        <li>
+          <code>final_suspend</code>
+          <span
+            class="term-tip"
+            data-term="返回"
+            data-module="vue3"
+            data-def="返回值"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">返回</abbr></span
+          >
+          <code>suspend_never</code> 时<span
+            class="term-tip"
+            data-term="协程"
+            data-module="c"
+            data-def="可暂停和恢复的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协程</abbr></span
+          >帧会自动<span
+            class="term-tip"
+            data-term="销毁"
+            data-module="vue3"
+            data-def="清理和销毁实例"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">销毁</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="返回"
+            data-module="vue3"
+            data-def="返回值"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">返回</abbr></span
+          >
+          <code>suspend_always</code> 时需要手动<span
+            class="term-tip"
+            data-term="销毁"
+            data-module="vue3"
+            data-def="清理和销毁实例"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">销毁</abbr></span
+          >，否则会<span
+            class="term-tip"
+            data-term="内存泄漏"
+            data-module="c"
+            data-def="分配的内存未释放"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">内存泄漏</abbr></span
+          >
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="协程"
+            data-module="c"
+            data-def="可暂停和恢复的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协程</abbr></span
+          >中<span
+            class="term-tip"
+            data-term="抛出"
+            data-module="javascript"
+            data-def="产生异常，中断代码执行"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">抛出</abbr></span
+          >异常会<span
+            class="term-tip"
+            data-term="触发"
+            data-module="javascript"
+            data-def="导致事件发生"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">触发</abbr></span
+          >
+          <code>unhandled_exception()</code>，默认<span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >通常<span
+            class="term-tip"
+            data-term="调用"
+            data-module="github"
+            data-def="调用"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">调用</abbr></span
+          >
+          <code>std::terminate()</code>，<span
+            class="term-tip"
+            data-term="生产"
+            data-module="github"
+            data-def="生产"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产</abbr></span
+          >代码中应妥善<span
+            class="term-tip"
+            data-term="处理"
+            data-module="cpp"
+            data-def="处理"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">处理</abbr></span
+          >
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="协程"
+            data-module="c"
+            data-def="可暂停和恢复的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协程</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="调试"
+            data-module="c"
+            data-def="查找和修复程序错误"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">调试</abbr></span
+          >较为困难，<span
+            class="term-tip"
+            data-term="建议"
+            data-module="github"
+            data-def="建议"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">建议</abbr></span
+          >在<span
+            class="term-tip"
+            data-term="开发"
+            data-module="github"
+            data-def="开发"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">开发</abbr></span
+          >阶<span
+            class="term-tip"
+            data-term="段"
+            data-module="vue3"
+            data-def="URL 的一段"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">段</abbr></span
+          >加入<span
+            class="term-tip"
+            data-term="日志"
+            data-module="github"
+            data-def="日志"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">日志</abbr></span
+          >追踪挂起和<span
+            class="term-tip"
+            data-term="恢复"
+            data-module="github"
+            data-def="恢复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">恢复</abbr></span
+          >的时机
+        </li>
+        <li>
+          <code>co_await</code> 的 Awaitable
+          <span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >必须正确<span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >三个<span
+            class="term-tip"
+            data-term="方法"
+            data-module="c"
+            data-def="关联到对象的函数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">方法</abbr></span
+          >，否则<span
+            class="term-tip"
+            data-term="编译错误"
+            data-module="typescript"
+            data-def="代码无法通过 TypeScript 编译器检查"
+            data-slug="typescript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编译错误</abbr></span
+          >信息可能晦涩难懂
+        </li>
+      </ul>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="symmetric-transfer-避免栈溢出">
+        <a href="#symmetric-transfer-避免栈溢出">symmetric transfer 避免栈溢出</a>
+      </h3>
+      <p>
+        在<span
+          class="term-tip"
+          data-term="递归"
+          data-module="c"
+          data-def="函数调用自身"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">递归</abbr></span
+        >协程场景中，<code>await_suspend</code>
+        <span
+          class="term-tip"
+          data-term="返回"
+          data-module="vue3"
+          data-def="返回值"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">返回</abbr></span
+        >
+        <code>std::coroutine_handle</code> 可以<span
+          class="term-tip"
+          data-term="实现"
+          data-module="github"
+          data-def="实现"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">实现</abbr></span
+        >对称<span
+          class="term-tip"
+          data-term="转移"
+          data-module="github"
+          data-def="转移"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">转移</abbr></span
+        >，避免无限<span
+          class="term-tip"
+          data-term="递归"
+          data-module="c"
+          data-def="函数调用自身"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">递归</abbr></span
+        >导致的<span
+          class="term-tip"
+          data-term="栈"
+          data-module="c"
+          data-def="后进先出的数据结构"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">栈</abbr></span
+        >溢出：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="cpp"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">struct</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> RecursiveAwaiter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::coroutine_handle</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> next;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    bool</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_ready</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> false</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 返回 coroutine_handle 实现对称转移</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // 编译器保证在挂起当前协程后立即恢复目标协程，不增加调用栈深度</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">coroutine_handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;> </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">await_suspend</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">coroutine_handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;>) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> next;</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 直接转移到下一个协程</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_resume</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">};</span></span></code></pre>
+      <h3 id="协程与线程池结合"><a href="#协程与线程池结合">协程与线程池结合</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="cpp"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#include</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> &#x3C;queue></span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#include</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> &#x3C;mutex></span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#include</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> &#x3C;condition_variable></span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 简易线程池调度器</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ThreadPool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::vector</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::thread</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> workers;</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::queue</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::function</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;void</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tasks;</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::mutex mtx;</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::condition_variable cv;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    bool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stop </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> false</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">public:</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    ThreadPool</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">size_t</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> threads</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">size_t</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> threads; </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">i) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            workers.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">emplace_back</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">this</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]() {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">true</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">                    std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::function</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;void</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> task;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">                        std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::unique_lock </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">lock</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(mtx);</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                        cv.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">wait</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(lock, [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">this</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]() { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stop </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">||</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> !</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">tasks.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">empty</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); });</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (stop </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tasks.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">empty</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                        task </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">move</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tasks.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">front</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">());</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                        tasks.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">pop</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    }</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">                    task</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            });</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> submit</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">function</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">void</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()> </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">task</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">            std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::unique_lock </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">lock</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(mtx);</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            tasks.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">push</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">move</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(task));</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        cv.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">notify_one</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">();</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 在线程池上恢复协程的 Awaitable</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">struct</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ThreadPoolAwaiter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ThreadPool</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pool;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    bool</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_ready</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() { </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> false</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">; }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_suspend</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">coroutine_handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;> </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pool.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">submit</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">([</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">handle</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]() { handle.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">resume</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(); });</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    void</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> await_resume</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">};</span></span></code></pre>
+      <h3 id="使用-c23-stdgenerator">
+        <a href="#使用-c23-stdgenerator">使用 C++23 std::generator</a>
+      </h3>
+      <p>
+        C++23 正式引入了 <code>std::generator</code>，无需手动<span
+          class="term-tip"
+          data-term="实现"
+          data-module="github"
+          data-def="实现"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">实现</abbr></span
+        >
+        Generator 即可使用：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="cpp"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#include</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> &#x3C;generator></span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// C++23 标准生成器，代码更简洁</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">generator</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">> </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">range23</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> start</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> end</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> start; i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> end; </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">i) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        co_yield</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 支持引用类型，避免拷贝</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">generator</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">string</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">> </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">getNames</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">vector</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">&#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">std</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">::</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">string</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> names</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">const</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> auto&#x26;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name : names) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        co_yield</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> name;</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 按引用产出，零拷贝</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    }</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+    </article>
+  </body>
+</html>

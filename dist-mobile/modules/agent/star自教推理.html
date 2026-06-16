@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>STaR自教推理</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">STaR自教推理</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            11 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          最小的可能自改进循环存在于推理依据中。模型生成思维链，保留那些得到正确答案的，并在其上微调。这就是
+          STaR。V-STaR 添加验证者以改善推理时选择。Quiet-STaR 将推理依据推到每个
+          token。三者都有效。没有一个是魔法——循环保留了碰巧达到正确答案的任何捷径。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="star-v-star-quiet-star--自教推理">
+        <a href="#star-v-star-quiet-star--自教推理">STaR, V-STaR, Quiet-STaR — 自教推理</a>
+      </h1>
+      <blockquote>
+        <p>
+          最小的可能自改进循环存在于推理依据中。模型生成思维链，保留那些得到正确答案的，并在其上微调。这就是
+          STaR。V-STaR 添加验证者以改善推理时选择。Quiet-STaR 将推理依据推到每个
+          token。三者都有效。没有一个是魔法——循环保留了碰巧达到正确答案的任何捷径。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 <strong>语言：</strong> Python (stdlib, 自举循环模拟器)
+        <strong>前置条件：</strong> Phase 13 · 01-03 (推理与CoT), Phase 15 · 01 (长时间范围框架)
+        <strong>时间：</strong> ~60 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        教模型推理的直接方法是收集人工编写的推理轨迹。这昂贵、缓慢，且受限于人类愿意编写多少高质量思维链。
+      </p>
+      <p>
+        STaR (Self-Taught Reasoner, Zelikman 等人, 2022)
+        问：如果模型自己编写推理依据并对照已知答案评分呢？循环是：
+      </p>
+      <ol>
+        <li>采样推理轨迹加答案。</li>
+        <li>如果最终答案正确，保留轨迹。</li>
+        <li>在保留的轨迹上微调。</li>
+        <li>重复。</li>
+      </ol>
+      <p>
+        它有效。GSM8K 和 CommonsenseQA
+        都在没有新人工标注的情况下改善了。但循环有内置偏差：任何产生正确答案的推理依据都被保留，无论推理本身是否合理。V-STaR
+        (Hosseini 等人, 2024) 用学习验证者修补了这一点；Quiet-STaR (Zelikman 等人, 2024)
+        将想法推广到每 token 内部推理依据。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="star在有效的上面自举"><a href="#star在有效的上面自举">STaR：在有效的上面自举</a></h3>
+      <p>
+        从有弱推理能力的基础模型开始。在每个训练问题上，采样推理依据加答案。如果答案匹配标签，保留
+        (问题, 推理依据, 答案) 三元组。在保留集上微调模型。重复。
+      </p>
+      <p>
+        一个转折很重要。如果模型永远无法做对一个问题，循环无法从中学习。STaR
+        添加<strong>合理化</strong>：对于模型失败的问题，注入正确答案作为提示，重新提示模型产生导向它的推理依据。合理化的推理依据被添加到训练集。
+      </p>
+      <p>
+        原始论文结果 (Zelikman 等人, 2022)：GPT-J 基础模型通过重复 STaR 轮次加合理化从 5.8% 提升到
+        10.7%——约 5 个百分点绝对值。在 CommonsenseQA 上，STaR 训练的 GPT-J 6B 达到
+        72.5%，可比较于微调的 GPT-3 175B (~73%)——一个约 30 倍更大的模型在人工标注推理依据上训练。
+      </p>
+      <h3 id="v-star用-dpo-训练验证者">
+        <a href="#v-star用-dpo-训练验证者">V-STaR：用 DPO 训练验证者</a>
+      </h3>
+      <p>
+        STaR 丢弃不正确的推理依据。Hosseini 等人 (2024) 观察到那些也是数据：每对 (推理依据,
+        “这是否正确”)
+        可以训练验证者。他们使用直接偏好优化在正确和不正确解决方案上构建排名器。在推理时，采样 N
+        个推理依据并选择验证者的首选。
+      </p>
+      <p>
+        报告增量：在 GSM8K 和 MATH 上相对先前自改进基线 +4 到 +17
+        个百分点，大部分增益来自使用验证者进行推理时选择而非额外生成器微调。
+      </p>
+      <h3 id="quiet-star每-token-内部推理依据">
+        <a href="#quiet-star每-token-内部推理依据">Quiet-STaR：每 token 内部推理依据</a>
+      </h3>
+      <p>
+        Zelikman 等人 (2024) 问：如果模型学会在每个 token
+        位置生成短内部推理依据，而不仅仅是在问题和答案之间呢？Quiet-STaR 训练模型在每个预测 token
+        前发出隐藏”想法”，然后通过学习权重将感知想法的预测与基线预测混合。
+      </p>
+      <p>
+        结果：Mistral 7B 在 GSM8K 上从 5.9% 到 10.9%，CommonsenseQA 上从 36.3% 到 47.2%
+        获得绝对零样本改善，无需任务特定微调。模型学会了”何时思考”——困难 token
+        获得更长的内部推理依据；简单的几乎不获得。
+      </p>
+      <h3 id="为什么三者共享安全关注">
+        <a href="#为什么三者共享安全关注">为什么三者共享安全关注</a>
+      </h3>
+      <p>
+        三种方法都使用最终答案作为梯度信号。通过有缺陷推理达到正确答案的推理依据——利用捷径、猜测或使用不泛化的模式——被正向强化。在分布内问题上捷径有效。在分布外问题上它静默失败。
+      </p>
+      <p>
+        V-STaR
+        的验证者通过学习排名推理依据来缓解，但验证者在相同标签集上训练。它可能学会偏好格式良好的错误推理而非诚实的确定性。更安全的设计是将
+        STaR 风格数据与 (a) 过程监督奖励模型（奖励中间步骤，不只是答案）和 (b) 打破简单捷径的保留
+        OOD 评估结合。
+      </p>
+      <h3 id="比较"><a href="#比较">比较</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>方法</th>
+            <th>训练信号</th>
+            <th>推理成本</th>
+            <th>数据浪费</th>
+            <th>已知失败模式</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>STaR</td>
+            <td>如果正确保留 (推理依据, 答案)</td>
+            <td>1x</td>
+            <td>丢弃所有不正确推理依据</td>
+            <td>捷径推理依据</td>
+          </tr>
+          <tr>
+            <td>STaR + 合理化</td>
+            <td>以上 + 正确答案提示重试</td>
+            <td>1x</td>
+            <td>较少</td>
+            <td>合理化推理依据可能不合理</td>
+          </tr>
+          <tr>
+            <td>V-STaR</td>
+            <td>STaR + 两类 DPO 验证者</td>
+            <td>Nx (best-of-N)</td>
+            <td>最少</td>
+            <td>验证者可以强化自信的错误</td>
+          </tr>
+          <tr>
+            <td>Quiet-STaR</td>
+            <td>每 token 推理依据 + 混合权重</td>
+            <td>1.5-3x</td>
+            <td>最少</td>
+            <td>仍然是答案条件梯度</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="在-2026-栈中的位置"><a href="#在-2026-栈中的位置">在 2026 栈中的位置</a></h3>
+      <p>
+        STaR 是旧的。但模式在 2025-2026 年到处重现。可验证数学问题上的 RL (DeepSeek-R1, Kimi-k1.5,
+        o1) 是 STaR 的答案条件梯度信号，放大了。过程奖励模型 (Lightman 等人, 2023; OpenAI 的 “Let’s
+        verify step by step”) 是过程监督替代方案。AlphaEvolve (Lesson 3) 是代码的
+        STaR，用程序评估器替代标签。Darwin Godel Machine (Lesson 4) 是 Agent 脚手架本身的 STaR。
+      </p>
+      <p>理解 STaR 让所有这些豁然开朗。它是最小可行自改进循环。</p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p><code>code/main.py</code> 在玩具算术任务上运行模拟 STaR 循环。你可以观察：</p>
+      <ul>
+        <li>准确性如何在自举轮次上攀升。</li>
+        <li>
+          捷径如何潜入：模拟器包含一个”懒惰”推理依据类，40% 的时间得到正确答案但泛化很差。观察 STaR
+          是否保留它们。
+        </li>
+        <li>验证者 (V-STaR 风格) 如何在推理时帮助但无法完全修剪训练期间引入的捷径。</li>
+      </ul>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        <code>outputs/skill-star-loop-reviewer.md</code> 帮助你在训练之前审计提议的自教推理流水线。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            运行模拟器。将捷径频率设为零，然后设为
+            0.4。两次运行之间的最终准确性差异有多大，即使两者在训练分布上都达到 >90%？
+          </p>
+        </li>
+        <li>
+          <p>
+            向模拟器添加保留 OOD 测试。从不同分布抽取问题，在分布内和 OOD
+            集上评估自举模型。量化差距。
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读 Quiet-STaR 论文 (arXiv:2403.09629) 第 3 节。用三句话解释”思考结束” token
+            和混合权重头。
+          </p>
+        </li>
+        <li>
+          <p>
+            比较 STaR
+            的”正确则保留”过滤器与独立奖励每个推理依据步骤的过程监督替代方案。识别标注成本差异和合理的质量差异。
+          </p>
+        </li>
+        <li>
+          <p>
+            设计一个能在部署模型中捕获捷径推理依据的评估。它不需要完美——它只需要打破 STaR
+            循环会强化的最简单捷径。
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们怎么说</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>STaR</td>
+            <td>”自教推理者”</td>
+            <td>在模型生成的、得到正确答案的推理依据上微调；重复</td>
+          </tr>
+          <tr>
+            <td>合理化</td>
+            <td>”提示重试”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="注入"
+                data-module="github"
+                data-def="注入"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注入</abbr></span
+              >正确答案，<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >基础模型<span
+                class="term-tip"
+                data-term="失败"
+                data-module="github"
+                data-def="失败"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">失败</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="问题"
+                data-module="github"
+                data-def="跟踪任务、缺陷、想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">问题</abbr></span
+              >重新<span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >推理依据
+            </td>
+          </tr>
+          <tr>
+            <td>V-STaR</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >者 STaR”
+            </td>
+            <td>
+              在正确和不正确<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >依据上 DPO
+              <span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >验证者，用于<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >时<span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Quiet-STaR</td>
+            <td>
+              ”每
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >依据”
+            </td>
+            <td>
+              在每个
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="位置"
+                data-module="github"
+                data-def="位置"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位置</abbr></span
+              >生成隐藏<span
+                class="term-tip"
+                data-term="想法"
+                data-module="github"
+                data-def="想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">想法</abbr></span
+              >；与<span
+                class="term-tip"
+                data-term="基线"
+                data-module="html5"
+                data-def="文本基线对齐线"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">基线</abbr></span
+              >预测<span
+                class="term-tip"
+                data-term="混合"
+                data-module="github"
+                data-def="混合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">混合</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              答案<span
+                class="term-tip"
+                data-term="条件"
+                data-module="github"
+                data-def="条件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">条件</abbr></span
+              >梯<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </td>
+            <td>
+              ”基于<span
+                class="term-tip"
+                data-term="结果"
+                data-module="c"
+                data-def="函数返回的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结果</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="信号"
+                data-module="cs-fundamentals"
+                data-def="Unix系统中进程间异步通知机制，如SIGINT、SIGKILL"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信号</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >循<span
+                class="term-tip"
+                data-term="环"
+                data-module="discrete-math"
+                data-def="具有加法群和乘法半群结构且满足分配律的代数系统"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">环</abbr></span
+              >奖励<span
+                class="term-tip"
+                data-term="最终"
+                data-module="cpp"
+                data-def="最终的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最终</abbr></span
+              >答案，不是<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >步骤
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="过程"
+                data-module="c"
+                data-def="执行特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">过程</abbr></span
+              >奖励模型
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="步骤"
+                data-module="vue3"
+                data-def="处理步骤"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">步骤</abbr></span
+              >级<span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >者”
+            </td>
+            <td>
+              在每步正确性上<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >的奖励模型，不是<span
+                class="term-tip"
+                data-term="结果"
+                data-module="c"
+                data-def="函数返回的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结果</abbr></span
+              >——与 STaR
+              <span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >比
+            </td>
+          </tr>
+          <tr>
+            <td>
+              捷径<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >依据
+            </td>
+            <td>
+              ”正确答案，<span
+                class="term-tip"
+                data-term="错误"
+                data-module="cpp"
+                data-def="错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">错误</abbr></span
+              >推理”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >不<span
+                class="term-tip"
+                data-term="泛化"
+                data-module="agent"
+                data-def="模型在未见过的新数据上保持良好性能的能力，是衡量模型质量的关键指标"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">泛化</abbr></span
+              >模式达到<span
+                class="term-tip"
+                data-term="标签"
+                data-module="c"
+                data-def="标记代码位置的标识符"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标签</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >依据；STaR
+              <span
+                class="term-tip"
+                data-term="保留"
+                data-module="github"
+                data-def="保留"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保留</abbr></span
+              >这些
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2203.14465"
+            >Zelikman et al. (2022). STaR: Bootstrapping Reasoning With Reasoning</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="原始"
+            data-module="vue3"
+            data-def="原始的、最初的"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">原始</abbr></span
+          >论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2402.06457"
+            >Hosseini et al. (2024). V-STaR: Training Verifiers for Self-Taught Reasoners</a
+          >
+          — 添加 DPO
+          <span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >者用于<span
+            class="term-tip"
+            data-term="推理"
+            data-module="github"
+            data-def="推理"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">推理</abbr></span
+          >时<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2403.09629"
+            >Zelikman et al. (2024). Quiet-STaR: Language Models Can Teach Themselves to Think
+            Before Speaking</a
+          >
+          — 每
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >
+          内部<span
+            class="term-tip"
+            data-term="推理"
+            data-module="github"
+            data-def="推理"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">推理</abbr></span
+          >依据
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2305.20050"
+            >Lightman et al. (2023). Let’s Verify Step by Step</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="过程"
+            data-module="c"
+            data-def="执行特定任务的代码块"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">过程</abbr></span
+          >奖励模型，<span
+            class="term-tip"
+            data-term="替代"
+            data-module="c"
+            data-def="用实参替换形参"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">替代</abbr></span
+          >梯<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >信号
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2501.12948">DeepSeek-R1 paper (arXiv:2501.12948)</a> —
+          可<span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >任务上的 RL，STaR
+          <span
+            class="term-tip"
+            data-term="扩展"
+            data-module="cpp"
+            data-def="添加的功能"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">扩展</abbr></span
+          >到前沿<span
+            class="term-tip"
+            data-term="训练"
+            data-module="github"
+            data-def="培训"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">训练</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

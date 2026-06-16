@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MySQL 索引与执行计划</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">MySQL 索引与执行计划</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            4 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">mysql</span><span class="doc-tag">database</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">B+Tree 索引、EXPLAIN 分析与索引优化策略。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-索引是什么-what-is-an-index">
+        <a href="#1-索引是什么-what-is-an-index">1. 索引是什么 (What is an Index)</a>
+      </h2>
+      <p>
+        索引是为了加速检索而构建的数据结构。对 InnoDB 来说，常见索引是 B+Tree。 索引带来的收益：
+      </p>
+      <ul>
+        <li>
+          加速 <code>WHERE</code> 过滤、<code>JOIN</code>、<code>ORDER BY</code>、<code
+            >GROUP BY</code
+          >
+          索引带来的成本：
+        </li>
+        <li>写入变慢（INSERT/UPDATE/DELETE 需要维护索引）</li>
+        <li>占用更多空间</li>
+        <li>设计不当会让查询优化器选错计划或无法利用索引</li>
+      </ul>
+      <h2 id="2-innodb-索引要点-innodb-basics">
+        <a href="#2-innodb-索引要点-innodb-basics">2. InnoDB 索引要点 (InnoDB Basics)</a>
+      </h2>
+      <h3 id="21-聚簇索引与二级索引">
+        <a href="#21-聚簇索引与二级索引">2.1 聚簇索引与二级索引</a>
+      </h3>
+      <ul>
+        <li>主键索引（聚簇索引）：叶子节点存放整行数据</li>
+        <li>二级索引：叶子节点存放“索引列 + 主键值” 因此：</li>
+        <li>用二级索引命中后，可能需要回表（根据主键再查一次聚簇索引）</li>
+        <li>覆盖索引可以避免回表（查询列都在索引里）</li>
+      </ul>
+      <h2 id="3-组合索引与最左前缀-composite-index">
+        <a href="#3-组合索引与最左前缀-composite-index">3. 组合索引与最左前缀 (Composite Index)</a>
+      </h2>
+      <p>假设有索引 <code>(a, b, c)</code>：</p>
+      <ul>
+        <li>能有效利用：<code>a</code>、<code>a,b</code>、<code>a,b,c</code> 的前缀过滤</li>
+        <li>不能跳过前缀：只用 <code>b</code> 或 <code>c</code> 往往无法走该索引 实践建议：</li>
+        <li>把区分度更高、过滤更强的列放在前面（但也要结合排序/分组需求）</li>
+        <li>频繁按 <code>(tenant_id, created_at)</code> 查询，优先建立组合索引</li>
+      </ul>
+      <h2 id="4-什么时候索引会失效-when-index-isnt-used">
+        <a href="#4-什么时候索引会失效-when-index-isnt-used"
+          >4. 什么时候索引会失效 (When Index Isn’t Used)</a
+        >
+      </h2>
+      <p>常见原因：</p>
+      <ul>
+        <li>对索引列做函数/表达式：<code>WHERE DATE(created_at) = ...</code></li>
+        <li>隐式类型转换：字符串与数字混用导致无法利用索引</li>
+        <li>前缀缺失：组合索引没用到最左前缀</li>
+        <li>
+          <code>LIKE '%xxx'</code> 前置<span
+            class="term-tip"
+            data-term="通配符"
+            data-module="java"
+            data-def="泛型中的 &#x60;?&#x60;，表示未知类型，&#x60;<? extends T>&#x60; 上界通配、&#x60;<? super T>&#x60; 下界通配"
+            data-slug="java/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">通配符</abbr></span
+          >无法利用普通 B+Tree
+          <span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="返回"
+            data-module="vue3"
+            data-def="返回值"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">返回</abbr></span
+          >行数过<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >：<span
+            class="term-tip"
+            data-term="优化"
+            data-module="cs-fundamentals"
+            data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">优化</abbr></span
+          >器认为<span
+            class="term-tip"
+            data-term="全表扫描"
+            data-module="mysql"
+            data-def="读取整个表的扫描"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">全表扫描</abbr></span
+          >更便宜
+        </li>
+      </ul>
+      <h2 id="5-explain-怎么看-how-to-read-explain">
+        <a href="#5-explain-怎么看-how-to-read-explain">5. EXPLAIN 怎么看 (How to Read EXPLAIN)</a>
+      </h2>
+      <p>
+        常用<span
+          class="term-tip"
+          data-term="字段"
+          data-module="cpp"
+          data-def="字段"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">字段</abbr></span
+        >（MySQL 8）：
+      </p>
+      <ul>
+        <li>
+          <code>type</code>：访问<span
+            class="term-tip"
+            data-term="类型"
+            data-module="c"
+            data-def="数据的分类"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">类型</abbr></span
+          >（从好到差大致：<code>const</code>/<code>ref</code>/<code>range</code>/<code>index</code>/<code>ALL</code>）
+        </li>
+        <li>
+          <code>key</code>：实际使用的<span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >
+        </li>
+        <li>
+          <code>rows</code>：估算扫描<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >数
+        </li>
+        <li>
+          <code>Extra</code>：额外<span
+            class="term-tip"
+            data-term="信息"
+            data-module="github"
+            data-def="信息"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">信息</abbr></span
+          >（例如 <code>Using index</code>、<code>Using filesort</code>、<code>Using temporary</code
+          >） 示例：
+        </li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EXPLAIN</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> id, email</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_account</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> email </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'a@b.com'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <p>
+        解读<span
+          class="term-tip"
+          data-term="目标"
+          data-module="cpp"
+          data-def="目标"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">目标</abbr></span
+        >：
+      </p>
+      <ul>
+        <li>
+          是否使用了期望的<span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >（<code>key</code>）
+        </li>
+        <li>
+          扫描<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >数是否可控（<code>rows</code>）
+        </li>
+        <li>
+          是否出现 <code>Using filesort</code> / <code>Using temporary</code>（可能需要<span
+            class="term-tip"
+            data-term="优化"
+            data-module="cs-fundamentals"
+            data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">优化</abbr></span
+          >索引或
+          <span
+            class="term-tip"
+            data-term="SQL"
+            data-module="mysql"
+            data-def="结构化查询语言"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">SQL</abbr></span
+          >）
+        </li>
+      </ul>
+      <h2 id="6-建索引的实用策略-practical-strategy">
+        <a href="#6-建索引的实用策略-practical-strategy"
+          >6. 建索引的实用策略 (Practical Strategy)</a
+        >
+      </h2>
+      <ul>
+        <li>
+          先写出<span
+            class="term-tip"
+            data-term="典型"
+            data-module="cpp"
+            data-def="典型的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">典型</abbr></span
+          >查询，再反推<span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >，而不是“先建一<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >索引”
+        </li>
+        <li>
+          一张<span
+            class="term-tip"
+            data-term="表"
+            data-module="cpp"
+            data-def="表"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">表</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >数量<span
+            class="term-tip"
+            data-term="控制"
+            data-module="github"
+            data-def="控制"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">控制</abbr></span
+          >在合理<span
+            class="term-tip"
+            data-term="范围"
+            data-module="c"
+            data-def="取值区间"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">范围</abbr></span
+          >，避免写放大
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="组合"
+            data-module="cpp"
+            data-def="组合多个值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">组合</abbr></span
+          >索引优先<span
+            class="term-tip"
+            data-term="覆盖"
+            data-module="c"
+            data-def="测试覆盖的代码范围"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">覆盖</abbr></span
+          >高频<span
+            class="term-tip"
+            data-term="查询"
+            data-module="cpp"
+            data-def="查询操作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">查询</abbr></span
+          >路径
+        </li>
+        <li>
+          长<span
+            class="term-tip"
+            data-term="字符串"
+            data-module="cpp"
+            data-def="字符序列"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">字符串</abbr></span
+          >字<span
+            class="term-tip"
+            data-term="段"
+            data-module="vue3"
+            data-def="URL 的一段"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">段</abbr></span
+          >用<span
+            class="term-tip"
+            data-term="前缀"
+            data-module="cpp"
+            data-def="前缀"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">前缀</abbr></span
+          >索引需谨慎（会<span
+            class="term-tip"
+            data-term="影响"
+            data-module="github"
+            data-def="影响"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">影响</abbr></span
+          >选择性与<span
+            class="term-tip"
+            data-term="排序"
+            data-module="cpp"
+            data-def="排序"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">排序</abbr></span
+          >能力）
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >时间<span
+            class="term-tip"
+            data-term="范围"
+            data-module="c"
+            data-def="取值区间"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">范围</abbr></span
+          >查询：<code>(tenant_id, created_at)</code> 常见<span
+            class="term-tip"
+            data-term="有效"
+            data-module="cpp"
+            data-def="有效的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">有效</abbr></span
+          >
+        </li>
+      </ul>
+      <h2 id="7-小结-summary"><a href="#7-小结-summary">7. 小结 (Summary)</a></h2>
+      <ul>
+        <li>
+          <span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >是“以写换读”的<span
+            class="term-tip"
+            data-term="典型"
+            data-module="cpp"
+            data-def="典型的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">典型</abbr></span
+          >优化手<span
+            class="term-tip"
+            data-term="段"
+            data-module="vue3"
+            data-def="URL 的一段"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">段</abbr></span
+          >
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="组合"
+            data-module="cpp"
+            data-def="组合多个值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">组合</abbr></span
+          >索引与最左<span
+            class="term-tip"
+            data-term="前缀"
+            data-module="cpp"
+            data-def="前缀"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">前缀</abbr></span
+          >是 MySQL
+          <span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >设计的<span
+            class="term-tip"
+            data-term="核"
+            data-module="data-analysis"
+            data-def="KDE中用于平滑估计的窗口函数，常用高斯核"
+            data-slug="data-analysis/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">核</abbr></span
+          >心
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="EXPLAIN"
+            data-module="mysql"
+            data-def="分析查询执行计划"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">EXPLAIN</abbr></span
+          >
+          是<span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >索引是否生效的第一<span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >
+        </li>
+      </ul>
+      <hr />
+      <h3 id="更新日志-changelog"><a href="#更新日志-changelog">更新日志 (Changelog)</a></h3>
+      <ul>
+        <li>
+          2026-04-06: 新增「<span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >与<span
+            class="term-tip"
+            data-term="执行计划"
+            data-module="sql"
+            data-def="查询优化器生成的数据处理步骤描述，展示索引使用、连接方法和扫描策略"
+            data-slug="sql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">执行计划</abbr></span
+          >」<span
+            class="term-tip"
+            data-term="知识"
+            data-module="github"
+            data-def="知识"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">知识</abbr></span
+          >点，<span
+            class="term-tip"
+            data-term="补充"
+            data-module="cpp"
+            data-def="补充"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">补充</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="EXPLAIN"
+            data-module="mysql"
+            data-def="分析查询执行计划"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">EXPLAIN</abbr></span
+          >
+          解读与建<span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >策略
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

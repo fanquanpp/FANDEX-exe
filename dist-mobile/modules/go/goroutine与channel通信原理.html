@@ -1,0 +1,374 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>goroutine与channel通信原理</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">goroutine与channel通信原理</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            1 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">Go goroutine与channel通信原理详解。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-goroutine-原理"><a href="#1-goroutine-原理">1. goroutine 原理</a></h2>
+      <p>
+        <span
+          class="term-tip"
+          data-term="goroutine"
+          data-module="go"
+          data-def="Go 运行时管理的轻量级并发执行单元，初始栈仅 2KB 且可动态增长"
+          data-slug="go/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">goroutine</abbr></span
+        >
+        是<span
+          class="term-tip"
+          data-term="用户"
+          data-module="cpp"
+          data-def="用户"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">用户</abbr></span
+        >态<span
+          class="term-tip"
+          data-term="线程"
+          data-module="c"
+          data-def="执行的最小单位"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">线程</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="初始"
+          data-module="github"
+          data-def="初始的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">初始</abbr></span
+        >栈仅 2KB，可<span
+          class="term-tip"
+          data-term="动态"
+          data-module="github"
+          data-def="动态的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">动态</abbr></span
+        >增长：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">go</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> func</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Hello from goroutine"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}()</span></span></code></pre>
+      <h3 id="11-与线程对比"><a href="#11-与线程对比">1.1 与线程对比</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="特性"
+                data-module="cpp"
+                data-def="特性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特性</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="goroutine"
+                data-module="go"
+                data-def="Go 运行时管理的轻量级并发执行单元，初始栈仅 2KB 且可动态增长"
+                data-slug="go/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">goroutine</abbr></span
+              >
+            </th>
+            <th>
+              OS
+              <span
+                class="term-tip"
+                data-term="线程"
+                data-module="c"
+                data-def="执行的最小单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">线程</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="初始"
+                data-module="github"
+                data-def="初始的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">初始</abbr></span
+              >栈
+            </td>
+            <td>2KB</td>
+            <td>1-8MB</td>
+          </tr>
+          <tr>
+            <td>创建成本</td>
+            <td>~0.3μs</td>
+            <td>~10μs</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="切换"
+                data-module="github"
+                data-def="切换"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">切换</abbr></span
+              >成本
+            </td>
+            <td>~0.2μs</td>
+            <td>~1-2μs</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="数量"
+                data-module="github"
+                data-def="数量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">数量</abbr></span
+              >上限
+            </td>
+            <td>百万级</td>
+            <td>千级</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="2-channel-通信"><a href="#2-channel-通信">2. channel 通信</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 无缓冲 channel：同步</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">chan</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 有缓冲 channel：异步</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> make</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">chan</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 发送</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 42</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 接收</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">value </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ch</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 关闭</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">close</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ch)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 遍历</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> v </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ch {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(v)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="3-通信原理"><a href="#3-通信原理">3. 通信原理</a></h2>
+      <h3 id="31-无缓冲-channel"><a href="#31-无缓冲-channel">3.1 无缓冲 channel</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="发送"
+          data-module="cpp"
+          data-def="发送"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">发送</abbr></span
+        >方阻塞直到<span
+          class="term-tip"
+          data-term="接收"
+          data-module="github"
+          data-def="接收"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">接收</abbr></span
+        >方<span
+          class="term-tip"
+          data-term="就绪"
+          data-module="cpp"
+          data-def="就绪状态"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">就绪</abbr></span
+        >，反之亦然。<span
+          class="term-tip"
+          data-term="实现"
+          data-module="github"
+          data-def="实现"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">实现</abbr></span
+        >同步<span
+          class="term-tip"
+          data-term="语义"
+          data-module="cpp"
+          data-def="语义"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">语义</abbr></span
+        >。
+      </p>
+      <h3 id="32-有缓冲-channel"><a href="#32-有缓冲-channel">3.2 有缓冲 channel</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="缓冲区"
+          data-module="c"
+          data-def="临时存储数据的内存区域"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">缓冲区</abbr></span
+        >满时<span
+          class="term-tip"
+          data-term="发送"
+          data-module="cpp"
+          data-def="发送"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">发送</abbr></span
+        >方阻塞，<span
+          class="term-tip"
+          data-term="缓冲区"
+          data-module="c"
+          data-def="临时存储数据的内存区域"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">缓冲区</abbr></span
+        >空时<span
+          class="term-tip"
+          data-term="接收"
+          data-module="github"
+          data-def="接收"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">接收</abbr></span
+        >方阻塞。
+      </p>
+      <h3 id="33-底层数据结构"><a href="#33-底层数据结构">3.3 底层数据结构</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> hchan</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    qcount   </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">           // 缓冲区元素数</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    dataqsiz </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">           // 缓冲区大小</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    buf      </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unsafe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> // 环形缓冲区</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    elemtype </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">_type</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">         // 元素类型</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    sendx    </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">           // 发送索引</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    recvx    </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">           // 接收索引</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    recvq    </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">waitq</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">          // 等待接收的 goroutine 队列</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    sendq    </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">waitq</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">          // 等待发送的 goroutine 队列</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    lock     </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">mutex</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">          // 互斥锁</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="4-select-多路复用"><a href="#4-select-多路复用">4. select 多路复用</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">select</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">case</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> v </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ch1:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"ch1:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, v)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">case</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> v </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ch2:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"ch2:"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, v)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">case</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">time.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">After</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> time.Second):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"timeout"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">default</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    fmt.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Println</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"no data"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+    </article>
+  </body>
+</html>

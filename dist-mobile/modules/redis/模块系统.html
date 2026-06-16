@@ -1,0 +1,1147 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>模块系统</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">模块系统</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            4 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          Redis模块系统：RedisJSON、RedisTimeSeries、RediSearch、RedisBloom等模块原理与使用
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-模块系统概述"><a href="#1-模块系统概述">1. 模块系统概述</a></h2>
+      <p>
+        Redis 模块系统是 Redis 4.0 引入的扩展机制，允许开发者使用 C 语言编写自定义模块，为 Redis
+        添加新的数据类型和命令，而无需修改 Redis 核心代码。
+      </p>
+      <p><strong>核心特性</strong>：</p>
+      <ul>
+        <li><strong>自定义数据类型</strong>：注册新的数据类型及编码方式</li>
+        <li><strong>自定义命令</strong>：添加新的 Redis 命令</li>
+        <li><strong>钩子机制</strong>：拦截 Redis 事件（如键过期、命令执行）</li>
+        <li><strong>线程安全</strong>：支持后台线程执行耗时操作</li>
+        <li><strong>动态加载</strong>：运行时加载/卸载模块，无需重启</li>
+      </ul>
+      <h3 id="11-模块加载方式"><a href="#11-模块加载方式">1.1 模块加载方式</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># redis.conf 配置</span></span>
+<span class="line"><span>loadmodule /path/to/module.so</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 运行时加载</span></span>
+<span class="line"><span>MODULE LOAD /path/to/module.so</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 查看已加载模块</span></span>
+<span class="line"><span>MODULE LIST</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 卸载模块</span></span>
+<span class="line"><span>MODULE UNLOAD module_name</span></span></code></pre>
+      <h2 id="2-redisjson"><a href="#2-redisjson">2. RedisJSON</a></h2>
+      <p>RedisJSON 是 Redis 的 JSON 数据类型模块，提供完整的 JSON 操作能力。</p>
+      <h3 id="21-核心特性"><a href="#21-核心特性">2.1 核心特性</a></h3>
+      <ul>
+        <li>原生 JSON 数据类型，支持嵌套结构</li>
+        <li>JSONPath 语法查询和修改</li>
+        <li>原子性操作，无需读取-修改-写入</li>
+        <li>支持 JSON Schema 验证</li>
+      </ul>
+      <h3 id="22-基本操作"><a href="#22-基本操作">2.2 基本操作</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 存储 JSON</span></span>
+<span class="line"><span>JSON.SET user:1 $ '{"name":"张三","age":30,"address":{"city":"北京"},"tags":["dev","redis"]}'</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 获取整个 JSON</span></span>
+<span class="line"><span>JSON.GET user:1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 获取指定路径</span></span>
+<span class="line"><span>JSON.GET user:1 $.name</span></span>
+<span class="line"><span>JSON.GET user:1 $.address.city</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 修改字段</span></span>
+<span class="line"><span>JSON.SET user:1 $.age 31</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 追加数组元素</span></span>
+<span class="line"><span>JSON.ARRAPPEND user:1 $.tags '"python"'</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 数值递增</span></span>
+<span class="line"><span>JSON.NUMINCRBY user:1 $.age 1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 删除字段</span></span>
+<span class="line"><span>JSON.DEL user:1 $.tags</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 查询类型</span></span>
+<span class="line"><span>JSON.TYPE user:1 $.name</span></span></code></pre>
+      <h3 id="23-jsonpath-语法"><a href="#23-jsonpath-语法">2.3 JSONPath 语法</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 根节点</span></span>
+<span class="line"><span>JSON.GET user:1 $</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 子节点</span></span>
+<span class="line"><span>JSON.GET user:1 $.name</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 递归下降</span></span>
+<span class="line"><span>JSON.GET user:1 $..city</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 数组索引</span></span>
+<span class="line"><span>JSON.GET user:1 $.tags[0]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 数组切片</span></span>
+<span class="line"><span>JSON.GET user:1 $.tags[0:2]</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 过滤表达式</span></span>
+<span class="line"><span>JSON.GET users $[?(@.age>25)].name</span></span></code></pre>
+      <h3 id="24-性能优势"><a href="#24-性能优势">2.4 性能优势</a></h3>
+      <p>RedisJSON 相比传统 String 存储 JSON 的优势：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>操作</th>
+            <th>String + 序列化</th>
+            <th>RedisJSON</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>修改单个字段</td>
+            <td>读取→反序列化→修改→序列化→写入</td>
+            <td>直接修改</td>
+          </tr>
+          <tr>
+            <td>网络传输</td>
+            <td>传输完整 JSON</td>
+            <td>仅传输结果</td>
+          </tr>
+          <tr>
+            <td>原子性</td>
+            <td>需要事务/MULTI</td>
+            <td>原生原子操作</td>
+          </tr>
+          <tr>
+            <td>内存效率</td>
+            <td>重复存储完整 JSON</td>
+            <td>共享不变部分</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="3-redisearch"><a href="#3-redisearch">3. RediSearch</a></h2>
+      <p>
+        RediSearch 是 Redis 的全文<span
+          class="term-tip"
+          data-term="搜索"
+          data-module="cpp"
+          data-def="搜索"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">搜索</abbr></span
+        >和<span
+          class="term-tip"
+          data-term="二级索引"
+          data-module="mysql"
+          data-def="除主键外的其他索引"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">二级索引</abbr></span
+        >模<span
+          class="term-tip"
+          data-term="块"
+          data-module="c"
+          data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">块</abbr></span
+        >。
+      </p>
+      <h3 id="31-创建索引"><a href="#31-创建索引">3.1 创建索引</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 创建索引</span></span>
+<span class="line"><span>FT.CREATE idx:products</span></span>
+<span class="line"><span>  ON HASH</span></span>
+<span class="line"><span>  PREFIX 1 product:</span></span>
+<span class="line"><span>  SCHEMA</span></span>
+<span class="line"><span>    title TEXT WEIGHT 5.0</span></span>
+<span class="line"><span>    description TEXT</span></span>
+<span class="line"><span>    price NUMERIC SORTABLE</span></span>
+<span class="line"><span>    category TAG</span></span>
+<span class="line"><span>    created_at NUMERIC SORTABLE</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 创建 JSON 索引</span></span>
+<span class="line"><span>FT.CREATE idx:users</span></span>
+<span class="line"><span>  ON JSON</span></span>
+<span class="line"><span>  PREFIX 1 user:</span></span>
+<span class="line"><span>  SCHEMA</span></span>
+<span class="line"><span>    $.name AS name TEXT</span></span>
+<span class="line"><span>    $.age AS age NUMERIC</span></span>
+<span class="line"><span>    $.address.city AS city TAG</span></span></code></pre>
+      <h3 id="32-搜索操作"><a href="#32-搜索操作">3.2 搜索操作</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 全文搜索</span></span>
+<span class="line"><span>FT.SEARCH idx:products "redis search"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 精确匹配</span></span>
+<span class="line"><span>FT.SEARCH idx:products "@category:{electronics}"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 数值范围</span></span>
+<span class="line"><span>FT.SEARCH idx:products "@price:[100 500]"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 组合查询</span></span>
+<span class="line"><span>FT.SEARCH idx:products "redis @price:[0 100] @category:{book}"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 模糊搜索</span></span>
+<span class="line"><span>FT.SEARCH idx:products "%%redis%%"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 前缀搜索</span></span>
+<span class="line"><span>FT.SEARCH idx:products "redi*"</span></span></code></pre>
+      <h3 id="33-聚合查询"><a href="#33-聚合查询">3.3 聚合查询</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 按类别分组统计</span></span>
+<span class="line"><span>FT.AGGREGATE idx:products "*"</span></span>
+<span class="line"><span>  GROUPBY 1 @category</span></span>
+<span class="line"><span>  REDUCE COUNT 0 AS count</span></span>
+<span class="line"><span>  SORTBY 2 @count DESC</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 价格统计</span></span>
+<span class="line"><span>FT.AGGREGATE idx:products "@category:{electronics}"</span></span>
+<span class="line"><span>  GROUPBY 1 @category</span></span>
+<span class="line"><span>  REDUCE AVG 1 @price AS avg_price</span></span>
+<span class="line"><span>  REDUCE MIN 1 @price AS min_price</span></span>
+<span class="line"><span>  REDUCE MAX 1 @price AS max_price</span></span></code></pre>
+      <h3 id="34-中文搜索"><a href="#34-中文搜索">3.4 中文搜索</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 创建支持中文的索引</span></span>
+<span class="line"><span>FT.CREATE idx:articles</span></span>
+<span class="line"><span>  ON HASH</span></span>
+<span class="line"><span>  PREFIX 1 article:</span></span>
+<span class="line"><span>  SCHEMA</span></span>
+<span class="line"><span>    title TEXT PHONETIC zh</span></span>
+<span class="line"><span>    content TEXT PHONETIC zh</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 中文搜索</span></span>
+<span class="line"><span>FT.SEARCH idx:articles "分布式系统"</span></span></code></pre>
+      <h2 id="4-redistimeseries"><a href="#4-redistimeseries">4. RedisTimeSeries</a></h2>
+      <p>
+        RedisTimeSeries 是 Redis 的<span
+          class="term-tip"
+          data-term="时间序列"
+          data-module="data-analysis"
+          data-def="按时间顺序排列的数据序列，Pandas中用DatetimeIndex支持时间序列操作"
+          data-slug="data-analysis/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">时间序列</abbr></span
+        >数据<span
+          class="term-tip"
+          data-term="模块"
+          data-module="github"
+          data-def="模块"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">模块</abbr></span
+        >，专为 IoT
+        <span
+          class="term-tip"
+          data-term="监控"
+          data-module="devops"
+          data-def="持续采集和展示系统指标（CPU、内存、延迟等）的过程，用于了解系统运行状态"
+          data-slug="devops/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">监控</abbr></span
+        >和<span
+          class="term-tip"
+          data-term="指标"
+          data-module="github"
+          data-def="指标"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">指标</abbr></span
+        >收集<span
+          class="term-tip"
+          data-term="设计"
+          data-module="github"
+          data-def="设计"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">设计</abbr></span
+        >。
+      </p>
+      <h3 id="41-基本操作"><a href="#41-基本操作">4.1 基本操作</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 创建时间序列</span></span>
+<span class="line"><span>TS.CREATE temperature:device1 RETENTION 86400000 LABELS device_id 1 location beijing</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 添加数据点</span></span>
+<span class="line"><span>TS.ADD temperature:device1 * 25.5</span></span>
+<span class="line"><span>TS.ADD temperature:device1 1640995200000 23.1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 批量添加</span></span>
+<span class="line"><span>TS.MADD temperature:device1 1640995200000 23.1 temperature:device1 1640995260000 24.5 temperature:device1 1640995320000 25.0</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 查询范围</span></span>
+<span class="line"><span>TS.RANGE temperature:device1 - + AGGREGATION avg 60000</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 按标签查询</span></span>
+<span class="line"><span>TS.MRANGE - + WITHLABELS FILTER device_id=1</span></span></code></pre>
+      <h3 id="42-降采样规则"><a href="#42-降采样规则">4.2 降采样规则</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 创建降采样规则：每分钟平均值，保留 30 天</span></span>
+<span class="line"><span>TS.CREATE temperature:device1:1min RETENTION 2592000000</span></span>
+<span class="line"><span>TS.CREATERULE temperature:device1 temperature:device1:1min AGGREGATION avg 60000</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 支持的聚合函数</span></span>
+<span class="line"><span># avg, sum, min, max, range, count, first, last, std.p, std.s, var.p, var.s, twa</span></span></code></pre>
+      <h3 id="43-标签与过滤"><a href="#43-标签与过滤">4.3 标签与过滤</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 创建带标签的时间序列</span></span>
+<span class="line"><span>TS.CREATE cpu:host1 RETENTION 86400000 LABELS hostname host1 region us-east metric cpu</span></span>
+<span class="line"><span>TS.CREATE cpu:host2 RETENTION 86400000 LABELS hostname host2 region us-west metric cpu</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 按标签过滤查询</span></span>
+<span class="line"><span>TS.MRANGE - + FILTER metric=cpu</span></span>
+<span class="line"><span>TS.MRANGE - + FILTER region=us-east metric=cpu</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 标签过滤支持</span></span>
+<span class="line"><span># = 等于, != 不等于, () 属于, ~= 正则匹配</span></span></code></pre>
+      <h2 id="5-redisbloom"><a href="#5-redisbloom">5. RedisBloom</a></h2>
+      <p>
+        RedisBloom
+        <span
+          class="term-tip"
+          data-term="提供"
+          data-module="github"
+          data-def="提供"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">提供</abbr></span
+        >概<span
+          class="term-tip"
+          data-term="率"
+          data-module="cpp"
+          data-def="速率"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">率</abbr></span
+        >数据<span
+          class="term-tip"
+          data-term="结构"
+          data-module="cpp"
+          data-def="结构"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结构</abbr></span
+        >：<span
+          class="term-tip"
+          data-term="布隆过滤器"
+          data-module="algorithm"
+          data-def="用位数组近似表示集合的概率数据结构，查询O(k)，存在假阳性但无假阴性"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">布隆过滤器</abbr></span
+        >、布谷鸟<span
+          class="term-tip"
+          data-term="过滤器"
+          data-module="javascript"
+          data-def="数组方法，从元素中筛选满足条件的"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">过滤器</abbr></span
+        >、计数-<span
+          class="term-tip"
+          data-term="最小"
+          data-module="github"
+          data-def="最小的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">最小</abbr></span
+        >草<span
+          class="term-tip"
+          data-term="图"
+          data-module="algorithm"
+          data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">图</abbr></span
+        >、Top-K。
+      </p>
+      <h3 id="51-布隆过滤器bloom-filter">
+        <a href="#51-布隆过滤器bloom-filter">5.1 布隆过滤器（Bloom Filter）</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 创建布隆过滤器</span></span>
+<span class="line"><span>BF.CREATE emails FILTER 0.01 ERROR RATE 1000000 CAPACITY</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 添加元素</span></span>
+<span class="line"><span>BF.ADD emails "user@example.com"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 批量添加</span></span>
+<span class="line"><span>BF.MADD emails "a@test.com" "b@test.com" "c@test.com"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 检查是否存在</span></span>
+<span class="line"><span>BF.EXISTS emails "user@example.com"    # 返回 1（可能存在）</span></span>
+<span class="line"><span>BF.EXISTS emails "unknown@test.com"    # 返回 0（一定不存在）</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 误判率计算</span></span>
+<span class="line"><span># 误判率 p ≈ (1 - e^(-kn/m))^k</span></span>
+<span class="line"><span># 其中 n=元素数, m=位数组大小, k=哈希函数数</span></span></code></pre>
+      <h3 id="52-布谷鸟过滤器cuckoo-filter">
+        <a href="#52-布谷鸟过滤器cuckoo-filter">5.2 布谷鸟过滤器（Cuckoo Filter）</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 创建布谷鸟过滤器</span></span>
+<span class="line"><span>CF.CREATE usernames CAPACITY 1000000</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 添加元素</span></span>
+<span class="line"><span>CF.ADD usernames "alice"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 检查存在</span></span>
+<span class="line"><span>CF.EXISTS usernames "alice"</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 删除元素（布隆过滤器不支持，布谷鸟支持）</span></span>
+<span class="line"><span>CF.DEL usernames "alice"</span></span></code></pre>
+      <h3 id="53-count-min-sketch"><a href="#53-count-min-sketch">5.3 Count-Min Sketch</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 创建</span></span>
+<span class="line"><span>CMS.CREATE pageviews 2000 7</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 增加计数</span></span>
+<span class="line"><span>CMS.INCRBY pageviews homepage 5 about 3</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 查询计数</span></span>
+<span class="line"><span>CMS.QUERY pageviews homepage</span></span></code></pre>
+      <h3 id="54-top-k"><a href="#54-top-k">5.4 Top-K</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 创建</span></span>
+<span class="line"><span>TOPK.CREATE trending 10</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 增加计数</span></span>
+<span class="line"><span>TOPK.INCRBY trending redis 5 python 3 java 2 go 4</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 查询 Top-K</span></span>
+<span class="line"><span>TOPK.LIST trending</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 查询元素排名</span></span>
+<span class="line"><span>TOPK.QUERY trending redis</span></span></code></pre>
+      <h2 id="6-rediscell"><a href="#6-rediscell">6. RedisCell</a></h2>
+      <p>
+        RedisCell
+        <span
+          class="term-tip"
+          data-term="提供"
+          data-module="github"
+          data-def="提供"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">提供</abbr></span
+        >分布式<span
+          class="term-tip"
+          data-term="限流"
+          data-module="sql"
+          data-def="数据库对并发请求数量或频率进行限制的机制，防止系统过载"
+          data-slug="sql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">限流</abbr></span
+        >功能，基于<span
+          class="term-tip"
+          data-term="令牌"
+          data-module="cpp"
+          data-def="令牌"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">令牌</abbr></span
+        >桶算法：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 限流：每秒最多 10 次请求</span></span>
+<span class="line"><span>CL.THROTTLE api:limit 10 10 1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 返回值</span></span>
+<span class="line"><span># 1) 0          # 是否被限流（0=允许，1=限流）</span></span>
+<span class="line"><span># 2) 11         # 令牌桶容量</span></span>
+<span class="line"><span># 3) 10         # 剩余令牌数</span></span>
+<span class="line"><span># 4) -1         # 需要等待的毫秒数（-1 表示无需等待）</span></span>
+<span class="line"><span># 5) 0          # 下次补充令牌的毫秒数</span></span></code></pre>
+      <h2 id="7-其他常用模块"><a href="#7-其他常用模块">7. 其他常用模块</a></h2>
+      <h3 id="71-redisgraph已弃用"><a href="#71-redisgraph已弃用">7.1 RedisGraph（已弃用）</a></h3>
+      <p>
+        Redis Graph
+        <span
+          class="term-tip"
+          data-term="模块"
+          data-module="github"
+          data-def="模块"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">模块</abbr></span
+        >已在 Redis 7.2 中弃用，<span
+          class="term-tip"
+          data-term="建议"
+          data-module="github"
+          data-def="建议"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">建议</abbr></span
+        >使用 Redis + 外部<span
+          class="term-tip"
+          data-term="图"
+          data-module="algorithm"
+          data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">图</abbr></span
+        >数据<span
+          class="term-tip"
+          data-term="库"
+          data-module="cpp"
+          data-def="可复用的代码集合"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">库</abbr></span
+        >方案。
+      </p>
+      <h3 id="72-redisai"><a href="#72-redisai">7.2 RedisAI</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 加载模型</span></span>
+<span class="line"><span>AI.MODELSET my_model TF CPU INPUTS 2 input1 input2 OUTPUTS 1 output BLOB &#x3C;model_data></span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 执行推理</span></span>
+<span class="line"><span>AI.TENSORSET input1 FLOAT 1 2 VALUES 1.0 2.0</span></span>
+<span class="line"><span>AI.TENSORSET input2 FLOAT 1 2 VALUES 3.0 4.0</span></span>
+<span class="line"><span>AI.MODELEXECUTE my_model INPUTS 2 input1 input2 OUTPUTS 1 output</span></span>
+<span class="line"><span>AI.TENSORGET output VALUES</span></span></code></pre>
+      <h3 id="73-redis-cell"><a href="#73-redis-cell">7.3 redis-cell</a></h3>
+      <p>
+        基于<span
+          class="term-tip"
+          data-term="滑动窗口"
+          data-module="cpp"
+          data-def="滑动窗口"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">滑动窗口</abbr></span
+        >的<span
+          class="term-tip"
+          data-term="限流"
+          data-module="sql"
+          data-def="数据库对并发请求数量或频率进行限制的机制，防止系统过载"
+          data-slug="sql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">限流</abbr></span
+        >模<span
+          class="term-tip"
+          data-term="块"
+          data-module="c"
+          data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">块</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>CL.THROTTLE my_limit 100 400 60 1</span></span>
+<span class="line"><span># 参数：key, max_burst, count_per_period, period, quantity</span></span></code></pre>
+      <h2 id="8-模块开发基础"><a href="#8-模块开发基础">8. 模块开发基础</a></h2>
+      <h3 id="81-最简模块示例"><a href="#81-最简模块示例">8.1 最简模块示例</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="c"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">#include</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "redismodule.h"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> HelloCommand</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(RedisModuleCtx </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ctx</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, RedisModuleString </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">**</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">argv</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> argc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">    RedisModule_ReplyWithSimpleString</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Hello, Module!"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> REDISMODULE_OK;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">int</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> RedisModule_OnLoad</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(RedisModuleCtx </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ctx</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">RedisModule_Init</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"mymodule"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, REDISMODULE_APIVER_1) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> REDISMODULE_ERR)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> REDISMODULE_ERR;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">RedisModule_CreateCommand</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(ctx, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"mymodule.hello"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, HelloCommand,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">        "readonly"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> REDISMODULE_ERR)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> REDISMODULE_ERR;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> REDISMODULE_OK;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="82-编译与加载"><a href="#82-编译与加载">8.2 编译与加载</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 编译</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">gcc</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -shared</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -fPIC</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -o</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> mymodule.so</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> mymodule.c</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -I/path/to/redis/src</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 加载</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-server</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --loadmodule</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ./mymodule.so</span></span></code></pre>
+      <h3 id="83-注册自定义数据类型">
+        <a href="#83-注册自定义数据类型">8.3 注册自定义数据类型</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="c"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 注册数据类型</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">RedisModuleType </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">MyType </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> RedisModule_CreateDataType</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ctx, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"mytype_"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x26;</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">typemethods</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+      <h2 id="9-模块生态与选型"><a href="#9-模块生态与选型">9. 模块生态与选型</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="模块"
+                data-module="github"
+                data-def="模块"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模块</abbr></span
+              >
+            </th>
+            <th>功能</th>
+            <th>适用场景</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="维护"
+                data-module="github"
+                data-def="维护"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">维护</abbr></span
+              >状态
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>RedisJSON</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="操作"
+                data-module="github"
+                data-def="GitHub Actions 工作流"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">操作</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >配置、商品<span
+                class="term-tip"
+                data-term="信息"
+                data-module="github"
+                data-def="信息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信息</abbr></span
+              >
+            </td>
+            <td>活跃</td>
+          </tr>
+          <tr>
+            <td>RediSearch</td>
+            <td>
+              全文<span
+                class="term-tip"
+                data-term="搜索"
+                data-module="cpp"
+                data-def="搜索"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">搜索</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="搜索"
+                data-module="cpp"
+                data-def="搜索"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">搜索</abbr></span
+              >引擎、自动补全
+            </td>
+            <td>活跃</td>
+          </tr>
+          <tr>
+            <td>RedisTimeSeries</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="时间序列"
+                data-module="data-analysis"
+                data-def="按时间顺序排列的数据序列，Pandas中用DatetimeIndex支持时间序列操作"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间序列</abbr></span
+              >
+            </td>
+            <td>
+              IoT、<span
+                class="term-tip"
+                data-term="监控"
+                data-module="devops"
+                data-def="持续采集和展示系统指标（CPU、内存、延迟等）的过程，用于了解系统运行状态"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">监控</abbr></span
+              >指标
+            </td>
+            <td>活跃</td>
+          </tr>
+          <tr>
+            <td>RedisBloom</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="概率"
+                data-module="github"
+                data-def="概率"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">概率</abbr></span
+              >数据<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="去重"
+                data-module="data-analysis"
+                data-def="删除数据集中重复记录的操作，Pandas中用drop_duplicates()实现"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">去重</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="限流"
+                data-module="sql"
+                data-def="数据库对并发请求数量或频率进行限制的机制，防止系统过载"
+                data-slug="sql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限流</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="统计"
+                data-module="github"
+                data-def="统计"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">统计</abbr></span
+              >
+            </td>
+            <td>活跃</td>
+          </tr>
+          <tr>
+            <td>RedisCell</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="限流"
+                data-module="sql"
+                data-def="数据库对并发请求数量或频率进行限制的机制，防止系统过载"
+                data-slug="sql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限流</abbr></span
+              >
+            </td>
+            <td>
+              API
+              <span
+                class="term-tip"
+                data-term="限流"
+                data-module="sql"
+                data-def="数据库对并发请求数量或频率进行限制的机制，防止系统过载"
+                data-slug="sql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限流</abbr></span
+              >
+            </td>
+            <td>活跃</td>
+          </tr>
+          <tr>
+            <td>RedisAI</td>
+            <td>
+              ML
+              <span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="实时"
+                data-module="cpp"
+                data-def="实时"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">实时</abbr></span
+              >推理
+            </td>
+            <td>活跃</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <strong
+          >Redis
+          <span
+            class="term-tip"
+            data-term="Stack"
+            data-module="java"
+            data-def="JVM 栈内存，存储局部变量表、操作数栈、方法返回地址等栈帧信息"
+            data-slug="java/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Stack</abbr></span
+          ></strong
+        >：Redis 官方将常用<span
+          class="term-tip"
+          data-term="模块"
+          data-module="github"
+          data-def="模块"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">模块</abbr></span
+        >打<span
+          class="term-tip"
+          data-term="包"
+          data-module="go"
+          data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+          data-slug="go/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">包</abbr></span
+        >为 Redis
+        <span
+          class="term-tip"
+          data-term="Stack"
+          data-module="java"
+          data-def="JVM 栈内存，存储局部变量表、操作数栈、方法返回地址等栈帧信息"
+          data-slug="java/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Stack</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="包"
+          data-module="go"
+          data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+          data-slug="go/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">包</abbr></span
+        >含 RedisJSON、RediSearch、RedisTimeSeries、RedisBloom 等<span
+          class="term-tip"
+          data-term="模块"
+          data-module="github"
+          data-def="模块"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">模块</abbr></span
+        >，开箱即用。
+      </p>
+    </article>
+  </body>
+</html>

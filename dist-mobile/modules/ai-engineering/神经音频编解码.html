@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>神经音频编解码</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">神经音频编解码</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            11 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">神经编解码</span><span class="doc-tag">EnCodec</span
+          ><span class="doc-tag">RVQ</span><span class="doc-tag">Mimi</span
+          ><span class="doc-tag">语义token</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解EnCodec、SNAC、Mimi、DAC和语义-声学分离的核心架构</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="神经音频编解码--encodecsnacmimidac与语义-声学分离">
+        <a href="#神经音频编解码--encodecsnacmimidac与语义-声学分离"
+          >神经音频编解码 — EnCodec、SNAC、Mimi、DAC与语义-声学分离</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          2026年音频生成几乎全是token。EnCodec、SNAC、Mimi和DAC将连续波形转换为Transformer可以预测的离散序列。语义vs声学token分离
+          — 第一个码本为语义，其余为声学 — 是自Transformer以来音频领域最重要的架构转变。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 6
+        · 02（频谱图），Phase 10 · 11（量化），Phase 5 · 19（子词分词） <strong>时间:</strong> ~60
+        分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        语言模型处理离散token。音频是连续的。如果你想要一个LLM风格的语音/音乐模型 —
+        MusicGen、Moshi、Sesame CSM、VibeVoice、Orpheus —
+        你首先需要一个<strong>神经音频编解码</strong>：一个学习到的编码器将音频离散化为小词表的token，以及一个匹配的解码器重建波形。
+      </p>
+      <p>出现了两个家族：</p>
+      <ol>
+        <li>
+          <strong>重建优先编解码</strong> — EnCodec、DAC。优化感知音频质量。Token是”声学”的 —
+          它们捕获一切，包括说话人身份、音色、背景噪声。
+        </li>
+        <li>
+          <strong>语义优先编解码</strong> — Mimi
+          (Kyutai)、SpeechTokenizer。强制第一个码本编码语言/语音内容（通常通过从WavLM蒸馏）。后续码本是声学细节。
+        </li>
+      </ol>
+      <p>
+        2024-2026年的洞察：<strong>纯重建编解码在从文本生成时给出模糊的语音。</strong>
+        编解码token上的LLM必须在同一个码本中学习语言结构和声学结构，这不可扩展。将它们分离 —
+        语义码本0，声学码本1-N — 是让Moshi和Sesame CSM工作的关键。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="核心技巧残差向量量化-rvq">
+        <a href="#核心技巧残差向量量化-rvq">核心技巧：残差向量量化 (RVQ)</a>
+      </h3>
+      <p>
+        不是一个大码本（需要数百万个码才能获得好质量），所有现代音频编解码都使用<strong>RVQ</strong>：小码本的级联。第一个码本量化编码器输出；第二个量化残差；以此类推。每个码本1024个码。8个码本
+        = 有效词表 1024^8 = 10^24。
+      </p>
+      <p>推理时，解码器将每帧所有选定的码求和来重建。</p>
+      <h3 id="2026年重要的四种编解码">
+        <a href="#2026年重要的四种编解码">2026年重要的四种编解码</a>
+      </h3>
+      <p>
+        <strong>EnCodec (Meta, 2022)。</strong> 基线。波形上的编码器-解码器，RVQ瓶颈。24
+        kHz，最多32个码本，默认4个码本 @ 1.5 kbps。使用
+        <code>1D卷积 + Transformer + 1D卷积</code> 架构。MusicGen使用。
+      </p>
+      <p>
+        <strong>DAC (Descript, 2023)。</strong>
+        带L2归一化码本的RVQ、周期性激活函数、改进的损失。任何开源编解码中最高的重建保真度 —
+        12个码本时有时与原始语音无法区分。44.1 kHz全频带。
+      </p>
+      <p>
+        <strong>SNAC (Hubert Siuzdak, 2024)。</strong> 多尺度RVQ —
+        粗糙码本以比精细码本更低的帧率运行。有效地分层建模音频：约12 Hz的粗略”草图”加上50
+        Hz的细节。Orpheus-3B使用，因为层次结构很好地映射到基于LM的生成。
+      </p>
+      <p>
+        <strong>Mimi (Kyutai, 2024)。</strong> 2026年的游戏规则改变者。12.5 Hz帧率（极低），8个码本
+        @ 4.4 kbps。码本0从<strong>WavLM蒸馏</strong> —
+        训练来预测WavLM的语音内容特征。码本1-7是声学残差。这种分离驱动了Moshi（课程15）和Sesame
+        CSM。
+      </p>
+      <h3 id="帧率对语言建模很重要"><a href="#帧率对语言建模很重要">帧率对语言建模很重要</a></h3>
+      <p>更低帧率 = 更短序列 = 更快的LM。</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>编解码</th>
+            <th>帧率</th>
+            <th>1秒 = N帧</th>
+            <th>适用于</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>EnCodec-24k</td>
+            <td>75 Hz</td>
+            <td>75</td>
+            <td>音乐，通用音频</td>
+          </tr>
+          <tr>
+            <td>DAC-44.1k</td>
+            <td>86 Hz</td>
+            <td>86</td>
+            <td>高保真音乐</td>
+          </tr>
+          <tr>
+            <td>SNAC-24k (粗糙)</td>
+            <td>~12 Hz</td>
+            <td>12</td>
+            <td>AR-LM高效</td>
+          </tr>
+          <tr>
+            <td>Mimi</td>
+            <td>12.5 Hz</td>
+            <td>12.5</td>
+            <td>流式语音</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>在12.5 Hz下，10秒话语只有125个编解码帧 — Transformer可以轻松预测。</p>
+      <h3 id="语义vs声学token"><a href="#语义vs声学token">语义vs声学token</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>frame_t → [semantic_token_t, acoustic_token_0_t, acoustic_token_1_t, ..., acoustic_token_6_t]</span></span></code></pre>
+      <ul>
+        <li>
+          <strong>语义token（Mimi中的码本0）。</strong> 编码说了什么 —
+          音素、词、内容。通过辅助预测损失从WavLM蒸馏。
+        </li>
+        <li>
+          <strong>声学token（码本1-7）。</strong> 编码音色、说话人身份、韵律、背景噪声、精细细节。
+        </li>
+      </ul>
+      <p>
+        AR LM首先预测语义token（以文本为条件），然后预测声学token（以语义 +
+        说话人参考为条件）。这种分解是现代TTS可以零样本克隆声音的原因：语义模型处理内容；声学模型处理音色。
+      </p>
+      <h3 id="2026年重建质量比特秒更低比特率更好">
+        <a href="#2026年重建质量比特秒更低比特率更好">2026年重建质量（比特/秒，更低比特率更好）</a>
+      </h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>编解码</th>
+            <th>比特率</th>
+            <th>PESQ</th>
+            <th>ViSQOL</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Opus-20kbps</td>
+            <td>20 kbps</td>
+            <td>4.0</td>
+            <td>4.3</td>
+          </tr>
+          <tr>
+            <td>EnCodec-6kbps</td>
+            <td>6 kbps</td>
+            <td>3.2</td>
+            <td>3.8</td>
+          </tr>
+          <tr>
+            <td>DAC-6kbps</td>
+            <td>6 kbps</td>
+            <td>3.5</td>
+            <td>4.0</td>
+          </tr>
+          <tr>
+            <td>SNAC-3kbps</td>
+            <td>3 kbps</td>
+            <td>3.3</td>
+            <td>3.8</td>
+          </tr>
+          <tr>
+            <td>Mimi-4.4kbps</td>
+            <td>4.4 kbps</td>
+            <td>3.1</td>
+            <td>3.7</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        传统编解码如Opus在每比特感知质量上仍然胜出。神经编解码在<strong>离散token</strong>（Opus不产生）和<strong>生成模型质量</strong>（LM能用这些token做什么）上胜出。
+      </p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1使用encodec编码">
+        <a href="#步骤-1使用encodec编码">步骤 1：使用EnCodec编码</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> encodec </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EncodecModel</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EncodecModel.encodec_model_24khz()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model.set_target_bandwidth(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">6.0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># kbps</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">wav </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.randn(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">24000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">with</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.no_grad():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    encoded </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.encode(wav)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">codes, scale </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> encoded[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># codes: (1, n_codebooks, n_frames), dtype=int64</span></span></code></pre>
+      <p>6 kbps时 <code>n_codebooks=8</code>。每个码是0-1023（10位）。</p>
+      <h3 id="步骤-2解码并测量重建"><a href="#步骤-2解码并测量重建">步骤 2：解码并测量重建</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">with</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.no_grad():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    wav_recon </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.decode([(codes, scale)])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torchaudio.functional </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> compute_deltas</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.nn.functional </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> F</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">mse </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> F.mse_loss(wav_recon[:, :, :wav.shape[</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]], wav).item()</span></span></code></pre>
+      <h3 id="步骤-3语义-声学分离mimi风格">
+        <a href="#步骤-3语义-声学分离mimi风格">步骤 3：语义-声学分离（Mimi风格）</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> moshi.models </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> loaders</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">mimi </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> loaders.get_mimi()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">with</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.no_grad():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    codes </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mimi.encode(wav)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 形状 (1, 8, frames@12.5Hz)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">semantic </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> codes[:, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">acoustic </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> codes[:, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:]</span></span></code></pre>
+      <p>
+        语义码本0与WavLM对齐。你可以训练一个文本到语义的Transformer —
+        词表比直接到音频小得多。然后一个单独的声学到波形解码器以说话人参考为条件。
+      </p>
+      <h3 id="步骤-4为什么编解码token上的ar-lm有效">
+        <a href="#步骤-4为什么编解码token上的ar-lm有效">步骤 4：为什么编解码token上的AR LM有效</a>
+      </h3>
+      <p>对于Mimi的12.5 Hz × 8码本下10秒语音片段：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>N_tokens = 10 * 12.5 * 8 = 1000 tokens</span></span></code></pre>
+      <p>
+        1000个token对Transformer来说是微不足道的上下文。一个256M参数的Transformer可以在现代GPU上毫秒级生成10秒语音。
+      </p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>问题 → 编解码映射：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>任务</th>
+            <th>编解码</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>通用音乐生成</td>
+            <td>EnCodec-24k</td>
+          </tr>
+          <tr>
+            <td>最高保真重建</td>
+            <td>DAC-44.1k</td>
+          </tr>
+          <tr>
+            <td>语音上的AR LM (TTS)</td>
+            <td>SNAC或Mimi</td>
+          </tr>
+          <tr>
+            <td>流式全双工语音</td>
+            <td>Mimi (12.5 Hz)</td>
+          </tr>
+          <tr>
+            <td>带文本的音效库</td>
+            <td>EnCodec + T5条件</td>
+          </tr>
+          <tr>
+            <td>细粒度音频编辑</td>
+            <td>DAC + 修复</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        经验法则：<strong
+          >如果你在构建生成模型，从Mimi或SNAC开始。如果你在构建压缩流水线，使用Opus。</strong
+        >
+      </p>
+      <h2 id="陷阱"><a href="#陷阱">陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>太多码本。</strong> 添加码本线性增加保真度，但也线性增加LM序列长度。停在8-12。
+        </li>
+        <li>
+          <strong>帧率不匹配。</strong> 在12.5 Hz Mimi上训练LM然后在50 Hz EnCodec上微调会静默失败。
+        </li>
+        <li>
+          <strong>假设所有码本平等。</strong>
+          在Mimi中，码本0携带内容；丢失它会摧毁可懂度。丢失码本7几乎不可察觉。
+        </li>
+        <li>
+          <strong>仅用重建质量作为指标。</strong> 编<span
+            class="term-tip"
+            data-term="解码"
+            data-module="javascript"
+            data-def="将编码数据还原为原始形式"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解码</abbr></span
+          >可以有很好的重建，但如果<span
+            class="term-tip"
+            data-term="语义结构"
+            data-module="html5"
+            data-def="页面语义化布局"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">语义结构</abbr></span
+          >差，<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >基于LM的生成就没用。
+        </li>
+      </ul>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>
+        将<span
+          class="term-tip"
+          data-term="结果"
+          data-module="c"
+          data-def="函数返回的值"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结果</abbr></span
+        >保存为 <code>outputs/skill-codec-picker.md</code>。为给定<span
+          class="term-tip"
+          data-term="生成"
+          data-module="vue3"
+          data-def="创建代码或数据"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生成</abbr></span
+        >或<span
+          class="term-tip"
+          data-term="压缩"
+          data-module="html5"
+          data-def="GZIP、Brotli 资源压缩"
+          data-slug="html5/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">压缩</abbr></span
+        >任务<span
+          class="term-tip"
+          data-term="选择"
+          data-module="cpp"
+          data-def="选择"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">选择</abbr></span
+        >编<span
+          class="term-tip"
+          data-term="解码"
+          data-module="javascript"
+          data-def="将编码数据还原为原始形式"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">解码</abbr></span
+        >。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >。</strong
+          >
+          运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >
+          <code>code/main.py</code>。它<span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >了一个玩具标量 + 残差量化器，并测量添加码本时的重建误差。
+        </li>
+        <li>
+          <strong>中等。</strong> 安装 <code>encodec</code>，在<span
+            class="term-tip"
+            data-term="保留"
+            data-module="github"
+            data-def="保留"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">保留</abbr></span
+          >语音<span
+            class="term-tip"
+            data-term="片段"
+            data-module="c"
+            data-def="内存块的组成部分"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">片段</abbr></span
+          >上比较1、4、8、32个码本。绘制PESQ或MSE vs比特<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>困难。</strong> 加载Mimi。<span
+            class="term-tip"
+            data-term="编码"
+            data-module="cpp"
+            data-def="编写代码"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编码</abbr></span
+          >一个<span
+            class="term-tip"
+            data-term="片段"
+            data-module="c"
+            data-def="内存块的组成部分"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">片段</abbr></span
+          >。用<span
+            class="term-tip"
+            data-term="随机"
+            data-module="github"
+            data-def="随机的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">随机</abbr></span
+          >整数<span
+            class="term-tip"
+            data-term="替换"
+            data-module="github"
+            data-def="替换"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">替换</abbr></span
+          >码本0；<span
+            class="term-tip"
+            data-term="解码"
+            data-module="javascript"
+            data-def="将编码数据还原为原始形式"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解码</abbr></span
+          >。然后<span
+            class="term-tip"
+            data-term="类似"
+            data-module="cpp"
+            data-def="相似的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">类似</abbr></span
+          >地<span
+            class="term-tip"
+            data-term="替换"
+            data-module="github"
+            data-def="替换"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">替换</abbr></span
+          >码本7。<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >两种损坏 — 码本0损坏应摧毁可懂<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >；码本7损坏几乎不变。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>RVQ</td>
+            <td>残差量化</td>
+            <td>
+              小码本<span
+                class="term-tip"
+                data-term="级联"
+                data-module="html5"
+                data-def="CSS 样式层叠规则"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">级联</abbr></span
+              >；每个量化前一个残差。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              帧<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >
+            </td>
+            <td>
+              编<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >速<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </td>
+            <td>
+              每秒<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >少<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >帧。更低 = 更快的LM。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="语义"
+                data-module="cpp"
+                data-def="语义"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语义</abbr></span
+              >码本
+            </td>
+            <td>码本0 (Mimi)</td>
+            <td>
+              从SSL特征蒸馏的码本；<span
+                class="term-tip"
+                data-term="编码"
+                data-module="cpp"
+                data-def="编写代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编码</abbr></span
+              >内容。
+            </td>
+          </tr>
+          <tr>
+            <td>声学码本</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="其他"
+                data-module="github"
+                data-def="其他"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">其他</abbr></span
+              >所有
+            </td>
+            <td>
+              音色、韵律、噪声、精细<span
+                class="term-tip"
+                data-term="细节"
+                data-module="github"
+                data-def="细节"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">细节</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>PESQ / ViSQOL</td>
+            <td>
+              感知<span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >
+            </td>
+            <td>
+              与MOS相关的客观<span
+                class="term-tip"
+                data-term="指标"
+                data-module="github"
+                data-def="指标"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指标</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>EnCodec</td>
+            <td>
+              Meta编<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >
+            </td>
+            <td>RVQ基线；MusicGen使用。</td>
+          </tr>
+          <tr>
+            <td>Mimi</td>
+            <td>
+              Kyutai编<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >
+            </td>
+            <td>
+              12.5 Hz帧<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="语义"
+                data-module="cpp"
+                data-def="语义"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语义</abbr></span
+              >-声学<span
+                class="term-tip"
+                data-term="分离"
+                data-module="github"
+                data-def="分离"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分离</abbr></span
+              >；驱动Moshi。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2210.13438">Défossez et al. (2023). EnCodec</a> — RVQ基线。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2306.06546"
+            >Kumar et al. (2023). Descript Audio Codec (DAC)</a
+          >
+          — 最<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >保真开<span
+            class="term-tip"
+            data-term="源"
+            data-module="cpp"
+            data-def="源"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">源</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2410.14411">Siuzdak (2024). SNAC</a> —
+          <span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >尺度RVQ。
+        </li>
+        <li>
+          <a href="https://kyutai.org/codec-explainer">Kyutai (2024). Mimi编解码</a> —
+          <span
+            class="term-tip"
+            data-term="语义"
+            data-module="cpp"
+            data-def="语义"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">语义</abbr></span
+          >-声学<span
+            class="term-tip"
+            data-term="分离"
+            data-module="github"
+            data-def="分离"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分离</abbr></span
+          >，WavLM蒸馏。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2209.03143">Borsos et al. (2023). AudioLM</a> — 两<span
+            class="term-tip"
+            data-term="阶段"
+            data-module="github"
+            data-def="阶段"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">阶段</abbr></span
+          >语义/声学<span
+            class="term-tip"
+            data-term="范式"
+            data-module="discrete-math"
+            data-def="命题公式或谓词公式的标准形式，如析取范式（DNF）和合取范式（CNF）"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">范式</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2107.03312">Zeghidour et al. (2021). SoundStream</a> —
+          <span
+            class="term-tip"
+            data-term="原始"
+            data-module="vue3"
+            data-def="原始的、最初的"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">原始</abbr></span
+          >可<span
+            class="term-tip"
+            data-term="流"
+            data-module="cpp"
+            data-def="数据输入输出的抽象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">流</abbr></span
+          >式RVQ编<span
+            class="term-tip"
+            data-term="解码"
+            data-module="javascript"
+            data-def="将编码数据还原为原始形式"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解码</abbr></span
+          >。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

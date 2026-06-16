@@ -1,0 +1,962 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Redo与Undo与Binlog写入时机</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Redo与Undo与Binlog写入时机</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          MySQL InnoDB Redo Log、Undo Log 与 Binlog 的写入时机、写入顺序与崩溃恢复机制。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-三种日志概览"><a href="#1-三种日志概览">1. 三种日志概览</a></h2>
+      <h3 id="11-日志定位"><a href="#11-日志定位">1.1 日志定位</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>日志</th>
+            <th>层级</th>
+            <th>作用</th>
+            <th>写入方式</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Redo Log</td>
+            <td>InnoDB 引擎层</td>
+            <td>崩溃恢复（crash-safe）</td>
+            <td>顺序写，循环写</td>
+          </tr>
+          <tr>
+            <td>Undo Log</td>
+            <td>InnoDB 引擎层</td>
+            <td>事务回滚 + MVCC 版本链</td>
+            <td>随机写</td>
+          </tr>
+          <tr>
+            <td>Binlog</td>
+            <td>Server 层</td>
+            <td>主从复制 + 数据恢复</td>
+            <td>顺序写，追加写</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="12-日志内容对比"><a href="#12-日志内容对比">1.2 日志内容对比</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>Redo Log:  记录"物理修改"——某页某偏移量写入了什么数据</span></span>
+<span class="line"><span>Undo Log:  记录"逻辑反向"——如何将数据恢复到修改前</span></span>
+<span class="line"><span>Binlog:    记录"逻辑操作"——执行了什么 SQL 语句（STATEMENT）或行变更（ROW）</span></span></code></pre>
+      <h2 id="2-redo-log-写入机制"><a href="#2-redo-log-写入机制">2. Redo Log 写入机制</a></h2>
+      <h3 id="21-redo-log-架构"><a href="#21-redo-log-架构">2.1 Redo Log 架构</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>┌─────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│              InnoDB Buffer Pool              │</span></span>
+<span class="line"><span>│  ┌─────────────────────────────────────┐    │</span></span>
+<span class="line"><span>│  │         脏页 (Dirty Pages)          │    │</span></span>
+<span class="line"><span>│  └─────────────────────────────────────┘    │</span></span>
+<span class="line"><span>└──────────────────────┬──────────────────────┘</span></span>
+<span class="line"><span>                       │ 刷盘 (Checkpoint)</span></span>
+<span class="line"><span>                       ↓</span></span>
+<span class="line"><span>┌─────────────────────────────────────────────┐</span></span>
+<span class="line"><span>│            Redo Log Files (ib_logfile0/1)    │</span></span>
+<span class="line"><span>│  ┌──────┬──────┬──────┬──────┬──────┐      │</span></span>
+<span class="line"><span>│  │write │write │ready │ready │ready │      │</span></span>
+<span class="line"><span>│  │ pos  │ pos  │      │      │      │      │</span></span>
+<span class="line"><span>│  └──────┴──────┴──────┴──────┴──────┘      │</span></span>
+<span class="line"><span>│  ↑write pos          ↑checkpoint            │</span></span>
+<span class="line"><span>└─────────────────────────────────────────────┘</span></span></code></pre>
+      <h3 id="22-写入流程"><a href="#22-写入流程">2.2 写入流程</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. 事务修改数据页 → 生成 Redo Record</span></span>
+<span class="line"><span>2. 写入 Redo Log Buffer（内存）</span></span>
+<span class="line"><span>3. 写入 OS Buffer Cache（write）</span></span>
+<span class="line"><span>4. 刷盘到 Redo Log File（fsync）</span></span></code></pre>
+      <h3 id="23-刷盘策略innodb_flush_log_at_trx_commit">
+        <a href="#23-刷盘策略innodb_flush_log_at_trx_commit"
+          >2.3 刷盘策略（innodb_flush_log_at_trx_commit）</a
+        >
+      </h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>值</th>
+            <th>行为</th>
+            <th>安全性</th>
+            <th>性能</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>0</td>
+            <td>每秒刷盘一次</td>
+            <td>丢失1秒数据</td>
+            <td>最高</td>
+          </tr>
+          <tr>
+            <td>1</td>
+            <td>
+              每次<span
+                class="term-tip"
+                data-term="提交"
+                data-module="cpp"
+                data-def="持久化变更"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提交</abbr></span
+              >都 fsync
+            </td>
+            <td>不丢数据</td>
+            <td>最低</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td>
+              每次<span
+                class="term-tip"
+                data-term="提交"
+                data-module="cpp"
+                data-def="持久化变更"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提交</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="write"
+                data-module="cpp"
+                data-def="输出字符"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">write</abbr></span
+              >，每秒 fsync
+            </td>
+            <td>OS崩溃丢数据</td>
+            <td>中等</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看当前设置</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">SHOW VARIABLES </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">LIKE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'innodb_flush_log_at_trx_commit'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 生产推荐：设为 1（最安全）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> innodb_flush_log_at_trx_commit </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="24-redo-log-组提交group-commit">
+        <a href="#24-redo-log-组提交group-commit">2.4 Redo Log 组提交（Group Commit）</a>
+      </h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >个<span
+          class="term-tip"
+          data-term="事务"
+          data-module="cpp"
+          data-def="事务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">事务</abbr></span
+        >同时<span
+          class="term-tip"
+          data-term="提交"
+          data-module="cpp"
+          data-def="持久化变更"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">提交</abbr></span
+        >时，只需一次 fsync：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>事务A提交 → 进入 fsync 队列</span></span>
+<span class="line"><span>事务B提交 → 进入 fsync 队列  ──→ 一次 fsync 刷入所有 Redo</span></span>
+<span class="line"><span>事务C提交 → 进入 fsync 队列</span></span></code></pre>
+      <h2 id="3-undo-log-写入机制"><a href="#3-undo-log-写入机制">3. Undo Log 写入机制</a></h2>
+      <h3 id="31-undo-log-的双重作用">
+        <a href="#31-undo-log-的双重作用">3.1 Undo Log 的双重作用</a>
+      </h3>
+      <ol>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="事务"
+              data-module="cpp"
+              data-def="事务"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">事务</abbr></span
+            >回滚</strong
+          >：保存修改前的数据，<span
+            class="term-tip"
+            data-term="ROLLBACK"
+            data-module="mysql"
+            data-def="回滚事务"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">ROLLBACK</abbr></span
+          >
+          时<span
+            class="term-tip"
+            data-term="恢复"
+            data-module="github"
+            data-def="恢复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">恢复</abbr></span
+          >
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="MVCC"
+              data-module="mysql"
+              data-def="多版本并发控制"
+              data-slug="mysql/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">MVCC</abbr></span
+            >
+            <span
+              class="term-tip"
+              data-term="版本"
+              data-module="c"
+              data-def="软件的迭代版本"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">版本</abbr></span
+            >链</strong
+          >：<span
+            class="term-tip"
+            data-term="通过"
+            data-module="github"
+            data-def="通过"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">通过</abbr></span
+          >
+          <code>DB_ROLL_PTR</code> 串联<span
+            class="term-tip"
+            data-term="历史"
+            data-module="github"
+            data-def="历史"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">历史</abbr></span
+          >版本
+        </li>
+      </ol>
+      <h3 id="32-写入时机"><a href="#32-写入时机">3.2 写入时机</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. 事务执行 UPDATE/DELETE → 先将旧值写入 Undo Log</span></span>
+<span class="line"><span>2. 事务执行 INSERT → 写入 Undo Log（记录主键值，用于回滚时删除）</span></span>
+<span class="line"><span>3. 事务 COMMIT → Undo Log 标记为可清理（但不立即删除，供 MVCC 使用）</span></span>
+<span class="line"><span>4. 当没有事务需要访问该 Undo Log → 由 Purge 线程清理</span></span></code></pre>
+      <h3 id="33-undo-log-类型"><a href="#33-undo-log-类型">3.3 Undo Log 类型</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="类型"
+                data-module="c"
+                data-def="数据的分类"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="对应"
+                data-module="cpp"
+                data-def="对应关系"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对应</abbr></span
+              >操作
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="回滚"
+                data-module="devops"
+                data-def="将部署恢复到先前已知正常版本的操作，是故障恢复的关键手段"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">回滚</abbr></span
+              >操作
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>INSERT Undo</td>
+            <td>INSERT</td>
+            <td>DELETE</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >
+              Undo
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >/DELETE
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="UPDATE"
+                data-module="mysql"
+                data-def="更新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UPDATE</abbr></span
+              >（<span
+                class="term-tip"
+                data-term="恢复"
+                data-module="github"
+                data-def="恢复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">恢复</abbr></span
+              >旧<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >）/ INSERT
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="34-undo-log-与-mvcc-的关系">
+        <a href="#34-undo-log-与-mvcc-的关系">3.4 Undo Log 与 MVCC 的关系</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>事务A (trx_id=100) 修改行: name='Alice' → 'Bob'</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>当前行: {name='Bob', trx_id=100, roll_ptr→undo_1}</span></span>
+<span class="line"><span>                                        ↓</span></span>
+<span class="line"><span>Undo Log: {name='Alice', trx_id=50, roll_ptr→undo_2}</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>事务B (trx_id=200) 快照读:</span></span>
+<span class="line"><span>  ReadView: m_ids=[100], min_trx_id=100</span></span>
+<span class="line"><span>  → trx_id=100 在 m_ids 中，不可见</span></span>
+<span class="line"><span>  → 遍历到 undo_1: trx_id=50 &#x3C; min_trx_id，可见</span></span>
+<span class="line"><span>  → 返回 name='Alice'</span></span></code></pre>
+      <h2 id="4-binlog-写入机制"><a href="#4-binlog-写入机制">4. Binlog 写入机制</a></h2>
+      <h3 id="41-binlog-格式"><a href="#41-binlog-格式">4.1 Binlog 格式</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >式
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="内容"
+                data-module="cpp"
+                data-def="内容部分"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内容</abbr></span
+              >
+            </th>
+            <th>
+              优缺<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>STATEMENT</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="SQL"
+                data-module="mysql"
+                data-def="结构化查询语言"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SQL</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="语句"
+                data-module="lua"
+                data-def="Lua 程序的基本执行单元，包括赋值、函数调用、控制结构等"
+                data-slug="lua/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语句</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="日志"
+                data-module="github"
+                data-def="日志"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">日志</abbr></span
+              >量小，但不确定<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >（<span
+                class="term-tip"
+                data-term="NOW"
+                data-module="mysql"
+                data-def="当前日期时间"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">NOW</abbr></span
+              >()、<span
+                class="term-tip"
+                data-term="UUID"
+                data-module="mysql"
+                data-def="通用唯一标识符"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">UUID</abbr></span
+              >()）导致不一致
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="ROW"
+                data-module="mysql"
+                data-def="数据行"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ROW</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >变更前后<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >
+            </td>
+            <td>
+              数据<span
+                class="term-tip"
+                data-term="一致性"
+                data-module="github"
+                data-def="一致性"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">一致性</abbr></span
+              >好，但<span
+                class="term-tip"
+                data-term="日志"
+                data-module="github"
+                data-def="日志"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">日志</abbr></span
+              >量大
+            </td>
+          </tr>
+          <tr>
+            <td>MIXED</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="混合"
+                data-module="github"
+                data-def="混合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">混合</abbr></span
+              >模式
+            </td>
+            <td>
+              默认 STATEMENT，不确定<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >切
+              <span
+                class="term-tip"
+                data-term="ROW"
+                data-module="mysql"
+                data-def="数据行"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ROW</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="42-写入流程"><a href="#42-写入流程">4.2 写入流程</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. 事务执行 DML → 写入 Binlog Cache（线程级内存）</span></span>
+<span class="line"><span>2. 事务 COMMIT → Binlog Cache 写入 Binlog File</span></span>
+<span class="line"><span>3. 根据 sync_binlog 设置决定 fsync 时机</span></span></code></pre>
+      <h3 id="43-刷盘策略sync_binlog">
+        <a href="#43-刷盘策略sync_binlog">4.3 刷盘策略（sync_binlog）</a>
+      </h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>值</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="行为"
+                data-module="vue3"
+                data-def="组件或应用的反应"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行为</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="安全"
+                data-module="cpp"
+                data-def="安全性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">安全</abbr></span
+              >性
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="性能"
+                data-module="github"
+                data-def="性能"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">性能</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>0</td>
+            <td>由 OS 决定何时 fsync</td>
+            <td>可能丢数据</td>
+            <td>
+              最<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>1</td>
+            <td>
+              每次<span
+                class="term-tip"
+                data-term="提交"
+                data-module="cpp"
+                data-def="持久化变更"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提交</abbr></span
+              >都 fsync
+            </td>
+            <td>不丢数据</td>
+            <td>最低</td>
+          </tr>
+          <tr>
+            <td>N</td>
+            <td>
+              每 N 次<span
+                class="term-tip"
+                data-term="提交"
+                data-module="cpp"
+                data-def="持久化变更"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提交</abbr></span
+              >
+              fsync 一次
+            </td>
+            <td>
+              丢 N-1 个<span
+                class="term-tip"
+                data-term="事务"
+                data-module="cpp"
+                data-def="事务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">事务</abbr></span
+              >
+            </td>
+            <td>中等</td>
+          </tr>
+        </tbody>
+      </table>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 生产推荐：设为 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GLOBAL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sync_binlog </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h2 id="5-三种日志的写入顺序"><a href="#5-三种日志的写入顺序">5. 三种日志的写入顺序</a></h2>
+      <h3 id="51-事务提交时的写入顺序">
+        <a href="#51-事务提交时的写入顺序">5.1 事务提交时的写入顺序</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. 写入 Undo Log（保证可回滚）</span></span>
+<span class="line"><span>2. 写入 Redo Log（prepare 阶段）</span></span>
+<span class="line"><span>3. 写入 Binlog</span></span>
+<span class="line"><span>4. 写入 Redo Log（commit 阶段）</span></span></code></pre>
+      <p>
+        这就是<strong
+          >两<span
+            class="term-tip"
+            data-term="阶段"
+            data-module="github"
+            data-def="阶段"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">阶段</abbr></span
+          >提交</strong
+        >的<span
+          class="term-tip"
+          data-term="核"
+          data-module="data-analysis"
+          data-def="KDE中用于平滑估计的窗口函数，常用高斯核"
+          data-slug="data-analysis/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">核</abbr></span
+        >心<span
+          class="term-tip"
+          data-term="流程"
+          data-module="cpp"
+          data-def="流程控制"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">流程</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>                  ┌─────────────────┐</span></span>
+<span class="line"><span>                  │  1. 写 Undo Log │</span></span>
+<span class="line"><span>                  └────────┬────────┘</span></span>
+<span class="line"><span>                           ↓</span></span>
+<span class="line"><span>                  ┌─────────────────────┐</span></span>
+<span class="line"><span>                  │ 2. 写 Redo Log      │</span></span>
+<span class="line"><span>                  │    (prepare 状态)    │</span></span>
+<span class="line"><span>                  └────────┬────────────┘</span></span>
+<span class="line"><span>                           ↓</span></span>
+<span class="line"><span>                  ┌─────────────────┐</span></span>
+<span class="line"><span>                  │  3. 写 Binlog   │</span></span>
+<span class="line"><span>                  └────────┬────────┘</span></span>
+<span class="line"><span>                           ↓</span></span>
+<span class="line"><span>                  ┌─────────────────────┐</span></span>
+<span class="line"><span>                  │ 4. 写 Redo Log      │</span></span>
+<span class="line"><span>                  │    (commit 状态)     │</span></span>
+<span class="line"><span>                  └─────────────────────┘</span></span></code></pre>
+      <h3 id="52-为什么要两阶段提交">
+        <a href="#52-为什么要两阶段提交">5.2 为什么要两阶段提交</a>
+      </h3>
+      <p>
+        如果
+        <span
+          class="term-tip"
+          data-term="Redo Log"
+          data-module="mysql"
+          data-def="重做日志，确保持久性"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Redo Log</abbr></span
+        >
+        和 Binlog 不<span
+          class="term-tip"
+          data-term="保证"
+          data-module="github"
+          data-def="保证"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">保证</abbr></span
+        >一致性，主从数据会不一致：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>场景1：先写 Redo Log，再写 Binlog（Redo 写完崩溃）</span></span>
+<span class="line"><span>  主库：事务已提交（Redo Log 有记录）</span></span>
+<span class="line"><span>  从库：事务未复制（Binlog 无记录）</span></span>
+<span class="line"><span>  → 主从数据不一致！</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>场景2：先写 Binlog，再写 Redo Log（Binlog 写完崩溃）</span></span>
+<span class="line"><span>  主库：事务未提交（Redo Log 无记录）</span></span>
+<span class="line"><span>  从库：事务已复制（Binlog 有记录）</span></span>
+<span class="line"><span>  → 主从数据不一致！</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>两阶段提交：</span></span>
+<span class="line"><span>  崩溃恢复时检查 Redo Log 状态：</span></span>
+<span class="line"><span>  - prepare + Binlog 完整 → 提交事务</span></span>
+<span class="line"><span>  - prepare + Binlog 不完整 → 回滚事务</span></span>
+<span class="line"><span>  → 保证主从数据一致！</span></span></code></pre>
+    </article>
+  </body>
+</html>

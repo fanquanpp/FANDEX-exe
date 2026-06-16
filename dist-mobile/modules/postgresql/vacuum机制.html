@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VACUUM机制</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">VACUUM机制</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            1 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">PostgreSQL VACUUM机制：自动清理、FREEZE、可见性映射与空间回收</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-vacuum-概述"><a href="#1-vacuum-概述">1. VACUUM 概述</a></h2>
+      <p>
+        PostgreSQL 的
+        <span
+          class="term-tip"
+          data-term="MVCC"
+          data-module="mysql"
+          data-def="多版本并发控制"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">MVCC</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="机制"
+          data-module="github"
+          data-def="机制"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">机制</abbr></span
+        >产生死<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >（dead tuples），VACUUM 负责<span
+          class="term-tip"
+          data-term="清理"
+          data-module="vue3"
+          data-def="释放资源和移除监听"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">清理</abbr></span
+        >这些死<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="回收"
+          data-module="github"
+          data-def="回收"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">回收</abbr></span
+        >空间。
+      </p>
+      <h2 id="2-普通-vacuum"><a href="#2-普通-vacuum">2. 普通 VACUUM</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 标记死行空间为可重用（不回收磁盘空间）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">VACUUM employees;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 分析并更新统计信息</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">VACUUM ANALYZE employees;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- VACUUM FULL：重建表，回收磁盘空间（锁表）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">VACUUM FULL employees;</span></span></code></pre>
+      <h2 id="3-自动清理autovacuum">
+        <a href="#3-自动清理autovacuum">3. 自动清理（Autovacuum）</a>
+      </h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 配置 autovacuum</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SYSTEM</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> autovacuum </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 默认开启</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SYSTEM</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> autovacuum_max_workers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SYSTEM</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> autovacuum_naptime </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '1min'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 触发阈值</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- autovacuum_vacuum_scale_factor = 0.2（死行超过20%触发）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- autovacuum_vacuum_threshold = 50（最少50行死行）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 按表配置</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> TABLE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    autovacuum_vacuum_scale_factor </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    autovacuum_analyze_scale_factor </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">05</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+      <h2 id="4-freeze-与事务id回卷">
+        <a href="#4-freeze-与事务id回卷">4. FREEZE 与事务ID回卷</a>
+      </h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 事务ID回卷预防</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 当事务ID接近 2^31 时，需要 FREEZE</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 手动 FREEZE</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">VACUUM FREEZE employees;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 配置</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SYSTEM</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> autovacuum_freeze_max_age </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 200000000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SYSTEM</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vacuum_freeze_min_age </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 50000000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ALTER</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SYSTEM</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SET</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vacuum_freeze_table_age </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 150000000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h2 id="5-可见性映射visibility-map">
+        <a href="#5-可见性映射visibility-map">5. 可见性映射（Visibility Map）</a>
+      </h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>每个数据页对应一个可见性映射位：</span></span>
+<span class="line"><span>- all-visible：该页所有行对所有事务可见</span></span>
+<span class="line"><span>- all-frozen：该页所有行已冻结</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>VACUUM 利用可见性映射跳过不需要清理的页</span></span></code></pre>
+      <h2 id="6-监控"><a href="#6-监控">6. 监控</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看表膨胀</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> schemaname, relname,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">       n_live_tup, n_dead_tup,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">       last_vacuum, last_autovacuum,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">       last_analyze, last_autoanalyze</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_stat_user_tables</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> n_dead_tup </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看需要 VACUUM 的表</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> relname, age(relfrozenxid) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> xid_age</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pg_class</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> relfrozenxid </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">IS NOT NULL</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> xid_age </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+    </article>
+  </body>
+</html>

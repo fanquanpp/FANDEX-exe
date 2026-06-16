@@ -1,0 +1,868 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>多Agent强化学习MADDPG-QMIX-MAPPO</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">多Agent强化学习MADDPG-QMIX-MAPPO</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            15 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          多 Agent 协调的强化学习遗产，在 2026 年仍然指导 LLM Agent 系统。MADDPG (Lowe 等人, NeurIPS
+          2017, arXiv:1706.02275) 引入了集中训练分散执行 (CTDE)：每个评论家在训练期间看到所有 Agent
+          的状态和动作；测试时只有局部...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="marl--maddpg-qmix-mappo">
+        <a href="#marl--maddpg-qmix-mappo">MARL — MADDPG, QMIX, MAPPO</a>
+      </h1>
+      <blockquote>
+        <p>
+          多 Agent 协调的强化学习遗产，在 2026 年仍然指导 LLM Agent 系统。<strong>MADDPG</strong>
+          (Lowe 等人, NeurIPS 2017, arXiv:1706.02275) 引入了集中训练分散执行
+          (CTDE)：每个评论家在训练期间看到所有 Agent 的状态和动作；测试时只有局部 Actor
+          运行。适用于合作、竞争和混合设置。<strong>QMIX</strong> (Rashid 等人, ICML 2018,
+          arXiv:1803.11485) 是带单调混合网络的值分解；每 Agent 的 Q 组合成联合 Q，使
+          <code>argmax</code> 干净地分布——在 StarCraft 多 Agent 挑战赛 (SMAC) 上占主导。<strong
+            >MAPPO</strong
+          >
+          (Yu 等人, NeurIPS 2022, arXiv:2103.01955) 是带集中值函数的 PPO；在粒子世界、SMAC、Google
+          Research Football、Hanabi 上”惊人地有效”，只需最少调优。这些是训练必须分散行动的 Agent
+          团队策略的基础。MAPPO 是
+          <strong>2026 年合作 MARL 的默认基线</strong
+          >。本课程从一个小型网格世界玩具构建每种算法，在接触 LLM Agent
+          训练之前将三个想法植入肌肉记忆。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 <strong>语言：</strong> Python (stdlib, 小型无 NumPy 实现)
+        <strong>前置条件：</strong> Phase 09 (强化学习), Phase 16 · 09 (并行群体网络)
+        <strong>时间：</strong> ~90 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        LLM Agent 系统越来越多地训练 Agent
+        间协调策略：何时推迟、何时行动、调用哪个同伴。告诉你如何训练此类策略的文献是多 Agent
+        强化学习 (MARL)，它早于 LLM 浪潮，有一小组主导算法。
+      </p>
+      <p>
+        没有模式词汇阅读 MARL 论文是痛苦的。集中训练分散执行
+        (CTDE)、值分解和集中评论家不是流行语——它们是对特定问题的具体回答：
+      </p>
+      <ul>
+        <li>独立 RL（每个 Agent 单独学习）从每个 Agent 的视角是非平稳的。糟糕。</li>
+        <li>集中 RL（一个 Agent 控制所有）不可扩展且违反执行约束。</li>
+        <li>CTDE 兼得两者：用全局信息训练，用局部策略部署。</li>
+      </ul>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="论文使用的三种环境"><a href="#论文使用的三种环境">论文使用的三种环境</a></h3>
+      <ul>
+        <li>
+          <strong>粒子世界 (多 Agent 粒子环境)。</strong> 带合作/竞争任务的简单 2D 物理。MADDPG
+          的原始测试床。
+        </li>
+        <li>
+          <strong>StarCraft 多 Agent 挑战赛 (SMAC)。</strong> 合作微操、部分观察。QMIX
+          的测试床。离散动作、连续状态。
+        </li>
+        <li><strong>Google Research Football, Hanabi, MPE。</strong> MAPPO 基线。</li>
+      </ul>
+      <p>不同环境有不同的动作/观察类型。算法相应选择。</p>
+      <h3 id="maddpg-2017--ctde-模式">
+        <a href="#maddpg-2017--ctde-模式">MADDPG (2017) — CTDE 模式</a>
+      </h3>
+      <p>
+        每个 Agent <code>i</code> 有一个 Actor <code>mu_i(o_i)</code>，将其自身观察映射到动作。每个
+        Agent 还有一个评论家
+        <code>Q_i(x, a_1, ..., a_n)</code>，在训练期间看到所有观察和所有动作。Actor
+        通过对评论家评估的策略梯度更新。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>actor update:    grad_theta_i J = E[grad_theta mu_i(o_i) * grad_a_i Q_i(x, a_1..n) at a_i=mu_i(o_i)]</span></span>
+<span class="line"><span>critic update:   TD on Q_i(x, a_1..n) given next-state joint estimate</span></span></code></pre>
+      <p>
+        为什么 CTDE：在训练时，我们知道每个人的动作；我们用它来减少每个评论家的方差。在部署时，每个
+        Agent 只看到 <code>o_i</code> 并调用 <code>mu_i(o_i)</code>。
+      </p>
+      <p>
+        失败模式：评论家随 N 个 Agent 增长（输入包括所有动作）。没有近似无法扩展到约 10 个 Agent
+        以上。
+      </p>
+      <h3 id="qmix-2018--值分解"><a href="#qmix-2018--值分解">QMIX (2018) — 值分解</a></h3>
+      <p>仅合作。全局奖励是每 Agent Q 值单调函数的和：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>Q_tot(tau, a) = f(Q_1(tau_1, a_1), ..., Q_n(tau_n, a_n)),   df/dQ_i >= 0</span></span></code></pre>
+      <p>
+        单调性保证 <code>argmax_a Q_tot</code> 可以通过每个 Agent 独立选择
+        <code>argmax_{a_i} Q_i</code>
+        来计算。这正是你需要的<strong>分散执行属性</strong>。在训练时，混合网络从每 Agent Q 产生
+        <code>Q_tot</code>。
+      </p>
+      <p>
+        为什么 QMIX 在 SMAC 上赢：合作 StarCraft 微操有同质
+        Agent、局部观察、全局奖励——值分解的完美匹配。
+      </p>
+      <p>
+        失败模式：单调性约束是限制性的；某些任务的奖励结构不是单调可分解的（一个 Agent
+        为团队牺牲）。扩展 (QTRAN, QPLEX) 放松了这一点。
+      </p>
+      <h3 id="mappo-2022--被忽视的默认">
+        <a href="#mappo-2022--被忽视的默认">MAPPO (2022) — 被忽视的默认</a>
+      </h3>
+      <p>
+        多 Agent PPO：带集中值函数的 PPO。每个 Agent 有自己的策略；所有 Agent 共享（或有每
+        Agent）看到完整状态的值函数。Yu 等人 2022 在五个基准上将 MAPPO 与 MADDPG、QMIX
+        及其扩展进行基准测试，发现：
+      </p>
+      <ul>
+        <li>
+          MAPPO 在粒子世界、SMAC、Google Research Football、Hanabi、MPE 上匹配或击败离策略 MARL
+          方法。
+        </li>
+        <li>需要最少的超参数调优。</li>
+        <li>训练稳定；跨种子可复现。</li>
+      </ul>
+      <p>
+        社区低估了在策略 MARL 直到这篇论文。2026 年，MAPPO 是合作 MARL
+        的默认基线；任何新方法必须击败它。
+      </p>
+      <h3 id="为什么-llm-agent-工程师应该关心">
+        <a href="#为什么-llm-agent-工程师应该关心">为什么 LLM Agent 工程师应该关心</a>
+      </h3>
+      <p>三个直接用途：</p>
+      <ol>
+        <li>
+          <strong>路由器训练。</strong> 元 Agent 选择哪个子 Agent 处理任务。这是一个有 N 个分散子
+          Agent 和一个集中路由器的 MARL 问题。MAPPO 适合。
+        </li>
+        <li>
+          <strong>角色涌现。</strong> 在生成式 Agent 模拟中，训练 Agent 随时间采用互补角色是伪装的
+          MARL 问题。QMIX 风格的值分解通过构造强制互补性。
+        </li>
+        <li>
+          <strong>多 Agent 工具使用。</strong> 当 Agent 共享工具并竞争预算时，通过 CTDE
+          训练它们产生尊重资源约束的可部署局部策略。
+        </li>
+      </ol>
+      <p>
+        实际注意事项：2026 年，大多数生产 LLM Agent 系统提示其策略而不是训练。MARL 在你有 (a)
+        大量交互数据、(b) 清晰的奖励信号、(c) 愿意投资训练基础设施时才介入。
+      </p>
+      <h3 id="ctde-作为超越-rl-的设计模式">
+        <a href="#ctde-作为超越-rl-的设计模式">CTDE 作为超越 RL 的设计模式</a>
+      </h3>
+      <p>即使没有训练，CTDE 也是有用的架构模式：</p>
+      <ul>
+        <li>在<em>设计</em>期间，假设完整团队可见性。</li>
+        <li>在<em>运行时</em>，强制分散执行：每个 Agent 只看到 <code>o_i</code>。</li>
+      </ul>
+      <p>
+        该模式强制你保持每 Agent 状态显式，并提前考虑部分可观察性。许多生产多 Agent
+        系统静默假设到处都有共享状态——CTDE 纪律防止了这一点。
+      </p>
+      <h3 id="非平稳性问题"><a href="#非平稳性问题">非平稳性问题</a></h3>
+      <p>
+        当多个 Agent 同时学习时，每个 Agent 的环境（包括其他 Agent 的策略）是非平稳的。经典单 Agent
+        RL 证明失效。本课程的 MARL 算法都解决了这个问题：
+      </p>
+      <ul>
+        <li>MADDPG：全局评论家看到所有动作，所以其值估计是平稳的。</li>
+        <li>QMIX：值分解将学习移到联合 Q 空间，其中最优性是明确定义的。</li>
+        <li>MAPPO：集中值函数抑制了来自其他 Agent 策略变化的方差。</li>
+      </ul>
+      <p>
+        在 LLM Agent 系统中，非平稳性表现为”我的 Agent 上个月还能工作，现在上游那个 Agent
+        变了，我的就出问题了。“用 CTDE 训练 MARL 是原则性修复；提示级修复更快但不那么持久。
+      </p>
+      <h3 id="本课程不涵盖的内容"><a href="#本课程不涵盖的内容">本课程不涵盖的内容</a></h3>
+      <p>
+        训练实际网络是 Phase 09 的话题。本课程构建脚本化策略版本，演示
+        CTDE、值分解和集中值模式，无需梯度更新。目标是在你拿起完整的 MARL 库 (PyMARL, MARLlib, RLlib
+        multi-agent) 之前内化模式。
+      </p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p><code>code/main.py</code> 在微型 2 Agent 合作网格世界上实现三种模式演示：</p>
+      <ul>
+        <li>
+          环境：4x4 网格上的 2 个 Agent，一个奖励颗粒。任何 Agent 到达颗粒则奖励 = 1；任务完成。
+        </li>
+        <li><code>IndependentAgents</code> — 每个 Agent 将其他 Agent 视为环境。基线。</li>
+        <li>
+          <code>MADDPGStyle</code> — 集中评论家计算联合值；Actor 策略从中更新。脚本化策略改进。
+        </li>
+        <li><code>QMIXStyle</code> — 带单调混合器的值分解。</li>
+        <li><code>MAPPOStyle</code> — 集中值函数；策略对共享基线更新。</li>
+      </ul>
+      <p>所有四个运行相同回合并报告平均到达目标步数。CTDE 变体收敛到更短路径。</p>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <p>
+        预期输出：独立 Agent 平均约 6 步；CTDE 变体收敛到约 3.5 步（4x4 网格的最优是
+        3）。模式差异在脚本化策略下也显现。
+      </p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        <code>outputs/skill-marl-picker.md</code> 是为给定多 Agent 任务选择 MARL 算法的技能：合作 vs
+        竞争、同质 vs 异质、动作空间类型、规模、奖励信号。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>MARL 在生产中很少见。当你确实使用时：</p>
+      <ul>
+        <li>
+          <strong>从 MAPPO 开始。</strong> 2022
+          年的论文确立了这是基线；先复现它节省数周追逐更花哨方法的时间。
+        </li>
+        <li>
+          <strong>记录每个 Agent 的观察和动作流。</strong> 没有每 Agent 追踪调试 MARL 是无望的。
+        </li>
+        <li>
+          <strong>分离训练代码和执行代码。</strong> CTDE 是一种纪律；让执行路径真的只看到
+          <code>o_i</code>。
+        </li>
+        <li>
+          <strong>奖励塑形警告。</strong> MARL 对奖励设计极其敏感。塑形中一个协调 bug，Agent
+          就学会利用它。运行对抗性测试。
+        </li>
+        <li>
+          <strong>对于 LLM Agent</strong>，先考虑提示级策略。只在交互数据 + 奖励信号 +
+          基础设施都具备时投资 MARL 训练。
+        </li>
+      </ul>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          运行 <code>code/main.py</code>。测量独立和 MAPPO 风格 Agent 之间的到达目标步数差距。差距在
+          6x6 网格上增大还是缩小？
+        </li>
+        <li>
+          实现竞争变体：两个 Agent，一个颗粒，只有先到达的获得奖励。哪种模式干净地处理竞争？历史上是
+          MADDPG。
+        </li>
+        <li>
+          阅读 MADDPG (arXiv:1706.02275) 第 3 节。用你自己的话符号化实现精确的评论家更新规则伪代码。
+        </li>
+        <li>
+          阅读 MAPPO (arXiv:2103.01955)。为什么<span
+            class="term-tip"
+            data-term="作者"
+            data-module="github"
+            data-def="提交或 PR 的创建者"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">作者</abbr></span
+          >论证集中<span
+            class="term-tip"
+            data-term="值"
+            data-module="cpp"
+            data-def="值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">值</abbr></span
+          >
+          + PPO 在其基准上击败离<span
+            class="term-tip"
+            data-term="策略"
+            data-module="vue3"
+            data-def="解决问题的策略"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">策略</abbr></span
+          >
+          MARL？列出三个最强主张。
+        </li>
+        <li>
+          将 CTDE 作为<span
+            class="term-tip"
+            data-term="设计模式"
+            data-module="cs-fundamentals"
+            data-def="面向对象软件设计中可复用的解决方案，分为创建型、结构型、行为型"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设计模式</abbr></span
+          >应用于假设的 LLM Agent
+          <span
+            class="term-tip"
+            data-term="系统"
+            data-module="cpp"
+            data-def="系统"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">系统</abbr></span
+          >（例如，<span
+            class="term-tip"
+            data-term="研究"
+            data-module="github"
+            data-def="研究"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">研究</abbr></span
+          >
+          Agent +
+          <span
+            class="term-tip"
+            data-term="摘要"
+            data-module="github"
+            data-def="摘要"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">摘要</abbr></span
+          >者 +
+          <span
+            class="term-tip"
+            data-term="编码"
+            data-module="cpp"
+            data-def="编写代码"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编码</abbr></span
+          >者）。<span
+            class="term-tip"
+            data-term="设计"
+            data-module="github"
+            data-def="设计"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设计</abbr></span
+          >时可用但<span
+            class="term-tip"
+            data-term="运行时"
+            data-module="c"
+            data-def="程序执行的阶段"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">运行时</abbr></span
+          >不可用的<span
+            class="term-tip"
+            data-term="联合"
+            data-module="c"
+            data-def="可存储不同类型的重叠内存"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">联合</abbr></span
+          >信息是什么？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>MARL</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >
+              Agent RL”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >
+              Agent
+              <span
+                class="term-tip"
+                data-term="系统"
+                data-module="cpp"
+                data-def="系统"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">系统</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="强化学习"
+                data-module="agent"
+                data-def="通过与环境交互获得奖励信号来学习最优策略的机器学习范式"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">强化学习</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>CTDE</td>
+            <td>
+              ”集中<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >分散<span
+                class="term-tip"
+                data-term="执行"
+                data-module="github"
+                data-def="执行"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行</abbr></span
+              >”
+            </td>
+            <td>
+              用全局<span
+                class="term-tip"
+                data-term="信息"
+                data-module="github"
+                data-def="信息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信息</abbr></span
+              >训练；用局部<span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >部署。
+            </td>
+          </tr>
+          <tr>
+            <td>MADDPG</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >
+              Agent DDPG”
+            </td>
+            <td>
+              带每 Agent
+              <span
+                class="term-tip"
+                data-term="评论"
+                data-module="cpp"
+                data-def="代码注释"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评论</abbr></span
+              >家看到所有<span
+                class="term-tip"
+                data-term="观察"
+                data-module="github"
+                data-def="观察"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">观察</abbr></span
+              >
+              + 动作的 CTDE。
+            </td>
+          </tr>
+          <tr>
+            <td>QMIX</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >分解”
+            </td>
+            <td>
+              每 Agent Q 的<span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >调<span
+                class="term-tip"
+                data-term="混合"
+                data-module="github"
+                data-def="混合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">混合</abbr></span
+              >。仅合作。
+            </td>
+          </tr>
+          <tr>
+            <td>MAPPO</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >
+              Agent PPO”
+            </td>
+            <td>
+              带集中<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >函数的 PPO。2026
+              <span
+                class="term-tip"
+                data-term="年"
+                data-module="cpp"
+                data-def="年"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">年</abbr></span
+              >默认<span
+                class="term-tip"
+                data-term="基线"
+                data-module="html5"
+                data-def="文本基线对齐线"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">基线</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >分解
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="个体"
+                data-module="github"
+                data-def="个体"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">个体</abbr></span
+              >
+              Q 的和”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="联合"
+                data-module="c"
+                data-def="可存储不同类型的重叠内存"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">联合</abbr></span
+              >
+              Q
+              <span
+                class="term-tip"
+                data-term="表示"
+                data-module="github"
+                data-def="表示"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表示</abbr></span
+              >为每 Agent Q 的<span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >调<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>非平稳性</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="移动"
+                data-module="github"
+                data-def="移动"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">移动</abbr></span
+              >目标”
+            </td>
+            <td>
+              每个 Agent 的<span
+                class="term-tip"
+                data-term="环境"
+                data-module="cpp"
+                data-def="运行环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">环境</abbr></span
+              >随<span
+                class="term-tip"
+                data-term="其他"
+                data-module="github"
+                data-def="其他"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">其他</abbr></span
+              >
+              Agent 学习而<span
+                class="term-tip"
+                data-term="变化"
+                data-module="vue3"
+                data-def="状态变更"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">变化</abbr></span
+              >。<span
+                class="term-tip"
+                data-term="核"
+                data-module="data-analysis"
+                data-def="KDE中用于平滑估计的窗口函数，常用高斯核"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">核</abbr></span
+              >心 MARL
+              <span
+                class="term-tip"
+                data-term="问题"
+                data-module="github"
+                data-def="跟踪任务、缺陷、想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">问题</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >
+              / 离<span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >
+            </td>
+            <td>”从当前/回放学习”</td>
+            <td>
+              PPO 是在<span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >
+              (MAPPO)；DDPG 和 Q-learning 是离<span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>SMAC</td>
+            <td>
+              ”StarCraft
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >
+              Agent 挑战赛”
+            </td>
+            <td>合作微操基准；QMIX 的主场。</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/1706.02275"
+            >Lowe et al. — Multi-Agent Actor-Critic for Mixed Cooperative-Competitive
+            Environments</a
+          >
+          — MADDPG; NeurIPS 2017
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1803.11485"
+            >Rashid et al. — QMIX: Monotonic Value Function Factorisation for Deep Multi-Agent
+            Reinforcement Learning</a
+          >
+          — QMIX; ICML 2018
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2103.01955"
+            >Yu et al. — The Surprising Effectiveness of PPO in Cooperative Multi-Agent Games</a
+          >
+          — MAPPO; NeurIPS 2022
+        </li>
+        <li>
+          <a href="https://bair.berkeley.edu/blog/2021/07/14/mappo/">BAIR blog post on MAPPO</a> —
+          MAPPO
+          <span
+            class="term-tip"
+            data-term="结果"
+            data-module="c"
+            data-def="函数返回的值"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">结果</abbr></span
+          >的可读<span
+            class="term-tip"
+            data-term="框架"
+            data-module="cpp"
+            data-def="框架"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">框架</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://github.com/oxwhirl/smac">SMAC repository</a> — StarCraft
+          <span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >
+          Agent 挑战赛
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

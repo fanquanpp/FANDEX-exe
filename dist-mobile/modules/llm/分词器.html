@@ -1,0 +1,1051 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>分词器</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">分词器</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">tokenizer</span><span class="doc-tag">BPE</span
+          ><span class="doc-tag">WordPiece</span><span class="doc-tag">Unigram</span
+          ><span class="doc-tag">LLM</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          深入理解 LLM 分词器的工作原理，包括 BPE、WordPiece 和 Unigram 算法，以及特殊 token 的处理
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="分词器"><a href="#分词器">分词器</a></h1>
+      <blockquote>
+        <p>
+          分词器是 LLM 的入口。你输入的每一段文本都先经过分词器，被切割成 token
+          序列，然后才能被模型处理。理解分词器就是理解模型的边界——它能处理什么、不能处理什么、为什么有时候一个简单的单词会被拆成三四个
+          token。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python
+        <strong>前置条件：</strong> Phase 10 导论 <strong>预计时间：</strong> ~60 分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>理解为什么 LLM 需要分词，以及不同分词策略的权衡</li>
+        <li>实现 BPE（Byte Pair Encoding）算法，理解其合并规则</li>
+        <li>理解 WordPiece 和 Unigram 分词器的区别</li>
+        <li>
+          分析特殊 token（<code>&#x3C;|endoftext|></code>、<code>&#x3C;|pad|></code>
+          等）的作用和处理方式
+        </li>
+        <li>评估分词器对模型性能的影响，包括多语言处理和 OOV 问题</li>
+      </ul>
+      <h2 id="为什么需要分词"><a href="#为什么需要分词">为什么需要分词</a></h2>
+      <p>
+        LLM 不直接处理文本。它们处理数字——具体来说，是 token ID
+        序列。分词器就是文本和数字之间的桥梁。
+      </p>
+      <p>三种基本策略：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>策略</th>
+            <th>粒度</th>
+            <th>词表大小</th>
+            <th>OOV 风险</th>
+            <th>示例</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>字符级</td>
+            <td>字符</td>
+            <td>小（~256）</td>
+            <td>无</td>
+            <td>”hello” → [‘h’, ‘e’, ‘l’, ‘l’, ‘o’]</td>
+          </tr>
+          <tr>
+            <td>词级</td>
+            <td>完整词</td>
+            <td>大（100K+）</td>
+            <td>高</td>
+            <td>”hello” → [‘hello’]</td>
+          </tr>
+          <tr>
+            <td>子词级</td>
+            <td>子词单元</td>
+            <td>中等（32K-128K）</td>
+            <td>低</td>
+            <td>”unhappiness” → [‘un’, ‘happiness’]</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        子词分词是当前 LLM
+        的标准方案。它平衡了词表大小和表达能力：常见词保持完整，罕见词被拆成有意义的片段。
+      </p>
+      <h2 id="bpebyte-pair-encoding">
+        <a href="#bpebyte-pair-encoding">BPE（Byte Pair Encoding）</a>
+      </h2>
+      <p>BPE 是最广泛使用的子词分词算法。GPT 系列、LLaMA、Mistral 都使用 BPE 的变体。</p>
+      <h3 id="算法原理"><a href="#算法原理">算法原理</a></h3>
+      <ol>
+        <li>从字符级词表开始</li>
+        <li>统计所有相邻 token 对的出现频率</li>
+        <li>合并频率最高的 token 对，加入词表</li>
+        <li>重复步骤 2-3，直到词表达到目标大小</li>
+      </ol>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> collections </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Counter</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> train_bpe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text, vocab_size</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">256</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, num_merges</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """训练 BPE 分词器"""</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # 初始化：将文本拆分为字符序列</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> list</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    vocab </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    merges </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 记录合并规则</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(num_merges):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(vocab) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vocab_size:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            break</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 统计相邻 token 对的频率</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pairs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Counter()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            pairs[(tokens[j], tokens[j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pairs:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            break</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 找到频率最高的对</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        best_pair </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pairs.most_common(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">][</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 创建新 token</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        new_token </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best_pair[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best_pair[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        vocab.add(new_token)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        merges[best_pair] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_token</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 在 token 序列中执行合并</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        new_tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> and</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                tokens[j] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best_pair[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                tokens[j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best_pair[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                new_tokens.append(new_token)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                new_tokens.append(tokens[j])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_tokens</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vocab, merges</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> tokenize_with_bpe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text, merges):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """使用训练好的 BPE 规则进行分词"""</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> list</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (a, b), merged </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> merges.items():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        new_tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> and</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                tokens[j] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                tokens[j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                new_tokens.append(merged)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                new_tokens.append(tokens[j])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_tokens</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tokens</span></span></code></pre>
+      <h3 id="byte-level-bpe"><a href="#byte-level-bpe">Byte-level BPE</a></h3>
+      <p>现代 LLM 使用 byte-level BPE，它以 UTF-8 字节而非 Unicode 字符作为初始词表。这意味着：</p>
+      <ul>
+        <li>词表基础大小固定为 256（所有可能的字节值）</li>
+        <li>任何文本都可以被编码，不会出现 OOV</li>
+        <li>多语言文本被统一处理</li>
+      </ul>
+      <p>
+        GPT-2 的分词器就是 byte-level BPE 的实现。它的词表大小为 50,257（256 个基础字节 + 50,000
+        个合并规则 + 1 个特殊 token）。
+      </p>
+      <h2 id="wordpiece"><a href="#wordpiece">WordPiece</a></h2>
+      <p>WordPiece 被 BERT 及其衍生模型使用。与 BPE 的关键区别在于合并策略：</p>
+      <ul>
+        <li><strong>BPE</strong>：选择频率最高的相邻对</li>
+        <li><strong>WordPiece</strong>：选择能最大增加语言模型似然的相邻对</li>
+      </ul>
+      <p>
+        实际实现中，WordPiece 使用一个近似指标：选择
+        <code>score = pair_freq / (freq_a * freq_b)</code>
+        最高的对。这倾向于合并那些各自频率不高但经常一起出现的 token。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> train_wordpiece</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text, vocab_size</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">30000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, num_merges</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """训练 WordPiece 分词器"""</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> list</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    vocab </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> set</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    word_freqs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Counter(tokens)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    merges </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(num_merges):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(vocab) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vocab_size:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            break</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pairs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Counter()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pair_word_freqs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Counter()</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            pair </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (tokens[j], tokens[j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            pairs[pair] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pairs:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            break</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # WordPiece 评分：pair_freq / (freq_a * freq_b)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        best_pair </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> max</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(pairs, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">key</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=lambda</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p: pairs[p] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (word_freqs[p[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> word_freqs[p[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1e-10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        new_token </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best_pair[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best_pair[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        vocab.add(new_token)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        merges[best_pair] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_token</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 更新词频</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        word_freqs[new_token] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pairs[best_pair]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 执行合并</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        new_tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> and</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                tokens[j] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best_pair[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                tokens[j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best_pair[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                new_tokens.append(new_token)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                new_tokens.append(tokens[j])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                j </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_tokens</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vocab, merges</span></span></code></pre>
+      <p>
+        WordPiece 的一个显著特征是使用 <code>##</code> 前缀标记子词的续接部分。例如 “unhappiness”
+        可能被分为 <code>["un", "##happiness"]</code>。
+      </p>
+      <h2 id="unigram"><a href="#unigram">Unigram</a></h2>
+      <p>
+        Unigram 分词器被 SentencePiece 和 T5 使用。与 BPE/WordPiece
+        自底向上（从字符逐步合并）不同，Unigram 是自顶向下的：
+      </p>
+      <ol>
+        <li>从一个巨大的候选词表开始（如所有子串）</li>
+        <li>计算每个 token 的概率</li>
+        <li>移除对整体似然贡献最小的 token</li>
+        <li>重复直到词表达到目标大小</li>
+      </ol>
+      <p>
+        Unigram
+        的优势在于它为每个输入提供多种分词方案，并选择概率最高的那个。这使得分词是概率性的而非确定性的。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> unigram_tokenize</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text, vocab_with_probs):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """使用 Unigram 模型进行分词（Viterbi 算法）"""</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    n </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(text)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # dp[i] = 到位置 i 为止的最佳分词方案的对数概率</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    dp </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">float</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'inf'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (n </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    dp[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.0</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    best_path </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (n </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, n </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> token, prob </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vocab_with_probs.items():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            token_len </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(token)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> token_len </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> text[i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> token_len:i] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> token:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                score </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dp[i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> token_len] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.log(prob)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> score </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dp[i]:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    dp[i] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> score</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    best_path[i] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> token_len, token)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # 回溯获取分词结果</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    pos </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> n</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pos </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        prev_pos, token </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best_path[pos]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        tokens.append(token)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pos </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> prev_pos</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> list</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">reversed</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokens))</span></span></code></pre>
+      <h2 id="特殊-token"><a href="#特殊-token">特殊 Token</a></h2>
+      <p>LLM 分词器包含多个特殊 token，用于标记文本结构：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Token</th>
+            <th>用途</th>
+            <th>使用模型</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>&#x3C;|endoftext|></code></td>
+            <td>文档边界 / 序列结束</td>
+            <td>GPT-2, GPT-3, GPT-4</td>
+          </tr>
+          <tr>
+            <td><code>&#x3C;|pad|></code></td>
+            <td>填充短序列到相同长度</td>
+            <td>通用</td>
+          </tr>
+          <tr>
+            <td><code>&#x3C;s></code></td>
+            <td>序列开始</td>
+            <td>LLaMA, Mistral</td>
+          </tr>
+          <tr>
+            <td><code>&#x3C;/s></code></td>
+            <td>序列结束</td>
+            <td>LLaMA, Mistral</td>
+          </tr>
+          <tr>
+            <td><code>[CLS]</code></td>
+            <td>分类 token</td>
+            <td>BERT</td>
+          </tr>
+          <tr>
+            <td><code>[SEP]</code></td>
+            <td>句子分隔</td>
+            <td>BERT</td>
+          </tr>
+          <tr>
+            <td><code>[MASK]</code></td>
+            <td>掩码语言模型</td>
+            <td>BERT</td>
+          </tr>
+          <tr>
+            <td><code>&#x3C;|im_start|></code></td>
+            <td>指令开始</td>
+            <td>ChatML 格式</td>
+          </tr>
+          <tr>
+            <td><code>&#x3C;|im_end|></code></td>
+            <td>指令结束</td>
+            <td>ChatML 格式</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        特殊 token 的 ID
+        是固定的，不会参与分词合并。它们在训练数据中被特殊处理，用于标记对话轮次、文档边界和填充位置。
+      </p>
+      <h2 id="分词器对模型的影响"><a href="#分词器对模型的影响">分词器对模型的影响</a></h2>
+      <p>分词器直接影响模型的多个方面：</p>
+      <p>
+        <strong>序列长度和成本。</strong> 分词效率越高，相同文本产生的 token
+        越少，推理和训练成本越低。GPT-4 处理中文时，一个汉字通常需要 2-3 个 token，而英文单词平均约
+        1.3 个 token。这意味着中文的使用成本是英文的 2-3 倍。
+      </p>
+      <p><strong>多语言公平性。</strong> 不同语言的分词效率差异巨大：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>语言</th>
+            <th>每 token 对应字符数</th>
+            <th>相对成本</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>英语</td>
+            <td>~4.0</td>
+            <td>1.0x</td>
+          </tr>
+          <tr>
+            <td>法语</td>
+            <td>~3.5</td>
+            <td>1.1x</td>
+          </tr>
+          <tr>
+            <td>中文</td>
+            <td>~1.5</td>
+            <td>2.7x</td>
+          </tr>
+          <tr>
+            <td>日语</td>
+            <td>~1.5</td>
+            <td>2.7x</td>
+          </tr>
+          <tr>
+            <td>韩语</td>
+            <td>~2.0</td>
+            <td>2.0x</td>
+          </tr>
+          <tr>
+            <td>阿拉伯语</td>
+            <td>~2.5</td>
+            <td>1.6x</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <strong>代码处理。</strong> 分词器对代码的处理能力直接影响模型在编程任务上的表现。GPT-4
+        的分词器对常见编程模式（如
+        <code>def</code>、<code>class</code>、<code>import</code>）有专门的
+        token，而较老的分词器可能将它们拆成多个子词。
+      </p>
+      <p>
+        <strong>OOV 和回退。</strong> 当分词器遇到未知字符时，byte-level BPE 会回退到 UTF-8
+        字节表示。这保证了任何输入都可以被编码，但可能产生很长的 token 序列。
+      </p>
+      <h2 id="实际使用"><a href="#实际使用">实际使用</a></h2>
+      <h3 id="使用-hugging-face-tokenizers">
+        <a href="#使用-hugging-face-tokenizers">使用 Hugging Face Tokenizers</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> transformers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoTokenizer</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 加载预训练分词器</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">tokenizer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoTokenizer.from_pretrained(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"gpt2"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 编码</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">text </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "Hello, world!"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">token_ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tokenizer.encode(text)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Token IDs: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">token_ids</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Tokens: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">tokenizer.convert_ids_to_tokens(token_ids)</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 解码</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">decoded </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tokenizer.decode(token_ids)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Decoded: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">decoded</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 统计 token 数量</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">num_tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(tokenizer.encode(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"This is a sample sentence."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Token count: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">num_tokens</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="使用-sentencepiece"><a href="#使用-sentencepiece">使用 SentencePiece</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sentencepiece </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> spm</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 训练</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">spm.SentencePieceTrainer.train(</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    input</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'corpus.txt'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    model_prefix</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'my_model'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    vocab_size</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">32000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    model_type</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'unigram'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 或 'bpe'</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 加载和使用</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">sp </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> spm.SentencePieceProcessor()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">sp.load(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'my_model.model'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">tokens </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sp.encode_as_pieces(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Hello world"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sp.encode_as_ids(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Hello world"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Token</td>
+            <td>”词”</td>
+            <td>
+              分词器<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="最小"
+                data-module="github"
+                data-def="最小的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最小</abbr></span
+              >文本<span
+                class="term-tip"
+                data-term="单元"
+                data-module="c"
+                data-def="编译的基本单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单元</abbr></span
+              >，可以是完整词、子词或字符
+            </td>
+          </tr>
+          <tr>
+            <td>BPE</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="合并"
+                data-module="github"
+                data-def="整合不同分支的更改"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">合并</abbr></span
+              >算法”
+            </td>
+            <td>
+              Byte Pair Encoding，<span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >迭代<span
+                class="term-tip"
+                data-term="合并"
+                data-module="github"
+                data-def="整合不同分支的更改"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">合并</abbr></span
+              >高频相邻<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >构建词<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >词分词算法
+            </td>
+          </tr>
+          <tr>
+            <td>WordPiece</td>
+            <td>”BERT 分词”</td>
+            <td>
+              基于<span
+                class="term-tip"
+                data-term="语言"
+                data-module="github"
+                data-def="编程语言"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语言</abbr></span
+              >模型<span
+                class="term-tip"
+                data-term="似然"
+                data-module="github"
+                data-def="似然"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">似然</abbr></span
+              >增益<span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >合并<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >词分词算法，使用 ##
+              <span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >续接<span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >词
+            </td>
+          </tr>
+          <tr>
+            <td>Unigram</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="概率"
+                data-module="github"
+                data-def="概率"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">概率</abbr></span
+              >分词”
+            </td>
+            <td>
+              自顶向下，<span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >逐步<span
+                class="term-tip"
+                data-term="删除"
+                data-module="github"
+                data-def="删除"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">删除</abbr></span
+              >低<span
+                class="term-tip"
+                data-term="贡献"
+                data-module="vue3"
+                data-def="向项目提交代码"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">贡献</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+              构建词<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="概率"
+                data-module="github"
+                data-def="概率"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">概率</abbr></span
+              >化分词算法
+            </td>
+          </tr>
+          <tr>
+            <td>Vocab</td>
+            <td>
+              ”词<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >”
+            </td>
+            <td>
+              分词器能<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >的所有
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+              的<span
+                class="term-tip"
+                data-term="集合"
+                data-module="cpp"
+                data-def="集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">集合</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="大小"
+                data-module="github"
+                data-def="大小"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">大小</abbr></span
+              >通常在 32K-128K 之间
+            </td>
+          </tr>
+          <tr>
+            <td>OOV</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="未知"
+                data-module="cpp"
+                data-def="未知"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">未知</abbr></span
+              >词”
+            </td>
+            <td>
+              Out-of-Vocabulary，分词器词<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >中不<span
+                class="term-tip"
+                data-term="存在"
+                data-module="github"
+                data-def="存在"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存在</abbr></span
+              >的词
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Special
+              <span
+                class="term-tip"
+                data-term="Token"
+                data-module="agent"
+                data-def="大语言模型处理文本的最小单位，一个 token 约对应 0.75 个英文单词或 0.5-1 个中文字符"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Token</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="特殊"
+                data-module="github"
+                data-def="特殊"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特殊</abbr></span
+              >标记”
+            </td>
+            <td>
+              用于<span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >文本<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="特殊"
+                data-module="github"
+                data-def="特殊"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特殊</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >，如<span
+                class="term-tip"
+                data-term="序列"
+                data-module="github"
+                data-def="序列"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">序列</abbr></span
+              >开始、结束、<span
+                class="term-tip"
+                data-term="填充"
+                data-module="html5"
+                data-def="SVG 填充属性"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">填充</abbr></span
+              >等
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/1508.07909"
+            >Sennrich et al., 2016 — “Neural Machine Translation of Rare Words with Subword
+            Units”</a
+          >
+          — BPE
+          <span
+            class="term-tip"
+            data-term="应用"
+            data-module="github"
+            data-def="GitHub 应用程序"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">应用</abbr></span
+          >于 NLP 的<span
+            class="term-tip"
+            data-term="原始"
+            data-module="vue3"
+            data-def="原始的、最初的"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">原始</abbr></span
+          >论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1804.10959"
+            >Kudo, 2018 — “Subword Regularization: Improving Neural Network Translation Models with
+            Multiple Subword Segmentations”</a
+          >
+          — Unigram
+          <span
+            class="term-tip"
+            data-term="语言"
+            data-module="github"
+            data-def="编程语言"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">语言</abbr></span
+          >模型分词的<span
+            class="term-tip"
+            data-term="原始"
+            data-module="vue3"
+            data-def="原始的、最初的"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">原始</abbr></span
+          >论文
+        </li>
+        <li>
+          <a href="https://huggingface.co/docs/tokenizers/">Hugging Face Tokenizers 文档</a> —
+          <span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >性能分词器<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="支持"
+            data-module="cpp"
+            data-def="支持"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">支持</abbr></span
+          >
+          BPE、WordPiece 和 Unigram
+        </li>
+        <li>
+          <a href="https://github.com/google/sentencepiece">SentencePiece 文档</a> — Google 的<span
+            class="term-tip"
+            data-term="语言"
+            data-module="github"
+            data-def="编程语言"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">语言</abbr></span
+          >无关分词器，被 LLaMA、T5 等模型使用
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2406.11677"
+            >Yoon et al., 2024 — “Tokenizer Choice Matters: How Tokenization Affects LLM
+            Performance”</a
+          >
+          — 分词器<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >对 LLM
+          <span
+            class="term-tip"
+            data-term="性能"
+            data-module="github"
+            data-def="性能"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">性能</abbr></span
+          >影响的实证<span
+            class="term-tip"
+            data-term="研究"
+            data-module="github"
+            data-def="研究"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">研究</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

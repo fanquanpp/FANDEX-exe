@@ -1,0 +1,1517 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Git 原理与对象模型</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Git 原理与对象模型</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            19 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/5/3
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">git</span><span class="doc-tag">git-workflow</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">Git 底层对象模型、引用机制与存储原理。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-git-概述"><a href="#1-git-概述">1. Git 概述</a></h2>
+      <p>
+        Git 是一个分布式版本控制系统，用于跟踪文件的变化，协调多人之间的工作。它是由 Linux 创始人
+        Linus Torvalds 于 2005 年创建的，现在被广泛用于软件开发和其他需要版本控制的场景。
+      </p>
+      <h3 id="11-git-的核心特点"><a href="#11-git-的核心特点">1.1 Git 的核心特点</a></h3>
+      <ul>
+        <li><strong>分布式</strong>：每个开发者都有完整的代码仓库</li>
+        <li><strong>高效</strong>：处理大型项目时性能优异</li>
+        <li><strong>安全</strong>：使用 SHA-1 哈希算法确保数据完整性</li>
+        <li><strong>灵活</strong>：支持多种工作流程</li>
+        <li><strong>强大的分支系统</strong>：轻松创建和管理分支</li>
+      </ul>
+      <h2 id="2-git-基础概念"><a href="#2-git-基础概念">2. Git 基础概念</a></h2>
+      <h3 id="21-仓库repository"><a href="#21-仓库repository">2.1 仓库（Repository）</a></h3>
+      <ul>
+        <li><strong>本地仓库</strong>：存储在本地的代码仓库</li>
+        <li><strong>远程仓库</strong>：存储在服务器上的代码仓库</li>
+      </ul>
+      <h3 id="22-工作区working-directory">
+        <a href="#22-工作区working-directory">2.2 工作区（Working Directory）</a>
+      </h3>
+      <ul>
+        <li>本地文件系统中实际的文件和目录</li>
+        <li>开发者直接修改的地方</li>
+      </ul>
+      <h3 id="23-暂存区staging-area">
+        <a href="#23-暂存区staging-area">2.3 暂存区（Staging Area）</a>
+      </h3>
+      <ul>
+        <li>临时保存修改的地方</li>
+        <li>位于 <code>.git/index</code> 文件中</li>
+      </ul>
+      <h3 id="24-版本库repository"><a href="#24-版本库repository">2.4 版本库（Repository）</a></h3>
+      <ul>
+        <li>包含所有提交历史和对象的地方</li>
+        <li>位于 <code>.git</code> 目录中</li>
+      </ul>
+      <h3 id="25-提交commit"><a href="#25-提交commit">2.5 提交（Commit）</a></h3>
+      <ul>
+        <li>对工作区和暂存区变更的快照</li>
+        <li>包含提交信息、作者、日期等元数据</li>
+      </ul>
+      <h3 id="26-分支branch"><a href="#26-分支branch">2.6 分支（Branch）</a></h3>
+      <ul>
+        <li>指向特定提交的指针</li>
+        <li>默认分支是 <code>master</code> 或 <code>main</code></li>
+      </ul>
+      <h3 id="27-合并merge"><a href="#27-合并merge">2.7 合并（Merge）</a></h3>
+      <ul>
+        <li>将一个分支的更改合并到另一个分支</li>
+      </ul>
+      <h3 id="28-远程remote"><a href="#28-远程remote">2.8 远程（Remote）</a></h3>
+      <ul>
+        <li>指向远程仓库的引用</li>
+        <li>通常命名为 <code>origin</code></li>
+      </ul>
+      <h2 id="3-git-基本命令"><a href="#3-git-基本命令">3. Git 基本命令</a></h2>
+      <h3 id="31-初始化与克隆"><a href="#31-初始化与克隆">3.1 初始化与克隆</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 初始化新仓库</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> init</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 克隆远程仓库</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> clone</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">repository-ur</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">l</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span></code></pre>
+      <h3 id="32-基本操作"><a href="#32-基本操作">3.2 基本操作</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看状态</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> status</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 添加文件到暂存区</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> add</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">fil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 添加所有文件</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> add</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> .</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 提交更改</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> commit</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -m</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "commit message"</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 提交所有更改</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> commit</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -a</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -m</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "commit message"</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看提交历史</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> log</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看简洁的提交历史</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> log</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --oneline</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看文件差异</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> diff</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看暂存区与上次提交的差异</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> diff</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --cached</span></span></code></pre>
+      <h3 id="33-分支操作"><a href="#33-分支操作">3.3 分支操作</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> branch</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看远程分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> branch</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -r</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看所有分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> branch</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -a</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 创建分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> branch</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">branch-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 切换分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> checkout</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">branch-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 创建并切换分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> checkout</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -b</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">branch-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 合并分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> merge</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">branch-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 删除分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> branch</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -d</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">branch-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 强制删除分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> branch</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -D</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">branch-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span></code></pre>
+      <h3 id="34-远程操作"><a href="#34-远程操作">3.4 远程操作</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 添加远程仓库</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> remote</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> add</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">remote-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">repository-ur</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">l</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看远程仓库</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> remote</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -v</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 拉取远程更改</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pull</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">remote-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">branch-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 推送更改到远程</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> push</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">remote-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">branch-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 推送所有分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> push</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --all</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">remote-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 推送标签</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> push</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --tags</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">remote-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span></code></pre>
+      <h3 id="35-标签操作"><a href="#35-标签操作">3.5 标签操作</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 创建标签</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tag</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">tag-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 创建带注释的标签</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tag</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -a</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">tag-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -m</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "tag message"</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看标签</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tag</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 推送标签</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> push</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">remote-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">tag-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 检出标签</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> checkout</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">tag-nam</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span></code></pre>
+      <h3 id="36-撤销操作"><a href="#36-撤销操作">3.6 撤销操作</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 撤销工作区更改</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> checkout</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">fil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 撤销暂存区更改</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> reset</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> HEAD</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">fil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 回退到指定提交</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> reset</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --hard</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">commit-has</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">h</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 撤销最近的提交</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> revert</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> HEAD</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 撤销指定的提交</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> revert</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">commit-has</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">h</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span></code></pre>
+      <h3 id="37-高级操作"><a href="#37-高级操作">3.7 高级操作</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看文件的历史变更</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> blame</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">fil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看提交之间的差异</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> diff</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">commit</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">1></span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">commit</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">2></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 交互式重写提交历史</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> rebase</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -i</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">commit-has</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">h</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 保存当前工作状态</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> stash</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 恢复保存的工作状态</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> stash</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> pop</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看保存的工作状态</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> stash</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> list</span></span></code></pre>
+      <h2 id="4-git-工作流程"><a href="#4-git-工作流程">4. Git 工作流程</a></h2>
+      <h3 id="41-集中式工作流"><a href="#41-集中式工作流">4.1 集中式工作流</a></h3>
+      <ul>
+        <li>所有开发者直接在主分支上工作</li>
+        <li>适合小型团队和简单项目</li>
+      </ul>
+      <h3 id="42-功能分支工作流"><a href="#42-功能分支工作流">4.2 功能分支工作流</a></h3>
+      <ul>
+        <li>为每个功能创建单独的分支</li>
+        <li>完成后合并到主分支</li>
+        <li>适合大多数项目</li>
+      </ul>
+      <h3 id="43-gitflow-工作流"><a href="#43-gitflow-工作流">4.3 GitFlow 工作流</a></h3>
+      <ul>
+        <li>包含主分支、开发分支、功能分支、发布分支和热修复分支</li>
+        <li>适合大型项目和复杂的发布周期</li>
+      </ul>
+      <h3 id="44-forking-工作流"><a href="#44-forking-工作流">4.4 Forking 工作流</a></h3>
+      <ul>
+        <li>开发者 fork 远程仓库</li>
+        <li>在自己的 fork 中工作</li>
+        <li>通过 Pull Request 贡献代码</li>
+        <li>适合开源项目</li>
+      </ul>
+      <h2 id="5-git-配置"><a href="#5-git-配置">5. Git 配置</a></h2>
+      <h3 id="51-全局配置"><a href="#51-全局配置">5.1 全局配置</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 设置用户名</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> config</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --global</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user.name</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "Your Name"</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 设置邮箱</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> config</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --global</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user.email</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "your.email@example.com"</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 设置默认编辑器</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> config</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --global</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> core.editor</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "vim"</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 设置默认分支名称</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> config</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --global</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> init.defaultBranch</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> main</span></span></code></pre>
+      <h3 id="52-本地配置"><a href="#52-本地配置">5.2 本地配置</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 在当前仓库设置配置</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> config</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user.name</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "Your Name"</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> config</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user.email</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "your.email@example.com"</span></span></code></pre>
+      <h3 id="53-配置文件"><a href="#53-配置文件">5.3 配置文件</a></h3>
+      <ul>
+        <li><strong>全局配置</strong>：<code>~/.gitconfig</code></li>
+        <li><strong>本地配置</strong>：<code>.git/config</code></li>
+      </ul>
+      <h2 id="6-git-钩子"><a href="#6-git-钩子">6. Git 钩子</a></h2>
+      <p>Git 钩子是在特定 Git 事件发生时自动执行的脚本。</p>
+      <h3 id="61-常用钩子"><a href="#61-常用钩子">6.1 常用钩子</a></h3>
+      <ul>
+        <li><strong>pre-commit</strong>：提交前执行</li>
+        <li><strong>commit-msg</strong>：提交消息验证</li>
+        <li><strong>post-commit</strong>：提交后执行</li>
+        <li><strong>pre-push</strong>：推送前执行</li>
+      </ul>
+      <h3 id="62-钩子示例"><a href="#62-钩子示例">6.2 钩子示例</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # pre-commit 钩子示例</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> #!/bin/sh</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 运行代码检查</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> npm</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> run</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> lint</span></span></code></pre>
+      <h2 id="7-git-最佳实践"><a href="#7-git-最佳实践">7. Git 最佳实践</a></h2>
+      <h3 id="71-提交规范"><a href="#71-提交规范">7.1 提交规范</a></h3>
+      <ul>
+        <li><strong>提交消息</strong>：清晰、简洁、描述性</li>
+        <li><strong>提交粒度</strong>：每个提交应该解决一个问题</li>
+        <li><strong>提交频率</strong>：频繁提交，保持提交小而专注</li>
+      </ul>
+      <h3 id="72-分支管理"><a href="#72-分支管理">7.2 分支管理</a></h3>
+      <ul>
+        <li><strong>主分支</strong>：保持稳定，只用于发布</li>
+        <li><strong>开发分支</strong>：用于集成新功能</li>
+        <li><strong>功能分支</strong>：用于开发特定功能</li>
+        <li><strong>发布分支</strong>：用于准备发布</li>
+        <li><strong>热修复分支</strong>：用于紧急修复</li>
+      </ul>
+      <h3 id="73-冲突解决"><a href="#73-冲突解决">7.3 冲突解决</a></h3>
+      <ul>
+        <li><strong>预防冲突</strong>：频繁拉取和合并</li>
+        <li><strong>解决冲突</strong>：仔细检查冲突内容，手动解决</li>
+        <li><strong>测试</strong>：解决冲突后进行测试</li>
+      </ul>
+      <h3 id="74-代码审查"><a href="#74-代码审查">7.4 代码审查</a></h3>
+      <ul>
+        <li><strong>Pull Request</strong>：使用 PR 进行代码审查</li>
+        <li><strong>代码风格</strong>：遵循项目的代码风格</li>
+        <li><strong>测试</strong>：确保代码通过测试</li>
+      </ul>
+      <h2 id="8-git-工具"><a href="#8-git-工具">8. Git 工具</a></h2>
+      <h3 id="81-图形化工具"><a href="#81-图形化工具">8.1 图形化工具</a></h3>
+      <ul>
+        <li><strong>Git GUI</strong>：Git 自带的图形界面</li>
+        <li><strong>GitHub Desktop</strong>：GitHub 官方客户单</li>
+        <li><strong>SourceTree</strong>：Atlassian 开发的 Git 客户单</li>
+        <li><strong>GitKraken</strong>：跨平台 Git 客户单</li>
+      </ul>
+      <h3 id="82-命令行工具"><a href="#82-命令行工具">8.2 命令行工具</a></h3>
+      <ul>
+        <li><strong>git</strong>：核心命令行工具</li>
+        <li><strong>tig</strong>：文本模式的 Git 界面</li>
+        <li><strong>git-extras</strong>：扩展 Git 功能的工具集</li>
+      </ul>
+      <h3 id="83-在线平台"><a href="#83-在线平台">8.3 在线平台</a></h3>
+      <ul>
+        <li><strong>GitHub</strong>：最大的 Git 托管平台</li>
+        <li><strong>GitLab</strong>：开源的 Git 托管平台</li>
+        <li><strong>Bitbucket</strong>：Atlassian 的 Git 托管平台</li>
+      </ul>
+      <h2 id="9-常见问题与解决方案"><a href="#9-常见问题与解决方案">9. 常见问题与解决方案</a></h2>
+      <h3 id="91-提交错误"><a href="#91-提交错误">9.1 提交错误</a></h3>
+      <p><strong>问题</strong>：提交了错误的文件或消息 <strong>解决方案</strong>：</p>
+      <ul>
+        <li>撤销提交：<code>git reset --soft HEAD^</code></li>
+        <li>修改提交消息：<code>git commit --amend -m "new message"</code></li>
+      </ul>
+      <h3 id="92-分支冲突"><a href="#92-分支冲突">9.2 分支冲突</a></h3>
+      <p><strong>问题</strong>：合并分支时发生冲突 <strong>解决方案</strong>：</p>
+      <ul>
+        <li>手动编辑冲突文件</li>
+        <li>标记冲突已解决：<code>git add &#x3C;file></code></li>
+        <li>完成合并：<code>git commit</code></li>
+      </ul>
+      <h3 id="93-远程仓库问题"><a href="#93-远程仓库问题">9.3 远程仓库问题</a></h3>
+      <p><strong>问题</strong>：无法推送更改到远程仓库 <strong>解决方案</strong>：</p>
+      <ul>
+        <li>先拉取远程更改：<code>git pull</code></li>
+        <li>解决冲突后再推送：<code>git push</code></li>
+      </ul>
+      <h3 id="94-历史重写"><a href="#94-历史重写">9.4 历史重写</a></h3>
+      <p><strong>问题</strong>：需要修改历史提交 <strong>解决方案</strong>：</p>
+      <ul>
+        <li>使用 <code>git rebase</code> 重写历史</li>
+        <li>注意：不要重写已推送到远程的提交</li>
+      </ul>
+      <h2 id="10-示例工作流"><a href="#10-示例工作流">10. 示例工作流</a></h2>
+      <h3 id="101-基本工作流"><a href="#101-基本工作流">10.1 基本工作流</a></h3>
+      <ol>
+        <li><strong>克隆仓库</strong>：<code>git clone &#x3C;repository-url></code></li>
+        <li><strong>创建分支</strong>：<code>git checkout -b feature-branch</code></li>
+        <li><strong>修改文件</strong>：编辑代码</li>
+        <li><strong>添加更改</strong>：<code>git add .</code></li>
+        <li><strong>提交更改</strong>：<code>git commit -m "Add new feature"</code></li>
+        <li><strong>推送到远程</strong>：<code>git push origin feature-branch</code></li>
+        <li><strong>创建 Pull Request</strong>：在 GitHub/GitLab 上创建 PR</li>
+        <li><strong>合并分支</strong>：PR 通过后合并到主分支</li>
+        <li><strong>删除分支</strong>：<code>git branch -d feature-branch</code></li>
+      </ol>
+      <h3 id="102-团队协作工作流"><a href="#102-团队协作工作流">10.2 团队协作工作流</a></h3>
+      <ol>
+        <li><strong>同步远程</strong>：<code>git pull origin main</code></li>
+        <li><strong>创建功能分支</strong>：<code>git checkout -b feature/issue-123</code></li>
+        <li><strong>开发功能</strong>：实现功能并测试</li>
+        <li>
+          <strong>提交更改</strong>：<code>git commit -m "Implement feature for issue #123"</code>
+        </li>
+        <li><strong>推送到远程</strong>：<code>git push origin feature/issue-123</code></li>
+        <li><strong>创建 PR</strong>：描述功能和相关问题</li>
+        <li><strong>代码审查</strong>：团队成员审查代码</li>
+        <li><strong>解决反馈</strong>：根据审查意见修改代码</li>
+        <li><strong>合并 PR</strong>：代码通过审查后合并</li>
+        <li><strong>删除分支</strong>：<code>git branch -d feature/issue-123</code></li>
+      </ol>
+      <h2 id="11-git-核心原理"><a href="#11-git-核心原理">11. Git 核心原理</a></h2>
+      <h3 id="111-git-对象模型"><a href="#111-git-对象模型">11.1 Git 对象模型</a></h3>
+      <p>Git 使用四种基本对象来存储数据：</p>
+      <h4 id="1111-blob-对象"><a href="#1111-blob-对象">11.1.1 Blob 对象</a></h4>
+      <ul>
+        <li>存储文件内容</li>
+        <li>不包含文件名和路径信息</li>
+        <li>通过 SHA-1 哈希值唯一标识</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 blob 对象</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 创建一个 blob 对象</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> echo</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "Hello, Git!"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> |</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> hash-object</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -w</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --stdin</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 blob 对象内容</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cat-file</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -p</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">blob-has</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">h</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span></code></pre>
+      <h4 id="1112-tree-对象"><a href="#1112-tree-对象">11.1.2 Tree 对象</a></h4>
+      <ul>
+        <li>存储目录结构</li>
+        <li>包含文件名、权限和指向 blob 或其他 tree 的引用</li>
+        <li>通过 SHA-1 哈希值唯一标识</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 tree 对象</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 创建一个 tree 对象（Git 内部操作）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> write-tree</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 tree 对象内容</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cat-file</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -p</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">tree-has</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">h</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span></code></pre>
+      <h4 id="1113-commit-对象"><a href="#1113-commit-对象">11.1.3 Commit 对象</a></h4>
+      <ul>
+        <li>存储提交信息</li>
+        <li>包含作者、日期、提交信息、指向 tree 对象的引用</li>
+        <li>通过 SHA-1 哈希值唯一标识</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 commit 对象</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看提交的内部信息</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cat-file</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -p</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">commit-has</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">h</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span></code></pre>
+      <h4 id="1114-tag-对象"><a href="#1114-tag-对象">11.1.4 Tag 对象</a></h4>
+      <ul>
+        <li>存储标签信息</li>
+        <li>包含标签名称、创建者、日期、标签信息、指向 commit 对象的引用</li>
+        <li>通过 SHA-1 哈希值唯一标识</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 tag 对象</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 创建一个带注释的标签</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tag</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -a</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> v1.0.0</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -m</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "Version 1.0.0"</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 tag 对象内容</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cat-file</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -p</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> v1.0.0</span></span></code></pre>
+      <h3 id="112-git-存储机制"><a href="#112-git-存储机制">11.2 Git 存储机制</a></h3>
+      <h4 id="1121-对象存储"><a href="#1121-对象存储">11.2.1 对象存储</a></h4>
+      <ul>
+        <li>Git 将对象存储在 <code>.git/objects</code> 目录中</li>
+        <li>对象按哈希值的前两位作为目录名，后38位作为文件名</li>
+        <li>采用压缩存储，节省空间</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看对象存储目录</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ls</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -la</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> .git/objects/</span></span></code></pre>
+      <h4 id="1122-引用存储"><a href="#1122-引用存储">11.2.2 引用存储</a></h4>
+      <ul>
+        <li>分支：<code>.git/refs/heads/</code></li>
+        <li>标签：<code>.git/refs/tags/</code></li>
+        <li>远程分支：<code>.git/refs/remotes/</code></li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看分支引用</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> cat</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> .git/refs/heads/main</span></span></code></pre>
+      <h4 id="1123-head-引用"><a href="#1123-head-引用">11.2.3 HEAD 引用</a></h4>
+      <ul>
+        <li>指向当前所在的分支或提交</li>
+        <li>存储在 <code>.git/HEAD</code> 文件中</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 HEAD 引用</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> cat</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> .git/HEAD</span></span></code></pre>
+      <h3 id="113-git-哈希算法"><a href="#113-git-哈希算法">11.3 Git 哈希算法</a></h3>
+      <ul>
+        <li>使用 SHA-1 哈希算法</li>
+        <li>生成 40 位十六进制字符串</li>
+        <li>确保数据完整性</li>
+        <li>用于唯一标识 Git 对象</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 计算文件的哈希值</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> hash-object</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">fil</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">e</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span></code></pre>
+      <h3 id="114-git-分支实现原理"><a href="#114-git-分支实现原理">11.4 Git 分支实现原理</a></h3>
+      <ul>
+        <li>分支本质上是指向提交的指针</li>
+        <li>创建分支只是创建一个新的指针文件</li>
+        <li>切换分支只是修改 HEAD 指向</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 创建分支的底层操作</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 手动创建一个分支</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> echo</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">commit-has</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">h</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ></span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> .git/refs/heads/new-branch</span></span></code></pre>
+      <h3 id="115-git-合并机制"><a href="#115-git-合并机制">11.5 Git 合并机制</a></h3>
+      <h4 id="1151-快进合并fast-forward">
+        <a href="#1151-快进合并fast-forward">11.5.1 快进合并（Fast-forward）</a>
+      </h4>
+      <ul>
+        <li>当目标分支是当前分支的直接祖先时</li>
+        <li>只需移动分支指针</li>
+      </ul>
+      <h4 id="1152-三方合并3-way-merge">
+        <a href="#1152-三方合并3-way-merge">11.5.2 三方合并（3-way merge）</a>
+      </h4>
+      <ul>
+        <li>当两个分支有不同的提交历史时</li>
+        <li>找到共同祖先，合并三个版本</li>
+      </ul>
+      <h4 id="1153-冲突解决"><a href="#1153-冲突解决">11.5.3 冲突解决</a></h4>
+      <ul>
+        <li>当两个分支修改了同一文件的同一部分时</li>
+        <li>需要手动解决冲突</li>
+      </ul>
+      <h3 id="116-git-垃圾回收"><a href="#116-git-垃圾回收">11.6 Git 垃圾回收</a></h3>
+      <ul>
+        <li>Git 自动进行垃圾回收</li>
+        <li>清理未引用的对象</li>
+        <li>压缩对象存储</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 手动执行垃圾回收</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> gc</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看垃圾回收统计信息</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> gc</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --verbose</span></span></code></pre>
+      <h3 id="117-git-索引暂存区"><a href="#117-git-索引暂存区">11.7 Git 索引（暂存区）</a></h3>
+      <ul>
+        <li>存储在 <code>.git/index</code> 文件中</li>
+        <li>是工作区和版本库之间的桥梁</li>
+        <li>记录文件的状态和元数据</li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看索引内容</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ls-files</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --stage</span></span></code></pre>
+      <h2 id="12-git-内部操作"><a href="#12-git-内部操作">12. Git 内部操作</a></h2>
+      <h3 id="121-底层命令"><a href="#121-底层命令">12.1 底层命令</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 Git 版本</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --version</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 Git 配置</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> config</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --list</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 Git 状态</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> status</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 Git 提交历史</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> log</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 Git 对象</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cat-file</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -t</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">has</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">h</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看对象类型</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cat-file</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -p</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">has</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">h</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看对象内容</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 Git 引用</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> show-ref</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 Git 分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> branch</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -v</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 Git 远程仓库</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> remote</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -v</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 查看 Git 标签</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> git</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tag</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -l</span></span></code></pre>
+      <h3 id="122-内部原理示例"><a href="#122-内部原理示例">12.2 内部原理示例</a></h3>
+      <h4 id="1221-提交过程"><a href="#1221-提交过程">12.2.1 提交过程</a></h4>
+      <ol>
+        <li><strong>git add</strong>：将文件内容添加到暂存区，创建 blob 对象</li>
+        <li><strong>git commit</strong>：创建 tree 对象和 commit 对象</li>
+        <li><strong>更新分支指针</strong>：将当前分支指向新的 commit 对象</li>
+      </ol>
+      <h4 id="1222-分支创建与切换"><a href="#1222-分支创建与切换">12.2.2 分支创建与切换</a></h4>
+      <ol>
+        <li><strong>git branch</strong>：创建新的分支指针文件</li>
+        <li><strong>git checkout</strong>：修改 HEAD 指向新的分支</li>
+      </ol>
+      <h4 id="1223-合并过程"><a href="#1223-合并过程">12.2.3 合并过程</a></h4>
+      <ol>
+        <li><strong>git merge</strong>：找到共同祖先</li>
+        <li><strong>分析差异</strong>：比较三个版本的差异</li>
+        <li><strong>生成新提交</strong>：创建合并提交</li>
+      </ol>
+      <h2 id="13-实际应用案例"><a href="#13-实际应用案例">13. 实际应用案例</a></h2>
+      <h3 id="131-大型项目管理"><a href="#131-大型项目管理">13.1 大型项目管理</a></h3>
+      <h4 id="1311-分支策略"><a href="#1311-分支策略">13.1.1 分支策略</a></h4>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 主分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> main</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 稳定版本</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 开发分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> develop</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 集成新功能</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 功能分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> feature/issue-123</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 开发特定功能</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 发布分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> release/v1.0.0</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 准备发布</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 热修复分支</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> hotfix/bug-456</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 紧急修复</span></span></code></pre>
+      <h4 id="1312-提交规范"><a href="#1312-提交规范">13.1.2 提交规范</a></h4>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 提交消息格式</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">type</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">>(&#x3C;scope>): </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">subject</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">body</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">footer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">></span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 类型</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> feat:</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 新功能</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> fix:</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 修复</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> bug</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> docs:</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 文档更改</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> style:</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 代码风格更改</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> refactor:</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 代码重构</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> test</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">:</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 测试更改</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> chore:</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 构建或依赖更改</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> perf:</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 性能优化</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> revert:</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 回滚提交</span></span></code></pre>
+      <h3 id="132-团队协作"><a href="#132-团队协作">13.2 团队协作</a></h3>
+      <h4 id="1321-代码审查流程"><a href="#1321-代码审查流程">13.2.1 代码审查流程</a></h4>
+      <ol>
+        <li><strong>创建 PR</strong>：开发者创建 Pull Request</li>
+        <li><strong>代码审查</strong>：团队成员审查代码</li>
+        <li><strong>反馈修改</strong>：开发者根据反馈修改代码</li>
+        <li><strong>合并 PR</strong>：代码通过审查后合并</li>
+        <li><strong>删除分支</strong>：合并后删除功能分支</li>
+      </ol>
+      <h4 id="1322-冲突解决策略"><a href="#1322-冲突解决策略">13.2.2 冲突解决策略</a></h4>
+      <ol>
+        <li><strong>预防冲突</strong>：频繁拉取和合并</li>
+        <li><strong>解决冲突</strong>：仔细检查冲突内容</li>
+        <li><strong>测试验证</strong>：解决冲突后进行测试</li>
+      </ol>
+      <h3 id="133-持续集成持续部署"><a href="#133-持续集成持续部署">13.3 持续集成/持续部署</a></h3>
+      <h4 id="1331-cicd-配置"><a href="#1331-cicd-配置">13.3.1 CI/CD 配置</a></h4>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="yaml"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # .github/workflows/ci.yml</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D"> name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">CI</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> on</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  push</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  branches</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">develop</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  pull_request</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  branches</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">main</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">develop</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D"> jobs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  build</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  runs-on</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">ubuntu-latest</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  steps</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">uses</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">actions/checkout@v4</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Set up Node.js</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  uses</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">actions/setup-node@v4</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  with</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  node-version</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'20'</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Install dependencies</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  run</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">npm ci</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Run tests</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  run</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">npm test</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Build</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  run</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">npm run build</span></span></code></pre>
+      <h2 id="14-常见问题与解决方案进阶">
+        <a href="#14-常见问题与解决方案进阶">14. 常见问题与解决方案（进阶）</a>
+      </h2>
+      <h3 id="141-性能问题"><a href="#141-性能问题">14.1 性能问题</a></h3>
+      <p><strong>问题</strong>：大型仓库操作缓慢 <strong>解决方案</strong>：</p>
+      <ul>
+        <li>启用 Git 压缩：<code>git config --global core.compression 9</code></li>
+        <li>清理垃圾对象：<code>git gc --aggressive</code></li>
+        <li>使用浅克隆：<code>git clone --depth 1 &#x3C;repository-url></code></li>
+        <li>
+          配置大文件存储：<code>git lfs install</code> <strong>问题</strong>：提交历史过多
+          <strong>解决方案</strong>：
+        </li>
+        <li>使用 <code>git rebase</code> 压缩提交</li>
+        <li>清理历史中的大文件：<code>git filter-branch</code> 或 BFG Repo-Cleaner</li>
+      </ul>
+      <h3 id="142-安全问题"><a href="#142-安全问题">14.2 安全问题</a></h3>
+      <p><strong>问题</strong>：提交了敏感信息 <strong>解决方案</strong>：</p>
+      <ul>
+        <li>使用 <code>git filter-branch</code> 或 BFG Repo-Cleaner 移除敏感信息</li>
+        <li>重置远程仓库：<code>git push --force</code></li>
+        <li>
+          通知团队成员重新克隆仓库 <strong>问题</strong>：SSH 密钥管理 <strong>解决方案</strong>：
+        </li>
+        <li>生成 SSH 密钥：<code>ssh-keygen -t ed25519 -C "your.email@example.com"</code></li>
+        <li>添加 SSH 密钥到 ssh-agent：<code>ssh-add ~/.ssh/id_ed25519</code></li>
+        <li>配置 SSH config 文件：<code>~/.ssh/config</code></li>
+      </ul>
+      <h3 id="143-高级操作问题"><a href="#143-高级操作问题">14.3 高级操作问题</a></h3>
+      <p><strong>问题</strong>：需要修改历史提交 <strong>解决方案</strong>：</p>
+      <ul>
+        <li>使用 <code>git rebase -i</code> 交互式重写历史</li>
+        <li>
+          注意：不要重写已推送到远程的提交 <strong>问题</strong>：分支管理混乱
+          <strong>解决方案</strong>：
+        </li>
+        <li>定期清理无用分支：<code>git branch -d &#x3C;branch-name></code></li>
+        <li>使用分支命名规范：<code>feature/</code>、<code>bugfix/</code>、<code>hotfix/</code></li>
+        <li>定期同步远程分支：<code>git fetch --prune</code></li>
+      </ul>
+      <h3 id="144-远程协作问题"><a href="#144-远程协作问题">14.4 远程协作问题</a></h3>
+      <p><strong>问题</strong>：远程仓库冲突 <strong>解决方案</strong>：</p>
+      <ul>
+        <li>先拉取远程更改：<code>git pull --rebase</code></li>
+        <li>
+          解决冲突后再推送：<code>git push</code> <strong>问题</strong>：网络连接问题
+          <strong>解决方案</strong>：
+        </li>
+        <li>配置 HTTP 代理：<code>git config --global http.proxy http://proxy:port</code></li>
+        <li>
+          使用 SSH 协议替代 HTTPS：<code
+            >git remote set-url origin git@github.com:user/repo.git</code
+          >
+        </li>
+      </ul>
+      <h2 id="15-git-最佳实践进阶"><a href="#15-git-最佳实践进阶">15. Git 最佳实践（进阶）</a></h2>
+      <h3 id="151-性能优化"><a href="#151-性能优化">15.1 性能优化</a></h3>
+      <ol>
+        <li><strong>使用 Git LFS</strong>：管理大文件</li>
+        <li><strong>启用自动垃圾回收</strong>：<code>git config --global gc.auto 256</code></li>
+        <li>
+          <strong>配置 pack 窗口大小</strong>：<code
+            >git config --global pack.windowMemory 512m</code
+          >
+        </li>
+        <li><strong>使用引用日志</strong>：<code>git reflog</code> 查看操作历史</li>
+      </ol>
+      <h3 id="152-安全性"><a href="#152-安全性">15.2 安全性</a></h3>
+      <ol>
+        <li><strong>使用 SSH 协议</strong>：更安全的认证方式</li>
+        <li>
+          <strong>签名提交</strong>：<code
+            >git config --global user.signingkey &#x3C;gpg-key-id></code
+          >
+        </li>
+        <li><strong>验证签名</strong>：<code>git log --show-signature</code></li>
+        <li><strong>使用 .gitignore</strong>：排除敏感文件</li>
+      </ol>
+      <h3 id="153-团队协作"><a href="#153-团队协作">15.3 团队协作</a></h3>
+      <ol>
+        <li><strong>统一分支策略</strong>：使用 GitFlow 或其他标准工作流</li>
+        <li><strong>自动化测试</strong>：集成 CI/CD</li>
+        <li><strong>代码审查</strong>：使用 Pull Request</li>
+        <li><strong>文档管理</strong>：维护 README 和贡献指南</li>
+      </ol>
+      <h3 id="154-工具使用"><a href="#154-工具使用">15.4 工具使用</a></h3>
+      <ol>
+        <li><strong>Git 客户单</strong>：选择适合自己的客户单</li>
+        <li><strong>Git 钩子</strong>：自动化工作流程</li>
+        <li><strong>Git 扩展</strong>：git-extras、git-flow 等</li>
+        <li><strong>IDE 集成</strong>：利用 IDE 的 Git 集成功能</li>
+      </ol>
+      <h2 id="16-延伸阅读"><a href="#16-延伸阅读">16. 延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://git-scm.com/doc">Git 官方文档</a>
+          <!-- nofollow -->
+        </li>
+        <li>
+          <a href="https://git-scm.com/book/en/v2">Pro Git 书籍</a>
+          <!-- nofollow -->
+        </li>
+        <li>
+          <a href="https://docs.github.com/en/get-started">GitHub 文档</a>
+          <!-- nofollow -->
+        </li>
+        <li>
+          <a href="https://docs.gitlab.com/">GitLab 文档</a>
+          <!-- nofollow -->
+        </li>
+        <li>
+          <a href="https://support.atlassian.com/bitbucket-cloud/docs/">Bitbucket 文档</a>
+          <!-- nofollow -->
+        </li>
+        <li>
+          <a href="https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain"
+            >Git 内部原理</a
+          >
+          <!-- nofollow -->
+        </li>
+        <li>
+          <a href="https://www.atlassian.com/git/tutorials/comparing-workflows">Git 工作流程</a>
+          <!-- nofollow -->
+        </li>
+      </ul>
+      <h2 id="17-总结"><a href="#17-总结">17. 总结</a></h2>
+      <p>
+        <span
+          class="term-tip"
+          data-term="Git"
+          data-module="git"
+          data-def="Git 是由 Linus Torvalds 于 2005 年创建的分布式版本控制系统，用于追踪文件变化、协调多人协作开发。"
+          data-slug="git/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Git</abbr></span
+        >
+        是一个强大的<span
+          class="term-tip"
+          data-term="版本控制"
+          data-module="cpp"
+          data-def="版本控制"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">版本控制</abbr></span
+        >系统，它的<span
+          class="term-tip"
+          data-term="核"
+          data-module="data-analysis"
+          data-def="KDE中用于平滑估计的窗口函数，常用高斯核"
+          data-slug="data-analysis/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">核</abbr></span
+        >心是基于<span
+          class="term-tip"
+          data-term="对象"
+          data-module="cpp"
+          data-def="类的实例"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对象</abbr></span
+        >模型的<span
+          class="term-tip"
+          data-term="存储"
+          data-module="cpp"
+          data-def="存储"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">存储</abbr></span
+        >机制。<span
+          class="term-tip"
+          data-term="通过"
+          data-module="github"
+          data-def="通过"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">通过</abbr></span
+        >理解 Git 的内部原理，你可以更有效地使用 Git，解决复杂的版本控制问题，提高开发效率。
+      </p>
+      <h3 id="171-核心要点"><a href="#171-核心要点">17.1 核心要点</a></h3>
+      <ul>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="对象"
+              data-module="cpp"
+              data-def="类的实例"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对象</abbr></span
+            >模型</strong
+          >：<span
+            class="term-tip"
+            data-term="Blob"
+            data-module="html5"
+            data-def="二进制大对象，表示不可变的原始数据，&#x60;new Blob([data], {type})&#x60;"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Blob</abbr></span
+          >、Tree、Commit、Tag 四种基本<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="存储"
+              data-module="cpp"
+              data-def="存储"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">存储</abbr></span
+            >机制</strong
+          >：基于<span
+            class="term-tip"
+            data-term="哈希"
+            data-module="github"
+            data-def="哈希值"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">哈希</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >效<span
+            class="term-tip"
+            data-term="存储"
+            data-module="cpp"
+            data-def="存储"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">存储</abbr></span
+          >
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="分支"
+              data-module="git"
+              data-def="分支是指向提交对象的可变指针，Git 的分支是轻量级且高效的，允许在同一仓库中并行开发。"
+              data-slug="git/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">分支</abbr></span
+            >实现</strong
+          >：<span
+            class="term-tip"
+            data-term="轻量级"
+            data-module="html5"
+            data-def="资源体积小加载快"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">轻量级</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="指针"
+            data-module="c"
+            data-def="存储内存地址的变量"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">指针</abbr></span
+          >系统
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="合并"
+              data-module="github"
+              data-def="整合不同分支的更改"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">合并</abbr></span
+            >机制</strong
+          >：快进<span
+            class="term-tip"
+            data-term="合并"
+            data-module="github"
+            data-def="整合不同分支的更改"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">合并</abbr></span
+          >和三方<span
+            class="term-tip"
+            data-term="合并"
+            data-module="github"
+            data-def="整合不同分支的更改"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">合并</abbr></span
+          >
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="垃圾回收"
+              data-module="csharp"
+              data-def=".NET 运行时自动管理堆内存的机制，采用分代回收策略回收不再使用的对象"
+              data-slug="csharp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">垃圾回收</abbr></span
+            ></strong
+          >：自动<span
+            class="term-tip"
+            data-term="清理"
+            data-module="vue3"
+            data-def="释放资源和移除监听"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">清理</abbr></span
+          >未<span
+            class="term-tip"
+            data-term="引用"
+            data-module="c"
+            data-def="变量的别名"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">引用</abbr></span
+          >对象
+        </li>
+        <li>
+          <strong
+            >分布式<span
+              class="term-tip"
+              data-term="架构"
+              data-module="vue3"
+              data-def="代码和系统的组织结构"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">架构</abbr></span
+            ></strong
+          >：每个<span
+            class="term-tip"
+            data-term="开发者"
+            data-module="github"
+            data-def="开发者"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">开发者</abbr></span
+          >都有<span
+            class="term-tip"
+            data-term="完整"
+            data-module="github"
+            data-def="完整"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">完整</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="仓库"
+            data-module="git"
+            data-def="仓库是 Git 存储项目历史和元数据的目录，包含所有文件的完整历史记录。"
+            data-slug="git/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">仓库</abbr></span
+          >
+        </li>
+      </ul>
+      <h3 id="172-学习建议"><a href="#172-学习建议">17.2 学习建议</a></h3>
+      <ul>
+        <li>
+          <strong>深入理解</strong>：掌握
+          <span
+            class="term-tip"
+            data-term="Git"
+            data-module="git"
+            data-def="Git 是由 Linus Torvalds 于 2005 年创建的分布式版本控制系统，用于追踪文件变化、协调多人协作开发。"
+            data-slug="git/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Git</abbr></span
+          >
+          的内部原理
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="实践"
+              data-module="github"
+              data-def="实践"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">实践</abbr></span
+            >练习</strong
+          >：<span
+            class="term-tip"
+            data-term="通过"
+            data-module="github"
+            data-def="通过"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">通过</abbr></span
+          >实际<span
+            class="term-tip"
+            data-term="项目"
+            data-module="github"
+            data-def="项目"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">项目</abbr></span
+          >练习<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >级<span
+            class="term-tip"
+            data-term="操作"
+            data-module="github"
+            data-def="GitHub Actions 工作流"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">操作</abbr></span
+          >
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="工具使用"
+              data-module="agent"
+              data-def="智能体调用外部工具（如搜索引擎、代码执行器、API）扩展自身能力的行为"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">工具使用</abbr></span
+            ></strong
+          >：利用
+          <span
+            class="term-tip"
+            data-term="Git"
+            data-module="git"
+            data-def="Git 是由 Linus Torvalds 于 2005 年创建的分布式版本控制系统，用于追踪文件变化、协调多人协作开发。"
+            data-slug="git/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Git</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >提<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >效<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >
+        </li>
+        <li>
+          <strong>团队协作</strong>：遵循团队的
+          <span
+            class="term-tip"
+            data-term="Git"
+            data-module="git"
+            data-def="Git 是由 Linus Torvalds 于 2005 年创建的分布式版本控制系统，用于追踪文件变化、协调多人协作开发。"
+            data-slug="git/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Git</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="规范"
+            data-module="html5"
+            data-def="HTML 标准文档"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">规范</abbr></span
+          >
+        </li>
+        <li>
+          <strong>持续学习</strong>：<span
+            class="term-tip"
+            data-term="关注"
+            data-module="github"
+            data-def="关注"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">关注</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="Git"
+            data-module="git"
+            data-def="Git 是由 Linus Torvalds 于 2005 年创建的分布式版本控制系统，用于追踪文件变化、协调多人协作开发。"
+            data-slug="git/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Git</abbr></span
+          >
+          的新<span
+            class="term-tip"
+            data-term="特性"
+            data-module="cpp"
+            data-def="特性"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">特性</abbr></span
+          >和最佳<span
+            class="term-tip"
+            data-term="实践"
+            data-module="github"
+            data-def="实践"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实践</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="通过"
+            data-module="github"
+            data-def="通过"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">通过</abbr></span
+          >不断学习和<span
+            class="term-tip"
+            data-term="实践"
+            data-module="github"
+            data-def="实践"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实践</abbr></span
+          >，你将能够熟练使用
+          <span
+            class="term-tip"
+            data-term="Git"
+            data-module="git"
+            data-def="Git 是由 Linus Torvalds 于 2005 年创建的分布式版本控制系统，用于追踪文件变化、协调多人协作开发。"
+            data-slug="git/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">Git</abbr></span
+          >，成为一名<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >效的<span
+            class="term-tip"
+            data-term="开发者"
+            data-module="github"
+            data-def="开发者"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">开发者</abbr></span
+          >，为<span
+            class="term-tip"
+            data-term="项目"
+            data-module="github"
+            data-def="项目"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">项目</abbr></span
+          >的成功做出<span
+            class="term-tip"
+            data-term="贡献"
+            data-module="vue3"
+            data-def="向项目提交代码"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">贡献</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

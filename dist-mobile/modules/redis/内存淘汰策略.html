@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>内存淘汰策略</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">内存淘汰策略</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          Redis 内存淘汰策略详解：LRU、LFU、Random、TTL 四类八种策略的原理、配置与适用场景。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-内存淘汰概述"><a href="#1-内存淘汰概述">1. 内存淘汰概述</a></h2>
+      <h3 id="11-触发条件"><a href="#11-触发条件">1.1 触发条件</a></h3>
+      <p>
+        当 Redis 使用内存超过 <code>maxmemory</code>
+        <span
+          class="term-tip"
+          data-term="配置"
+          data-module="cpp"
+          data-def="配置参数"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">配置</abbr></span
+        >时，<span
+          class="term-tip"
+          data-term="触发"
+          data-module="javascript"
+          data-def="导致事件发生"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">触发</abbr></span
+        >淘汰<span
+          class="term-tip"
+          data-term="策略"
+          data-module="vue3"
+          data-def="解决问题的策略"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">策略</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 设置最大内存</span></span>
+<span class="line"><span>CONFIG SET maxmemory 4gb</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 查看当前内存使用</span></span>
+<span class="line"><span>INFO memory</span></span>
+<span class="line"><span># used_memory: 3.8GB</span></span>
+<span class="line"><span># maxmemory: 4GB</span></span></code></pre>
+      <h3 id="12-八种淘汰策略"><a href="#12-八种淘汰策略">1.2 八种淘汰策略</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >
+            </th>
+            <th>
+              淘汰<span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >
+            </th>
+            <th>算法</th>
+            <th>适用场景</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>noeviction</td>
+            <td>不淘汰</td>
+            <td>-</td>
+            <td>数据不能丢失</td>
+          </tr>
+          <tr>
+            <td>allkeys-lru</td>
+            <td>所有键</td>
+            <td>LRU</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="通用"
+                data-module="cpp"
+                data-def="通用"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通用</abbr></span
+              >缓存
+            </td>
+          </tr>
+          <tr>
+            <td>allkeys-lfu</td>
+            <td>所有键</td>
+            <td>LFU</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="热点"
+                data-module="html5"
+                data-def="图片上可点击的区域"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">热点</abbr></span
+              >数据明显
+            </td>
+          </tr>
+          <tr>
+            <td>
+              allkeys-<span
+                class="term-tip"
+                data-term="random"
+                data-module="cpp"
+                data-def="随机数库"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">random</abbr></span
+              >
+            </td>
+            <td>所有键</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="随机"
+                data-module="github"
+                data-def="随机的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">随机</abbr></span
+              >
+            </td>
+            <td>无访问偏好</td>
+          </tr>
+          <tr>
+            <td>volatile-lru</td>
+            <td>有TTL的键</td>
+            <td>LRU</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="混合"
+                data-module="github"
+                data-def="混合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">混合</abbr></span
+              >使用
+            </td>
+          </tr>
+          <tr>
+            <td>volatile-lfu</td>
+            <td>有TTL的键</td>
+            <td>LFU</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="混合"
+                data-module="github"
+                data-def="混合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">混合</abbr></span
+              >使用
+            </td>
+          </tr>
+          <tr>
+            <td>
+              volatile-<span
+                class="term-tip"
+                data-term="random"
+                data-module="cpp"
+                data-def="随机数库"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">random</abbr></span
+              >
+            </td>
+            <td>有TTL的键</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="随机"
+                data-module="github"
+                data-def="随机的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">随机</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="混合"
+                data-module="github"
+                data-def="混合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">混合</abbr></span
+              >使用
+            </td>
+          </tr>
+          <tr>
+            <td>volatile-ttl</td>
+            <td>有TTL的键</td>
+            <td>最短TTL优先</td>
+            <td>业务有明确TTL</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="2-lru-算法"><a href="#2-lru-算法">2. LRU 算法</a></h2>
+      <h3 id="21-传统-lru"><a href="#21-传统-lru">2.1 传统 LRU</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="传统"
+          data-module="cpp"
+          data-def="传统的"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">传统</abbr></span
+        >
+        LRU
+        <span
+          class="term-tip"
+          data-term="维护"
+          data-module="github"
+          data-def="维护"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">维护</abbr></span
+        >一个按访问<span
+          class="term-tip"
+          data-term="时间"
+          data-module="cpp"
+          data-def="时间"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">时间</abbr></span
+        >排序的<span
+          class="term-tip"
+          data-term="链表"
+          data-module="algorithm"
+          data-def="通过指针连接的离散内存线性数据结构，插入删除O(1)，随机访问O(n)"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">链表</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>访问顺序: A → B → C → D → E</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>最近访问的在头部，最久未访问的在尾部</span></span>
+<span class="line"><span>淘汰时删除尾部元素</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>问题: 需要大量内存维护链表指针</span></span></code></pre>
+      <h3 id="22-redis-近似-lru"><a href="#22-redis-近似-lru">2.2 Redis 近似 LRU</a></h3>
+      <p>
+        Redis 使用<strong>采样近似 LRU</strong>，不<span
+          class="term-tip"
+          data-term="维护"
+          data-module="github"
+          data-def="维护"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">维护</abbr></span
+        >全局<span
+          class="term-tip"
+          data-term="链表"
+          data-module="algorithm"
+          data-def="通过指针连接的离散内存线性数据结构，插入删除O(1)，随机访问O(n)"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">链表</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. 随机采样 N 个键（N = maxmemory-samples，默认5）</span></span>
+<span class="line"><span>2. 淘汰其中最久未访问的键</span></span>
+<span class="line"><span>3. 重复直到内存低于阈值</span></span></code></pre>
+      <h3 id="23-lru-时钟"><a href="#23-lru-时钟">2.3 LRU 时钟</a></h3>
+      <p>
+        每个 Redis
+        <span
+          class="term-tip"
+          data-term="对象"
+          data-module="cpp"
+          data-def="类的实例"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对象</abbr></span
+        >头<span
+          class="term-tip"
+          data-term="包"
+          data-module="go"
+          data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+          data-slug="go/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">包</abbr></span
+        >含一个 24
+        <span
+          class="term-tip"
+          data-term="位"
+          data-module="c"
+          data-def="二进制数字，基本存储单位"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">位</abbr></span
+        >的 LRU 时钟：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="c"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">typedef</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> redisObject {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    unsigned</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> type:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    unsigned</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> encoding:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    unsigned</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> lru:</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">24</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    // LRU 时间戳（精度约1.5分钟）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> refcount;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    void</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">ptr;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">} robj;</span></span></code></pre>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>LRU 时钟精度: 1000ms / 300 ≈ 3.3秒</span></span>
+<span class="line"><span>24位最大值: 2^24 = 16777216 ≈ 194天循环</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>计算空闲时间: current_lru - object.lru</span></span></code></pre>
+      <h3 id="24-采样数对效果的影响">
+        <a href="#24-采样数对效果的影响">2.4 采样数对效果的影响</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>maxmemory-samples = 3:  接近真实LRU的 80%</span></span>
+<span class="line"><span>maxmemory-samples = 5:  接近真实LRU的 90%  ← 默认</span></span>
+<span class="line"><span>maxmemory-samples = 10: 接近真实LRU的 95%</span></span>
+<span class="line"><span>maxmemory-samples = 20: 接近真实LRU的 98%</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>采样数越大，越接近真实LRU，但CPU开销也越大</span></span></code></pre>
+      <h2 id="3-lfu-算法"><a href="#3-lfu-算法">3. LFU 算法</a></h2>
+      <h3 id="31-lfu-原理"><a href="#31-lfu-原理">3.1 LFU 原理</a></h3>
+      <p>
+        LFU（Least Frequently Used）<span
+          class="term-tip"
+          data-term="根"
+          data-module="vue3"
+          data-def="根节点"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">根</abbr></span
+        >据<strong
+          >访问<span
+            class="term-tip"
+            data-term="频率"
+            data-module="cpp"
+            data-def="频率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">频率</abbr></span
+          ></strong
+        >淘汰，比 LRU 更适合<span
+          class="term-tip"
+          data-term="热点"
+          data-module="html5"
+          data-def="图片上可点击的区域"
+          data-slug="html5/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">热点</abbr></span
+        >数据场景：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>LRU: 最近访问的保留 → 偶尔访问的大文件可能挤掉频繁访问的小数据</span></span>
+<span class="line"><span>LFU: 频繁访问的保留 → 真正的热点数据不会被淘汰</span></span></code></pre>
+      <h3 id="32-redis-lfu-实现"><a href="#32-redis-lfu-实现">3.2 Redis LFU 实现</a></h3>
+      <p>
+        Redis 4.0+ 引入 LFU，复用 <code>lru</code>
+        <span
+          class="term-tip"
+          data-term="字段"
+          data-module="cpp"
+          data-def="字段"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">字段</abbr></span
+        >的 24
+        <span
+          class="term-tip"
+          data-term="位"
+          data-module="c"
+          data-def="二进制数字，基本存储单位"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">位</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>24位 lru 字段:</span></span>
+<span class="line"><span>  高16位: 最后衰减时间（分钟级）</span></span>
+<span class="line"><span>  低8位:  对数计数器（logarithmic counter）</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>计数器范围: 0-255</span></span>
+<span class="line"><span>实际频率范围: 1-约100万次/分钟</span></span></code></pre>
+      <h3 id="33-对数计数器"><a href="#33-对数计数器">3.3 对数计数器</a></h3>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.6151em"></span
+              ><span class="mord text"><span class="mord">counter</span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mopen">⌊</span
+              ><span class="mop"
+                ><span class="mop">lo<span style="margin-right: 0.0139em">g</span></span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.207em"
+                        ><span style="top: -2.4559em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">2</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2441em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mopen">(</span
+              ><span class="mop"
+                ><span class="mop">lo<span style="margin-right: 0.0139em">g</span></span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.207em"
+                        ><span style="top: -2.4559em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">2</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2441em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mopen">(</span
+              ><span class="mord text"><span class="mord cjk_fallback">实际访问次数</span></span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">+</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord">1</span><span class="mclose">))</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">+</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord text"><span class="mord cjk_fallback">初始值</span></span
+              ><span class="mclose">⌋</span></span
+            ></span
+          ></span
+        >
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>实际访问次数 → counter 值:</span></span>
+<span class="line"><span>  1次     → 1</span></span>
+<span class="line"><span>  4次     → 2</span></span>
+<span class="line"><span>  16次    → 3</span></span>
+<span class="line"><span>  256次   → 5</span></span>
+<span class="line"><span>  65536次 → 8</span></span>
+<span class="line"><span>  百万次  → 255 (最大值)</span></span></code></pre>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="更新"
+            data-module="c"
+            data-def="修改变量值"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">更新</abbr></span
+          >规则</strong
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="c"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint8_t</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> LFULogIncr</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint8_t</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70"> counter</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) {</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (counter </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 255</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 255</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    double</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> r </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">double</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">rand</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> RAND_MAX;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    double</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> baseval </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> counter </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> LFU_INIT_VAL;</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // LFU_INIT_VAL = 5</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (baseval </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) baseval </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    double</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1.0</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> /</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (baseval </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 10</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> +</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  // 概率递减</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (r </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p) counter</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">++</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> counter;</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h3 id="34-衰减机制"><a href="#34-衰减机制">3.4 衰减机制</a></h3>
+      <p>
+        LFU 计数器随<span
+          class="term-tip"
+          data-term="时间"
+          data-module="cpp"
+          data-def="时间"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">时间</abbr></span
+        >衰减，避免<span
+          class="term-tip"
+          data-term="历史"
+          data-module="github"
+          data-def="历史"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">历史</abbr></span
+        >热<span
+          class="term-tip"
+          data-term="点"
+          data-module="github"
+          data-def="点"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">点</abbr></span
+        >永远不被淘汰：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>衰减规则:</span></span>
+<span class="line"><span>  每经过 lfu-decay-time 分钟，counter 减 1</span></span>
+<span class="line"><span>  lfu-decay-time 默认为 1 分钟</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>示例:</span></span>
+<span class="line"><span>  counter=10, 5分钟无访问 → counter=5</span></span>
+<span class="line"><span>  counter=10, 持续访问 → counter 保持或增长</span></span></code></pre>
+      <h3 id="35-lfu-配置"><a href="#35-lfu-配置">3.5 LFU 配置</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 淘汰策略</span></span>
+<span class="line"><span>CONFIG SET maxmemory-policy allkeys-lfu</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 衰减时间（分钟）</span></span>
+<span class="line"><span>CONFIG SET lfu-decay-time 1</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 计数器初始值</span></span>
+<span class="line"><span>CONFIG SET lfu-log-factor 10</span></span></code></pre>
+      <h2 id="4-策略选择"><a href="#4-策略选择">4. 策略选择</a></h2>
+      <h3 id="41-决策流程"><a href="#41-决策流程">4.1 决策流程</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>是否有必须保留的键？</span></span>
+<span class="line"><span>├── 是 → 使用 volatile-* 策略</span></span>
+<span class="line"><span>│        这些键不设TTL，不会被淘汰</span></span>
+<span class="line"><span>│        └── 访问模式？</span></span>
+<span class="line"><span>│            ├── 热点明显 → volatile-lfu</span></span>
+<span class="line"><span>│            ├── 均匀访问 → volatile-random</span></span>
+<span class="line"><span>│            └── 有TTL偏好 → volatile-ttl</span></span>
+<span class="line"><span>└── 否 → 使用 allkeys-* 策略</span></span>
+<span class="line"><span>         └── 访问模式？</span></span>
+<span class="line"><span>             ├── 热点明显 → allkeys-lfu</span></span>
+<span class="line"><span>             ├── 近期访问优先 → allkeys-lru</span></span>
+<span class="line"><span>             └── 均匀访问 → allkeys-random</span></span></code></pre>
+      <h3 id="42-常见场景推荐"><a href="#42-常见场景推荐">4.2 常见场景推荐</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="推荐"
+                data-module="github"
+                data-def="推荐"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推荐</abbr></span
+              >策略
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="理由"
+                data-module="github"
+                data-def="理由"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">理由</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              纯<span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >
+            </td>
+            <td>allkeys-lfu</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="热点"
+                data-module="html5"
+                data-def="图片上可点击的区域"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">热点</abbr></span
+              >数据<span
+                class="term-tip"
+                data-term="保留"
+                data-module="github"
+                data-def="保留"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保留</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="会话"
+                data-module="github"
+                data-def="会话"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">会话</abbr></span
+              >缓存
+            </td>
+            <td>allkeys-lru</td>
+            <td>
+              近期活跃<span
+                class="term-tip"
+                data-term="保留"
+                data-module="github"
+                data-def="保留"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保留</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="消息"
+                data-module="github"
+                data-def="消息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">消息</abbr></span
+              >队列
+            </td>
+            <td>volatile-ttl</td>
+            <td>
+              过期自动<span
+                class="term-tip"
+                data-term="清理"
+                data-module="vue3"
+                data-def="释放资源和移除监听"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">清理</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              持久数据+<span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >
+            </td>
+            <td>volatile-lru</td>
+            <td>持久数据不设TTL</td>
+          </tr>
+          <tr>
+            <td>数据不能丢失</td>
+            <td>noeviction</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="写入"
+                data-module="c"
+                data-def="输出数据到目标"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">写入</abbr></span
+              >报错不淘汰
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="43-监控与调优"><a href="#43-监控与调优">4.3 监控与调优</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 查看淘汰统计</span></span>
+<span class="line"><span>INFO stats</span></span>
+<span class="line"><span># evicted_keys: 1234  ← 被淘汰的键数量</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 查看内存使用</span></span>
+<span class="line"><span>INFO memory</span></span>
+<span class="line"><span># used_memory: 3.8GB</span></span>
+<span class="line"><span># maxmemory: 4GB</span></span>
+<span class="line"><span># mem_fragmentation_ratio: 1.2</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 调优建议:</span></span>
+<span class="line"><span># 1. evicted_keys 持续增长 → 增大 maxmemory 或优化策略</span></span>
+<span class="line"><span># 2. 缓存命中率低 → 考虑换策略（LRU → LFU）</span></span>
+<span class="line"><span># 3. 内存碎片率高 → 重启或使用 activedefrag</span></span></code></pre>
+    </article>
+  </body>
+</html>

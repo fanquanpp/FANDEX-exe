@@ -1,0 +1,799 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JVM 内存模型</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">JVM 内存模型</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">java</span><span class="doc-tag">memory</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">运行时数据区、垃圾回收算法与内存调优。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="前置知识"><a href="#前置知识">前置知识</a></h2>
+      <ul>
+        <li>Java 基本语法与面向对象</li>
+        <li>进程与线程的基本概念</li>
+      </ul>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="一句话总结"><a href="#一句话总结">一句话总结</a></h3>
+      <p>
+        JVM 内存模型定义了 Java
+        程序运行时的内存分区规则，以及线程间共享变量的可见性与有序性保障机制。
+      </p>
+      <h3 id="通俗理解"><a href="#通俗理解">通俗理解</a></h3>
+      <p>
+        把 JVM
+        想象成一栋办公楼：堆是公共办公区（所有人共享），栈是每个人的独立工位（私有），方法区是公共资料室。而
+        Java
+        内存模型（JMM）则是这栋楼的”通信规范”——规定了不同楼层（线程）之间如何看到彼此写在白板上的信息。
+      </p>
+      <h2 id="详细内容"><a href="#详细内容">详细内容</a></h2>
+      <h3 id="1-运行时数据区"><a href="#1-运行时数据区">1. 运行时数据区</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>区域</th>
+            <th>线程共享</th>
+            <th>存储内容</th>
+            <th>异常</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>堆 (Heap)</td>
+            <td>是</td>
+            <td>对象实例、数组</td>
+            <td>OutOfMemoryError</td>
+          </tr>
+          <tr>
+            <td>方法区 (Method Area)</td>
+            <td>是</td>
+            <td>类信息、常量、静态变量</td>
+            <td>OutOfMemoryError</td>
+          </tr>
+          <tr>
+            <td>虚拟机栈 (VM Stack)</td>
+            <td>否</td>
+            <td>栈帧（局部变量表、操作数栈）</td>
+            <td>StackOverflowError</td>
+          </tr>
+          <tr>
+            <td>本地方法栈 (Native Stack)</td>
+            <td>否</td>
+            <td>Native 方法调用</td>
+            <td>StackOverflowError</td>
+          </tr>
+          <tr>
+            <td>程序计数器 (PC Register)</td>
+            <td>否</td>
+            <td>当前执行的字节码行号</td>
+            <td>无</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <strong>堆 (Heap)</strong> 是 JVM
+        中最大的一块内存区域，所有对象实例和数组都在堆上分配。堆是垃圾回收器管理的主要区域，也被称为
+        GC 堆。堆可以处于物理上不连续的内存空间中，但逻辑上应该被视为连续的。
+      </p>
+      <p>
+        <strong>方法区 (Method Area)</strong>
+        用于存储已被虚拟机加载的类信息、常量、静态变量等数据。JDK 8 之前使用永久代实现，JDK 8
+        之后改为元空间 (Metaspace)，使用本地内存而非 JVM 堆内存。
+      </p>
+      <p>
+        <strong>虚拟机栈 (VM Stack)</strong> 描述的是 Java
+        方法执行的内存模型：每个方法执行时会创建一个栈帧，存储局部变量表、操作数栈、动态链接和方法出口等信息。栈深度超过限制会抛出
+        StackOverflowError。
+      </p>
+      <p>
+        <strong>程序计数器</strong>
+        是一块较小的内存空间，可以看作是当前线程所执行的字节码的行号指示器。这是唯一一个不会发生
+        OutOfMemoryError 的区域。
+      </p>
+      <h3 id="2-堆内存分代"><a href="#2-堆内存分代">2. 堆内存分代</a></h3>
+      <p>现代 JVM 采用分代收集算法，将堆分为不同区域：</p>
+      <p><strong>新生代 (Young Generation)</strong> 占堆空间的 1/3，分为三个区域：</p>
+      <ul>
+        <li><strong>Eden 区</strong>：新对象首先在 Eden 区分配，占新生代的 80%</li>
+        <li><strong>Survivor 0 (From)</strong>：存活对象的中转站，占 10%</li>
+        <li><strong>Survivor 1 (To)</strong>：与 Survivor 0 交替使用，占 10%</li>
+      </ul>
+      <p>
+        新对象在 Eden 区分配，当 Eden 区满时触发 Minor GC，存活对象被复制到 Survivor 区。经过多次 GC
+        仍然存活的对象（默认 15 次）晋升到老年代。
+      </p>
+      <p>
+        <strong>老年代 (Old Generation)</strong> 占堆空间的
+        2/3，存放长期存活的对象和大对象。老年代满时触发 Major GC / Full GC，回收速度比 Minor GC
+        慢很多。
+      </p>
+      <p>
+        <strong>元空间 (Metaspace)</strong> 是 JDK 8+ 中对方法区的替代实现，使用本地内存而非 JVM
+        堆内存，默认没有上限（受物理内存限制），可通过 <code>-XX:MaxMetaspaceSize</code> 设置。
+      </p>
+      <h3 id="3-java-内存模型-jmm"><a href="#3-java-内存模型-jmm">3. Java 内存模型 (JMM)</a></h3>
+      <p>
+        Java 内存模型 (Java Memory Model) 是 Java
+        虚拟机规范中定义的一种抽象模型，用来屏蔽各种硬件和操作系统的内存访问差异，以实现让 Java
+        程序在各种平台下都能达到一致的内存访问效果。
+      </p>
+      <p><strong>主内存与工作内存</strong>：</p>
+      <ul>
+        <li><strong>主内存</strong>：存储所有共享变量的值</li>
+        <li><strong>工作内存</strong>：每个线程私有，存储主内存中共享变量的副本</li>
+        <li>线程对变量的所有操作必须在工作内存中进行，不能直接读写主内存</li>
+      </ul>
+      <p><strong>三大特性</strong>：</p>
+      <ol>
+        <li>
+          <p>
+            <strong>可见性 (Visibility)</strong
+            >：当一个线程修改了共享变量，其他线程能够立即得知这个修改。<code>volatile</code>
+            关键字保证可见性，它强制将修改的值立即写回主内存，并使其他线程的工作内存中的缓存失效。
+          </p>
+        </li>
+        <li>
+          <p>
+            <strong>有序性 (Ordering)</strong>：程序执行的顺序按照代码的先后顺序。<code
+              >happens-before</code
+            >
+            原则定义了操作之间的偏序关系：
+          </p>
+          <ul>
+            <li>程序次序规则：同一线程中，前面的操作 happens-before 后面的操作</li>
+            <li>锁定规则：unlock 操作 happens-before 对同一锁的 lock 操作</li>
+            <li>volatile 规则：volatile 写 happens-before 对同一变量的读</li>
+            <li>传递性：A happens-before B，B happens-before C，则 A happens-before C</li>
+          </ul>
+        </li>
+        <li>
+          <p>
+            <strong>原子性 (Atomicity)</strong
+            >：基本数据类型的访问读写是原子性的，更大范围的原子性需要 <code>synchronized</code> 或
+            <code>java.util.concurrent.atomic</code> 包来保证。
+          </p>
+        </li>
+      </ol>
+      <h3 id="4-垃圾回收基础"><a href="#4-垃圾回收基础">4. 垃圾回收基础</a></h3>
+      <p><strong>判断对象存活</strong>：</p>
+      <ul>
+        <li>
+          <strong>引用计数法</strong>：给对象添加引用计数器，引用加 1，失效减
+          1。无法解决循环引用问题
+        </li>
+        <li>
+          <strong>可达性分析</strong>：从 GC Roots
+          出发，沿引用链搜索，不可达的对象即为可回收对象。GC Roots
+          包括：虚拟机栈中引用的对象、方法区中类静态属性引用的对象、方法区中常量引用的对象、本地方法栈中
+          JNI 引用的对象
+        </li>
+      </ul>
+      <p><strong>GC 算法</strong>：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>算法</th>
+            <th>原理</th>
+            <th>优点</th>
+            <th>缺点</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>标记-清除</td>
+            <td>标记存活对象，清除未标记的</td>
+            <td>实现简单</td>
+            <td>内存碎片多</td>
+          </tr>
+          <tr>
+            <td>标记-复制</td>
+            <td>将存活对象复制到另一半空间</td>
+            <td>无碎片，效率高</td>
+            <td>可用内存减半</td>
+          </tr>
+          <tr>
+            <td>标记-整理</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >后将存活<span
+                class="term-tip"
+                data-term="对象"
+                data-module="cpp"
+                data-def="类的实例"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对象</abbr></span
+              >向一端移动
+            </td>
+            <td>无碎片</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="移动"
+                data-module="github"
+                data-def="移动"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">移动</abbr></span
+              >对象开销大
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <strong
+          >常见<span
+            class="term-tip"
+            data-term="垃圾收集"
+            data-module="c"
+            data-def="自动回收无用内存"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">垃圾收集</abbr></span
+          >器</strong
+        >：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>收集器</th>
+            <th>
+              作用<span
+                class="term-tip"
+                data-term="区域"
+                data-module="cpp"
+                data-def="区域"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">区域</abbr></span
+              >
+            </th>
+            <th>算法</th>
+            <th>
+              特<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Serial</td>
+            <td>新生代</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >-<span
+                class="term-tip"
+                data-term="复制"
+                data-module="github"
+                data-def="复制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">复制</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="单线程"
+                data-module="javascript"
+                data-def="同一时刻只执行一个任务"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单线程</abbr></span
+              >，适合<span
+                class="term-tip"
+                data-term="客户端"
+                data-module="github"
+                data-def="客户端"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">客户端</abbr></span
+              >模式
+            </td>
+          </tr>
+          <tr>
+            <td>ParNew</td>
+            <td>新生代</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >-<span
+                class="term-tip"
+                data-term="复制"
+                data-module="github"
+                data-def="复制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">复制</abbr></span
+              >
+            </td>
+            <td>
+              Serial 的<span
+                class="term-tip"
+                data-term="多线程"
+                data-module="c"
+                data-def="并行执行多个线程"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多线程</abbr></span
+              >版本
+            </td>
+          </tr>
+          <tr>
+            <td>Parallel Scavenge</td>
+            <td>新生代</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >-<span
+                class="term-tip"
+                data-term="复制"
+                data-module="github"
+                data-def="复制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">复制</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="吞吐量"
+                data-module="cpp"
+                data-def="吞吐量"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">吞吐量</abbr></span
+              >优先
+            </td>
+          </tr>
+          <tr>
+            <td>CMS</td>
+            <td>
+              老<span
+                class="term-tip"
+                data-term="年"
+                data-module="cpp"
+                data-def="年"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">年</abbr></span
+              >代
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >-清除
+            </td>
+            <td>
+              低<span
+                class="term-tip"
+                data-term="延迟"
+                data-module="cpp"
+                data-def="延迟操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">延迟</abbr></span
+              >，但有碎片<span
+                class="term-tip"
+                data-term="问题"
+                data-module="github"
+                data-def="跟踪任务、缺陷、想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">问题</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>G1</td>
+            <td>
+              全<span
+                class="term-tip"
+                data-term="堆"
+                data-module="algorithm"
+                data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">堆</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >-整理
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="分区"
+                data-module="mysql"
+                data-def="将表水平拆分"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分区</abbr></span
+              >收集，可<span
+                class="term-tip"
+                data-term="预测"
+                data-module="github"
+                data-def="预测"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">预测</abbr></span
+              >停顿<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>ZGC</td>
+            <td>
+              全<span
+                class="term-tip"
+                data-term="堆"
+                data-module="algorithm"
+                data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">堆</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="着色"
+                data-module="discrete-math"
+                data-def="为图的顶点或边分配颜色使得相邻元素颜色不同的过程，最小颜色数为色数"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">着色</abbr></span
+              >指针
+            </td>
+            <td>
+              超低<span
+                class="term-tip"
+                data-term="延迟"
+                data-module="cpp"
+                data-def="延迟操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">延迟</abbr></span
+              >，JDK 11+
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="5-常见-jvm-参数"><a href="#5-常见-jvm-参数">5. 常见 JVM 参数</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-Xms512m</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">                          # 初始堆大小</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-Xmx2g</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">                            # 最大堆大小</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-Xmn256m</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">                          # 新生代大小</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:MetaspaceSize</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">=256m</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 元空间初始大小</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:MaxMetaspaceSize</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">=512m</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">         # 元空间最大大小</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:+UseG1GC</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">                      # 使用 G1 收集器</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:MaxGCPauseMillis</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">=200</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">          # G1 目标最大停顿时间</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:+PrintGCDetails</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">               # 打印 GC 详细信息</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:+HeapDumpOnOutOfMemoryError</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   # OOM 时生成堆转储</span></span></code></pre>
+      <h3 id="6-内存调优实践"><a href="#6-内存调优实践">6. 内存调优实践</a></h3>
+      <p>
+        <strong
+          >常见<span
+            class="term-tip"
+            data-term="问题"
+            data-module="github"
+            data-def="跟踪任务、缺陷、想法"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">问题</abbr></span
+          >与排查</strong
+        >：
+      </p>
+      <ol>
+        <li>
+          <strong>OutOfMemoryError: Java heap space</strong>：<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >内存不足，<span
+            class="term-tip"
+            data-term="检查"
+            data-module="cpp"
+            data-def="验证条件"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检查</abbr></span
+          >是否<span
+            class="term-tip"
+            data-term="存在"
+            data-module="github"
+            data-def="存在"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">存在</abbr></span
+          >内存泄漏或增大 <code>-Xmx</code>
+        </li>
+        <li>
+          <strong>OutOfMemoryError: Metaspace</strong>：<span
+            class="term-tip"
+            data-term="元空间"
+            data-module="java"
+            data-def="JDK8 取代永久代的类元数据存储区域，使用本地内存，默认无上限"
+            data-slug="java/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">元空间</abbr></span
+          >不足，<span
+            class="term-tip"
+            data-term="检查"
+            data-module="cpp"
+            data-def="验证条件"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检查</abbr></span
+          >是否有大量<span
+            class="term-tip"
+            data-term="动态类"
+            data-module="vue3"
+            data-def="根据条件动态添加的 CSS 类"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">动态类</abbr></span
+          >生成
+        </li>
+        <li>
+          <strong>StackOverflowError</strong>：<span
+            class="term-tip"
+            data-term="栈"
+            data-module="c"
+            data-def="后进先出的数据结构"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">栈</abbr></span
+          >深<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >超限，<span
+            class="term-tip"
+            data-term="检查"
+            data-module="cpp"
+            data-def="验证条件"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检查</abbr></span
+          >是否<span
+            class="term-tip"
+            data-term="存在"
+            data-module="github"
+            data-def="存在"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">存在</abbr></span
+          >递归<span
+            class="term-tip"
+            data-term="调用"
+            data-module="github"
+            data-def="调用"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">调用</abbr></span
+          >过深
+        </li>
+      </ol>
+      <p>
+        <strong
+          >调优<span
+            class="term-tip"
+            data-term="步骤"
+            data-module="vue3"
+            data-def="处理步骤"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">步骤</abbr></span
+          ></strong
+        >：
+      </p>
+      <ol>
+        <li>
+          使用 <code>jstat</code>
+          <span
+            class="term-tip"
+            data-term="观察"
+            data-module="github"
+            data-def="观察"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">观察</abbr></span
+          >
+          GC
+          <span
+            class="term-tip"
+            data-term="统计"
+            data-module="github"
+            data-def="统计"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">统计</abbr></span
+          >信息
+        </li>
+        <li>
+          使用 <code>jmap</code>
+          <span
+            class="term-tip"
+            data-term="生成"
+            data-module="vue3"
+            data-def="创建代码或数据"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生成</abbr></span
+          >堆转储<span
+            class="term-tip"
+            data-term="文件"
+            data-module="github"
+            data-def="文件"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文件</abbr></span
+          >
+        </li>
+        <li>
+          使用 <code>jvisualvm</code> 或 MAT
+          <span
+            class="term-tip"
+            data-term="分析"
+            data-module="cpp"
+            data-def="分析过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分析</abbr></span
+          >堆转储
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="根"
+            data-module="vue3"
+            data-def="根节点"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">根</abbr></span
+          >据<span
+            class="term-tip"
+            data-term="分析"
+            data-module="cpp"
+            data-def="分析过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分析</abbr></span
+          >结果调整
+          <span
+            class="term-tip"
+            data-term="JVM"
+            data-module="java"
+            data-def="Java 虚拟机，执行字节码的运行时环境"
+            data-slug="java/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">JVM</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="参数"
+            data-module="c"
+            data-def="函数定义时的变量"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参数</abbr></span
+          >
+        </li>
+      </ol>
+      <h2 id="知识延伸"><a href="#知识延伸">知识延伸</a></h2>
+      <ul>
+        <li><a href="#">Java 多线程与并发</a></li>
+        <li><a href="#">Java 概述</a></li>
+      </ul>
+    </article>
+  </body>
+</html>

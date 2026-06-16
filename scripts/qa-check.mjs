@@ -20,9 +20,9 @@ import { readdir, stat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 /** 构建产物目录 */
-const DIST = 'dist';
+const DIST = 'apps/web/dist';
 /** 源代码目录 */
-const SRC = 'src';
+const SRC = 'apps/web/src';
 /** GitHub Pages 部署基础路径 */
 const BASE = '/FANDEX/';
 /** 失败计数器 */

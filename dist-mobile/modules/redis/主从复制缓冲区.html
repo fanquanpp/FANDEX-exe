@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>主从复制缓冲区</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">主从复制缓冲区</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            2 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          Redis 主从复制缓冲区机制：repl_backlog
+          环形缓冲区、全量同步与部分同步、缓冲区溢出与配置优化。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-复制缓冲区体系"><a href="#1-复制缓冲区体系">1. 复制缓冲区体系</a></h2>
+      <h3 id="11-三种复制缓冲区"><a href="#11-三种复制缓冲区">1.1 三种复制缓冲区</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="缓冲区"
+                data-module="c"
+                data-def="临时存储数据的内存区域"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓冲区</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="位置"
+                data-module="github"
+                data-def="位置"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位置</abbr></span
+              >
+            </th>
+            <th>作用</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="大小"
+                data-module="github"
+                data-def="大小"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">大小</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>repl_backlog</td>
+            <td>
+              主<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="存储"
+                data-module="cpp"
+                data-def="存储"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存储</abbr></span
+              >最近写<span
+                class="term-tip"
+                data-term="命令"
+                data-module="github"
+                data-def="命令指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">命令</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="支持"
+                data-module="cpp"
+                data-def="支持"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">支持</abbr></span
+              >部分<span
+                class="term-tip"
+                data-term="同步"
+                data-module="c"
+                data-def="协调多个执行单元"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">同步</abbr></span
+              >
+            </td>
+            <td>默认 1MB</td>
+          </tr>
+          <tr>
+            <td>replication buffer</td>
+            <td>
+              主<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+            <td>
+              为每个从<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >维护的<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >缓冲区
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="动态"
+                data-module="github"
+                data-def="动态的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">动态</abbr></span
+              >增长
+            </td>
+          </tr>
+          <tr>
+            <td>replication backlog</td>
+            <td>
+              从<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="接收"
+                data-module="github"
+                data-def="接收"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">接收</abbr></span
+              >主<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >数据的临时缓冲
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="动态"
+                data-module="github"
+                data-def="动态的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">动态</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="12-数据流"><a href="#12-数据流">1.2 数据流</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>主库写入命令 → repl_backlog（环形缓冲）</span></span>
+<span class="line"><span>             → replication buffer（每从库一个）</span></span>
+<span class="line"><span>                 ↓ 网络传输</span></span>
+<span class="line"><span>             从库接收 → 执行命令</span></span></code></pre>
+      <h2 id="2-repl_backlog-环形缓冲区">
+        <a href="#2-repl_backlog-环形缓冲区">2. repl_backlog 环形缓冲区</a>
+      </h2>
+      <h3 id="21-结构"><a href="#21-结构">2.1 结构</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>repl_backlog 是一个定长环形缓冲区：</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>┌──────────────────────────────────────────┐</span></span>
+<span class="line"><span>│  [cmd1][cmd2][cmd3]...[cmdN]             │</span></span>
+<span class="line"><span>│     ↑                              ↑     │</span></span>
+<span class="line"><span>│  repl_backlog_histlen         repl_backlog_idx</span></span>
+<span class="line"><span>│  (有效数据起始)               (写入位置)</span></span>
+<span class="line"><span>└──────────────────────────────────────────┘</span></span>
+<span class="line"><span>  总大小: repl_backlog_size (默认1MB)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>新数据写入 repl_backlog_idx 位置</span></span>
+<span class="line"><span>写满后环绕到开头，覆盖最旧的数据</span></span></code></pre>
+      <h3 id="22-全局偏移量"><a href="#22-全局偏移量">2.2 全局偏移量</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>repl_backlog_off: 缓冲区起始位置对应的全局偏移量</span></span>
+<span class="line"><span>master_repl_offset: 主库当前的全局偏移量</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>有效数据范围: [repl_backlog_off, master_repl_offset]</span></span></code></pre>
+      <h3 id="23-部分同步psync"><a href="#23-部分同步psync">2.3 部分同步（PSYNC）</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>从库断线重连时:</span></span>
+<span class="line"><span>1. 发送 PSYNC {runid} {offset}</span></span>
+<span class="line"><span>   - runid: 主库运行ID</span></span>
+<span class="line"><span>   - offset: 从库最后收到的偏移量</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>2. 主库判断:</span></span>
+<span class="line"><span>   - runid 匹配 且 offset 在 backlog 范围内 → 部分同步</span></span>
+<span class="line"><span>   - 否则 → 全量同步</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>部分同步:</span></span>
+<span class="line"><span>  主库从 backlog 中提取 [offset, master_repl_offset] 的数据</span></span>
+<span class="line"><span>  发送给从库</span></span></code></pre>
+      <h3 id="24-部分同步判断"><a href="#24-部分同步判断">2.4 部分同步判断</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>条件: offset >= repl_backlog_off</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>如果 offset &#x3C; repl_backlog_off:</span></span>
+<span class="line"><span>  说明从库缺失的数据已被覆盖 → 全量同步</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>示例:</span></span>
+<span class="line"><span>  repl_backlog_size = 1MB</span></span>
+<span class="line"><span>  repl_backlog_off = 1000000</span></span>
+<span class="line"><span>  master_repl_offset = 1100000</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  从库 offset = 1050000 → 1050000 >= 1000000 → 部分同步</span></span>
+<span class="line"><span>  从库 offset = 900000  → 900000 &#x3C; 1000000  → 全量同步</span></span></code></pre>
+      <h2 id="3-replication-buffer"><a href="#3-replication-buffer">3. replication buffer</a></h2>
+      <h3 id="31-作用"><a href="#31-作用">3.1 作用</a></h3>
+      <p>
+        主<span
+          class="term-tip"
+          data-term="库"
+          data-module="cpp"
+          data-def="可复用的代码集合"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">库</abbr></span
+        >为每个从<span
+          class="term-tip"
+          data-term="库"
+          data-module="cpp"
+          data-def="可复用的代码集合"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">库</abbr></span
+        >维护一个独立的<span
+          class="term-tip"
+          data-term="输出"
+          data-module="c"
+          data-def="向外部发送数据"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">输出</abbr></span
+        >缓冲区，<span
+          class="term-tip"
+          data-term="暂存"
+          data-module="github"
+          data-def="暂存"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">暂存</abbr></span
+        >待<span
+          class="term-tip"
+          data-term="发送"
+          data-module="cpp"
+          data-def="发送"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">发送</abbr></span
+        >的写<span
+          class="term-tip"
+          data-term="命令"
+          data-module="github"
+          data-def="命令指令"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">命令</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>主库</span></span>
+<span class="line"><span>├── replication buffer for slave1</span></span>
+<span class="line"><span>├── replication buffer for slave2</span></span>
+<span class="line"><span>└── replication buffer for slave3</span></span></code></pre>
+      <h3 id="32-缓冲区溢出"><a href="#32-缓冲区溢出">3.2 缓冲区溢出</a></h3>
+      <p>
+        当从<span
+          class="term-tip"
+          data-term="库"
+          data-module="cpp"
+          data-def="可复用的代码集合"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">库</abbr></span
+        >消费速<span
+          class="term-tip"
+          data-term="度"
+          data-module="algorithm"
+          data-def="与顶点关联的边数，有向图分为入度和出度"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">度</abbr></span
+        >慢于主<span
+          class="term-tip"
+          data-term="库"
+          data-module="cpp"
+          data-def="可复用的代码集合"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">库</abbr></span
+        >写入速<span
+          class="term-tip"
+          data-term="度"
+          data-module="algorithm"
+          data-def="与顶点关联的边数，有向图分为入度和出度"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">度</abbr></span
+        >时，buffer 持续<span
+          class="term-tip"
+          data-term="增长"
+          data-module="github"
+          data-def="增长"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">增长</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>写入速度: 100MB/s</span></span>
+<span class="line"><span>从库消费: 10MB/s</span></span>
+<span class="line"><span>每秒积压: 90MB</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>1分钟后: 5.4GB → 触发内存限制 → 从库被断开</span></span></code></pre>
+      <h3 id="33-缓冲区限制配置"><a href="#33-缓冲区限制配置">3.3 缓冲区限制配置</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 客户端输出缓冲区限制（包括从库）</span></span>
+<span class="line"><span># 格式: client-output-buffer-limit &#x3C;class> &#x3C;hard> &#x3C;soft> &#x3C;soft_seconds></span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 从库缓冲区：硬限制 256MB，软限制 64MB 持续 60秒</span></span>
+<span class="line"><span>client-output-buffer-limit replica 256mb 64mb 60</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 普通客户端</span></span>
+<span class="line"><span>client-output-buffer-limit normal 0 0 0</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># Pub/Sub 客户端</span></span>
+<span class="line"><span>client-output-buffer-limit pubsub 32mb 8mb 60</span></span></code></pre>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="触发"
+            data-module="javascript"
+            data-def="导致事件发生"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">触发</abbr></span
+          >断开<span
+            class="term-tip"
+            data-term="条件"
+            data-module="github"
+            data-def="条件"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">条件</abbr></span
+          ></strong
+        >：
+      </p>
+      <ul>
+        <li>
+          <span
+            class="term-tip"
+            data-term="缓冲区"
+            data-module="c"
+            data-def="临时存储数据的内存区域"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">缓冲区</abbr></span
+          >超过硬<span
+            class="term-tip"
+            data-term="限制"
+            data-module="github"
+            data-def="限制"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">限制</abbr></span
+          >
+          → 立即断开
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="缓冲区"
+            data-module="c"
+            data-def="临时存储数据的内存区域"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">缓冲区</abbr></span
+          >超过软<span
+            class="term-tip"
+            data-term="限制"
+            data-module="github"
+            data-def="限制"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">限制</abbr></span
+          >持续 N 秒 → 断开
+        </li>
+      </ul>
+      <h2 id="4-全量同步流程"><a href="#4-全量同步流程">4. 全量同步流程</a></h2>
+      <h3 id="41-触发条件"><a href="#41-触发条件">4.1 触发条件</a></h3>
+      <ul>
+        <li>
+          从<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >首次<span
+            class="term-tip"
+            data-term="连接"
+            data-module="cpp"
+            data-def="连接关系"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">连接</abbr></span
+          >主<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >
+        </li>
+        <li>
+          从<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >发送的 runid 不<span
+            class="term-tip"
+            data-term="匹配"
+            data-module="discrete-math"
+            data-def="图中一组没有公共顶点的边集合，最大匹配是边数最多的匹配"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">匹配</abbr></span
+          >
+        </li>
+        <li>
+          从<span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >请求的 offset 已被 backlog
+          <span
+            class="term-tip"
+            data-term="覆盖"
+            data-module="c"
+            data-def="测试覆盖的代码范围"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">覆盖</abbr></span
+          >
+        </li>
+      </ul>
+      <h3 id="42-全量同步步骤"><a href="#42-全量同步步骤">4.2 全量同步步骤</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>1. 从库发送 PSYNC ? -1（请求全量同步）</span></span>
+<span class="line"><span>2. 主库执行 BGSAVE 生成 RDB</span></span>
+<span class="line"><span>3. 主库将 RDB 发送给从库</span></span>
+<span class="line"><span>4. 主库同时将新写入命令存入 replication buffer</span></span>
+<span class="line"><span>5. 从库接收 RDB 后清空数据并加载</span></span>
+<span class="line"><span>6. 主库发送 replication buffer 中的增量命令</span></span>
+<span class="line"><span>7. 从库执行增量命令，数据一致</span></span></code></pre>
+      <h3 id="43-全量同步开销"><a href="#43-全量同步开销">4.3 全量同步开销</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>BGSAVE: fork 子进程，COW 写时复制</span></span>
+<span class="line"><span>RDB 传输: 网络带宽</span></span>
+<span class="line"><span>从库加载: 阻塞服务（加载期间不可用）</span></span>
+<span class="line"><span>增量缓冲: 内存占用</span></span></code></pre>
+      <h2 id="5-配置优化"><a href="#5-配置优化">5. 配置优化</a></h2>
+      <h3 id="51-repl_backlog-大小"><a href="#51-repl_backlog-大小">5.1 repl_backlog 大小</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 根据写入速度和断线时间估算</span></span>
+<span class="line"><span># 假设: 写入速度 10MB/s，最大断线时间 60s</span></span>
+<span class="line"><span># backlog 大小 >= 10MB/s × 60s = 600MB</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>repl-backlog-size 600mb</span></span></code></pre>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="计算"
+            data-module="cpp"
+            data-def="计算过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">计算</abbr></span
+          >公式</strong
+        >：
+      </p>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 1.0044em; vertical-align: -0.31em"></span
+              ><span class="mord text"><span class="mord">backlog_size</span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">≥</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.9779em; vertical-align: -0.31em"></span
+              ><span class="mord text"><span class="mord">write_rate</span></span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">×</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1.0044em; vertical-align: -0.31em"></span
+              ><span class="mord text"><span class="mord">max_disconnect_time</span></span></span
+            ></span
+          ></span
+        >
+      </p>
+      <h3 id="52-关键参数"><a href="#52-关键参数">5.2 关键参数</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># repl_backlog 大小</span></span>
+<span class="line"><span>repl-backlog-size 256mb</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># repl_backlog TTL（无从库时多久删除）</span></span>
+<span class="line"><span>repl-backlog-ttl 3600</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 从库发送 PING 的频率</span></span>
+<span class="line"><span>repl-ping-replica-period 10</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 复制超时（包括SYNC、PING）</span></span>
+<span class="line"><span>repl-timeout 60</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 禁用 TCP_NODELAY（启用后延迟更低但带宽更大）</span></span>
+<span class="line"><span>repl-disable-tcp-nodelay no</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 从库优先级（Sentinel 选举用）</span></span>
+<span class="line"><span>replica-priority 100</span></span></code></pre>
+      <h3 id="53-监控命令"><a href="#53-监控命令">5.3 监控命令</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span># 主库查看复制信息</span></span>
+<span class="line"><span>INFO replication</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span># 关键指标:</span></span>
+<span class="line"><span># repl_backlog_active: 1</span></span>
+<span class="line"><span># repl_backlog_size: 268435456</span></span>
+<span class="line"><span># repl_backlog_first_byte_offset: 12345</span></span>
+<span class="line"><span># repl_backlog_histlen: 268435400</span></span>
+<span class="line"><span># connected_slaves: 3</span></span>
+<span class="line"><span># master_repl_offset: 9999999</span></span></code></pre>
+    </article>
+  </body>
+</html>

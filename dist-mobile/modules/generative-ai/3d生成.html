@@ -1,0 +1,839 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D生成</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">3D生成</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">3D生成</span><span class="doc-tag">NeRF</span
+          ><span class="doc-tag">Gaussian Splatting</span><span class="doc-tag">3D重建</span
+          ><span class="doc-tag">多视角生成</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">从NeRF到3D Gaussian Splatting，3D生成模型的核心技术与管线</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="3d-生成"><a href="#3d-生成">3D 生成</a></h1>
+      <blockquote>
+        <p>
+          2D 图像生成在 2022 年解决了。3D 生成在 2024 年开始可用。差距？3D
+          需要多视角一致性——从任何角度看，对象必须看起来正确。2026 年最先进的方法不是直接生成
+          3D，而是生成多视角图像然后用 3D 重建算法将它们融合。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python <strong>前置知识:</strong> Phase 8
+        · 07 (潜扩散), Phase 8 · 10 (视频生成) <strong>时间:</strong> ~60 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        3D 生成有三种输出格式：(1) 网格 (mesh)——三角形集合，游戏和渲染的标准；(2) 点云——3D
+        点集，LiDAR 和扫描的标准；(3) 神经场 (NeRF) 或 3D 高斯——连续 3D 表示，视图合成和编辑的标准。
+      </p>
+      <p>
+        核心挑战是<em>3D 一致性</em>。一个 3D 对象必须从任何角度看起来正确。2D
+        扩散模型只保证单视角质量。你需要一个机制确保多视角一致。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <p>
+        <strong>NeRF (Neural Radiance Fields)。</strong> Mildenhall et al. (2020)。一个 MLP
+        <code>f(x, y, z, d) → (RGB, σ)</code> 将 3D 位置 + 视角方向映射到颜色 +
+        密度。体渲染沿光线积分产生像素颜色。优点：照片级真实感新视角合成。缺点：渲染慢（每像素数百
+        MLP 评估），难以编辑。
+      </p>
+      <p>
+        <strong>3D Gaussian Splatting (3D-GS)。</strong> Kerbl et al. (2023)。用数百万个 3D
+        高斯（位置、协方差、颜色、不透明度）表示场景。通过可微光栅化渲染。优点：实时渲染（>100
+        FPS），比 NeRF 快 1000 倍。缺点：内存大（百万高斯），难以编辑。
+      </p>
+      <p>
+        <strong>Score Distillation Sampling (SDS)。</strong> Poole et al. (2022)。DreamFusion
+        的核心技巧：使用 2D 扩散模型的梯度优化 3D 表示。从随机视角渲染 3D
+        场景，用扩散模型计算图像梯度，反向传播到 3D 参数。不需要 3D 训练数据——只需要 2D 扩散模型。
+      </p>
+      <p>
+        <strong>多视角生成 + 重建。</strong> 2024-2026 年的主导范式：(1)
+        用多视角条件扩散模型生成一致的多视角图像，(2) 用 3D 重建算法（NeRF 或
+        3D-GS）从多视角图像重建 3D。比 SDS 更快，更一致。
+      </p>
+      <p>
+        <strong>前馈 3D 重建。</strong> Large Reconstruction Model (LRM), TripoSR,
+        InstantMesh：单图像 → 3D 网格，一次前向传播。训练在数百万 3D
+        对象上。质量低于优化方法但速度快 100 倍。
+      </p>
+      <h2 id="3d-生成管线"><a href="#3d-生成管线">3D 生成管线</a></h2>
+      <p>2026 年典型的 3D 生成管线：</p>
+      <ol>
+        <li>
+          <strong>文本/图像 → 多视角图像。</strong> 使用多视角扩散模型（Zero-1-to-3+, SV3D,
+          Instant3D）从文本或单图像生成 4-6 个一致视角。
+        </li>
+        <li>
+          <strong>多视角图像 → 3D 表示。</strong> 使用前馈重建（LRM, TripoSR）或优化重建（NeRF/3D-GS
+          + SDS）。
+        </li>
+        <li>
+          <strong>3D 表示 → 网格。</strong> 从 NeRF/3D-GS 提取网格（Marching Cubes, Poisson 重建）。
+        </li>
+        <li><strong>纹理映射。</strong> 将多视角图像投影到网格上创建纹理贴图。</li>
+      </ol>
+      <h2 id="动手构建"><a href="#动手构建">动手构建</a></h2>
+      <p><code>code/main.py</code> 实现了一个玩具 3D 生成管线：从 2D 投影重建 3D 点云。</p>
+      <h3 id="步骤-13d-到-2d-投影"><a href="#步骤-13d-到-2d-投影">步骤 1：3D 到 2D 投影</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> project_3d_to_2d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(points_3d, camera_angle):</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # Simple rotation + orthographic projection</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    cos_a, sin_a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.cos(camera_angle), math.sin(camera_angle)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    x_2d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> points_3d[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cos_a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> points_3d[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sin_a</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    y_2d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> points_3d[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    depth </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">points_3d[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sin_a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> points_3d[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cos_a</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x_2d, y_2d, depth</span></span></code></pre>
+      <h3 id="步骤-2多视角重建"><a href="#步骤-2多视角重建">步骤 2：多视角重建</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> reconstruct_from_views</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(views, camera_angles):</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # Triangulate 3D points from multiple 2D views</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    points_3d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(views[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])):</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # Simple triangulation from two views</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x1, y1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> views[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">][i]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x2, y2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> views[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">][i]</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # Back-project to 3D</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        z </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (x1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.sin(camera_angles[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.sin(camera_angles[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> \</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            (math.cos(camera_angles[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.sin(camera_angles[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.cos(camera_angles[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.sin(camera_angles[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (x1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> z </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.sin(camera_angles[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.cos(camera_angles[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        y </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> y1</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        points_3d.append([x, y, z])</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> points_3d</span></span></code></pre>
+      <h3 id="步骤-3sds-损失概念"><a href="#步骤-3sds-损失概念">步骤 3：SDS 损失（概念）</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> sds_loss</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(rendered_image, diffusion_model, t, text_embedding):</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # Add noise to rendered image</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    x_t </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> add_noise(rendered_image, t)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # Predict noise with diffusion model conditioned on text</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    eps_hat </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> diffusion_model(x_t, t, text_embedding)</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # SDS gradient: move rendered image toward diffusion model's expectation</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    grad </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (eps_hat </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> noise) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> /</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> alpha_bar_t))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> grad</span></span></code></pre>
+      <h2 id="常见陷阱"><a href="#常见陷阱">常见陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>Janus 问题。</strong> 多面问题——生成的 3D
+          对象从背面看也有正面特征。修复：多视角条件化，背面惩罚。
+        </li>
+        <li>
+          <strong>SDS 过平滑。</strong> SDS 损失产生过度平滑的结果。修复：增加引导尺度，使用多视角
+          SDS，或切换到多视角生成 + 重建。
+        </li>
+        <li>
+          <strong>纹理模糊。</strong> 从 NeRF/3D-GS
+          提取的纹理通常模糊。修复：纹理超分辨率，或直接从多视角图像烘焙纹理。
+        </li>
+        <li>
+          <strong>尺度不一致。</strong> 生成的 3D
+          对象尺度不一致。修复：归一化到单位球，或使用参考尺度。
+        </li>
+        <li>
+          <strong>拓扑错误。</strong>
+          重建的网格有非流形边、自交叉。修复：后处理（网格修复），或使用隐式表示。
+        </li>
+      </ul>
+      <h2 id="实际应用"><a href="#实际应用">实际应用</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>任务</th>
+            <th>推荐方法</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>文本到 3D 对象</td>
+            <td>Tripo3D / Meshy / Luma Gen-3D</td>
+          </tr>
+          <tr>
+            <td>单图像到 3D</td>
+            <td>TripoSR / InstantMesh / CRM</td>
+          </tr>
+          <tr>
+            <td>多视角到 3D</td>
+            <td>3D-GS 优化 / LRM</td>
+          </tr>
+          <tr>
+            <td>室内场景重建</td>
+            <td>3D-GS + 多视角输入</td>
+          </tr>
+          <tr>
+            <td>3D 编辑</td>
+            <td>GaussianEditor / GaussCtrl</td>
+          </tr>
+          <tr>
+            <td>3D 动画</td>
+            <td>3D-GS + 骨骼绑定 / Deformable GS</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="交付物"><a href="#交付物">交付物</a></h2>
+      <p>
+        保存 <code>outputs/skill-3d-generator.md</code>。技能接收 3D
+        生成需求（输出格式、质量、速度），输出：管线选择、模型配置和后处理步骤。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong>简单。</strong> 运行 <code>code/main.py</code>，从 2 个视角重建 3D 点云。添加第 3
+          个视角，观察重建质量改善。
+        </li>
+        <li>
+          <strong>中等。</strong> 实现 SDS 优化循环：从随机 3D 高斯开始，用 2D
+          扩散模型梯度优化。观察 3D 形状如何收敛。
+        </li>
+        <li>
+          <strong>困难。</strong> 用 Gradio
+          <span
+            class="term-tip"
+            data-term="设置"
+            data-module="cpp"
+            data-def="设置"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设置</abbr></span
+          >
+          TripoSR
+          <span
+            class="term-tip"
+            data-term="推理"
+            data-module="github"
+            data-def="推理"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">推理</abbr></span
+          >：<span
+            class="term-tip"
+            data-term="上传"
+            data-module="cpp"
+            data-def="上传"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">上传</abbr></span
+          >图像 →
+          <span
+            class="term-tip"
+            data-term="生成"
+            data-module="vue3"
+            data-def="创建代码或数据"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生成</abbr></span
+          >
+          3D 网格 → 交互式 3D 预览。评估生成质量。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>NeRF</td>
+            <td>”神经辐射场”</td>
+            <td>
+              MLP
+              <span
+                class="term-tip"
+                data-term="表示"
+                data-module="github"
+                data-def="表示"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表示</abbr></span
+              >
+              3D 场景，体<span
+                class="term-tip"
+                data-term="渲染"
+                data-module="html5"
+                data-def="将代码转为可视内容"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">渲染</abbr></span
+              >产生<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>3D-GS</td>
+            <td>
+              ”3D
+              <span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >斯”
+            </td>
+            <td>
+              数百万 3D
+              <span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >斯，<span
+                class="term-tip"
+                data-term="可微"
+                data-module="calculus"
+                data-def="函数在某点的增量可用自变量增量的线性函数近似表示，可微必连续"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">可微</abbr></span
+              >光栅化<span
+                class="term-tip"
+                data-term="渲染"
+                data-module="html5"
+                data-def="将代码转为可视内容"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">渲染</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>SDS</td>
+            <td>”分数蒸馏”</td>
+            <td>
+              用 2D 扩散模型<span
+                class="term-tip"
+                data-term="梯度"
+                data-module="calculus"
+                data-def="多元函数各偏导数构成的向量 ∇f，指向函数值增长最快的方向"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">梯度</abbr></span
+              >优化 3D
+              <span
+                class="term-tip"
+                data-term="表示"
+                data-module="github"
+                data-def="表示"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表示</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >视角<span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >角<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >图像”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >一致的<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >视角<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >用于 3D 重建。
+            </td>
+          </tr>
+          <tr>
+            <td>LRM</td>
+            <td>
+              ”大型重<span
+                class="term-tip"
+                data-term="建模"
+                data-module="github"
+                data-def="建模"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">建模</abbr></span
+              >型”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >图像 → 3D 网<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >的前馈模型。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Janus
+              <span
+                class="term-tip"
+                data-term="问题"
+                data-module="github"
+                data-def="跟踪任务、缺陷、想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">问题</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >面<span
+                class="term-tip"
+                data-term="问题"
+                data-module="github"
+                data-def="跟踪任务、缺陷、想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">问题</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >的 3D
+              <span
+                class="term-tip"
+                data-term="对象"
+                data-module="cpp"
+                data-def="类的实例"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对象</abbr></span
+              >背<span
+                class="term-tip"
+                data-term="面"
+                data-module="cpp"
+                data-def="面对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">面</abbr></span
+              >也有正<span
+                class="term-tip"
+                data-term="面"
+                data-module="cpp"
+                data-def="面对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">面</abbr></span
+              >特征。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="生产笔记3d-生成的计算成本">
+        <a href="#生产笔记3d-生成的计算成本">生产笔记：3D 生成的计算成本</a>
+      </h2>
+      <p>
+        3D
+        <span
+          class="term-tip"
+          data-term="生成"
+          data-module="vue3"
+          data-def="创建代码或数据"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生成</abbr></span
+        >是<span
+          class="term-tip"
+          data-term="计算"
+          data-module="cpp"
+          data-def="计算过程"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">计算</abbr></span
+        >最密集的<span
+          class="term-tip"
+          data-term="生成"
+          data-module="vue3"
+          data-def="创建代码或数据"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生成</abbr></span
+        >任务之一：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="方法"
+                data-module="c"
+                data-def="关联到对象的函数"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">方法</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="典型"
+                data-module="cpp"
+                data-def="典型的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">典型</abbr></span
+              >时间 (A100)
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              SDS
+              <span
+                class="term-tip"
+                data-term="优化"
+                data-module="cs-fundamentals"
+                data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">优化</abbr></span
+              >
+              (DreamFusion)
+            </td>
+            <td>
+              5-30
+              <span
+                class="term-tip"
+                data-term="分钟"
+                data-module="github"
+                data-def="分钟"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分钟</abbr></span
+              >
+            </td>
+            <td>中等</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >视角 + 3D-GS
+              <span
+                class="term-tip"
+                data-term="优化"
+                data-module="cs-fundamentals"
+                data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">优化</abbr></span
+              >
+            </td>
+            <td>
+              1-5
+              <span
+                class="term-tip"
+                data-term="分钟"
+                data-module="github"
+                data-def="分钟"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分钟</abbr></span
+              >
+            </td>
+            <td>高</td>
+          </tr>
+          <tr>
+            <td>前馈 (TripoSR)</td>
+            <td>1-10 秒</td>
+            <td>中等</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="混合"
+                data-module="github"
+                data-def="混合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">混合</abbr></span
+              >
+              (前馈 + 精修)
+            </td>
+            <td>30-60 秒</td>
+            <td>高</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        <span
+          class="term-tip"
+          data-term="生产"
+          data-module="github"
+          data-def="生产"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生产</abbr></span
+        >部署通常使用前馈模型作为<span
+          class="term-tip"
+          data-term="初始"
+          data-module="github"
+          data-def="初始的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">初始</abbr></span
+        >结果，然后<span
+          class="term-tip"
+          data-term="可选"
+          data-module="vue3"
+          data-def="可选的功能"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">可选</abbr></span
+        >地用<span
+          class="term-tip"
+          data-term="优化"
+          data-module="cs-fundamentals"
+          data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+          data-slug="cs-fundamentals/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">优化</abbr></span
+        >精修。<span
+          class="term-tip"
+          data-term="实时"
+          data-module="cpp"
+          data-def="实时"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">实时</abbr></span
+        >应用（游戏、AR）需要前馈模型；<span
+          class="term-tip"
+          data-term="离线"
+          data-module="github"
+          data-def="离线的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">离线</abbr></span
+        >应用（电影、建筑）可以使用<span
+          class="term-tip"
+          data-term="优化"
+          data-module="cs-fundamentals"
+          data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+          data-slug="cs-fundamentals/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">优化</abbr></span
+        >。
+      </p>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2003.08934"
+            >Mildenhall et al. (2020). NeRF: Representing Scenes as Neural Radiance Fields for View
+            Synthesis</a
+          >
+          — NeRF。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2308.04079"
+            >Kerbl et al. (2023). 3D Gaussian Splatting for Real-Time Radiance Field Rendering</a
+          >
+          — 3D-GS。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2209.14988"
+            >Poole et al. (2022). DreamFusion: Text-to-3D using 2D Diffusion</a
+          >
+          — SDS。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2311.04400"
+            >Hong et al. (2023). LRM: Large Reconstruction Model for Single Image to 3D</a
+          >
+          — LRM。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2403.02151"
+            >Tang et al. (2024). TripoSR: Fast 3D Object Reconstruction from a Single Image</a
+          >
+          — TripoSR。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

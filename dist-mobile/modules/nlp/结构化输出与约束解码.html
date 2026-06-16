@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>结构化输出与约束解码</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">结构化输出与约束解码</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">结构化输出</span><span class="doc-tag">约束解码</span
+          ><span class="doc-tag">Outlines</span><span class="doc-tag">JSON Schema</span
+          ><span class="doc-tag">Instructor</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          理解约束解码、Outlines、XGrammar和Instructor的结构化输出技术栈
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="结构化输出与约束解码"><a href="#结构化输出与约束解码">结构化输出与约束解码</a></h1>
+      <blockquote>
+        <p>
+          让LLM返回JSON。大多数时候能得到JSON。在生产中，“大多数”就是问题。约束解码将”大多数”变成”总是”，通过在采样前编辑logits。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 5
+        · 17（聊天机器人），Phase 5 · 19（子词分词） <strong>时间:</strong> ~60 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        分类器提示LLM：“返回 {positive, negative, neutral} 之一。“模型返回”The sentiment is positive
+        — this review is overwhelmingly favorable because the customer explicitly states that they
+        …”。你的解析器崩溃。分类器的F1为0.0。
+      </p>
+      <p>自由形式生成不是契约。它是建议。生产系统需要契约。</p>
+      <p>2026年存在三层：</p>
+      <ol>
+        <li>
+          <strong>提示。</strong>
+          礼貌地要求。“只返回JSON对象。“在前沿模型上约80%有效，较小模型更差。
+        </li>
+        <li>
+          <strong>原生结构化输出API。</strong> OpenAI
+          <code>response_format</code>、Anthropic工具使用、Gemini
+          JSON模式。在支持的schema上可靠。供应商锁定。
+        </li>
+        <li>
+          <strong>约束解码。</strong>
+          在每个生成步骤修改logits，使模型<em>不能</em>发出无效token。构造上100%有效。适用于任何本地模型。
+        </li>
+      </ol>
+      <p>本课程为三者建立直觉并命名何时选择哪个。</p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <p>
+        <strong>约束解码如何工作。</strong> 在每个生成步骤，LLM在完整词表（约100k
+        token）上产生logit向量。<em>logit处理器</em>位于模型和采样器之间。它计算给定目标语法（JSON
+        Schema、正则、上下文无关文法）中当前位置哪些token有效，并将所有无效token的logits设为负无穷。剩余logits上的softmax只将概率质量放在有效延续上。
+      </p>
+      <p>2026年实现：</p>
+      <ul>
+        <li>
+          <strong>Outlines。</strong> 将JSON
+          Schema或正则编译为有限状态机。每个token获得O(1)的有效下一token查找。基于FSM，所以递归schema需要展平。
+        </li>
+        <li>
+          <strong>XGrammar / llguidance。</strong> 上下文无关文法引擎。处理递归JSON
+          Schema。接近零解码开销。OpenAI在2025年结构化输出实现中致谢了llguidance。
+        </li>
+        <li>
+          <strong>vLLM引导解码。</strong> 通过Outlines、XGrammar或lm-format-enforcer后端内置
+          <code>guided_json</code
+          >、<code>guided_regex</code>、<code>guided_choice</code>、<code>guided_grammar</code>。
+        </li>
+        <li>
+          <strong>Instructor。</strong>
+          基于Pydantic的LLM包装器。验证失败时重试。跨供应商，但不修改logits — 依赖重试 +
+          结构化输出感知提示。
+        </li>
+      </ul>
+      <h3 id="反直觉结果"><a href="#反直觉结果">反直觉结果</a></h3>
+      <p>
+        约束解码通常比无约束生成<em>更快</em>。两个原因。首先，它缩小了下一token搜索空间。其次，聪明的实现对强制token完全跳过token生成（如
+        <code>{"name": "</code> 这样的脚手架 — 每个字节都是确定的）。
+      </p>
+      <h3 id="代价昂贵的陷阱"><a href="#代价昂贵的陷阱">代价昂贵的陷阱</a></h3>
+      <p>
+        字段顺序很重要。把 <code>answer</code> 放在
+        <code>reasoning</code>
+        之前，模型在思考之前就承诺了答案。JSON有效。答案错误。没有验证能捕获这个。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="json"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 差</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"answer"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"yes"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"reasoning"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"because ..."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">// 好</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"reasoning"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"... therefore ..."</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">"answer"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"yes"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <p>Schema字段顺序是逻辑，不是格式。</p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1从零构建正则约束生成">
+        <a href="#步骤-1从零构建正则约束生成">步骤 1：从零构建正则约束生成</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> mask_logits</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(logits, valid_token_ids):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    mask </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">float</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"-inf"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(logits)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tid </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> valid_token_ids:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        mask[tid] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> logits[tid]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mask</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> generate_constrained</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(model, tokenizer, prompt, fsm):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ids </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tokenizer.encode(prompt)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> fsm.initial_state</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    while</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> fsm.is_accept(state):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        logits </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> model.next_token_logits(ids)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        valid </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> fsm.valid_tokens(state, tokenizer)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        logits </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mask_logits(logits, valid)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        tok </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sample(logits)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        ids.append(tok)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> fsm.transition(state, tok)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tokenizer.decode(ids)</span></span></code></pre>
+      <p>
+        FSM跟踪到目前为止我们满足了语法的哪些部分。<code>valid_tokens(state, tokenizer)</code>
+        计算哪些词表token可以推进FSM而不离开接受路径。
+      </p>
+      <h3 id="步骤-2outlines用于json-schema">
+        <a href="#步骤-2outlines用于json-schema">步骤 2：Outlines用于JSON Schema</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pydantic </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> BaseModel</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> typing </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Literal</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> outlines</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Review</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BaseModel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    sentiment: Literal[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"positive"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"negative"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"neutral"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    confidence: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">float</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    evidence_span: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">str</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">model </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> outlines.models.transformers(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"meta-llama/Llama-3.2-3B-Instruct"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">generator </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> outlines.generate.json(model, Review)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">result </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> generator(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Classify: 'The wait staff was attentive and the food arrived hot.'"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(result)</span></span></code></pre>
+      <p>零验证错误。永远。FSM使无效输出不可达。</p>
+      <h3 id="步骤-3instructor用于供应商无关的pydantic">
+        <a href="#步骤-3instructor用于供应商无关的pydantic"
+          >步骤 3：Instructor用于供应商无关的Pydantic</a
+        >
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instructor</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> anthropic </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Anthropic</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pydantic </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> BaseModel, Field</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Invoice</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BaseModel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    vendor: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">str</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    total_usd: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">float</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Field(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">ge</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    line_items: list[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">str</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">client </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> instructor.from_anthropic(Anthropic())</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">invoice </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> client.messages.create(</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    model</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"claude-opus-4-7"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    max_tokens</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1024</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    response_model</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">Invoice,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    messages</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[{</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"role"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"content"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Extract from: 'Acme Corp $420. Widget, Gizmo.'"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}],</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>
+        不同机制。Instructor不触碰logits。它将schema格式化到提示中，解析输出，验证失败时重试（默认3次）。适用于任何供应商。重试增加延迟和成本。跨供应商可移植性是卖点。
+      </p>
+      <h3 id="步骤-4原生供应商api"><a href="#步骤-4原生供应商api">步骤 4：原生供应商API</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> openai </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> OpenAI</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">client </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> OpenAI()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">response </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> client.responses.create(</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    model</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"gpt-5"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    input</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">[{</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"role"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"user"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"content"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Classify: 'The food was cold.'"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}],</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    text</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"format"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"json_schema"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"name"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"sentiment"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">          "schema"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"object"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"required"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"sentiment"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">],</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">                     "properties"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"sentiment"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: {</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"type"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"string"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">                                                  "enum"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"positive"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"negative"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"neutral"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]}}}}},</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(response.output_parsed)</span></span></code></pre>
+      <p>服务器端约束解码。与Outlines在支持的schema上可靠性相当。无需本地模型管理。锁定供应商。</p>
+      <h2 id="陷阱"><a href="#陷阱">陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>递归schema。</strong>
+          Outlines将递归展平到固定深度。树结构输出（嵌套评论、AST）需要XGrammar或llguidance（基于CFG）。
+        </li>
+        <li>
+          <strong>巨大枚举。</strong>
+          10,000选项枚举编译缓慢或超时。切换到检索器：先预测top-k候选，约束到那些。
+        </li>
+        <li>
+          <strong>语法太严格。</strong> 强制
+          <code>date: "YYYY-MM-DD"</code>
+          正则，模型无法为缺失日期输出”unknown”。模型通过发明日期补偿。允许
+          <code>null</code> 或哨兵值。
+        </li>
+        <li><strong>过早承诺。</strong> 参见上面的字段顺序陷阱。始终把推理放前面。</li>
+        <li>
+          <strong>无schema的供应商JSON模式。</strong>
+          纯JSON模式只保证有效JSON，不保证对<em>你的用例</em>有效。始终提供完整schema。
+        </li>
+      </ul>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>2026年技术栈：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>情况</th>
+            <th>选择</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>OpenAI/Anthropic/Google模型，简单schema</td>
+            <td>原生供应商结构化输出</td>
+          </tr>
+          <tr>
+            <td>任何供应商，Pydantic工作流，可容忍重试</td>
+            <td>Instructor</td>
+          </tr>
+          <tr>
+            <td>本地模型，需要100%有效性，扁平schema</td>
+            <td>Outlines (FSM)</td>
+          </tr>
+          <tr>
+            <td>本地模型，递归schema</td>
+            <td>XGrammar或llguidance</td>
+          </tr>
+          <tr>
+            <td>自托管推理服务器</td>
+            <td>vLLM引导解码</td>
+          </tr>
+          <tr>
+            <td>批处理可接受重试</td>
+            <td>Instructor + 最便宜模型</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>将结果保存为 <code>outputs/skill-structured-output-picker.md</code>。</p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong>简单。</strong> 在无<span
+            class="term-tip"
+            data-term="约束"
+            data-module="c"
+            data-def="运算符必须满足的条件"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">约束</abbr></span
+          >解码下<span
+            class="term-tip"
+            data-term="提示"
+            data-module="cpp"
+            data-def="提示"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提示</abbr></span
+          >小型<span
+            class="term-tip"
+            data-term="开放"
+            data-module="github"
+            data-def="正在活跃的 Issue 或 PR"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">开放</abbr></span
+          >权重模型（如Llama-3.2-3B）<span
+            class="term-tip"
+            data-term="生成"
+            data-module="vue3"
+            data-def="创建代码或数据"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生成</abbr></span
+          >
+          <code>Review(sentiment, confidence, evidence_span)</code>。测量100条<span
+            class="term-tip"
+            data-term="评论"
+            data-module="cpp"
+            data-def="代码注释"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">评论</abbr></span
+          >中有效<span
+            class="term-tip"
+            data-term="JSON"
+            data-module="html5"
+            data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">JSON</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="比例"
+            data-module="vue3"
+            data-def="缩放比例"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比例</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>中等。</strong> 相同语料使用Outlines
+          <span
+            class="term-tip"
+            data-term="JSON"
+            data-module="html5"
+            data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">JSON</abbr></span
+          >模式。<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >合规<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >、<span
+            class="term-tip"
+            data-term="延迟"
+            data-module="cpp"
+            data-def="延迟操作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">延迟</abbr></span
+          >和<span
+            class="term-tip"
+            data-term="语义"
+            data-module="cpp"
+            data-def="语义"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">语义</abbr></span
+          >准确<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>困难。</strong> 从零<span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >电话号码（<code>\d{3}-\d{3}-\d{4}</code>）的<span
+            class="term-tip"
+            data-term="正则"
+            data-module="github"
+            data-def="正则"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">正则</abbr></span
+          >约束<span
+            class="term-tip"
+            data-term="解码"
+            data-module="javascript"
+            data-def="将编码数据还原为原始形式"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解码</abbr></span
+          >器。验证1000个<span
+            class="term-tip"
+            data-term="样本"
+            data-module="data-analysis"
+            data-def="从总体中抽取的子集，统计量是描述样本特征的数量"
+            data-slug="data-analysis/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">样本</abbr></span
+          >中0个无效<span
+            class="term-tip"
+            data-term="输出"
+            data-module="c"
+            data-def="向外部发送数据"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">输出</abbr></span
+          >。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="约束"
+                data-module="c"
+                data-def="运算符必须满足的条件"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">约束</abbr></span
+              >解码
+            </td>
+            <td>
+              强制<span
+                class="term-tip"
+                data-term="有效"
+                data-module="cpp"
+                data-def="有效的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">有效</abbr></span
+              >输出
+            </td>
+            <td>
+              在每个<span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >步骤遮蔽无效<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >的logits。
+            </td>
+          </tr>
+          <tr>
+            <td>Logit处理器</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="约束"
+                data-module="c"
+                data-def="运算符必须满足的条件"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">约束</abbr></span
+              >的那个东西
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >：<code>(logits, state) -> masked_logits</code>。
+            </td>
+          </tr>
+          <tr>
+            <td>FSM</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="有限状态机"
+                data-module="c"
+                data-def="表示有限状态和转换的模型"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">有限状态机</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="编译"
+                data-module="c"
+                data-def="将源代码转换为目标代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编译</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="语法"
+                data-module="c"
+                data-def="代码的结构规则"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语法</abbr></span
+              >表示；O(1)<span
+                class="term-tip"
+                data-term="有效"
+                data-module="cpp"
+                data-def="有效的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">有效</abbr></span
+              >下一<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >查找。
+            </td>
+          </tr>
+          <tr>
+            <td>CFG</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="上下文无关文法"
+                data-module="cs-fundamentals"
+                data-def="产生式左部为单个非终结符的文法，2型文法，是大多数编程语言语法分析的基础"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文无关文法</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="处理"
+                data-module="cpp"
+                data-def="处理"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">处理</abbr></span
+              >递归的文法；比FSM慢但更<span
+                class="term-tip"
+                data-term="表达"
+                data-module="github"
+                data-def="表达"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表达</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Schema"
+                data-module="typescript"
+                data-def="类型模式"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Schema</abbr></span
+              >字<span
+                class="term-tip"
+                data-term="段"
+                data-module="vue3"
+                data-def="URL 的一段"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">段</abbr></span
+              >顺序
+            </td>
+            <td>
+              有<span
+                class="term-tip"
+                data-term="关系"
+                data-module="cpp"
+                data-def="关系"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">关系</abbr></span
+              >吗？
+            </td>
+            <td>
+              是 — 第一个<span
+                class="term-tip"
+                data-term="字段"
+                data-module="cpp"
+                data-def="字段"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字段</abbr></span
+              >先承诺；始终把<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >放答案前。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              引导<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >
+            </td>
+            <td>vLLM的叫法</td>
+            <td>
+              相同<span
+                class="term-tip"
+                data-term="概念"
+                data-module="cpp"
+                data-def="模板约束的抽象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">概念</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="集成"
+                data-module="github"
+                data-def="集成"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">集成</abbr></span
+              >到<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >服务器。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >模式
+            </td>
+            <td>
+              OpenAI的<span
+                class="term-tip"
+                data-term="早期"
+                data-module="github"
+                data-def="早期的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">早期</abbr></span
+              >版本
+            </td>
+            <td>
+              保证<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >语法；不保证schema匹配。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2307.09702"
+            >Willard, Louf (2023). Efficient Guided Generation for LLMs</a
+          >
+          — Outlines论文。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2411.15100">XGrammar论文 (2024)</a> —
+          <span
+            class="term-tip"
+            data-term="快速"
+            data-module="github"
+            data-def="快速的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">快速</abbr></span
+          >基于CFG的<span
+            class="term-tip"
+            data-term="约束"
+            data-module="c"
+            data-def="运算符必须满足的条件"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">约束</abbr></span
+          >解码。
+        </li>
+        <li>
+          <a href="https://docs.vllm.ai/en/latest/features/structured_outputs.html"
+            >vLLM — 结构化输出</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="推理"
+            data-module="github"
+            data-def="推理"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">推理</abbr></span
+          >服务器<span
+            class="term-tip"
+            data-term="集成"
+            data-module="github"
+            data-def="集成"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">集成</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://platform.openai.com/docs/guides/structured-outputs"
+            >OpenAI — 结构化输出指南</a
+          >
+          — API参考 +
+          <span
+            class="term-tip"
+            data-term="陷阱"
+            data-module="c"
+            data-def="CPU 异常处理机制"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">陷阱</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://python.useinstructor.com/">Instructor库</a> — 跨供应商的Pydantic +
+          <span
+            class="term-tip"
+            data-term="重试"
+            data-module="vue3"
+            data-def="失败后重试"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">重试</abbr></span
+          >。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

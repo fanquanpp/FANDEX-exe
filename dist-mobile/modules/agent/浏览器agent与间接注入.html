@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>浏览器Agent与间接注入</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">浏览器Agent与间接注入</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            14 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          ChatGPT agent（2025 年 7 月）将 Operator 和深度研究合并为一个浏览器/终端 Agent，BrowseComp
+          SOTA 达 68.9%。OpenAI 于 2025 年 8 月 31 日关闭 Operator——产品层整合。Anthropic 的 Vercept
+          收...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="浏览器-agent-与长时间范围-web-任务">
+        <a href="#浏览器-agent-与长时间范围-web-任务">浏览器 Agent 与长时间范围 Web 任务</a>
+      </h1>
+      <blockquote>
+        <p>
+          ChatGPT agent（2025 年 7 月）将 Operator 和深度研究合并为一个浏览器/终端 Agent，BrowseComp
+          SOTA 达 68.9%。OpenAI 于 2025 年 8 月 31 日关闭 Operator——产品层整合。Anthropic 的 Vercept
+          收购将 Claude Sonnet 在 OSWorld 上从不到 15% 提升到 72.5%。WebArena-Verified (ServiceNow,
+          ICLR 2026) 修复了原始 WebArena 中 11.3 个百分点的假阴性率，并发布了 258 任务的 Hard
+          子集。数字是真实的。攻击面也是：OpenAI 准备性负责人公开声明浏览器 Agent
+          中的间接提示注入”不是可以完全修补的 bug”。记录的 2025-2026 年攻击：Tainted Memories (Atlas
+          CSRF)、HashJack (Cato Networks) 和 Perplexity Comet 中的一次点击劫持。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 <strong>语言：</strong> Python (stdlib, 间接提示注入攻击面模型)
+        <strong>前置条件：</strong> Phase 15 · 10 (权限模式), Phase 15 · 01 (长时间范围Agent)
+        <strong>时间：</strong> ~45 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        浏览器 Agent 是读取不受信任内容并采取后果性动作的长时间范围 Agent。Agent
+        访问的每个页面都是用户未编写的输入。每个页面上的每个表单都是潜在的命令通道。2025-2026
+        年攻击语料库显示这不是假设的：Tainted Memories 让攻击者通过精心制作的页面将恶意指令绑定到
+        Agent 的记忆；HashJack 在 Agent 访问的 URL 片段中隐藏命令；Perplexity Comet
+        在一次点击中劫持。
+      </p>
+      <p>
+        防御图景令人不安。OpenAI 准备性负责人大声说出了安静的部分：间接提示注入”不是可以完全修补的
+        bug。“这是因为攻击存在于 Agent 的阅读 vs 行为边界中，这在架构上是模糊的——模型读取的每个
+        token 原则上都可以被读作指令。
+      </p>
+      <p>
+        本课程命名攻击面、命名基准格局（BrowseComp, OSWorld,
+        WebArena-Verified），并建模最小间接提示注入场景，以便你可以在 Lessons 14 和 18
+        中推理真实防御。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="2026-年格局每个系统一段">
+        <a href="#2026-年格局每个系统一段">2026 年格局，每个系统一段</a>
+      </h3>
+      <p>
+        <strong>ChatGPT agent (OpenAI)。</strong> 2025 年 7 月发布。统一 Operator（浏览）和 Deep
+        Research（多小时研究）。2025 年 8 月 31 日关闭独立 Operator。BrowseComp SOTA 68.9%；OSWorld
+        和 WebArena-Verified 上数字强劲。
+      </p>
+      <p>
+        <strong>Claude Sonnet + Vercept (Anthropic)。</strong> Anthropic 的 Vercept
+        收购专注于计算机使用能力。将 Claude Sonnet 在 OSWorld 上从 &#x3C;15% 提升到 72.5%。Claude
+        Computer Use 作为工具 API 发布。
+      </p>
+      <p>
+        <strong>Gemini 3 Pro with Browser Use (DeepMind)。</strong> Browser Use
+        集成发布计算机使用控制；FSF v3（2026 年 4 月, Lesson 20）专门在 ML R&#x26;D 领域追踪自主性。
+      </p>
+      <p>
+        <strong>WebArena-Verified (ServiceNow, ICLR 2026)。</strong>
+        修复了一个有充分记录的问题：原始 WebArena 有约 11.3%
+        假阴性率（标记为失败但实际已解决的任务）。Verified 版本用人工策划的成功标准重新评分，并添加
+        258 任务 Hard 子集。
+      </p>
+      <h3 id="browsecomp-vs-osworld-vs-webarena">
+        <a href="#browsecomp-vs-osworld-vs-webarena">BrowseComp vs OSWorld vs WebArena</a>
+      </h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>基准</th>
+            <th>测量什么</th>
+            <th>范围</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>BrowseComp</td>
+            <td>在时间压力下在开放网络上查找特定事实</td>
+            <td>分钟</td>
+          </tr>
+          <tr>
+            <td>OSWorld</td>
+            <td>Agent 操作完整桌面（鼠标、键盘、Shell）</td>
+            <td>数十分钟</td>
+          </tr>
+          <tr>
+            <td>WebArena-Verified</td>
+            <td>模拟站点中的事务性 Web 任务</td>
+            <td>分钟</td>
+          </tr>
+          <tr>
+            <td>Hard 子集</td>
+            <td>带多页面状态转换的 WebArena-Verified 任务</td>
+            <td>数十分钟</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        不同轴。高 BrowseComp 分数说明 Agent 找到事实；不说明 Agent 能订航班。OSWorld
+        分数更接近”它在我的桌面上工作吗”。WebArena-Verified
+        更接近”它能完成流程吗”。任何生产决策需要匹配任务分布的基准。
+      </p>
+      <h3 id="攻击面命名"><a href="#攻击面命名">攻击面，命名</a></h3>
+      <ol>
+        <li>
+          <strong>间接提示注入。</strong> 不受信任的页面内容包含指令。Agent 读取它们。Agent
+          执行它们。公开示例：2024 Kai Greshake 等人、2025 Tainted Memories 论文、2026 HashJack
+          (Cato Networks)。
+        </li>
+        <li>
+          <strong>URL 片段/查询注入。</strong> 爬取 URL 的
+          <code>#fragment</code> 或查询字符串包含命令。从不可见渲染；仍在 Agent 上下文中。
+        </li>
+        <li>
+          <strong>记忆绑定攻击。</strong> 页面指示 Agent 写入持久记忆 (Lesson 12
+          覆盖持久状态)。下次会话，记忆在无可见触发器的情况下触发有效载荷。
+        </li>
+        <li>
+          <strong>认证会话上的 CSRF 形状攻击。</strong> Tainted Memories 类：Agent
+          在某处登录；攻击者页面发出 Agent 用用户 cookie 执行的状态更改请求。
+        </li>
+        <li>
+          <strong>一次点击劫持。</strong> 视觉上无害的按钮搭载 Agent 跟随的有效载荷。Comet 类。
+        </li>
+        <li>
+          <strong>Agent 宿主表面中的内容安全策略漏洞。</strong>
+          渲染和工具层本身可以是攻击向量；浏览器中的浏览器 Agent 栈很宽。
+        </li>
+      </ol>
+      <h3 id="为什么不可完全修补"><a href="#为什么不可完全修补">为什么”不可完全修补”</a></h3>
+      <p>
+        攻击与 Agent 的能力同构。Agent 必须读取不受信任内容才能工作。Agent
+        读取的任何内容都可能包含指令。Agent
+        遵循的任何指令都可能与用户实际请求不对齐。防御（信任边界、分类器、工具允许列表、后果性动作上的
+        HITL）提高攻击成本并减少爆炸半径。它们不关闭类别。
+      </p>
+      <p>
+        这与 Lob 定理 (Lesson 8) 的推理模式相同：Agent 无法证明下一个 token
+        是安全的；它只能建立一个使不安全 token 更可检测的系统。
+      </p>
+      <h3 id="实际发布的防御姿态"><a href="#实际发布的防御姿态">实际发布的防御姿态</a></h3>
+      <ul>
+        <li>
+          <strong>读/写边界。</strong>
+          读取永远不是后果性的。写入（提交表单、发布内容、调用有副作用的工具）如果发起内容来自信任边界外，需要新的人工批准。
+        </li>
+        <li>
+          <strong>每任务工具允许列表。</strong> Agent
+          可以浏览；它不能发起电汇，除非该工具为任务显式启用。Lesson 13 覆盖预算。
+        </li>
+        <li>
+          <strong>会话隔离。</strong> 浏览器 Agent
+          会话仅使用范围凭证运行。无生产认证，无个人邮件。每个 HTTP 请求的日志保留用于审计。
+        </li>
+        <li>
+          <strong>内容净化器。</strong> 获取的 HTML
+          在连接到模型上下文之前剥离已知不良模式。（减少简单攻击；不停止复杂有效载荷。）
+        </li>
+        <li><strong>后果性动作上的 HITL。</strong> 先提议后提交模式 (Lesson 15)。</li>
+        <li><strong>记忆上的金丝雀令牌。</strong> 如果记忆条目触发，用户看到它 (Lesson 14)。</li>
+      </ul>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        <code>code/main.py</code> 模拟一个微小浏览器 Agent
+        运行对抗三个合成页面。一个页面良性，一个在可见文本中有直接提示注入块，一个有 URL
+        片段注入（不可见但在 Agent 上下文中）。脚本显示 (a) 朴素 Agent 会做什么，(b)
+        读/写边界捕获什么，(c) 净化器捕获什么，(d) 两者都未捕获什么。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>
+        <code>outputs/skill-browser-agent-trust-boundary.md</code> 范围化提议的浏览器 Agent
+        部署：它触及哪些信任区域、被授权写入什么、首次运行前必须到位哪些防御。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            运行
+            <code>code/main.py</code
+            >。识别净化器捕获但读/写边界未捕获的攻击，以及只有读/写边界捕获的攻击。
+          </p>
+        </li>
+        <li>
+          <p>
+            扩展净化器以检测一类 HashJack 风格的 URL 片段注入。测量合法片段良性 URL 上的误报率。
+          </p>
+        </li>
+        <li>
+          <p>
+            选择你了解的一个真实浏览器 Agent
+            工作流（例如”订航班”）。列出每次读取和每次写入。标记哪些写入需要 HITL 及原因。
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读 WebArena-Verified ICLR 2026 论文。识别原始 WebArena 评分不可靠的一个任务类别，解释
+            Verified 子集如何解决它。
+          </p>
+        </li>
+        <li>
+          <p>为浏览器 Agent 设置设计记忆金丝雀。你会存储什么、在哪里、什么触发警报？</p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们怎么说</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>间接提示注入</td>
+            <td>”坏页面文本”</td>
+            <td>
+              Agent
+              <span
+                class="term-tip"
+                data-term="读取"
+                data-module="c"
+                data-def="从输入获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">读取</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="页面"
+                data-module="github"
+                data-def="分页"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">页面</abbr></span
+              >中不受<span
+                class="term-tip"
+                data-term="信任"
+                data-module="html5"
+                data-def="网站可信度"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信任</abbr></span
+              >内容<span
+                class="term-tip"
+                data-term="包"
+                data-module="go"
+                data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+                data-slug="go/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">包</abbr></span
+              >含 Agent
+              <span
+                class="term-tip"
+                data-term="执行"
+                data-module="github"
+                data-def="执行"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="指令"
+                data-module="github"
+                data-def="指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指令</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Tainted Memories</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="记忆"
+                data-module="github"
+                data-def="记忆"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记忆</abbr></span
+              >攻击”
+            </td>
+            <td>
+              Agent 将攻击者<span
+                class="term-tip"
+                data-term="提供"
+                data-module="github"
+                data-def="提供"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提供</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="指令"
+                data-module="github"
+                data-def="指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指令</abbr></span
+              >写入持久<span
+                class="term-tip"
+                data-term="记忆"
+                data-module="github"
+                data-def="记忆"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记忆</abbr></span
+              >；下次<span
+                class="term-tip"
+                data-term="会话"
+                data-module="github"
+                data-def="会话"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">会话</abbr></span
+              >触发
+            </td>
+          </tr>
+          <tr>
+            <td>HashJack</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="URL"
+                data-module="javascript"
+                data-def="URL 处理对象"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">URL</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="片段"
+                data-module="c"
+                data-def="内存块的组成部分"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">片段</abbr></span
+              >攻击”
+            </td>
+            <td>
+              隐藏在
+              <span
+                class="term-tip"
+                data-term="URL"
+                data-module="javascript"
+                data-def="URL 处理对象"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">URL</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="片段"
+                data-module="c"
+                data-def="内存块的组成部分"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">片段</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="查询字符串"
+                data-module="github"
+                data-def="查询字符串"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">查询字符串</abbr></span
+              >中的<span
+                class="term-tip"
+                data-term="有效"
+                data-module="cpp"
+                data-def="有效的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">有效</abbr></span
+              >载荷在 Agent
+              <span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >中但不可见<span
+                class="term-tip"
+                data-term="渲染"
+                data-module="html5"
+                data-def="将代码转为可视内容"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">渲染</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              一次<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >击劫持
+            </td>
+            <td>”坏按钮”</td>
+            <td>
+              可见控件搭载 Agent
+              <span
+                class="term-tip"
+                data-term="执行"
+                data-module="github"
+                data-def="执行"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行</abbr></span
+              >的后续<span
+                class="term-tip"
+                data-term="有效"
+                data-module="cpp"
+                data-def="有效的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">有效</abbr></span
+              >载荷
+            </td>
+          </tr>
+          <tr>
+            <td>BrowseComp</td>
+            <td>
+              ”Web
+              <span
+                class="term-tip"
+                data-term="搜索"
+                data-module="cpp"
+                data-def="搜索"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">搜索</abbr></span
+              >基准”
+            </td>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="开放"
+                data-module="github"
+                data-def="正在活跃的 Issue 或 PR"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">开放</abbr></span
+              >网络上<span
+                class="term-tip"
+                data-term="查找"
+                data-module="cpp"
+                data-def="查找操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">查找</abbr></span
+              >特定事实；<span
+                class="term-tip"
+                data-term="分钟"
+                data-module="github"
+                data-def="分钟"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分钟</abbr></span
+              >级<span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>OSWorld</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="桌面"
+                data-module="github"
+                data-def="桌面"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">桌面</abbr></span
+              >基准”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="完整"
+                data-module="github"
+                data-def="完整"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">完整</abbr></span
+              >
+              OS
+              <span
+                class="term-tip"
+                data-term="控制"
+                data-module="github"
+                data-def="控制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">控制</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >步 GUI
+              <span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>WebArena-Verified</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="修复"
+                data-module="github"
+                data-def="修复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">修复</abbr></span
+              >的 Web
+              <span
+                class="term-tip"
+                data-term="任务"
+                data-module="cpp"
+                data-def="任务"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">任务</abbr></span
+              >基准”
+            </td>
+            <td>
+              ServiceNow 的重新<span
+                class="term-tip"
+                data-term="评分"
+                data-module="vue3"
+                data-def="计算分数"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评分</abbr></span
+              >
+              WebArena 带 Hard
+              <span
+                class="term-tip"
+                data-term="子集"
+                data-module="cpp"
+                data-def="子集"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子集</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              读/写<span
+                class="term-tip"
+                data-term="边界"
+                data-module="java"
+                data-def="泛型类型参数的约束，上界 &#x60;extends&#x60;、下界 &#x60;super&#x60;"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">边界</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="副作用"
+                data-module="c"
+                data-def="修改外部状态"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">副作用</abbr></span
+              >门”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="读取"
+                data-module="c"
+                data-def="从输入获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">读取</abbr></span
+              >永远非后果性；<span
+                class="term-tip"
+                data-term="内容"
+                data-module="cpp"
+                data-def="内容部分"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内容</abbr></span
+              >来自<span
+                class="term-tip"
+                data-term="信任"
+                data-module="html5"
+                data-def="网站可信度"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信任</abbr></span
+              >外时<span
+                class="term-tip"
+                data-term="写入"
+                data-module="c"
+                data-def="输出数据到目标"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">写入</abbr></span
+              >需新批准
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://openai.com/index/introducing-chatgpt-agent/"
+            >OpenAI — Introducing ChatGPT agent</a
+          >
+          — Operator 和深<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >研究的<span
+            class="term-tip"
+            data-term="合并"
+            data-module="github"
+            data-def="整合不同分支的更改"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">合并</abbr></span
+          >；BrowseComp SOTA
+        </li>
+        <li>
+          <a href="https://openai.com/index/computer-using-agent/">OpenAI — Computer-Using Agent</a>
+          — Operator 谱系和成为 ChatGPT agent 的<span
+            class="term-tip"
+            data-term="架构"
+            data-module="vue3"
+            data-def="代码和系统的组织结构"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">架构</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://webarena.dev/">Zhou et al. — WebArena</a> —
+          <span
+            class="term-tip"
+            data-term="原始"
+            data-module="vue3"
+            data-def="原始的、最初的"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">原始</abbr></span
+          >基准
+        </li>
+        <li>
+          <a href="https://openreview.net/forum?id=94tlGxmqkN">WebArena-Verified (OpenReview)</a> —
+          ICLR 2026
+          <span
+            class="term-tip"
+            data-term="修复"
+            data-module="github"
+            data-def="修复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">修复</abbr></span
+          >子集论文
+        </li>
+        <li>
+          <a href="https://www.anthropic.com/research/measuring-agent-autonomy"
+            >Anthropic — Measuring agent autonomy in practice</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="包"
+            data-module="go"
+            data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+            data-slug="go/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">包</abbr></span
+          >括<span
+            class="term-tip"
+            data-term="计算"
+            data-module="cpp"
+            data-def="计算过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">计算</abbr></span
+          >机使用 Agent 的攻击<span
+            class="term-tip"
+            data-term="面"
+            data-module="cpp"
+            data-def="面对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">面</abbr></span
+          >讨论
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

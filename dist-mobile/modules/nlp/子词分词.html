@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>子词分词</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">子词分词</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">子词分词</span><span class="doc-tag">BPE</span
+          ><span class="doc-tag">WordPiece</span><span class="doc-tag">Unigram</span
+          ><span class="doc-tag">SentencePiece</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解BPE、WordPiece、Unigram和SentencePiece四种子词分词算法</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="子词分词--bpewordpieceunigramsentencepiece">
+        <a href="#子词分词--bpewordpieceunigramsentencepiece"
+          >子词分词 — BPE、WordPiece、Unigram、SentencePiece</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          词分词器在未见词上崩溃。字符分词器爆炸序列长度。子词分词器折中。每个现代LLM都构建在其中一个之上。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 5
+        · 01（文本处理），Phase 5 · 04（GloVe / FastText / 子词） <strong>时间:</strong> ~60 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        你的词表有50,000个词。用户输入”untokenizable”。你的分词器返回
+        <code>[UNK]</code
+        >。模型现在对该词没有信号。更糟的是：语料库中第90百分位的文档有40个罕见词，意味着每个文档丢失40位信息。
+      </p>
+      <p>
+        子词分词解决了这个问题。常见词保持单个token。罕见词分解为有意义的片段：<code
+          >untokenizable</code
+        >
+        →
+        <code>un</code
+        >、<code>token</code>、<code>izable</code>。训练数据覆盖一切，因为任何字符串最终都是字节序列。
+      </p>
+      <p>
+        2026年每个前沿LLM都构建在三种算法（BPE、Unigram、WordPiece）之一上，包装在三种库（tiktoken、SentencePiece、HF
+        Tokenizers）之一中。不选一个就无法发布语言模型。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <p>
+        <strong>BPE（字节对编码）。</strong>
+        从字符级词表开始。计算每个相邻对的出现次数。将最频繁的对合并为新token。重复直到达到目标词表大小。主导算法：GPT-2/3/4、Llama、Gemma、Qwen2、Mistral。
+      </p>
+      <p>
+        <strong>字节级BPE。</strong>
+        相同算法但在原始字节（256个基础token）上而非Unicode字符上。保证零 <code>[UNK]</code> token —
+        任何字节序列都可编码。GPT-2使用50,257个token（256字节 + 50,000次合并 + 1个特殊token）。
+      </p>
+      <p>
+        <strong>Unigram。</strong>
+        从巨大词表开始。为每个token分配unigram概率。迭代剪枝移除后对语料库对数似然增加最少的token。推理时是概率性的：可以采样不同的分词结果（通过子词正则化用于数据增强）。T5、mBART、ALBERT、XLNet、Gemma使用。
+      </p>
+      <p>
+        <strong>WordPiece。</strong>
+        合并最大化训练语料库似然的词对而非原始频率。BERT、DistilBERT、ELECTRA使用。
+      </p>
+      <p>
+        <strong>SentencePiece vs tiktoken。</strong>
+        SentencePiece是直接在原始Unicode文本上<em>训练</em>词表（BPE或Unigram）的库，将空格编码为
+        <code>▁</code>。tiktoken是OpenAI针对预构建词表的快速<em>编码器</em>；它不训练。
+      </p>
+      <p>经验法则：</p>
+      <ul>
+        <li><strong>训练新词表：</strong> SentencePiece（多语言，无预分词）或HF Tokenizers。</li>
+        <li><strong>针对GPT词表的快速推理：</strong> tiktoken（cl100k_base、o200k_base）。</li>
+        <li><strong>两者兼顾：</strong> HF Tokenizers — 一个库，训练 + 服务。</li>
+      </ul>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1从零构建bpe"><a href="#步骤-1从零构建bpe">步骤 1：从零构建BPE</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> collections </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Counter</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> train_bpe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(corpus, num_merges):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    vocab </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">tuple</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(word) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"&#x3C;/w>"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,): count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> word, count </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> corpus.items()}</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    merges </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(num_merges):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pairs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> Counter()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> symbols, freq </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vocab.items():</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a, b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> zip</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(symbols, symbols[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:]):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                pairs[(a, b)] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> freq</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> not</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pairs:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            break</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        best </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> pairs.most_common(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">][</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        merges.append(best)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        new_vocab </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {}</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> symbols, freq </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> vocab.items():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            new_symbols </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(symbols):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(symbols) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> symbols[i] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> symbols[i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    new_symbols.append(best[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> best[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    new_symbols.append(symbols[i])</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            new_vocab[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">tuple</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(new_symbols)] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> freq</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        vocab </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> new_vocab</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> merges</span></span></code></pre>
+      <p>
+        三个事实。<code>&#x3C;/w></code>
+        标记词尾，所以”low”（后缀）和”lower”（前缀）保持不同。频率加权使高频对早期胜出。合并列表有序
+        — 推理按训练顺序应用合并。
+      </p>
+      <h3 id="步骤-2用学到的合并编码">
+        <a href="#步骤-2用学到的合并编码">步骤 2：用学到的合并编码</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> encode_bpe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(word, merges):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    symbols </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> list</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(word) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"&#x3C;/w>"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a, b </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> merges:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        while</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">&#x3C;</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(symbols) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> symbols[i] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">and</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> symbols[i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                symbols </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> symbols[:i] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> b] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> symbols[i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                i </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> symbols</span></span></code></pre>
+      <p>
+        朴素O(n·|merges|)。生产实现（tiktoken、HF
+        Tokenizers）使用带优先队列的合并排名查找，近线性时间运行。
+      </p>
+      <h3 id="步骤-3实践中的sentencepiece">
+        <a href="#步骤-3实践中的sentencepiece">步骤 3：实践中的SentencePiece</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sentencepiece </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> spm</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">spm.SentencePieceTrainer.train(</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    input</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"corpus.txt"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    model_prefix</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my_tokenizer"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    vocab_size</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">8000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    model_type</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"bpe"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    character_coverage</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.9995</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    normalization_rule_name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"nmt_nfkc"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">sp </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> spm.SentencePieceProcessor(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">model_file</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"my_tokenizer.model"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(sp.encode(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"untokenizable"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">out_type</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">str</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span></code></pre>
+      <p>
+        注意：无需预分词，空格编码为 <code>▁</code>，<code>character_coverage</code>
+        控制罕见字符保留vs映射到 <code>&#x3C;unk></code> 的激进程度。
+      </p>
+      <h3 id="步骤-4openai兼容词表的tiktoken">
+        <a href="#步骤-4openai兼容词表的tiktoken">步骤 4：OpenAI兼容词表的tiktoken</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tiktoken</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">enc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> tiktoken.get_encoding(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"o200k_base"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(enc.encode(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"untokenizable"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(enc.encode(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"Hello, world!"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)))</span></span></code></pre>
+      <p>
+        仅编码。快速（Rust后端）。与GPT-4/5分词精确匹配，用于字节计数、成本估算、上下文窗口预算。
+      </p>
+      <h2 id="2026年仍在出现的陷阱"><a href="#2026年仍在出现的陷阱">2026年仍在出现的陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>分词器漂移。</strong> 在词表A上训练，在词表B上部署。Token
+          ID不同；模型输出垃圾。在CI中检查 <code>tokenizer.json</code> 哈希。
+        </li>
+        <li>
+          <strong>空格歧义。</strong> BPE “hello” vs ” hello” 产生不同token。始终显式指定
+          <code>add_special_tokens</code> 和 <code>add_prefix_space</code>。
+        </li>
+        <li>
+          <strong>多语言训练不足。</strong>
+          英语为主的语料库产生的词表将非拉丁文字拆分为5-10倍更多token。日语/阿拉伯语在GPT-3.5上的相同提示成本高5-10倍。o200k_base部分修复了这个问题。
+        </li>
+        <li><strong>Emoji拆分。</strong> 单个emoji可能占5个token。预算上下文时检查emoji处理。</li>
+      </ul>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>2026年技术栈：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>情况</th>
+            <th>选择</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>从零训练单语言模型</td>
+            <td>HF Tokenizers (BPE)</td>
+          </tr>
+          <tr>
+            <td>从零训练多语言模型</td>
+            <td>SentencePiece (Unigram, <code>character_coverage=0.9995</code>)</td>
+          </tr>
+          <tr>
+            <td>服务OpenAI兼容API</td>
+            <td>tiktoken (<code>o200k_base</code> 用于GPT-4+)</td>
+          </tr>
+          <tr>
+            <td>领域特定词表（代码、数学、蛋白质）</td>
+            <td>在领域语料上训练自定义BPE，与基础词表合并</td>
+          </tr>
+          <tr>
+            <td>边缘推理，小模型</td>
+            <td>Unigram（更小词表效果更好）</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        词表大小是扩展决策，不是常数。粗略启发式：&#x3C;1B参数32k，1-10B参数50-100k，多语言/前沿200k+。
+      </p>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>将结果保存为 <code>outputs/skill-bpe-vs-wordpiece.md</code>。</p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong>简单。</strong> 在微型语料上训练500合并BPE。编码3个<span
+            class="term-tip"
+            data-term="保留"
+            data-module="github"
+            data-def="保留"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">保留</abbr></span
+          >词。<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >少产生恰好1个token vs >1个？
+        </li>
+        <li>
+          <strong>中等。</strong> 在100个英语Wikipedia句<span
+            class="term-tip"
+            data-term="子"
+            data-module="cpp"
+            data-def="子"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">子</abbr></span
+          >上<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >
+          <code>cl100k_base</code>、<code>o200k_base</code> 和你<span
+            class="term-tip"
+            data-term="训练"
+            data-module="github"
+            data-def="培训"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">训练</abbr></span
+          >的32k词表SentencePiece BPE的<span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >计数。<span
+            class="term-tip"
+            data-term="报告"
+            data-module="github"
+            data-def="报告"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">报告</abbr></span
+          >每个的<span
+            class="term-tip"
+            data-term="压缩"
+            data-module="html5"
+            data-def="GZIP、Brotli 资源压缩"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">压缩</abbr></span
+          >比。
+        </li>
+        <li>
+          <strong>困难。</strong> 用BPE、Unigram和WordPiece在相同语料上<span
+            class="term-tip"
+            data-term="训练"
+            data-module="github"
+            data-def="培训"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">训练</abbr></span
+          >。在小型情感<span
+            class="term-tip"
+            data-term="分类"
+            data-module="vue3"
+            data-def="分组和组织"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分类</abbr></span
+          >器上使用每个时测量下游准确<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >。<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >差异是否超过1个F1点？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>BPE</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="字节"
+                data-module="c"
+                data-def="8 位组成的数据单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字节</abbr></span
+              >对<span
+                class="term-tip"
+                data-term="编码"
+                data-module="cpp"
+                data-def="编写代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编码</abbr></span
+              >
+            </td>
+            <td>
+              贪心<span
+                class="term-tip"
+                data-term="合并"
+                data-module="github"
+                data-def="整合不同分支的更改"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">合并</abbr></span
+              >最频繁<span
+                class="term-tip"
+                data-term="字符"
+                data-module="c"
+                data-def="单个字符，用 &#x60;char&#x60; 类型表示"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字符</abbr></span
+              >对直到达到<span
+                class="term-tip"
+                data-term="目标"
+                data-module="cpp"
+                data-def="目标"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目标</abbr></span
+              >词<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >大小。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="字节"
+                data-module="c"
+                data-def="8 位组成的数据单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字节</abbr></span
+              >级BPE
+            </td>
+            <td>
+              永远没有未知<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+            </td>
+            <td>
+              在原始256字<span
+                class="term-tip"
+                data-term="节"
+                data-module="html5"
+                data-def="&#x60;<section>&#x60; 内容区块"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">节</abbr></span
+              >上的BPE；GPT-2 / Llama使用。
+            </td>
+          </tr>
+          <tr>
+            <td>Unigram</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="概率"
+                data-module="github"
+                data-def="概率"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">概率</abbr></span
+              >分词器
+            </td>
+            <td>
+              使用<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >数<span
+                class="term-tip"
+                data-term="似然"
+                data-module="github"
+                data-def="似然"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">似然</abbr></span
+              >从大候选集剪枝；T5、Gemma使用。
+            </td>
+          </tr>
+          <tr>
+            <td>SentencePiece</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="处理"
+                data-module="cpp"
+                data-def="处理"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">处理</abbr></span
+              >空<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >的那个
+            </td>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="原始"
+                data-module="vue3"
+                data-def="原始的、最初的"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">原始</abbr></span
+              >文本上训练BPE/Unigram的<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >；空<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >编码为 <code>▁</code>。
+            </td>
+          </tr>
+          <tr>
+            <td>tiktoken</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="快速"
+                data-module="github"
+                data-def="快速的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">快速</abbr></span
+              >的那个
+            </td>
+            <td>
+              OpenAI的Rust后端BPE编码器，用于预构建词<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >。不<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="合并"
+                data-module="github"
+                data-def="整合不同分支的更改"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">合并</abbr></span
+              >列<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >
+            </td>
+            <td>
+              魔法数<span
+                class="term-tip"
+                data-term="字"
+                data-module="c"
+                data-def="CPU一次处理的数据单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字</abbr></span
+              >
+            </td>
+            <td>
+              <code>(a, b) → ab</code>
+              <span
+                class="term-tip"
+                data-term="合并"
+                data-module="github"
+                data-def="整合不同分支的更改"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">合并</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="有序列表"
+                data-module="markdown"
+                data-def="有序列表使用数字加句点创建带顺序编号的列表。"
+                data-slug="markdown/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">有序列表</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >按顺序<span
+                class="term-tip"
+                data-term="应用"
+                data-module="github"
+                data-def="GitHub 应用程序"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">应用</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="字符"
+                data-module="c"
+                data-def="单个字符，用 &#x60;char&#x60; 类型表示"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字符</abbr></span
+              >覆盖
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >罕见才算太罕见？
+            </td>
+            <td>
+              分词器必须<span
+                class="term-tip"
+                data-term="覆盖"
+                data-module="c"
+                data-def="测试覆盖的代码范围"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">覆盖</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >语料中<span
+                class="term-tip"
+                data-term="字符"
+                data-module="c"
+                data-def="单个字符，用 &#x60;char&#x60; 类型表示"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字符</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="比例"
+                data-module="vue3"
+                data-def="缩放比例"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">比例</abbr></span
+              >；约0.9995典型。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/1508.07909"
+            >Sennrich, Haddow, Birch (2015). Neural Machine Translation of Rare Words with Subword
+            Units</a
+          >
+          — BPE论文。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1804.10959"
+            >Kudo (2018). Subword Regularization with Unigram Language Model</a
+          >
+          — Unigram论文。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1808.06226">Kudo, Richardson (2018). SentencePiece</a> —
+          <span
+            class="term-tip"
+            data-term="库"
+            data-module="cpp"
+            data-def="可复用的代码集合"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">库</abbr></span
+          >论文。
+        </li>
+        <li>
+          <a href="https://huggingface.co/docs/transformers/tokenizer_summary"
+            >Hugging Face — 分词器摘要</a
+          >
+          — 简洁<span
+            class="term-tip"
+            data-term="参考"
+            data-module="github"
+            data-def="参考"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参考</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://github.com/openai/tiktoken">OpenAI tiktoken仓库</a> —
+          <span
+            class="term-tip"
+            data-term="手册"
+            data-module="github"
+            data-def="手册"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">手册</abbr></span
+          >
+          +
+          <span
+            class="term-tip"
+            data-term="编码"
+            data-module="cpp"
+            data-def="编写代码"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">编码</abbr></span
+          >列<span
+            class="term-tip"
+            data-term="表"
+            data-module="cpp"
+            data-def="表"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">表</abbr></span
+          >。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

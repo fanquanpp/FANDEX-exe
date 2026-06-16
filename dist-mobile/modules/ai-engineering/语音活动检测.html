@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>语音活动检测</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">语音活动检测</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">VAD</span><span class="doc-tag">轮次检测</span
+          ><span class="doc-tag">Silero</span><span class="doc-tag">端点检测</span
+          ><span class="doc-tag">语音活动检测</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解VAD级联、轮次检测和刷新技巧的完整技术栈</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="语音活动检测与轮次切换--silerocobra与刷新技巧">
+        <a href="#语音活动检测与轮次切换--silerocobra与刷新技巧"
+          >语音活动检测与轮次切换 — Silero、Cobra与刷新技巧</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          每个语音代理的生死取决于两个决策：用户现在在说话吗？他们说完了没有？VAD回答第一个。轮次检测（VAD
+          + 静音挂起 + 语义端点模型）回答第二个。任何一个出错，你的助手要么打断用户，要么永远不停。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 6
+        · 11（实时音频），Phase 6 · 12（语音助手） <strong>时间:</strong> ~45 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>语音代理在每个20 ms块上做三个不同决策：</p>
+      <ol>
+        <li><strong>这一帧是语音吗？</strong> — VAD。二值，逐帧。</li>
+        <li><strong>用户是否开始了新的话语？</strong> — 起始检测。</li>
+        <li><strong>用户是否说完了？</strong> — 端点检测（轮次结束）。</li>
+      </ol>
+      <p>
+        朴素答案（能量阈值）在任何噪声下都会失败 — 交通、键盘、人群嘈杂。2026年的答案：Silero
+        VAD（开源，深度学习）+ 轮次检测模型（语义端点）+ VAD校准的静音挂起。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="三层vad级联"><a href="#三层vad级联">三层VAD级联</a></h3>
+      <p>
+        <strong>第1层：能量门。</strong> 最便宜。-40
+        dBFS阈值RMS。过滤明显静音但任何高于阈值的噪声都会触发。
+      </p>
+      <p>
+        <strong>第2层：Silero VAD</strong
+        >（2020-2026，MIT）。1M参数。在6000+语言上训练。在单个CPU线程上每30 ms块约1 ms运行。5%
+        FPR下87.7% TPR。开源默认。
+      </p>
+      <p>
+        <strong>第3层：语义轮次检测器。</strong>
+        LiveKit的轮次检测模型（2024-2026）或你自己的小型分类器。区分”句中停顿”和”说完了”。使用语言上下文（语调
+        + 近期词语），不仅仅是静音。
+      </p>
+      <h3 id="关键参数及其默认值"><a href="#关键参数及其默认值">关键参数及其默认值</a></h3>
+      <ul>
+        <li>
+          <strong>阈值。</strong> Silero输出概率；> 0.5（默认）或 > 0.3（敏感）分类为语音。更低阈值
+          = 更少首词截断，更多误触发。
+        </li>
+        <li><strong>最小语音持续时间。</strong> 拒绝短于250 ms的语音 — 通常是咳嗽或椅子噪声。</li>
+        <li>
+          <strong>静音挂起（端点检测）。</strong> VAD回到0后，等待500-800 ms再宣布轮次结束。太短 →
+          打断用户。太长 → 感觉迟钝。
+        </li>
+        <li><strong>预滚动缓冲。</strong> 保留VAD触发前300-500 ms的音频。防止”hey”被截断。</li>
+      </ul>
+      <h3 id="刷新技巧kyutai-2025"><a href="#刷新技巧kyutai-2025">刷新技巧（Kyutai 2025）</a></h3>
+      <p>
+        流式STT模型有前瞻延迟（Kyutai STT-1B为500 ms，STT-2.6B为2.5
+        s）。通常你需要在语音结束后等那么久才能获得转录。刷新技巧：当VAD触发语音结束时，<strong>向STT发送刷新信号</strong>强制立即输出。STT以约4倍实时速度处理，所以500
+        ms缓冲在约125 ms内完成。
+      </p>
+      <p>端到端：125 ms VAD + 刷新STT = 对话级延迟。</p>
+      <h3 id="2026年vad比较"><a href="#2026年vad比较">2026年VAD比较</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>VAD</th>
+            <th>5% FPR下TPR</th>
+            <th>延迟</th>
+            <th>许可</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>WebRTC VAD (Google, 2013)</td>
+            <td>50.0%</td>
+            <td>30 ms</td>
+            <td>BSD</td>
+          </tr>
+          <tr>
+            <td>Silero VAD (2020-2026)</td>
+            <td>87.7%</td>
+            <td>~1 ms</td>
+            <td>MIT</td>
+          </tr>
+          <tr>
+            <td>Cobra VAD (Picovoice)</td>
+            <td>98.9%</td>
+            <td>~1 ms</td>
+            <td>商业</td>
+          </tr>
+          <tr>
+            <td>pyannote分割</td>
+            <td>95%</td>
+            <td>~10 ms</td>
+            <td>MIT-ish</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Silero是正确的默认选择。Cobra是合规/准确性升级。纯能量VAD在2026年生产中没有位置。</p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1能量门"><a href="#步骤-1能量门">步骤 1：能量门</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> energy_vad</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(chunk, threshold_dbfs</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">40.0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    rms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">sum</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chunk) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(chunk)) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">**</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.5</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    dbfs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 20.0</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.log10(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">max</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(rms, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1e-10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dbfs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> threshold_dbfs</span></span></code></pre>
+      <h3 id="步骤-2python中的silero-vad">
+        <a href="#步骤-2python中的silero-vad">步骤 2：Python中的Silero VAD</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> silero_vad </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> load_silero_vad, get_speech_timestamps</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">vad </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> load_silero_vad()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">audio </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.tensor(waveform_16k, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dtype</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">torch.float32)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">segments </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> get_speech_timestamps(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    audio, vad, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">sampling_rate</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">16000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    threshold</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    min_speech_duration_ms</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">250</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    min_silence_duration_ms</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">500</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">    speech_pad_ms</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">300</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> segments:</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    print</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">f</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'start'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">16000</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.2f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">s - </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">{</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">s[</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'end'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">16000</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">:.2f</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">}</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">s"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="步骤-3轮次结束状态机"><a href="#步骤-3轮次结束状态机">步骤 3：轮次结束状态机</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> TurnDetector</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, silence_hangover_ms</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">500</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, min_speech_ms</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">250</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "idle"</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.speech_ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.silence_ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.silence_hangover_ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> silence_hangover_ms</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.min_speech_ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> min_speech_ms</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> update</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, is_speech, chunk_ms</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">20</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> is_speech:</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">            self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.speech_ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chunk_ms</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">            self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.silence_ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "idle"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> and</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.speech_ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.min_speech_ms:</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">                self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "speaking"</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                return</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "START"</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">            self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.silence_ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> chunk_ms</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "speaking"</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> and</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.silence_ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.silence_hangover_ms:</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">                self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.state </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "idle"</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">                self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.speech_ms </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                return</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "END"</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> None</span></span></code></pre>
+      <h3 id="步骤-4刷新技巧骨架"><a href="#步骤-4刷新技巧骨架">步骤 4：刷新技巧骨架</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> flush_on_end</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(stt_client, audio_buffer):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    stt_client.send_audio(audio_buffer)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    stt_client.send_flush()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> stt_client.recv_transcript(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">timeout_ms</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">150</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>
+        STT（Kyutai、Deepgram、AssemblyAI）必须支持刷新才能工作。Whisper streaming不支持 —
+        它是基于块的，总是等待块。
+      </p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>VAD选择</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>开源、快速、通用</td>
+            <td>Silero VAD</td>
+          </tr>
+          <tr>
+            <td>商业呼叫中心</td>
+            <td>Cobra VAD</td>
+          </tr>
+          <tr>
+            <td>设备端（手机）</td>
+            <td>Silero VAD ONNX</td>
+          </tr>
+          <tr>
+            <td>研究/说话人分离</td>
+            <td>pyannote分割</td>
+          </tr>
+          <tr>
+            <td>零依赖后备</td>
+            <td>WebRTC VAD (遗留)</td>
+          </tr>
+          <tr>
+            <td>需要轮次结束质量</td>
+            <td>Silero + LiveKit轮次检测器分层</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>经验法则：除非真的没有其他选择，否则永远不要发布纯能量VAD。</p>
+      <h2 id="陷阱"><a href="#陷阱">陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>固定阈值。</strong> 安静时有效，嘈杂时失败。要么在设备上校准，要么切换到Silero。
+        </li>
+        <li><strong>静音挂起太短。</strong> 代理在句中打断用户。500-800 ms是对话语音的最佳点。</li>
+        <li><strong>挂起太长。</strong> 感觉迟钝。与目标用户A/B测试。</li>
+        <li><strong>没有预滚动缓冲。</strong> 用户音频前200-300 ms丢失。始终保留滚动预滚动。</li>
+        <li>
+          <strong>忽略语义端点。</strong> “嗯，让我想想…”<span
+            class="term-tip"
+            data-term="包"
+            data-module="go"
+            data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+            data-slug="go/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">包</abbr></span
+          >含长停顿。<span
+            class="term-tip"
+            data-term="用户"
+            data-module="cpp"
+            data-def="用户"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">用户</abbr></span
+          >讨厌在思考中被打断。使用LiveKit的<span
+            class="term-tip"
+            data-term="轮"
+            data-module="github"
+            data-def="轮"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">轮</abbr></span
+          >次<span
+            class="term-tip"
+            data-term="检测"
+            data-module="github"
+            data-def="检测"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检测</abbr></span
+          >器或类似方案。
+        </li>
+      </ul>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>
+        将<span
+          class="term-tip"
+          data-term="结果"
+          data-module="c"
+          data-def="函数返回的值"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结果</abbr></span
+        >保存为 <code>outputs/skill-vad-tuner.md</code>。为<span
+          class="term-tip"
+          data-term="工作"
+          data-module="cpp"
+          data-def="工作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">工作</abbr></span
+        >负载选择VAD模型、阈<span
+          class="term-tip"
+          data-term="值"
+          data-module="cpp"
+          data-def="值"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">值</abbr></span
+        >、挂起、预<span
+          class="term-tip"
+          data-term="滚动"
+          data-module="vue3"
+          data-def="滚动行为"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">滚动</abbr></span
+        >和<span
+          class="term-tip"
+          data-term="轮"
+          data-module="github"
+          data-def="轮"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">轮</abbr></span
+        >次<span
+          class="term-tip"
+          data-term="检测"
+          data-module="github"
+          data-def="检测"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">检测</abbr></span
+        >策略。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >。</strong
+          >
+          运<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >
+          <code>code/main.py</code>。它<span
+            class="term-tip"
+            data-term="模拟"
+            data-module="cpp"
+            data-def="模拟"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模拟</abbr></span
+          >一个语音 + 静音 + 语音 + 咳嗽<span
+            class="term-tip"
+            data-term="序列"
+            data-module="github"
+            data-def="序列"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">序列</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="测试"
+            data-module="cpp"
+            data-def="测试"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">测试</abbr></span
+          >三层VAD。
+        </li>
+        <li>
+          <strong>中等。</strong> 安装 <code>silero-vad</code>，处理5分钟录音，调整阈<span
+            class="term-tip"
+            data-term="值"
+            data-module="cpp"
+            data-def="值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">值</abbr></span
+          >以<span
+            class="term-tip"
+            data-term="最小"
+            data-module="github"
+            data-def="最小的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">最小</abbr></span
+          >化首词<span
+            class="term-tip"
+            data-term="截断"
+            data-module="vue3"
+            data-def="截断文本"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">截断</abbr></span
+          >和误<span
+            class="term-tip"
+            data-term="触发"
+            data-module="javascript"
+            data-def="导致事件发生"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">触发</abbr></span
+          >。<span
+            class="term-tip"
+            data-term="报告"
+            data-module="github"
+            data-def="报告"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">报告</abbr></span
+          >精确<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >/召回<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>困难。</strong> 构建迷你<span
+            class="term-tip"
+            data-term="轮"
+            data-module="github"
+            data-def="轮"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">轮</abbr></span
+          >次<span
+            class="term-tip"
+            data-term="检测"
+            data-module="github"
+            data-def="检测"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检测</abbr></span
+          >器：Silero VAD + 最近10个词<span
+            class="term-tip"
+            data-term="嵌入"
+            data-module="agent"
+            data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">嵌入</abbr></span
+          >上的3层MLP（使用sentence-transformers）。在手标<span
+            class="term-tip"
+            data-term="轮"
+            data-module="github"
+            data-def="轮"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">轮</abbr></span
+          >次结束数据集上<span
+            class="term-tip"
+            data-term="训练"
+            data-module="github"
+            data-def="培训"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">训练</abbr></span
+          >。比纯Silero高10% F1。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>VAD</td>
+            <td>
+              语音<span
+                class="term-tip"
+                data-term="检测"
+                data-module="github"
+                data-def="检测"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检测</abbr></span
+              >器
+            </td>
+            <td>
+              逐帧二<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >：这是语音吗？
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="轮"
+                data-module="github"
+                data-def="轮"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轮</abbr></span
+              >次<span
+                class="term-tip"
+                data-term="检测"
+                data-module="github"
+                data-def="检测"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检测</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="端点"
+                data-module="cpp"
+                data-def="端点"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">端点</abbr></span
+              >检测
+            </td>
+            <td>
+              VAD + 静音挂起 +
+              <span
+                class="term-tip"
+                data-term="语义"
+                data-module="cpp"
+                data-def="语义"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语义</abbr></span
+              >端<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>静音挂起</td>
+            <td>语音后等待</td>
+            <td>
+              宣布<span
+                class="term-tip"
+                data-term="轮"
+                data-module="github"
+                data-def="轮"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轮</abbr></span
+              >次结束前等待的<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >；500-800 ms。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              预<span
+                class="term-tip"
+                data-term="滚动"
+                data-module="vue3"
+                data-def="滚动行为"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">滚动</abbr></span
+              >
+            </td>
+            <td>语音前缓冲</td>
+            <td>保留VAD触发前300-500 ms音频。</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="刷新"
+                data-module="cpp"
+                data-def="刷新"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">刷新</abbr></span
+              >技巧
+            </td>
+            <td>Kyutai技巧</td>
+            <td>VAD → 刷新STT → 125 ms而非500 ms延迟。</td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="语义"
+                data-module="cpp"
+                data-def="语义"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语义</abbr></span
+              >端<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >
+            </td>
+            <td>”他们是否打算停？“</td>
+            <td>
+              查看词语而非仅静音的ML分<span
+                class="term-tip"
+                data-term="类"
+                data-module="cpp"
+                data-def="定义对象的结构和行为"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类</abbr></span
+              >器。
+            </td>
+          </tr>
+          <tr>
+            <td>5% FPR下TPR</td>
+            <td>ROC点</td>
+            <td>
+              标准VAD基准；Silero 87.7%，<span
+                class="term-tip"
+                data-term="WebRTC"
+                data-module="html5"
+                data-def="Web 实时通信，支持浏览器间音视频和数据点对点传输"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">WebRTC</abbr></span
+              >
+              50%。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://github.com/snakers4/silero-vad">Silero VAD</a> —
+          <span
+            class="term-tip"
+            data-term="参考"
+            data-module="github"
+            data-def="参考"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参考</abbr></span
+          >开源VAD。
+        </li>
+        <li>
+          <a href="https://picovoice.ai/products/cobra/">Picovoice Cobra VAD</a> — 商业准确<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >领先者。
+        </li>
+        <li>
+          <a href="https://kyutai.org/stt">Kyutai — Unmute + 刷新技巧</a> — 亚200 ms工程技巧。
+        </li>
+        <li>
+          <a href="https://docs.livekit.io/agents/logic/turns/">LiveKit — 轮次检测</a> —
+          <span
+            class="term-tip"
+            data-term="生产"
+            data-module="github"
+            data-def="生产"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产</abbr></span
+          >中的<span
+            class="term-tip"
+            data-term="语义"
+            data-module="cpp"
+            data-def="语义"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">语义</abbr></span
+          >端<span
+            class="term-tip"
+            data-term="点"
+            data-module="github"
+            data-def="点"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">点</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://webrtc.googlesource.com/src/">WebRTC VAD</a> — 遗留<span
+            class="term-tip"
+            data-term="基线"
+            data-module="html5"
+            data-def="文本基线对齐线"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">基线</abbr></span
+          >。
+        </li>
+        <li>
+          <a href="https://github.com/pyannote/pyannote-audio">pyannote分割</a> —
+          <span
+            class="term-tip"
+            data-term="分离"
+            data-module="github"
+            data-def="分离"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分离</abbr></span
+          >级<span
+            class="term-tip"
+            data-term="分割"
+            data-module="github"
+            data-def="分割"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分割</abbr></span
+          >。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

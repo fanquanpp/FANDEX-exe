@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>结构化输出 — JSON Schema、Pydantic、Zod、约束解码</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">结构化输出 — JSON Schema、Pydantic、Zod、约束解码</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            15 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">结构化输出</span><span class="doc-tag">JSON Schema</span
+          ><span class="doc-tag">Pydantic</span><span class="doc-tag">Zod</span
+          ><span class="doc-tag">约束解码</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          掌握约束解码保证JSON Schema合规的机制，处理拒绝、解析错误和模式违反三种失败模式
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="结构化输出--json-schemapydanticzod约束解码">
+        <a href="#结构化输出--json-schemapydanticzod约束解码"
+          >结构化输出 — JSON Schema、Pydantic、Zod、约束解码</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          “请模型友好地返回JSON”在前沿模型上也有5%到15%的失败率。结构化输出通过约束解码弥合这一差距：模型在字面上被阻止发出违反模式的token。OpenAI的严格模式、Anthropic的模式类型化工具使用、Gemini的
+          <code>responseSchema</code>、Pydantic AI的 <code>output_type</code> 和Zod的
+          <code>.parse</code>
+          是同一理念的五种表面形式。本课构建模式验证器和严格模式契约，学习者将在每个生产提取管道中使用。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库，JSON Schema
+        2020-12子集） <strong>前置条件：</strong> Phase 13 · 02（函数调用深入）
+        <strong>时间：</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>
+          使用正确的约束（enum、min/max、required、pattern）为提取目标编写JSON Schema 2020-12。
+        </li>
+        <li>解释为什么严格模式和约束解码给出与”生成后验证”不同的保证。</li>
+        <li>区分三种失败模式：解析错误、模式违反、模型拒绝。</li>
+        <li>发布带有类型化修复和类型化拒绝处理的提取管道。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        阅读采购订单邮件的Agent需要将自由文本转换为
+        <code>{customer, line_items, total_usd}</code>。三种方法。
+      </p>
+      <p>
+        <strong>方法一：提示返回JSON。</strong>
+        “以JSON回复，包含字段customer、line_items、total_usd。“在前沿模型上85%到95%的时间有效。以六种方式失败：缺少大括号、尾随逗号、错误类型、幻觉字段、在token限制处截断、泄漏散文如”这是你的JSON：”。
+      </p>
+      <p>
+        <strong>方法二：生成后验证。</strong> 自由生成，解析，根据模式验证，失败时重试。可靠但昂贵 —
+        你为每次重试付费，截断bug每次发生花费一个额外轮次。
+      </p>
+      <p>
+        <strong>方法三：约束解码。</strong>
+        提供商在解码时强制模式。无效token从采样分布中被屏蔽。输出保证解析和验证。失败坍缩为一种模式：拒绝（模型决定输入不适合模式）。
+      </p>
+      <p>每个2026年前沿提供商都提供某种形式的方法三。</p>
+      <ul>
+        <li>
+          <strong>OpenAI。</strong>
+          <code>response_format: {type: "json_schema", strict: true}</code> 加上响应中的
+          <code>refusal</code>。
+        </li>
+        <li>
+          <strong>Anthropic。</strong> <code>tool_use</code> 输入上的模式强制；<code
+            >stop_reason: "refusal"</code
+          >
+          不存在，但没有工具调用的 <code>end_turn</code> 是信号。
+        </li>
+        <li>
+          <strong>Gemini。</strong> 请求级
+          <code>responseSchema</code>；2026年Gemini为选定类型提供token级语法约束。
+        </li>
+        <li>
+          <strong>Pydantic AI。</strong> <code>output_type=InvoiceModel</code> 发出类型化为
+          <code>InvoiceModel</code> 的结构化 <code>RunResult</code>。
+        </li>
+        <li>
+          <strong>Zod（TypeScript）。</strong> 运行时解析器，根据Zod模式验证提供商输出；与OpenAI的
+          <code>beta.chat.completions.parse</code> 配对。
+        </li>
+      </ul>
+      <p>共同线索：声明一次模式，端到端强制。</p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="json-schema-2020-12--通用语言">
+        <a href="#json-schema-2020-12--通用语言">JSON Schema 2020-12 — 通用语言</a>
+      </h3>
+      <p>每个提供商都接受JSON Schema 2020-12。你最常用的构造：</p>
+      <ul>
+        <li>
+          <code>type</code
+          >：<code>object</code>、<code>array</code>、<code>string</code>、<code>number</code>、<code>integer</code>、<code>boolean</code>、<code
+            >null</code
+          >
+          之一。
+        </li>
+        <li><code>properties</code>：字段名到子模式的映射。</li>
+        <li><code>required</code>：必须出现的字段名列表。</li>
+        <li><code>enum</code>：允许值的封闭集合。</li>
+        <li>
+          <code>minimum</code> / <code>maximum</code>（数字），<code>minLength</code> /
+          <code>maxLength</code> / <code>pattern</code>（字符串）。
+        </li>
+        <li><code>items</code>：应用于每个数组元素的子模式。</li>
+        <li>
+          <code>additionalProperties</code>：<code>false</code> 禁止额外字段（默认值因模式而异）。
+        </li>
+      </ul>
+      <p>
+        OpenAI严格模式添加三个要求：每个属性必须列在 <code>required</code> 中，到处
+        <code>additionalProperties: false</code>，无未解析的
+        <code>$ref</code>。如果你违反这些，API在请求时返回400。
+      </p>
+      <h3 id="pydanticpython绑定"><a href="#pydanticpython绑定">Pydantic，Python绑定</a></h3>
+      <p>
+        Pydantic v2通过 <code>model_json_schema()</code> 从数据类形状的模型生成JSON Schema。Pydantic
+        AI包装了这一点，所以你写：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> Invoice</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BaseModel</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    customer: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">str</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    line_items: list[LineItem]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    total_usd: Decimal</span></span></code></pre>
+      <p>
+        Agent框架将模式翻译为OpenAI严格模式、Anthropic <code>input_schema</code> 或Gemini
+        <code>responseSchema</code>。模型输出作为类型化的
+        <code>Invoice</code> 实例返回。验证错误引发带有类型化错误路径的
+        <code>ValidationError</code>。
+      </p>
+      <h3 id="zodtypescript绑定"><a href="#zodtypescript绑定">Zod，TypeScript绑定</a></h3>
+      <p>
+        Zod（<code>z.object({customer: z.string(), ...})</code>）是TS等价物。OpenAI的Node SDK暴露
+        <code>zodResponseFormat(Invoice)</code>，翻译为API的JSON Schema负载。
+      </p>
+      <h3 id="拒绝"><a href="#拒绝">拒绝</a></h3>
+      <p>
+        严格模式不能强制模型回答。如果输入不适合模式（“邮件是一首诗，不是发票”），模型发出包含原因的
+        <code>refusal</code>
+        字段。你的代码必须将其作为一等结果处理，而不是失败。拒绝也作为安全信号有用：被要求从受保护内容邮件中提取信用卡号的模型返回附带安全原因的拒绝。
+      </p>
+      <h3 id="开放中的约束解码"><a href="#开放中的约束解码">开放中的约束解码</a></h3>
+      <p>开放权重实现使用三种技术。</p>
+      <ol>
+        <li>
+          <strong>基于语法的解码</strong
+          >（<code>outlines</code>、<code>guidance</code>、<code>lm-format-enforcer</code>）：从模式构建确定性有限自动机；在每一步，屏蔽会违反FSM的token的logits。
+        </li>
+        <li>
+          <strong>带JSON解析器的Logit屏蔽</strong
+          >：与模型同步运行流式JSON解析器；在每一步，计算有效下一token集合。
+        </li>
+        <li><strong>带验证器的推测解码</strong>：廉价草稿模型提出token，验证器强制模式。</li>
+      </ol>
+      <p>
+        商业提供商在幕后选择其中之一。2026年的最新技术对于短结构化输出比普通生成更快，对于长的大致相同速度。
+      </p>
+      <h3 id="三种失败模式"><a href="#三种失败模式">三种失败模式</a></h3>
+      <ol>
+        <li>
+          <strong>解析错误。</strong>
+          输出不是有效JSON。在严格模式下不可能发生。在非严格提供商上仍可能发生。
+        </li>
+        <li>
+          <strong>模式违反。</strong> 输出解析但违反模式。在严格模式下不可能发生。在之外很常见。
+        </li>
+        <li><strong>拒绝。</strong> 模型拒绝。必须作为类型化结果处理。</li>
+      </ol>
+      <h3 id="重试策略"><a href="#重试策略">重试策略</a></h3>
+      <p>当你在严格模式之外（Anthropic工具使用、非严格OpenAI、旧版Gemini）时，恢复模式是：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>generate -> parse -> validate -> if fail, inject error and retry, max 3x</span></span></code></pre>
+      <p>
+        一次重试通常足够。三次重试捕获弱模型的不稳定。超过三次是模式有问题的信号：模型无法为某些输入满足它，提示或模式需要修复。
+      </p>
+      <h3 id="小模型支持"><a href="#小模型支持">小模型支持</a></h3>
+      <p>
+        约束解码在小模型上有效。一个带语法强制的3B参数开放模型在结构化任务上优于带原始提示的70B参数模型。这是结构化输出对生产重要的主要原因：它将可靠性与模型大小解耦。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code> 提供标准库中最小的JSON Schema
+        2020-12验证器（类型、必需、枚举、最小/最大、模式、项目、additionalProperties）。它包装一个
+        <code>Invoice</code>
+        模式并通过验证器运行假LLM输出，演示解析错误、模式违反和拒绝路径。在生产中将假输出替换为任何提供商的真实响应。
+      </p>
+      <p>关注点：</p>
+      <ul>
+        <li>
+          验证器返回带有路径和消息的类型化
+          <code>[ValidationError]</code> 列表。这是你想要呈现给重试提示的形状。
+        </li>
+        <li>拒绝分支不重试。它记录并返回类型化拒绝。Phase 14 · 09使用拒绝作为安全信号。</li>
+        <li>
+          <code>additionalProperties: false</code>
+          检查在对抗性测试输入上触发，展示为什么严格模式关闭了幻觉字段的大门。
+        </li>
+      </ul>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        本课产生
+        <code>outputs/skill-structured-output-designer.md</code
+        >。给定一个自由文本提取目标（发票、支持工单、简历等），该技能生成兼容严格模式的JSON Schema
+        2020-12和镜像它的Pydantic模型，并带有类型化拒绝和重试处理存根。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            运行 <code>code/main.py</code>。添加第四个测试用例，其
+            <code>total_usd</code> 为负数。确认验证器用 <code>minimum</code> 约束路径拒绝它。
+          </p>
+        </li>
+        <li>
+          <p>
+            扩展验证器以支持带判别器的 <code>oneOf</code>。常见情况：<code>line_item</code>
+            是产品或服务，由
+            <code>kind</code> 标记。严格模式在这里有微妙的规则；查看OpenAI的结构化输出指南。
+          </p>
+        </li>
+        <li>
+          <p>
+            将相同的Invoice模式写成Pydantic BaseModel，并将
+            <code>model_json_schema()</code>
+            输出与你手写的模式比较。识别Pydantic默认设置而手写版本省略的一个字段。
+          </p>
+        </li>
+        <li>
+          <p>
+            测量拒绝率。构造十个不应可提取的输入（歌词、数学证明、空白邮件），并通过带严格模式的真实提供商运行它们。计算拒绝与幻觉输出的数量。这是你拒绝感知重试的基准真相。
+          </p>
+        </li>
+        <li>
+          <p>
+            从头到尾阅读OpenAI的结构化输出指南。识别它在严格模式中明确禁止而普通JSON
+            Schema允许的一个构造。然后设计一个非必要地使用该禁止构造的模式，并将其重构为严格兼容。
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们怎么说</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>JSON Schema 2020-12</td>
+            <td>”模式规范”</td>
+            <td>每个现代提供商使用的IETF草案模式方言</td>
+          </tr>
+          <tr>
+            <td>Strict mode</td>
+            <td>”保证模式”</td>
+            <td>
+              OpenAI标志，<span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >约束<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >强制模式
+            </td>
+          </tr>
+          <tr>
+            <td>Constrained decoding</td>
+            <td>”Logit屏蔽”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >时强制，屏蔽无效的下一<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Refusal</td>
+            <td>
+              ”模型<span
+                class="term-tip"
+                data-term="拒绝"
+                data-module="github"
+                data-def="拒绝"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">拒绝</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="输入"
+                data-module="c"
+                data-def="从外部获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输入</abbr></span
+              >不适合<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >时的<span
+                class="term-tip"
+                data-term="类型化"
+                data-module="cpp"
+                data-def="类型化"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型化</abbr></span
+              >结果
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Parse"
+                data-module="typescript"
+                data-def="解析代码为 AST"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Parse</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="error"
+                data-module="lua"
+                data-def="抛出错误的函数，&#x60;error(&#x22;message&#x22;, level)&#x60; 可指定错误层级"
+                data-slug="lua/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">error</abbr></span
+              >
+            </td>
+            <td>
+              ”无效<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >未<span
+                class="term-tip"
+                data-term="解析"
+                data-module="javascript"
+                data-def="将文本分解为 Token 的过程"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解析</abbr></span
+              >为<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="严格模式"
+                data-module="github"
+                data-def="严格模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">严格模式</abbr></span
+              >下不可能
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Schema"
+                data-module="typescript"
+                data-def="类型模式"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Schema</abbr></span
+              >
+              violation
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="错误"
+                data-module="cpp"
+                data-def="错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">错误</abbr></span
+              >形状”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="解析"
+                data-module="javascript"
+                data-def="将文本分解为 Token 的过程"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解析</abbr></span
+              >但违反<span
+                class="term-tip"
+                data-term="类型"
+                data-module="c"
+                data-def="数据的分类"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="必需"
+                data-module="vue3"
+                data-def="必须提供"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">必需</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="枚举"
+                data-module="c"
+                data-def="一组命名整数值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">枚举</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="范围"
+                data-module="c"
+                data-def="取值区间"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">范围</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>additionalProperties: false</code></td>
+            <td>
+              ”不<span
+                class="term-tip"
+                data-term="允许"
+                data-module="github"
+                data-def="允许"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">允许</abbr></span
+              >额外”
+            </td>
+            <td>
+              禁止<span
+                class="term-tip"
+                data-term="未知"
+                data-module="cpp"
+                data-def="未知"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">未知</abbr></span
+              >字<span
+                class="term-tip"
+                data-term="段"
+                data-module="vue3"
+                data-def="URL 的一段"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">段</abbr></span
+              >；OpenAI严<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >模式<span
+                class="term-tip"
+                data-term="要求"
+                data-module="github"
+                data-def="要求"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">要求</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Pydantic BaseModel</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="类型化"
+                data-module="cpp"
+                data-def="类型化"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型化</abbr></span
+              >输出”
+            </td>
+            <td>
+              发出和验证<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="Schema"
+                data-module="typescript"
+                data-def="类型模式"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Schema</abbr></span
+              >的Python类
+            </td>
+          </tr>
+          <tr>
+            <td>Zod schema</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="TypeScript"
+                data-module="typescript"
+                data-def="JavaScript 超集语言"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">TypeScript</abbr></span
+              >输出<span
+                class="term-tip"
+                data-term="类型"
+                data-module="c"
+                data-def="数据的分类"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型</abbr></span
+              >”
+            </td>
+            <td>
+              用于<span
+                class="term-tip"
+                data-term="提供"
+                data-module="github"
+                data-def="提供"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提供</abbr></span
+              >商<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >验证的TS运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >时<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Grammar enforcement</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="开放"
+                data-module="github"
+                data-def="正在活跃的 Issue 或 PR"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">开放</abbr></span
+              >权重<span
+                class="term-tip"
+                data-term="约束"
+                data-module="c"
+                data-def="运算符必须满足的条件"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">约束</abbr></span
+              >解码”
+            </td>
+            <td>基于FSM的logit屏蔽，如outlines/guidance</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://platform.openai.com/docs/guides/structured-outputs"
+            >OpenAI — Structured outputs</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="严格模式"
+            data-module="github"
+            data-def="严格模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">严格模式</abbr></span
+          >、<span
+            class="term-tip"
+            data-term="拒绝"
+            data-module="github"
+            data-def="拒绝"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">拒绝</abbr></span
+          >和<span
+            class="term-tip"
+            data-term="模式"
+            data-module="github"
+            data-def="模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模式</abbr></span
+          >要求
+        </li>
+        <li>
+          <a href="https://openai.com/index/introducing-structured-outputs-in-the-api/"
+            >OpenAI — Introducing structured outputs</a
+          >
+          — 2024年8月发布文章<span
+            class="term-tip"
+            data-term="解释"
+            data-module="github"
+            data-def="解释"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解释</abbr></span
+          >解码<span
+            class="term-tip"
+            data-term="保证"
+            data-module="github"
+            data-def="保证"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">保证</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://ai.pydantic.dev/output/">Pydantic AI — Output</a> —
+          <span
+            class="term-tip"
+            data-term="序列化"
+            data-module="cpp"
+            data-def="序列化"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">序列化</abbr></span
+          >为每个<span
+            class="term-tip"
+            data-term="提供"
+            data-module="github"
+            data-def="提供"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提供</abbr></span
+          >商的<span
+            class="term-tip"
+            data-term="类型"
+            data-module="c"
+            data-def="数据的分类"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">类型</abbr></span
+          >化output_type绑定
+        </li>
+        <li>
+          <a href="https://json-schema.org/draft/2020-12/release-notes"
+            >JSON Schema — 2020-12 release notes</a
+          >
+          — 权威<span
+            class="term-tip"
+            data-term="规范"
+            data-module="html5"
+            data-def="HTML 标准文档"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">规范</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/structured-outputs"
+            >Microsoft — Structured outputs in Azure OpenAI</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="企业"
+            data-module="github"
+            data-def="企业"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">企业</abbr></span
+          >部署<span
+            class="term-tip"
+            data-term="注意"
+            data-module="github"
+            data-def="注意"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">注意</abbr></span
+          >事项和<span
+            class="term-tip"
+            data-term="严格模式"
+            data-module="github"
+            data-def="严格模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">严格模式</abbr></span
+          >注意事项
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

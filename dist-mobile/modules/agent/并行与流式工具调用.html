@@ -1,0 +1,856 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>并行与流式工具调用</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">并行与流式工具调用</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            15 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">并行工具调用</span><span class="doc-tag">流式传输</span
+          ><span class="doc-tag">id关联</span><span class="doc-tag">性能优化</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          掌握并行工具调用的扇出执行和流式参数重组，理解id关联陷阱和依赖调度
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="并行与流式工具调用"><a href="#并行与流式工具调用">并行与流式工具调用</a></h1>
+      <blockquote>
+        <p>
+          三个独立的天气查询串行执行是三个往返。并行运行它们，总时间缩减到最慢的单次调用。每个前沿提供商现在在一个轮次中发出多个工具调用。收益是真实的；管道是微妙的。本课讲解两半：并行扇出和流式参数重组，重点在于id关联陷阱。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python（标准库，线程池 + 流式线束）
+        <strong>前置条件：</strong> Phase 13 · 02（函数调用深入） <strong>时间：</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>解释 <code>parallel_tool_calls: true</code> 存在的原因以及何时禁用它。</li>
+        <li>在并行扇出期间将流式参数块关联到正确的工具调用id。</li>
+        <li>将部分 <code>arguments</code> 字符串重组为完整JSON而不提前解析。</li>
+        <li>运行三城市天气基准测试，展示串行与并行延迟对比。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>没有并行调用，回答”班加罗尔、东京和苏黎世的天气如何”的Agent这样做：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>user -> LLM</span></span>
+<span class="line"><span>LLM -> call get_weather(Bengaluru)</span></span>
+<span class="line"><span>host -> run executor, reply with result</span></span>
+<span class="line"><span>LLM -> call get_weather(Tokyo)</span></span>
+<span class="line"><span>host -> run executor, reply with result</span></span>
+<span class="line"><span>LLM -> call get_weather(Zurich)</span></span>
+<span class="line"><span>host -> run executor, reply with result</span></span>
+<span class="line"><span>LLM -> final text answer</span></span></code></pre>
+      <p>三次LLM往返，每次还要支付执行器延迟。大约是理想挂钟时间的4倍。</p>
+      <p>使用并行调用：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>user -> LLM</span></span>
+<span class="line"><span>LLM -> call get_weather(Bengaluru); call get_weather(Tokyo); call get_weather(Zurich)</span></span>
+<span class="line"><span>host -> run all three executors concurrently, reply with three results</span></span>
+<span class="line"><span>LLM -> final text answer</span></span></code></pre>
+      <p>
+        一次LLM往返。执行器时间是三者的最大值，不是总和。OpenAI、Anthropic和Gemini上的生产基准测试显示，扇出工作负载的挂钟时间减少60%到70%。
+      </p>
+      <p>
+        代价是关联复杂性。当三个调用乱序完成时，你的结果必须携带匹配的
+        <code>tool_call_id</code
+        >，以便模型可以对齐。当结果流式传输时，你必须在执行之前将部分参数片段组装为完整JSON。Gemini
+        3添加唯一id部分是为了解决一个实际问题：两个对同一工具的并行调用无法区分。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="启用并行"><a href="#启用并行">启用并行</a></h3>
+      <ul>
+        <li>
+          <strong>OpenAI。</strong> <code>parallel_tool_calls: true</code> 默认开启。设为
+          <code>false</code> 强制串行。
+        </li>
+        <li>
+          <strong>Anthropic。</strong> 通过
+          <code>disable_parallel_tool_use: false</code> 并行（Claude 3.5及以上默认）。设为
+          <code>true</code> 串行。
+        </li>
+        <li>
+          <strong>Gemini。</strong> 始终支持并行；<code
+            >tool_config.function_calling_config.mode = "AUTO"</code
+          >
+          让模型决定。
+        </li>
+      </ul>
+      <p>
+        当工具有排序依赖（<code>create_file</code> 然后
+        <code>write_file</code
+        >）、一个调用的输出影响另一个的输入，或速率限制器无法处理扇出时，禁用并行。
+      </p>
+      <h3 id="id关联"><a href="#id关联">Id关联</a></h3>
+      <p>
+        模型发出的每个调用都有一个
+        <code>id</code>。宿主返回的每个结果必须包含相同的id。没有这个，结果是模糊的。
+      </p>
+      <ul>
+        <li><strong>OpenAI。</strong> 每个工具角色消息上的 <code>tool_call_id</code>。</li>
+        <li>
+          <strong>Anthropic。</strong> 每个 <code>tool_result</code> 块上的
+          <code>tool_use_id</code>。
+        </li>
+        <li>
+          <strong>Gemini。</strong> 每个 <code>functionResponse</code> 上的 <code>id</code>（Gemini
+          3及以上；Gemini 2按名称匹配，对同名并行调用会出问题）。
+        </li>
+      </ul>
+      <h3 id="并发运行调用"><a href="#并发运行调用">并发运行调用</a></h3>
+      <p>
+        宿主在自己的线程、协程或远程工作者上运行每个调用的执行器。最简单的线束使用线程池；生产使用asyncio的
+        <code>asyncio.gather</code> 或结构化并发。完成顺序不可预测 — id是标识符。
+      </p>
+      <p>
+        一个常见bug：按调用列表顺序而非完成顺序回复结果。这通常有效，因为模型只关心
+        <code>tool_call_id</code
+        >，但如果结果被丢弃或重复，乱序提交使调试更难。倾向于按完成顺序回复，带显式id。
+      </p>
+      <h3 id="流式工具调用"><a href="#流式工具调用">流式工具调用</a></h3>
+      <p>
+        当模型流式传输时，<code>arguments</code>
+        分段到达。三个并行调用的三个独立流在线路上交错。你需要每个id一个累加器。
+      </p>
+      <p>按提供商的形状：</p>
+      <ul>
+        <li>
+          <strong>OpenAI。</strong> 每个块是
+          <code>choices[0].delta.tool_calls[i].function.arguments</code>（部分字符串）。块携带
+          <code>index</code>（调用列表中的位置）。你按索引累积，在
+          <code>id</code> 首次出现时读取，并在
+          <code>finish_reason = "tool_calls"</code> 时解析JSON。
+        </li>
+        <li>
+          <strong>Anthropic。</strong> 流事件是 <code>message_start</code>，然后每个块一个
+          <code>content_block_start</code>，类型为
+          <code>tool_use</code>（包含id、name、空input）。<code>content_block_delta</code> 事件携带
+          <code>input_json_delta</code> 块。<code>content_block_stop</code> 关闭每个块。
+        </li>
+        <li>
+          <strong>Gemini。</strong> <code>streamFunctionCallArguments</code>（Gemini
+          3及以上）发出带有 <code>functionCallId</code> 的块，使调用干净地交错。Gemini
+          3之前，流式传输一次返回一个完整调用。
+        </li>
+      </ul>
+      <h3 id="部分json和提前解析陷阱">
+        <a href="#部分json和提前解析陷阱">部分JSON和提前解析陷阱</a>
+      </h3>
+      <p>
+        你不能在 <code>arguments</code> 完成之前解析它。部分JSON如
+        <code>{"city": "Beng</code> 无效，会抛出异常。正确的门控是提供商的调用结束信号：OpenAI的
+        <code>finish_reason = "tool_calls"</code>、Anthropic的
+        <code>content_block_stop</code> 或Gemini的流结束事件。只有那时才尝试
+        <code>json.loads</code
+        >。更健壮的方法使用增量JSON解析器，在结构完成时产生事件；OpenAI的流式指南推荐这用于显示实时”思考”指示器的UX。大括号计数作为完整性测试不可靠（引号字符串或转义内容中的大括号会导致误报），只应作为非正式调试启发式使用。
+      </p>
+      <h3 id="乱序完成"><a href="#乱序完成">乱序完成</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>call_A: 快速API，首先返回</span></span>
+<span class="line"><span>call_B: 慢速API，第二返回</span></span>
+<span class="line"><span>call_C: 中等API，第三返回</span></span></code></pre>
+      <p>宿主回复仍必须引用id：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>[{role: "tool", tool_call_id: "call_A", content: ...},</span></span>
+<span class="line"><span> {role: "tool", tool_call_id: "call_B", content: ...},</span></span>
+<span class="line"><span> {role: "tool", tool_call_id: "call_C", content: ...}]</span></span></code></pre>
+      <p>回复中的顺序对OpenAI或Anthropic的正确性不重要。Gemini接受任何顺序，只要id匹配。</p>
+      <h3 id="基准测试串行-vs-并行"><a href="#基准测试串行-vs-并行">基准测试：串行 vs 并行</a></h3>
+      <p>
+        <code>code/main.py</code>
+        中的线束模拟三个执行器，延迟分别为400、600和800毫秒。串行运行总时间1800毫秒。并行运行时间为max(400,
+        600, 800) = 800毫秒。差异是恒定的，不是成比例的，因此节省随工具数量增长。
+      </p>
+      <p>
+        现实世界注意事项：并行调用给下游API施压。10路扇出到速率受限的服务会失败。Phase 13 ·
+        17涵盖网关级背压；重试语义计划在未来阶段中。
+      </p>
+      <h3 id="流式扇出挂钟时间"><a href="#流式扇出挂钟时间">流式扇出挂钟时间</a></h3>
+      <p>
+        如果模型本身流式传输，你可以在一个调用的参数完成后立即开始执行，而不是等待所有调用完成。这是OpenAI文档记录的优化，但并非所有SDK都暴露。本课的线束这样做：一旦模拟流产生完整的参数对象，宿主就启动该调用。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code> 有两半。第一半使用
+        <code>concurrent.futures.ThreadPoolExecutor</code>
+        串行和并行运行三个模拟天气调用，并打印挂钟时间。第二半重放一个假流式响应 — 三个并行调用的
+        <code>arguments</code> 块在一个流上交错 — 并用
+        <code>StreamAccumulator</code> 按id重组。无LLM、无网络，只有重组逻辑。
+      </p>
+      <p>关注点：</p>
+      <ul>
+        <li>串行计时器达到1.8秒。并行计时器在相同假延迟下达到0.8秒。</li>
+        <li>累加器通过按id缓冲并仅在每个调用的JSON完成时解析来处理乱序到达的块。</li>
+        <li>执行器在一个id的参数完成后立即启动，而不是在所有流结束后。</li>
+      </ul>
+      <h2 id="交付"><a href="#交付">交付</a></h2>
+      <p>
+        本课产生
+        <code>outputs/skill-parallel-call-safety-check.md</code
+        >。给定一个工具注册表，该技能审计哪些工具可以安全并行化、哪些有排序依赖、哪些会压垮下游速率限制
+        — 返回带有每个工具 <code>parallel_safe</code> 标志的修订注册表。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            运行 <code>code/main.py</code> 并改变模拟延迟。确认并行与串行比率约为
+            <code>max/sum</code
+            >（实际运行因线程调度、序列化和线束开销而略微偏离理想值）。在什么延迟分布下并行不再重要？
+          </p>
+        </li>
+        <li>
+          <p>
+            扩展累加器以处理”调用在流中间被取消”的情况，方法是丢弃其缓冲区并发出
+            <code>cancelled</code> 事件。哪个提供商明确记录了这种情况？查看Anthropic的
+            <code>content_block_stop</code> 语义和OpenAI的
+            <code>finish_reason: "length"</code> 行为。
+          </p>
+        </li>
+        <li>
+          <p>
+            用
+            <code>asyncio.gather</code>
+            替换线程池。对两者进行基准测试。如果执行器做真正的I/O，你应该在async上看到小幅优势，因为上下文切换成本更低。
+          </p>
+        </li>
+        <li>
+          <p>
+            选择两个不应并行化的工具（例如 <code>create_file</code> 然后
+            <code>write_file</code>）。在注册表中添加
+            <code>ordering_dependency</code>
+            图，并在该图上门控并行扇出。这是依赖感知调度的最小机制，未来的Agent工程阶段将正式化。
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读OpenAI的并行函数调用部分和Anthropic的 <code>disable_parallel_tool_use</code>
+            <span
+              class="term-tip"
+              data-term="文档"
+              data-module="vue3"
+              data-def="代码说明文档"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">文档</abbr></span
+            >。识别Anthropic建议<span
+              class="term-tip"
+              data-term="禁用"
+              data-module="cpp"
+              data-def="禁用功能"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">禁用</abbr></span
+            >并<span
+              class="term-tip"
+              data-term="行"
+              data-module="vue3"
+              data-def="数据行"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行</abbr></span
+            >性的一个现实世界工具类型。（提示：对同一资源的后果性修改。）
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们怎么说
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Parallel tool calls</td>
+            <td>
+              ”一<span
+                class="term-tip"
+                data-term="轮"
+                data-module="github"
+                data-def="轮"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轮</abbr></span
+              >扇出”
+            </td>
+            <td>
+              模型在一个assistant消息中发出<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >个<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >调用
+            </td>
+          </tr>
+          <tr>
+            <td><code>parallel_tool_calls</code></td>
+            <td>
+              ”OpenAI的<span
+                class="term-tip"
+                data-term="标志"
+                data-module="c"
+                data-def="表示状态的布尔变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标志</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="启用"
+                data-module="cpp"
+                data-def="启用功能"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">启用</abbr></span
+              >或<span
+                class="term-tip"
+                data-term="禁用"
+                data-module="cpp"
+                data-def="禁用功能"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">禁用</abbr></span
+              >多次<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >发出
+            </td>
+          </tr>
+          <tr>
+            <td><code>disable_parallel_tool_use</code></td>
+            <td>”Anthropic的反向”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >退出<span
+                class="term-tip"
+                data-term="标志"
+                data-module="c"
+                data-def="表示状态的布尔变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标志</abbr></span
+              >；默认<span
+                class="term-tip"
+                data-term="启用"
+                data-module="cpp"
+                data-def="启用功能"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">启用</abbr></span
+              >并<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Tool call id</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="关联"
+                data-module="vue3"
+                data-def="数据间关系"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">关联</abbr></span
+              >句柄”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="结果"
+                data-module="c"
+                data-def="函数返回的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结果</abbr></span
+              >消息必须回显的每<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >标识符
+            </td>
+          </tr>
+          <tr>
+            <td>Accumulator</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="流"
+                data-module="cpp"
+                data-def="数据输入输出的抽象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流</abbr></span
+              >缓冲区”
+            </td>
+            <td>
+              用于<span
+                class="term-tip"
+                data-term="部分"
+                data-module="github"
+                data-def="部分的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">部分</abbr></span
+              >
+              <code>arguments</code>
+              <span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >的按id字符串<span
+                class="term-tip"
+                data-term="缓冲区"
+                data-module="c"
+                data-def="临时存储数据的内存区域"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓冲区</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Out-of-<span
+                class="term-tip"
+                data-term="order"
+                data-module="css"
+                data-def="Flex/Grid 项目排序，数值越小越靠前，默认 0"
+                data-slug="css/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">order</abbr></span
+              >
+              completion
+            </td>
+            <td>
+              ”最快的先<span
+                class="term-tip"
+                data-term="完成"
+                data-module="github"
+                data-def="完成"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">完成</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="并行"
+                data-module="github"
+                data-def="并行的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">并行</abbr></span
+              >调用以不可<span
+                class="term-tip"
+                data-term="预测"
+                data-module="github"
+                data-def="预测"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">预测</abbr></span
+              >的顺序<span
+                class="term-tip"
+                data-term="完成"
+                data-module="github"
+                data-def="完成"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">完成</abbr></span
+              >；id是粘合剂
+            </td>
+          </tr>
+          <tr>
+            <td>Dependency graph</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="排序"
+                data-module="cpp"
+                data-def="排序"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">排序</abbr></span
+              >约束”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >馈入<span
+                class="term-tip"
+                data-term="其他"
+                data-module="github"
+                data-def="其他"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">其他</abbr></span
+              >工具<span
+                class="term-tip"
+                data-term="输入"
+                data-module="c"
+                data-def="从外部获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输入</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >；不能<span
+                class="term-tip"
+                data-term="并行"
+                data-module="github"
+                data-def="并行的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">并行</abbr></span
+              >化
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Parse"
+                data-module="typescript"
+                data-def="解析代码为 AST"
+                data-slug="typescript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Parse</abbr></span
+              >-early trap
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >.parse爆炸了”
+            </td>
+            <td>
+              尝试<span
+                class="term-tip"
+                data-term="解析"
+                data-module="javascript"
+                data-def="将文本分解为 Token 的过程"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解析</abbr></span
+              >不<span
+                class="term-tip"
+                data-term="完整"
+                data-module="github"
+                data-def="完整"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">完整</abbr></span
+              >的 <code>arguments</code>
+              <span
+                class="term-tip"
+                data-term="字符串"
+                data-module="cpp"
+                data-def="字符序列"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字符串</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>streamFunctionCallArguments</code></td>
+            <td>”Gemini 3功能”</td>
+            <td>
+              带有每个<span
+                class="term-tip"
+                data-term="调用"
+                data-module="github"
+                data-def="调用"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调用</abbr></span
+              >唯一id的<span
+                class="term-tip"
+                data-term="流"
+                data-module="cpp"
+                data-def="数据输入输出的抽象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流</abbr></span
+              >式<span
+                class="term-tip"
+                data-term="参数"
+                data-module="c"
+                data-def="函数定义时的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参数</abbr></span
+              >块
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Completion-<span
+                class="term-tip"
+                data-term="order"
+                data-module="css"
+                data-def="Flex/Grid 项目排序，数值越小越靠前，默认 0"
+                data-slug="css/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">order</abbr></span
+              >
+              reply
+            </td>
+            <td>”不要等所有”</td>
+            <td>
+              按<span
+                class="term-tip"
+                data-term="结果"
+                data-module="c"
+                data-def="函数返回的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结果</abbr></span
+              >到达顺序回复，以id为键
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a
+            href="https://platform.openai.com/docs/guides/function-calling#parallel-function-calling"
+            >OpenAI — Parallel function calling</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="默认行为"
+            data-module="cpp"
+            data-def="未覆盖时的行为"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">默认行为</abbr></span
+          >和<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >退出<span
+            class="term-tip"
+            data-term="标志"
+            data-module="c"
+            data-def="表示状态的布尔变量"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标志</abbr></span
+          >
+        </li>
+        <li>
+          <a
+            href="https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/implementing-tool-use"
+            >Anthropic — Tool use: implementing tool use</a
+          >
+          — <code>disable_parallel_tool_use</code> 和<span
+            class="term-tip"
+            data-term="结果"
+            data-module="c"
+            data-def="函数返回的值"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">结果</abbr></span
+          >批<span
+            class="term-tip"
+            data-term="处理"
+            data-module="cpp"
+            data-def="处理"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">处理</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://ai.google.dev/gemini-api/docs/function-calling"
+            >Google — Gemini function calling parallel section</a
+          >
+          — Gemini 3的id关联<span
+            class="term-tip"
+            data-term="并行"
+            data-module="github"
+            data-def="并行的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">并行</abbr></span
+          >调用
+        </li>
+        <li>
+          <a href="https://platform.openai.com/docs/api-reference/responses-streaming"
+            >OpenAI — Streaming responses with tools</a
+          >
+          — OpenAI流的分<span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >参数重组
+        </li>
+        <li>
+          <a href="https://docs.anthropic.com/en/api/messages-streaming"
+            >Anthropic — Streaming messages</a
+          >
+          — 带有 <code>input_json_delta</code> 的 <code>content_block_delta</code>
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

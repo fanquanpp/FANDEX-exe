@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>端到端微调管线从数据到SFT到DPO到服务</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">端到端微调管线从数据到SFT到DPO到服务</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">微调管线</span><span class="doc-tag">SFT</span
+          ><span class="doc-tag">DPO</span><span class="doc-tag">量化</span
+          ><span class="doc-tag">vLLM</span><span class="doc-tag">EAGLE-3</span
+          ><span class="doc-tag">Axolotl</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          8B模型用自有数据训练、DPO对齐自有偏好、量化、投机解码、以可测量的$/1M
+          tokens服务。2026年开源栈：Axolotl v0.8、TRL 0.15、Unsloth迭代、GPTQ/AWQ/GGUF量化、vLLM 0.7
+          + EAGLE-3服务。YAML输入，服务端点输出，可重现全管线。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        2026年每个严肃AI团队都保持一个<span
+          class="term-tip"
+          data-term="微调"
+          data-module="agent"
+          data-def="在预训练模型基础上使用特定领域数据进一步训练，使模型适应特定任务"
+          data-slug="agent/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">微调</abbr></span
+        >管线在手。不是因为他们发布前沿基础模型，而是因为下游适配——领域SFT、针<span
+          class="term-tip"
+          data-term="对"
+          data-module="github"
+          data-def="对"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对</abbr></span
+        >标记偏好的DPO、为投机<span
+          class="term-tip"
+          data-term="解码"
+          data-module="javascript"
+          data-def="将编码数据还原为原始形式"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">解码</abbr></span
+        >蒸馏草稿、用EAGLE-3服务——是可测量收益所在。Axolotl v0.8处理多GPU SFT配置。TRL
+        0.15处理DPO和GRPO。Unsloth给你<span
+          class="term-tip"
+          data-term="快速"
+          data-module="github"
+          data-def="快速的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">快速</abbr></span
+        >单GPU迭代。vLLM 0.7 + EAGLE-3推动<span
+          class="term-tip"
+          data-term="解码"
+          data-module="javascript"
+          data-def="将编码数据还原为原始形式"
+          data-slug="javascript/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">解码</abbr></span
+        >吞吐2-3x而不损失<span
+          class="term-tip"
+          data-term="质量"
+          data-module="github"
+          data-def="质量"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">质量</abbr></span
+        >。<span
+          class="term-tip"
+          data-term="工具"
+          data-module="cpp"
+          data-def="工具"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">工具</abbr></span
+        >可用；工艺在YAML、数据卫生和<span
+          class="term-tip"
+          data-term="评估"
+          data-module="cpp"
+          data-def="求值"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">评估</abbr></span
+        >纪律中。
+      </p>
+      <p>
+        你将运行8B基础模型（Llama 3.3、Qwen3或Gemma 3）通过SFT然后DPO在<span
+          class="term-tip"
+          data-term="任务"
+          data-module="cpp"
+          data-def="任务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">任务</abbr></span
+        >特定数据上，量化用于<span
+          class="term-tip"
+          data-term="服务"
+          data-module="cpp"
+          data-def="服务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">服务</abbr></span
+        >，并测量对lm-evaluation-harness、RewardBench-2、MT-Bench-v2和MMLU-Pro的增益。你将在2026
+        Model Openness Framework下产出模型卡。重<span
+          class="term-tip"
+          data-term="点"
+          data-module="github"
+          data-def="点"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">点</abbr></span
+        >是可重现性——一条<span
+          class="term-tip"
+          data-term="命令"
+          data-module="github"
+          data-def="命令指令"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">命令</abbr></span
+        >端到端重新运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >整个管线。
+      </p>
+      <h2 id="核心架构"><a href="#核心架构">核心架构</a></h2>
+      <h3 id="管线阶段"><a href="#管线阶段">管线阶段</a></h3>
+      <ol>
+        <li>
+          <strong
+            >数据<span
+              class="term-tip"
+              data-term="准备"
+              data-module="github"
+              data-def="准备"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">准备</abbr></span
+            >。</strong
+          >
+          清洗、<span
+            class="term-tip"
+            data-term="去重"
+            data-module="data-analysis"
+            data-def="删除数据集中重复记录的操作，Pandas中用drop_duplicates()实现"
+            data-slug="data-analysis/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">去重</abbr></span
+          >、<span
+            class="term-tip"
+            data-term="格"
+            data-module="discrete-math"
+            data-def="任意两个元素都有上确界和下确界的偏序集"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">格</abbr></span
+          >式化为SFT对话<span
+            class="term-tip"
+            data-term="格"
+            data-module="discrete-math"
+            data-def="任意两个元素都有上确界和下确界的偏序集"
+            data-slug="discrete-math/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">格</abbr></span
+          >式。
+        </li>
+        <li>
+          <strong>SFT。</strong> Axolotl v0.8多GPU训练，LoRA或全<span
+            class="term-tip"
+            data-term="参数"
+            data-module="c"
+            data-def="函数定义时的变量"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参数</abbr></span
+          >。
+        </li>
+        <li>
+          <strong>DPO。</strong> TRL 0.15，在<span
+            class="term-tip"
+            data-term="标记"
+            data-module="c"
+            data-def="标记数据位置的符号"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标记</abbr></span
+          >偏好<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >上<span
+            class="term-tip"
+            data-term="训练"
+            data-module="github"
+            data-def="培训"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">训练</abbr></span
+          >。
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="评估"
+              data-module="cpp"
+              data-def="求值"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">评估</abbr></span
+            >。</strong
+          >
+          lm-evaluation-harness、RewardBench-2、MT-Bench-v2、MMLU-Pro。
+        </li>
+        <li>
+          <strong>量化。</strong> GPTQ/AWQ/GGUF，按<span
+            class="term-tip"
+            data-term="部署"
+            data-module="cpp"
+            data-def="部署应用"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">部署</abbr></span
+          >目标<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >。
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="服务"
+              data-module="cpp"
+              data-def="服务"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">服务</abbr></span
+            >。</strong
+          >
+          vLLM 0.7 + EAGLE-3投机<span
+            class="term-tip"
+            data-term="解码"
+            data-module="javascript"
+            data-def="将编码数据还原为原始形式"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解码</abbr></span
+          >。
+        </li>
+      </ol>
+      <h3 id="可重现性"><a href="#可重现性">可重现性</a></h3>
+      <p>
+        一条<span
+          class="term-tip"
+          data-term="命令"
+          data-module="github"
+          data-def="命令指令"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">命令</abbr></span
+        >从YAML配置运<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >整个管线。所有超<span
+          class="term-tip"
+          data-term="参数"
+          data-module="c"
+          data-def="函数定义时的变量"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">参数</abbr></span
+        >、数据<span
+          class="term-tip"
+          data-term="版本"
+          data-module="c"
+          data-def="软件的迭代版本"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">版本</abbr></span
+        >和<span
+          class="term-tip"
+          data-term="评估"
+          data-module="cpp"
+          data-def="求值"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">评估</abbr></span
+        >结果<span
+          class="term-tip"
+          data-term="记录"
+          data-module="github"
+          data-def="记录"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">记录</abbr></span
+        >在模型卡中。
+      </p>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Axolotl</td>
+            <td>”SFT框架”</td>
+            <td>
+              多GPU SFT训练<span
+                class="term-tip"
+                data-term="配置"
+                data-module="cpp"
+                data-def="配置参数"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">配置</abbr></span
+              >框架
+            </td>
+          </tr>
+          <tr>
+            <td>TRL</td>
+            <td>”DPO框架”</td>
+            <td>Transformer Reinforcement Learning，含DPO/GRPO</td>
+          </tr>
+          <tr>
+            <td>Unsloth</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="快速"
+                data-module="github"
+                data-def="快速的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">快速</abbr></span
+              >迭代”
+            </td>
+            <td>
+              单GPU快速<span
+                class="term-tip"
+                data-term="微调"
+                data-module="agent"
+                data-def="在预训练模型基础上使用特定领域数据进一步训练，使模型适应特定任务"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">微调</abbr></span
+              >迭代
+            </td>
+          </tr>
+          <tr>
+            <td>EAGLE-3</td>
+            <td>
+              ”投机<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >”
+            </td>
+            <td>
+              基于隐藏<span
+                class="term-tip"
+                data-term="状态"
+                data-module="cpp"
+                data-def="状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">状态</abbr></span
+              >的草稿<span
+                class="term-tip"
+                data-term="头"
+                data-module="github"
+                data-def="头"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">头</abbr></span
+              >投机<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Model Openness Framework</td>
+            <td>
+              ”模型<span
+                class="term-tip"
+                data-term="开放"
+                data-module="github"
+                data-def="正在活跃的 Issue 或 PR"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">开放</abbr></span
+              >框架”
+            </td>
+            <td>
+              2026年模型<span
+                class="term-tip"
+                data-term="文档"
+                data-module="vue3"
+                data-def="代码说明文档"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文档</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="开放"
+                data-module="github"
+                data-def="正在活跃的 Issue 或 PR"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">开放</abbr></span
+              >性<span
+                class="term-tip"
+                data-term="标准"
+                data-module="c"
+                data-def="语言规范文档"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标准</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>Axolotl v0.8 — 多GPU SFT配置</li>
+        <li>TRL 0.15 — DPO和GRPO训练</li>
+        <li>
+          Unsloth —
+          <span
+            class="term-tip"
+            data-term="快速"
+            data-module="github"
+            data-def="快速的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">快速</abbr></span
+          >单GPU微调
+        </li>
+        <li>
+          vLLM 0.7 — EAGLE-3投机<span
+            class="term-tip"
+            data-term="解码"
+            data-module="javascript"
+            data-def="将编码数据还原为原始形式"
+            data-slug="javascript/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解码</abbr></span
+          >服务
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

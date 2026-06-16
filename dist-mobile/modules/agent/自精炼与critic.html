@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>自精炼与CRITIC</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">自精炼与CRITIC</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            11 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          Self-Refine（Madaan等人，2023）用一个LLM扮演三个角色——生成、反馈、精炼——循环执行。7个任务平均提升20个绝对百分点。CRITIC（Gou等人，2023）通过将验证路由到外部工具来强化反馈步骤。在2026年，这个模式在每个框架中都以&quot;评估器-优化器&quot;（Anthropi...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="自精炼与critic迭代输出改进">
+        <a href="#自精炼与critic迭代输出改进">自精炼与CRITIC：迭代输出改进</a>
+      </h1>
+      <blockquote>
+        <p>
+          Self-Refine（Madaan等人，2023）用一个LLM扮演三个角色——生成、反馈、精炼——循环执行。7个任务平均提升20个绝对百分点。CRITIC（Gou等人，2023）通过将验证路由到外部工具来强化反馈步骤。在2026年，这个模式在每个框架中都以”评估器-优化器”（Anthropic）或护栏循环（OpenAI
+          Agents SDK）的形式发布。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python (stdlib)
+        <strong>前置条件：</strong> Phase 14 · 01 (Agent循环), Phase 14 · 03 (Reflexion)
+        <strong>时间：</strong> ~60分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>
+          说出Self-Refine的三个提示（generate、feedback、refine）并解释为什么历史对refine提示很重要。
+        </li>
+        <li>解释CRITIC的关键洞察：LLM在没有外部接地的情况下自验证是不可靠的。</li>
+        <li>实现一个带历史和可选外部验证器的stdlib Self-Refine循环。</li>
+        <li>将此模式映射到Anthropic的”评估器-优化器”工作流和OpenAI Agents SDK的输出护栏。</li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        Agent产生了一个几乎正确的答案。也许一行代码有语法错误。也许摘要太长。也许计划遗漏了边界情况。你想要的是：Agent批评自己的输出，然后修复它。
+      </p>
+      <p>
+        Self-Refine表明这在单个模型上有效，无需训练数据，无需RL。但有一个陷阱：LLM在硬事实上不擅长自验证。CRITIC命名了修复方案——将验证步骤路由到外部工具（搜索引擎、代码解释器、计算器、测试运行器）。
+      </p>
+      <p>
+        这两篇论文共同定义了2026年迭代改进的默认做法：生成、验证（可能时外部验证）、精炼、验证器通过时停止。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="self-refinemadaan等人neurips-2023">
+        <a href="#self-refinemadaan等人neurips-2023">Self-Refine（Madaan等人，NeurIPS 2023）</a>
+      </h3>
+      <p>一个LLM，三个角色：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>generate(task)            -> output_0</span></span>
+<span class="line"><span>feedback(task, output_0)  -> critique_0</span></span>
+<span class="line"><span>refine(task, output_0, critique_0, history) -> output_1</span></span>
+<span class="line"><span>feedback(task, output_1)  -> critique_1</span></span>
+<span class="line"><span>refine(task, output_1, critique_1, history) -> output_2</span></span>
+<span class="line"><span>...</span></span>
+<span class="line"><span>stop when feedback says "no issues" or budget exhausted.</span></span></code></pre>
+      <p>
+        关键细节：<code>refine</code>看到完整历史——所有先前的输出和批评——所以它不会重复错误。论文对此进行了消融：去掉历史，质量急剧下降。
+      </p>
+      <p>
+        标题数据：7个任务（数学、代码、缩写、对话）平均+20绝对改进，包括GPT-4。无训练，无外部工具，单模型。
+      </p>
+      <h3 id="criticgou等人arxiv230511738v4-2024年2月">
+        <a href="#criticgou等人arxiv230511738v4-2024年2月"
+          >CRITIC（Gou等人，arXiv:2305.11738，v4 2024年2月）</a
+        >
+      </h3>
+      <p>
+        Self-Refine的弱点：反馈步骤是LLM给自己评分。对于事实性声明，这是不可靠的（幻觉对产生它的模型来说通常看起来令人信服）。CRITIC将<code
+          >feedback(task, output)</code
+        >替换为<code>verify(task, output, tools)</code>，其中<code>tools</code>包括：
+      </p>
+      <ul>
+        <li>用于事实声明的搜索引擎。</li>
+        <li>用于代码正确性的代码解释器。</li>
+        <li>用于算术的计算器。</li>
+        <li>领域特定验证器（单元测试、类型检查器、linter）。</li>
+      </ul>
+      <p>验证器产生一个基于工具结果的结构化批评。精炼器然后以此批评为条件。</p>
+      <p>
+        标题数据：CRITIC在事实性任务上优于Self-Refine，因为批评是接地的。在没有外部验证器的任务上（创意写作、格式化），CRITIC退化为Self-Refine。
+      </p>
+      <h3 id="停止条件"><a href="#停止条件">停止条件</a></h3>
+      <p>两种常见形式：</p>
+      <ol>
+        <li>
+          <strong>验证器通过。</strong>
+          外部测试返回成功。有条件时首选（单元测试、类型检查器、护栏断言）。
+        </li>
+        <li>
+          <strong>无反馈发出。</strong> 模型说”输出没问题”。更便宜但不可靠；与最大迭代上限配对。
+        </li>
+      </ol>
+      <p>
+        2026年默认做法：组合它们。“验证器通过或模型说没问题且迭代>=2或迭代>=最大迭代次数时停止。“
+      </p>
+      <h3 id="评估器-优化器anthropic2024">
+        <a href="#评估器-优化器anthropic2024">评估器-优化器（Anthropic，2024）</a>
+      </h3>
+      <p>Anthropic 2024年12月的帖子将此命名为五种工作流模式之一。两个角色：</p>
+      <ul>
+        <li>评估器：评分输出并产生批评。</li>
+        <li>优化器：根据批评修订输出。</li>
+      </ul>
+      <p>
+        循环直到评估器通过。这就是Anthropic框架中的Self-Refine/CRITIC。Anthropic添加的关键工程细节：评估器和优化器提示应该有实质性不同，这样模型才不会只是橡皮图章。
+      </p>
+      <h3 id="openai-agents-sdk输出护栏">
+        <a href="#openai-agents-sdk输出护栏">OpenAI Agents SDK输出护栏</a>
+      </h3>
+      <p>
+        OpenAI Agents
+        SDK将此模式作为”输出护栏”发布。护栏是在Agent最终输出上运行的验证器。如果护栏触发（抛出<code>OutputGuardrailTripwireTriggered</code>），输出被拒绝，Agent可以重试。护栏可以调用工具（CRITIC风格）或是纯函数（Self-Refine风格）。
+      </p>
+      <h3 id="2026年陷阱"><a href="#2026年陷阱">2026年陷阱</a></h3>
+      <ul>
+        <li>
+          <strong>橡皮图章循环。</strong>
+          同一模型用相同提示风格做生成和批评会收敛到”看起来不错”。使用结构不同的提示，或用更小的廉价模型做批评。
+        </li>
+        <li>
+          <strong>过度精炼。</strong>
+          每次精炼通过增加延迟和token。预算1-3次通过；之后升级到人工审查。
+        </li>
+        <li>
+          <strong>在琐碎任务上使用CRITIC。</strong>
+          如果没有外部验证器，CRITIC退化为Self-Refine；不要为桩验证器支付延迟。
+        </li>
+      </ul>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p>
+        <code>code/main.py</code
+        >在玩具任务上实现Self-Refine和CRITIC：给定主题产生简短要点列表。验证器检查格式（3个要点，每个60字符以下）。CRITIC添加一个外部”事实验证器”，惩罚已知幻觉。
+      </p>
+      <p>组件：</p>
+      <ul>
+        <li><code>generate</code> — 脚本生产器。</li>
+        <li><code>feedback</code> — LLM风格的自批评。</li>
+        <li><code>verify_external</code> — CRITIC风格的接地验证器。</li>
+        <li><code>refine</code> — 根据历史重写输出。</li>
+        <li>停止条件 — 验证器通过或最多4次迭代。</li>
+      </ul>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <p>
+        比较Self-Refine与CRITIC运行。CRITIC捕获了Self-Refine遗漏的事实错误，因为外部验证器有自批评所没有的接地。
+      </p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        Anthropic的评估器-优化器是用Claude友好语言表述的这个模式。OpenAI Agents
+        SDK的输出护栏是CRITIC形状的（护栏可以调用工具）。LangGraph提供的反思节点读起来像Self-Refine。Google的Gemini
+        2.5 Computer Use添加了一个每步安全评估器，这是CRITIC的变体：每个动作在提交前都被验证。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>
+        <code>outputs/skill-refine-loop.md</code
+        >根据任务形状、验证器可用性和迭代预算配置评估器-优化器循环。发出生成器、评估器/验证器和优化器的提示，加上停止策略。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>用max_iterations=1运行玩具。CRITIC仍然有帮助吗？</li>
+        <li>
+          将外部验证器替换为嘈杂的（随机30%假阳性）。循环会做什么？这是2026年大多数护栏栈的现实。
+        </li>
+        <li>实现”生成器-批评器使用不同模型”变体：大模型生成，小模型批评。它比同模型更好吗？</li>
+        <li>阅读CRITIC第3节（arXiv:2305.11738 v4）。说出三种验证工具类别并各给一个例子。</li>
+        <li>
+          将OpenAI Agents
+          SDK的<code>output_guardrails</code>映射到CRITIC的验证器角色。SDK哪里做错了，哪里做对了？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们常说的</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Self-Refine</td>
+            <td>”自我修复的LLM”</td>
+            <td>
+              一个模型中的<span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >-><span
+                class="term-tip"
+                data-term="反馈"
+                data-module="cpp"
+                data-def="反馈信息"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">反馈</abbr></span
+              >->精炼循环，带历史
+            </td>
+          </tr>
+          <tr>
+            <td>CRITIC</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >接地<span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >”
+            </td>
+            <td>
+              用外部<span
+                class="term-tip"
+                data-term="验证器"
+                data-module="cpp"
+                data-def="验证器"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证器</abbr></span
+              >替换<span
+                class="term-tip"
+                data-term="反馈"
+                data-module="cpp"
+                data-def="反馈信息"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">反馈</abbr></span
+              >（<span
+                class="term-tip"
+                data-term="搜索"
+                data-module="cpp"
+                data-def="搜索"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">搜索</abbr></span
+              >、代码、<span
+                class="term-tip"
+                data-term="计算"
+                data-module="cpp"
+                data-def="计算过程"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">计算</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="测试"
+                data-module="cpp"
+                data-def="测试"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">测试</abbr></span
+              >）
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="评估"
+                data-module="cpp"
+                data-def="求值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评估</abbr></span
+              >器-<span
+                class="term-tip"
+                data-term="优化"
+                data-module="cs-fundamentals"
+                data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">优化</abbr></span
+              >器
+            </td>
+            <td>
+              ”Anthropic工作<span
+                class="term-tip"
+                data-term="流"
+                data-module="cpp"
+                data-def="数据输入输出的抽象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流</abbr></span
+              >模式”
+            </td>
+            <td>
+              两个<span
+                class="term-tip"
+                data-term="角色"
+                data-module="html5"
+                data-def="ARIA 元素角色"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">角色</abbr></span
+              >——<span
+                class="term-tip"
+                data-term="评估"
+                data-module="cpp"
+                data-def="求值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评估</abbr></span
+              >器<span
+                class="term-tip"
+                data-term="评分"
+                data-module="vue3"
+                data-def="计算分数"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评分</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="优化"
+                data-module="cs-fundamentals"
+                data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">优化</abbr></span
+              >器<span
+                class="term-tip"
+                data-term="修订"
+                data-module="vue3"
+                data-def="版本修订"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">修订</abbr></span
+              >——<span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >至<span
+                class="term-tip"
+                data-term="收敛"
+                data-module="calculus"
+                data-def="级数的部分和序列趋于有限极限，或反常积分存在有限值"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">收敛</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >护栏
+            </td>
+            <td>
+              ”事后<span
+                class="term-tip"
+                data-term="检查"
+                data-module="cpp"
+                data-def="验证条件"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检查</abbr></span
+              >”
+            </td>
+            <td>
+              OpenAI Agents SDK验证器，在Agent产生<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >后运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="验证"
+                data-module="cpp"
+                data-def="验证"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证</abbr></span
+              >步骤
+            </td>
+            <td>
+              ”批评<span
+                class="term-tip"
+                data-term="阶段"
+                data-module="github"
+                data-def="阶段"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">阶段</abbr></span
+              >”
+            </td>
+            <td>
+              承重<span
+                class="term-tip"
+                data-term="决策"
+                data-module="github"
+                data-def="决策"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">决策</abbr></span
+              >：接地的还是自评的
+            </td>
+          </tr>
+          <tr>
+            <td>
+              精炼<span
+                class="term-tip"
+                data-term="历史"
+                data-module="github"
+                data-def="历史"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">历史</abbr></span
+              >
+            </td>
+            <td>”模型已经尝试过的”</td>
+            <td>
+              先前<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >+批评前置到精炼<span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >；去掉则<span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >崩溃
+            </td>
+          </tr>
+          <tr>
+            <td>
+              橡皮<span
+                class="term-tip"
+                data-term="图"
+                data-module="algorithm"
+                data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图</abbr></span
+              >章<span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >
+            </td>
+            <td>
+              ”自我一致<span
+                class="term-tip"
+                data-term="失败"
+                data-module="github"
+                data-def="失败"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">失败</abbr></span
+              >”
+            </td>
+            <td>
+              相同<span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >的批评<span
+                class="term-tip"
+                data-term="返回"
+                data-module="vue3"
+                data-def="返回值"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">返回</abbr></span
+              >”看起来不错”；用<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >不同的<span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >修复
+            </td>
+          </tr>
+          <tr>
+            <td>
+              停止<span
+                class="term-tip"
+                data-term="条件"
+                data-module="github"
+                data-def="条件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">条件</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="收敛"
+                data-module="calculus"
+                data-def="级数的部分和序列趋于有限极限，或反常积分存在有限值"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">收敛</abbr></span
+              >测试”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="验证器"
+                data-module="cpp"
+                data-def="验证器"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">验证器</abbr></span
+              >通过或无<span
+                class="term-tip"
+                data-term="反馈"
+                data-module="cpp"
+                data-def="反馈信息"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">反馈</abbr></span
+              >且<span
+                class="term-tip"
+                data-term="迭代"
+                data-module="github"
+                data-def="迭代"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">迭代</abbr></span
+              >上限；永远不要<span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >条件
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2303.17651">Madaan等人, Self-Refine (arXiv:2303.17651)</a>
+          — 经典论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2305.11738">Gou等人, CRITIC (arXiv:2305.11738)</a> —
+          <span
+            class="term-tip"
+            data-term="工具"
+            data-module="cpp"
+            data-def="工具"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工具</abbr></span
+          >接地<span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://www.anthropic.com/research/building-effective-agents"
+            >Anthropic, Building Effective Agents</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="评估"
+            data-module="cpp"
+            data-def="求值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">评估</abbr></span
+          >器-<span
+            class="term-tip"
+            data-term="优化"
+            data-module="cs-fundamentals"
+            data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">优化</abbr></span
+          >器<span
+            class="term-tip"
+            data-term="工作流"
+            data-module="github"
+            data-def="工作流程"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工作流</abbr></span
+          >模式
+        </li>
+        <li>
+          <a href="https://openai.github.io/openai-agents-python/">OpenAI Agents SDK文档</a> —
+          <span
+            class="term-tip"
+            data-term="输出"
+            data-module="c"
+            data-def="向外部发送数据"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">输出</abbr></span
+          >护栏作为CRITIC形状的<span
+            class="term-tip"
+            data-term="验证器"
+            data-module="cpp"
+            data-def="验证器"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证器</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

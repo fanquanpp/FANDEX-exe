@@ -2,7 +2,7 @@
  * FANDEX 搜索索引构建脚本
  *
  * 功能概述：
- * 扫描 src/content/docs 下所有 .md 文件，提取 frontmatter 中的元数据
+ * 扫描 content 下所有 .md 文件，提取 frontmatter 中的元数据
  * （标题、描述、标签、模块、排序、难度、更新日期），生成 JSON 格式的
  * 搜索索引文件，输出到 public/data/search-index.json。
  * 当索引文件超过 100KB 时，自动压缩字段名以减小体积。
@@ -15,9 +15,9 @@ import { fileURLToPath } from 'node:url';
 /** 当前脚本所在目录 */
 const __dirname = dirname(fileURLToPath(import.meta.url));
 /** 文档源文件目录 */
-const DOCS_DIR = join(__dirname, '..', 'src', 'content', 'docs');
+const DOCS_DIR = join(__dirname, '..', 'content');
 /** 索引输出目录 */
-const OUTPUT_DIR = join(__dirname, '..', 'public', 'data');
+const OUTPUT_DIR = join(__dirname, '..', 'apps', 'web', 'public', 'data');
 /** 索引输出文件路径 */
 const OUTPUT_FILE = join(OUTPUT_DIR, 'search-index.json');
 /** 索引文件最大允许大小（100KB） */
@@ -91,15 +91,15 @@ function parseFrontmatter(content) {
 }
 
 /**
- * 从文件路径生成 URL slug
- * 将绝对路径转换为相对于文档目录的路径，并去除扩展名
+ * 从文件路径提取文件名（去除目录和扩展名）
  *
  * @param {string} filePath - 文件绝对路径
- * @returns {string} URL slug（如 "javascript/basics"）
+ * @returns {string} 文件名 slug（如 "概述与核心特性"）
  */
-function slugFromPath(filePath) {
-  const rel = filePath.replace(DOCS_DIR + sep, '').replace(/[/\\]/g, '/');
-  return rel.replace(/\.md$/, '');
+function filenameFromPath(filePath) {
+  const parts = filePath.replace(/[/\\]/g, '/').split('/');
+  const name = parts[parts.length - 1];
+  return name.replace(/\.md$/, '');
 }
 
 /**
@@ -115,7 +115,7 @@ async function main() {
     if (!fm.title) return; // 跳过无标题的文件
 
     entries.push({
-      slug: slugFromPath(filePath),
+      slug: `${fm.module || ''}/${filenameFromPath(filePath)}`,
       title: fm.title || '',
       description: fm.description || '',
       tags: Array.isArray(fm.tags) ? fm.tags : [],

@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>生产扩展队列与检查点</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">生产扩展队列与检查点</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            14 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          将多 Agent 系统扩展到数千个并发运行需要持久执行。LangGraph
+          的运行时在每个超步后写入检查点，以 thread_id 为键（默认
+          Postgres）；工作者崩溃释放租约，另一个工作者恢复。Agent
+          可以无限期睡眠等待人工输入。MegaAgent (arXiv:2408.0995...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="生产扩展--队列检查点持久性">
+        <a href="#生产扩展--队列检查点持久性">生产扩展 — 队列、检查点、持久性</a>
+      </h1>
+      <blockquote>
+        <p>
+          将多 Agent 系统扩展到数千个并发运行需要<strong>持久执行</strong>。LangGraph
+          的运行时在每个超步后写入检查点，以 <code>thread_id</code> 为键（默认
+          Postgres）；工作者崩溃释放租约，另一个工作者恢复。Agent
+          可以无限期睡眠等待人工输入。<strong>MegaAgent</strong> (arXiv:2408.09955) 运行了每 Agent
+          生产者-消费者队列，带三种状态 (Idle / Processing / Response) 和两层协调（组内聊天 +
+          组间管理聊天）。<strong>Fiber/async</strong> 在 LLM 流式传输中击败每任务一线程：线程 99%
+          的时间空闲等待 token，fiber 在 I/O 上协作让出。反面观点：Ashpreet Bedi 的 “Scaling Agentic
+          Software” 主张
+          <strong>FastAPI + Postgres + 没有别的</strong
+          >直到负载证明否则——简单架构比预期走得更远。本课程构建持久检查点日志、带状态转换的每 Agent
+          工作队列、async vs thread 演示，并落地务实的”从简单开始”规则。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 学习 + 构建 <strong>语言：</strong> Python (stdlib,
+        <code>asyncio</code>, <code>sqlite3</code>) <strong>前置条件：</strong> Phase 16 · 09
+        (并行群体网络), Phase 16 · 13 (共享记忆) <strong>时间：</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>原型多 Agent 系统在一台笔记本上用内存事件循环中的三个 Agent 工作。你迁移到生产：</p>
+      <ul>
+        <li>Agent 有时运行数小时（长时间研究、人工在环等待）。</li>
+        <li>工作者进程崩溃。重启丢失状态。</li>
+        <li>峰值负载是平均的 10 倍；你需要水平扩展。</li>
+        <li>用户按 Agent 运行付费；你需要恰好一次语义来计费。</li>
+      </ul>
+      <p>内存事件循环不做这些。你需要一个底层持久执行层。2026 年规范选项是：</p>
+      <ol>
+        <li>带检查点的工作流引擎 (Temporal, LangGraph runtime)。</li>
+        <li>带状态存储的消息队列 (Postgres + SQS/RabbitMQ)。</li>
+        <li>Actor 模型框架 (MegaAgent 的每 Agent 生产者-消费者)。</li>
+        <li>手工 FastAPI + Postgres (Bedi 的论点)。</li>
+      </ol>
+      <p>本课程构建每种的小型版本。</p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="持久执行模式"><a href="#持久执行模式">持久执行，模式</a></h3>
+      <p>持久执行引擎在每个”步骤”（超步，LangGraph 的术语）后持久化完整程序状态。崩溃时：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>worker crashes mid-step</span></span>
+<span class="line"><span>  -> lease timeout</span></span>
+<span class="line"><span>  -> another worker picks up the thread_id</span></span>
+<span class="line"><span>  -> resumes from last checkpoint</span></span>
+<span class="line"><span>  -> no duplicate side effects</span></span></code></pre>
+      <p>这需要：</p>
+      <ul>
+        <li>
+          <strong>可序列化状态。</strong> 所有 Agent
+          状态必须可持久化。带有活动数据库连接的函数闭包无法存活。
+        </li>
+        <li>
+          <strong>确定性恢复。</strong> 给定相同状态和相同输入，Agent 产生相同动作（或对 LLM
+          调用延迟到外部确定性预言机）。
+        </li>
+        <li><strong>幂等副作用。</strong> 外部调用（工具调用、支付）必须幂等或使用去重键。</li>
+      </ul>
+      <p>
+        LangGraph 在每个超步后写入检查点；Temporal 在每个活动后写入；Restate
+        使用事件溯源日志。三者实现相同模式。
+      </p>
+      <h3 id="langgraph-的运行时"><a href="#langgraph-的运行时">LangGraph 的运行时</a></h3>
+      <p>
+        每个 Agent 有一个
+        <code>thread_id</code
+        >；状态是类型化字典；每个超步写入检查点表的一行。恢复时，运行时从最后一个检查点重放，不是从头开始。Agent
+        可以
+        <code>interrupt()</code>
+        等待人工输入；运行时持久化并释放工作者。当输入到达时，任何工作者可以恢复。
+      </p>
+      <p>这是 2026 年 4 月的参考生产设计。</p>
+      <h3 id="megaagent-的每-agent-队列">
+        <a href="#megaagent-的每-agent-队列">MegaAgent 的每 Agent 队列</a>
+      </h3>
+      <p>arXiv:2408.09955 描述了一个规模实验：一个集群中数千个并发 Agent。架构：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>agent i:</span></span>
+<span class="line"><span>  state ∈ {Idle, Processing, Response}</span></span>
+<span class="line"><span>  in_queue   &#x3C;- 发送给 Agent i 的消息</span></span>
+<span class="line"><span>  out_queue  -> 回复 + 副作用</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>coordinators:</span></span>
+<span class="line"><span>  intra-group chat  (同组 Agent)</span></span>
+<span class="line"><span>  inter-group admin chat  (高层路由)</span></span></code></pre>
+      <p>两层协调让组内对话密集进行，而组间保持稀疏——用于在数千 Agent 中保持成本线性的模式。</p>
+      <h3 id="async-vs-每任务一线程"><a href="#async-vs-每任务一线程">Async vs 每任务一线程</a></h3>
+      <p>
+        LLM 调用是 I/O 密集型的。等待下一个 token 的线程 99% 的时间是空闲的。线程每个花费约 1MB
+        RAM；10,000 个并发调用就是 10GB 仅用于栈。
+      </p>
+      <p>
+        Fiber (Python <code>asyncio</code>, Go goroutine, Rust <code>tokio</code>) 在 I/O
+        上协作让出。相同的 10,000 个调用舒适地适应一个进程。在 LLM Agent 规模下，async
+        不是优化——它是架构。
+      </p>
+      <p>
+        例外：CPU 密集型后处理（嵌入、tokenizer 技巧）仍然需要线程或进程。将 I/O 层与 CPU 层分离。
+      </p>
+      <h3 id="bedi-的反面观点"><a href="#bedi-的反面观点">Bedi 的反面观点</a></h3>
+      <p>
+        “Scaling Agentic Software” (Ashpreet Bedi, 2026)
+        论证大多数团队在测量负载之前就过度工程了。务实的默认：
+      </p>
+      <ul>
+        <li>FastAPI + Postgres。</li>
+        <li>每个 Agent 运行是一行；状态用乐观并发原位更新。</li>
+        <li>通过 <code>pg_notify</code> 或简单 Celery worker 的后台作业。</li>
+        <li>应用代码中的重试策略。</li>
+      </ul>
+      <p>
+        对于可管理任务上约 100 个并发 Agent 运行以下的负载，这通常就是你需要的。在测量到失败时升级。
+      </p>
+      <p>
+        规则：当你遇到简单架构无法解决的具体问题时采用持久执行框架。过早采用在不产生回报的仪式上浪费时间。
+      </p>
+      <h3 id="恰好一次语义"><a href="#恰好一次语义">恰好一次语义</a></h3>
+      <p>对于付费 Agent 运行，你需要”恰好一次有效”（至少一次交付 + 幂等消费者）。工程手段：</p>
+      <ul>
+        <li><strong>每次运行的去重键。</strong> 在每个副作用调用中包含它。</li>
+        <li><strong>发件箱模式。</strong> 副作用先写入表，然后单独进程执行。两步都幂等。</li>
+        <li><strong>补偿事务。</strong> 当副作用成功但其跟踪写入失败时，安排补偿。</li>
+      </ul>
+      <p>
+        这些是数据库工程模式，不是 LLM 特定的。LLM 税只是 LLM 调用慢；其他一切都是标准分布式系统。
+      </p>
+      <h3 id="彩虹部署"><a href="#彩虹部署">彩虹部署</a></h3>
+      <p>
+        Anthropic 的多 Agent 研究系统使用”彩虹部署”：多个版本的 Agent
+        运行时并发运行，这样长时间运行的 Agent
+        不必在每次代码部署时被杀死。金丝雀新版本在一部分流量上；当旧版本的 Agent 完成时退役。
+      </p>
+      <p>
+        这是长时间运行有状态系统的标准；2026 年的适应是 Agent 可以存活数小时，所以部署周期必须适应。
+      </p>
+      <h3 id="规范生产检查清单"><a href="#规范生产检查清单">规范生产检查清单</a></h3>
+      <ul>
+        <li>持久状态（检查点、快照或发件箱 + 可重放日志）。</li>
+        <li>幂等副作用。</li>
+        <li>LLM 调用的异步 I/O 层。</li>
+        <li>带去重的至少一次交付。</li>
+        <li>有状态工作负载的彩虹/金丝雀部署。</li>
+        <li>可观测性：每 Agent 追踪、超步审计、重试计数器。</li>
+      </ul>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p><code>code/main.py</code> 实现：</p>
+      <ul>
+        <li>
+          <code>CheckpointStore</code> — SQLite 支持的检查点日志，带 thread-id
+          键。每个超步追加一行。
+        </li>
+        <li>
+          <code>run_with_checkpoint(agent, thread_id)</code> —
+          模拟运行中途崩溃；第二个工作者从最后一个检查点恢复。
+        </li>
+        <li>
+          <code>AgentQueue</code> — 带 Idle / Processing / Response 状态机的每 Agent 小型工作队列。
+        </li>
+        <li>
+          <code>demo_async_vs_threads()</code> — 通过 asyncio 和线程运行 500 个并发模拟”LLM
+          调用”；报告挂钟时间和峰值内存（近似）。
+        </li>
+      </ul>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <p>
+        预期输出：模拟崩溃后检查点恢复成功；async 版本在 &#x3C; 1s 内处理 500
+        个并发调用；线程版本花费数秒且每个并发单元使用数量级更多的内存。
+      </p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        <code>outputs/skill-scaling-advisor.md</code> 就持久执行选择提供建议：FastAPI +
+        Postgres、LangGraph runtime、Temporal 或自定义。按负载、状态保留需求和部署频率校准。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>规范生产强化：</p>
+      <ul>
+        <li><strong>从简单开始 (Bedi 规则)。</strong> FastAPI + Postgres 直到测量到失败。</li>
+        <li>
+          <strong>优化前先仪器化一切。</strong> 每运行延迟直方图、每步时间、重试计数、失败分类。
+        </li>
+        <li><strong>副作用的发件箱模式。</strong> 特别是支付和外部 API 调用。</li>
+        <li><strong>彩虹部署。</strong> 部署期间永远不要杀死运行中的 Agent 运行。</li>
+        <li>
+          <strong>在遇到特定问题时采用持久执行引擎 (Temporal / LangGraph / Restate)</strong
+          >：数小时的人工在环等待、跨区域协调、复杂的重试/补偿策略。
+        </li>
+        <li><strong>I/O 层用 async。</strong> 线程只用于 CPU 密集型后处理。</li>
+      </ul>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>运行 <code>code/main.py</code>。确认检查点恢复工作；测量 async vs thread 并发差异。</li>
+        <li>
+          实现<strong>发件箱</strong>表：每个工具调用先写入发件箱，然后单独的 goroutine/task
+          执行。通过运行工具调用两次验证幂等性。
+        </li>
+        <li>
+          模拟<strong>彩虹部署</strong>：两个并发运行时版本；将新 thread_id
+          的一半路由到每个；确认旧版本上的运行中线程不被中断。
+        </li>
+        <li>
+          阅读 LangGraph 的运行时文档（链接如下）。识别运行时中复制到手工 FastAPI + Postgres
+          版本需要最长时间的功能。这是采用的理由，还是可以推迟？
+        </li>
+        <li>
+          阅读 MegaAgent (arXiv:2408.09955) 第 3 节。两层协调（组内 +
+          组间管理聊天）是显式的。勾勒你如何将此映射到带两个队列族的消息队列。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们怎么说</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>持久执行</td>
+            <td>”持久化程序状态”</td>
+            <td>引擎在每个超步后写入状态；崩溃恢复是确定性的。</td>
+          </tr>
+          <tr>
+            <td>超步</td>
+            <td>”事务边界”</td>
+            <td>检查点之间的工作单元。LangGraph 术语。</td>
+          </tr>
+          <tr>
+            <td>thread_id</td>
+            <td>”Agent 运行标识符”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="绑定"
+                data-module="c"
+                data-def="将标识符关联到实体"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">绑定</abbr></span
+              >检查<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="恢复"
+                data-module="github"
+                data-def="恢复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">恢复</abbr></span
+              >逻辑的键。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="幂等"
+                data-module="javascript"
+                data-def="多次执行结果相同"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">幂等</abbr></span
+              >性
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="安全"
+                data-module="cpp"
+                data-def="安全性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">安全</abbr></span
+              >重试”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="重复"
+                data-module="github"
+                data-def="重复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">重复</abbr></span
+              >副作用产生与一次尝试相同的<span
+                class="term-tip"
+                data-term="结果"
+                data-module="c"
+                data-def="函数返回的值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结果</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              发件箱<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >
+            </td>
+            <td>
+              ”解耦<span
+                class="term-tip"
+                data-term="副作用"
+                data-module="c"
+                data-def="修改外部状态"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">副作用</abbr></span
+              >”
+            </td>
+            <td>
+              将<span
+                class="term-tip"
+                data-term="意图"
+                data-module="github"
+                data-def="意图"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">意图</abbr></span
+              >写入<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >独的<span
+                class="term-tip"
+                data-term="执行器"
+                data-module="iot"
+                data-def="接收控制信号并执行物理动作（如开关阀门、驱动电机）的器件"
+                data-slug="iot/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行器</abbr></span
+              >执<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >并<span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >完成。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              至少一次<span
+                class="term-tip"
+                data-term="交付"
+                data-module="github"
+                data-def="交付"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">交付</abbr></span
+              >
+            </td>
+            <td>
+              ”可能有<span
+                class="term-tip"
+                data-term="重复"
+                data-module="github"
+                data-def="重复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">重复</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="消息"
+                data-module="github"
+                data-def="消息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">消息</abbr></span
+              >队列<span
+                class="term-tip"
+                data-term="语义"
+                data-module="cpp"
+                data-def="语义"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语义</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="去重"
+                data-module="data-analysis"
+                data-def="删除数据集中重复记录的操作，Pandas中用drop_duplicates()实现"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">去重</abbr></span
+              >键使<span
+                class="term-tip"
+                data-term="消费者"
+                data-module="cpp"
+                data-def="消费数据的一方"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">消费者</abbr></span
+              >有效一次。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              彩虹<span
+                class="term-tip"
+                data-term="部署"
+                data-module="cpp"
+                data-def="部署应用"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">部署</abbr></span
+              >
+            </td>
+            <td>
+              ”重叠<span
+                class="term-tip"
+                data-term="版本"
+                data-module="c"
+                data-def="软件的迭代版本"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">版本</abbr></span
+              >”
+            </td>
+            <td>
+              长<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >运<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >工作<span
+                class="term-tip"
+                data-term="负载"
+                data-module="github"
+                data-def="负载"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">负载</abbr></span
+              >期间<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >个<span
+                class="term-tip"
+                data-term="运行时"
+                data-module="c"
+                data-def="程序执行的阶段"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">运行时</abbr></span
+              >版本并发。
+            </td>
+          </tr>
+          <tr>
+            <td>Async fiber</td>
+            <td>”协作让出”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >模式并发；<span
+                class="term-tip"
+                data-term="相对"
+                data-module="cpp"
+                data-def="相对的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">相对</abbr></span
+              >线程<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >
+              I/O 密集<span
+                class="term-tip"
+                data-term="负载"
+                data-module="github"
+                data-def="负载"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">负载</abbr></span
+              >便宜。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="检查点"
+                data-module="github"
+                data-def="检查点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">检查点</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="状态"
+                data-module="cpp"
+                data-def="状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">状态</abbr></span
+              >快照”
+            </td>
+            <td>
+              超步<span
+                class="term-tip"
+                data-term="边界"
+                data-module="java"
+                data-def="泛型类型参数的约束，上界 &#x60;extends&#x60;、下界 &#x60;super&#x60;"
+                data-slug="java/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">边界</abbr></span
+              >处的<span
+                class="term-tip"
+                data-term="序列化"
+                data-module="cpp"
+                data-def="序列化"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">序列化</abbr></span
+              >状态；<span
+                class="term-tip"
+                data-term="恢复"
+                data-module="github"
+                data-def="恢复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">恢复</abbr></span
+              >的键。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a
+            href="https://www.langchain.com/conceptual-guides/runtime-behind-production-deep-agents"
+            >LangChain — The runtime behind production deep agents</a
+          >
+          — LangGraph
+          <span
+            class="term-tip"
+            data-term="运行时"
+            data-module="c"
+            data-def="程序执行的阶段"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">运行时</abbr></span
+          >设计
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2408.09955">MegaAgent</a> — 每 Agent
+          <span
+            class="term-tip"
+            data-term="生产者"
+            data-module="cpp"
+            data-def="生产者"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产者</abbr></span
+          >-<span
+            class="term-tip"
+            data-term="消费者"
+            data-module="cpp"
+            data-def="消费数据的一方"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">消费者</abbr></span
+          >队列；数千并发 Agent 的两层<span
+            class="term-tip"
+            data-term="协调"
+            data-module="react"
+            data-def="React 比较新旧虚拟 DOM 树并计算最小变更的算法过程"
+            data-slug="react/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协调</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2511.21686">Matrix</a> — 以<span
+            class="term-tip"
+            data-term="消息"
+            data-module="github"
+            data-def="消息"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">消息</abbr></span
+          >队列为<span
+            class="term-tip"
+            data-term="协调"
+            data-module="react"
+            data-def="React 比较新旧虚拟 DOM 树并计算最小变更的算法过程"
+            data-slug="react/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">协调</abbr></span
+          >基质的去中心化<span
+            class="term-tip"
+            data-term="框架"
+            data-module="cpp"
+            data-def="框架"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">框架</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://docs.temporal.io/">Temporal docs</a> — 持久<span
+            class="term-tip"
+            data-term="执行"
+            data-module="github"
+            data-def="执行"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">执行</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="参考"
+            data-module="github"
+            data-def="参考"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参考</abbr></span
+          >工作<span
+            class="term-tip"
+            data-term="流"
+            data-module="cpp"
+            data-def="数据输入输出的抽象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">流</abbr></span
+          >引擎
+        </li>
+        <li>
+          <a href="https://www.anthropic.com/engineering/multi-agent-research-system"
+            >Anthropic — Multi-agent research system</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="包"
+            data-module="go"
+            data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+            data-slug="go/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">包</abbr></span
+          >括彩虹<span
+            class="term-tip"
+            data-term="部署"
+            data-module="cpp"
+            data-def="部署应用"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">部署</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="生产"
+            data-module="github"
+            data-def="生产"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产</abbr></span
+          >经验
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

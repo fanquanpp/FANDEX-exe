@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>条件GAN与Pix2Pix</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">条件GAN与Pix2Pix</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            12 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">条件GAN</span><span class="doc-tag">Pix2Pix</span
+          ><span class="doc-tag">CycleGAN</span><span class="doc-tag">图像翻译</span
+          ><span class="doc-tag">U-Net</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">条件生成对抗网络与图像到图像翻译，从Pix2Pix到CycleGAN</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="条件-gan-与-pix2pix"><a href="#条件-gan-与-pix2pix">条件 GAN 与 Pix2Pix</a></h1>
+      <blockquote>
+        <p>
+          2014-2017 年的第一个重大突破是控制 GAN 生成什么。附加一个标签、一张图像或一句话。Pix2Pix
+          做了图像版本，至今在窄域图像到图像任务上仍胜过每个通用文本到图像模型。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置知识:</strong> Phase 8
+        · 03 (GAN), Phase 4 · 06 (U-Net), Phase 3 · 07 (CNN) <strong>时间:</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        无条件 GAN
+        采样任意人脸。对演示有用，在生产中无用。你想要：<em>将草图映射到照片</em>、<em>将地图映射到航拍照片</em>、<em>将白天场景映射到夜晚</em>、<em>灰度图像着色</em>。在所有这些中，你给定输入图像
+        <code>x</code>，必须输出具有某种语义对应关系的 <code>y</code>。每个
+        <code>x</code> 有多个合理的
+        <code>y</code>。均方误差将它们压成糊状。对抗损失不会，因为”看起来真实”是清晰的。
+      </p>
+      <p>
+        条件 GAN (Mirza &#x26; Osindero, 2014) 将条件 <code>c</code> 作为 <code>G</code> 和
+        <code>D</code> 的输入添加。Pix2Pix (Isola et al., 2017)
+        专门化了这一点：条件是完整的输入图像，生成器是 U-Net，判别器是<em>基于块的</em>分类器
+        (PatchGAN)，损失是对抗 + L1。即使在 2026
+        年，这个配方在窄域图像到图像任务上也优于从头训练的文本到图像模型，因为它在<em>配对数据</em>上训练——你恰好拥有所需的信号。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <p>
+        <strong>条件 G。</strong> <code>G(x, z) → y</code>。在 Pix2Pix 中，<code>z</code> 是 G
+        内部的 dropout（无输入噪声——Isola 发现显式噪声被忽略）。
+      </p>
+      <p>
+        <strong>条件 D。</strong>
+        <code>D(x, y) → [0, 1]</code>。输入是<em>对</em>（条件，输出）。这是关键区别：D 必须判断
+        <code>y</code> 是否与 <code>x</code> 一致，而不仅仅是 <code>y</code> 是否看起来真实。
+      </p>
+      <p>
+        <strong>U-Net 生成器。</strong>
+        带有跨瓶颈跳跃连接的编码器-解码器。对于输入和输出共享低层结构（边缘、轮廓）的任务至关重要。没有跳跃连接，高频细节会消失。
+      </p>
+      <p>
+        <strong>PatchGAN 判别器。</strong> D 不输出单个真/假分数，而是输出
+        <code>N×N</code> 网格，每个单元格判断约 70×70
+        像素的感受野。取平均。这是马尔可夫随机场假设：真实性是局部的。训练更快，参数更少，输出更清晰。
+      </p>
+      <p><strong>损失。</strong></p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>loss_G = -log D(x, G(x)) + λ · ||y - G(x)||_1</span></span>
+<span class="line"><span>loss_D = -log D(x, y) - log (1 - D(x, G(x)))</span></span></code></pre>
+      <p>
+        L1 项稳定训练并将 G 推向已知目标。L1 比 L2 给出更清晰的边缘（中位数，而非均值）。<code
+          >λ = 100</code
+        >
+        是 Pix2Pix 的默认值。
+      </p>
+      <h2 id="cyclegan--当你没有配对数据时">
+        <a href="#cyclegan--当你没有配对数据时">CycleGAN — 当你没有配对数据时</a>
+      </h2>
+      <p>
+        Pix2Pix 需要配对的 <code>(x, y)</code> 数据。CycleGAN (Zhu et al., 2017)
+        以额外损失为代价去掉了这个要求：<em>循环一致性</em>损失。两个生成器 <code>G: X → Y</code> 和
+        <code>F: Y → X</code>。训练它们使 <code>F(G(x)) ≈ x</code> 和
+        <code>G(F(y)) ≈ y</code>。这让你可以在没有配对样本的情况下将马翻译成斑马、夏天翻译成冬天。
+      </p>
+      <p>
+        2026 年，非配对图像到图像主要通过扩散（ControlNet, IP-Adapter）而非 CycleGAN
+        完成，但循环一致性思想在几乎每个非配对域适应论文中存活。
+      </p>
+      <h2 id="动手构建"><a href="#动手构建">动手构建</a></h2>
+      <p>
+        <code>code/main.py</code> 在 1-D 数据上实现了一个微型条件 GAN。条件
+        <code>c</code> 是类标签（0 或 1）。任务：为给定类从条件分布中产生样本。
+      </p>
+      <h3 id="步骤-1将条件附加到-g-和-d-的输入">
+        <a href="#步骤-1将条件附加到-g-和-d-的输入">步骤 1：将条件附加到 G 和 D 的输入</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> G</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(z, c, params):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mlp(concat([z, one_hot(c)]), params)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> D</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x, c, params):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mlp(concat([x, one_hot(c)]), params)</span></span></code></pre>
+      <p>One-hot 编码是最简单的方式。更大的模型使用学习的嵌入、FiLM 调制或交叉注意力。</p>
+      <h3 id="步骤-2条件训练"><a href="#步骤-2条件训练">步骤 2：条件训练</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> step </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(steps):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    x, c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sample_real_conditional()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    noise </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sample_noise()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    update_D(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">x_real</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">x, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">x_fake</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">G(noise, c), </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">c</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">c)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    update_G(noise, c)</span></span></code></pre>
+      <p>生成器必须匹配<em>给定条件</em>下的真实分布，而非边际分布。</p>
+      <h3 id="步骤-3验证每类输出"><a href="#步骤-3验证每类输出">步骤 3：验证每类输出</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    samples </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [G(noise, c) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> noise </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    mean_c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mean(samples)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    assert_near(mean_c, real_mean_for_class_c)</span></span></code></pre>
+      <h2 id="常见陷阱"><a href="#常见陷阱">常见陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>条件被忽略。</strong> G 学会了边缘化，D
+          从不惩罚因为条件信号弱。修复：更积极地条件化 D（早期层，不仅仅是后期），使用投影判别器
+          (Miyato &#x26; Koyama 2018)。
+        </li>
+        <li>
+          <strong>L1 权重太低。</strong> G 漂移到任意看起来真实的输出，而非忠实的输出。Pix2Pix
+          风格任务从 λ≈100 开始。
+        </li>
+        <li>
+          <strong>L1 权重太高。</strong> G 产生模糊输出，因为 L1 仍然是 L_p
+          范数。训练稳定后逐渐降低。
+        </li>
+        <li>
+          <strong>D 中的真值泄漏。</strong> 将 <code>(x, y)</code> 拼接为 D 输入，而不仅仅是
+          <code>y</code>。没有这个 D 无法检查一致性。
+        </li>
+        <li><strong>每类模式坍缩。</strong> 每个类可以独立坍缩。运行类条件多样性检查。</li>
+      </ul>
+      <h2 id="实际应用"><a href="#实际应用">实际应用</a></h2>
+      <p>2026 年图像到图像任务的状态：</p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>任务</th>
+            <th>最佳方法</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>草图 → 照片，同域，配对数据</td>
+            <td>Pix2Pix / Pix2PixHD（仍然快，仍然清晰）</td>
+          </tr>
+          <tr>
+            <td>草图 → 照片，非配对</td>
+            <td>带涂鸦条件模型的 ControlNet</td>
+          </tr>
+          <tr>
+            <td>语义分割 → 照片</td>
+            <td>SPADE / GauGAN2 或 SD + ControlNet-Seg</td>
+          </tr>
+          <tr>
+            <td>风格迁移</td>
+            <td>带 IP-Adapter 或 LoRA 的扩散；GAN 方法是遗留的</td>
+          </tr>
+          <tr>
+            <td>深度 → 照片</td>
+            <td>Stable Diffusion 上的 ControlNet-Depth</td>
+          </tr>
+          <tr>
+            <td>超分辨率</td>
+            <td>Real-ESRGAN (GAN), ESRGAN-Plus, 或 SD-Upscale (扩散)</td>
+          </tr>
+          <tr>
+            <td>着色</td>
+            <td>ColTran, 基于扩散的着色器, 或 Pix2Pix-color</td>
+          </tr>
+          <tr>
+            <td>白天 → 夜晚，季节，天气</td>
+            <td>CycleGAN 或基于 ControlNet</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        当你 (a) 有数千个配对样本，(b) 任务窄且可重复，(c) 需要快速推理时，Pix2Pix
+        仍然是正确的工具。在通用开放域任务上，扩散获胜。
+      </p>
+      <h2 id="交付物"><a href="#交付物">交付物</a></h2>
+      <p>
+        保存 <code>outputs/skill-img2img-chooser.md</code>。技能接收任务描述、数据可用性（配对 vs
+        非配对，N 个样本）和延迟/质量预算，输出：方法（Pix2Pix, CycleGAN, ControlNet 变体, SDXL +
+        IP-Adapter）、训练数据需求、推理成本和评估协议（LPIPS, FID, 任务特定）。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong>简单。</strong> 修改 <code>code/main.py</code> 添加第三个类。确认 G
+          仍然将每个类的噪声映射到正确的模式。
+        </li>
+        <li>
+          <strong>中等。</strong> 在 1-D 设置中用感知风格损失替换 L1（例如，一个小型冻结 D
+          作为特征提取器）。它会改变条件分布的清晰度吗？
+        </li>
+        <li>
+          <strong>困难。</strong> 在 1-D 设置中勾勒
+          CycleGAN：两个分布，两个生成器，循环损失。展示它可以在没有配对数据的情况下学习在它们之间映射。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们怎么说</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>条件 GAN</td>
+            <td>”带标签的 GAN”</td>
+            <td>G(z, c), D(x, c)。两个网络都看到条件。</td>
+          </tr>
+          <tr>
+            <td>Pix2Pix</td>
+            <td>”图像到图像 GAN”</td>
+            <td>带 U-Net G 和 PatchGAN D + L1 损失的配对 cGAN。</td>
+          </tr>
+          <tr>
+            <td>U-Net</td>
+            <td>
+              ”带<span
+                class="term-tip"
+                data-term="跳"
+                data-module="github"
+                data-def="跳"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">跳</abbr></span
+              >跃<span
+                class="term-tip"
+                data-term="连接"
+                data-module="cpp"
+                data-def="连接关系"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连接</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="编码"
+                data-module="cpp"
+                data-def="编写代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编码</abbr></span
+              >器-解码器”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="对称"
+                data-module="cpp"
+                data-def="对称的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对称</abbr></span
+              >卷积<span
+                class="term-tip"
+                data-term="网络"
+                data-module="github"
+                data-def="网络"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网络</abbr></span
+              >；<span
+                class="term-tip"
+                data-term="跳"
+                data-module="github"
+                data-def="跳"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">跳</abbr></span
+              >跃<span
+                class="term-tip"
+                data-term="连接"
+                data-module="cpp"
+                data-def="连接关系"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连接</abbr></span
+              >保留<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >频。
+            </td>
+          </tr>
+          <tr>
+            <td>PatchGAN</td>
+            <td>
+              ”局部<span
+                class="term-tip"
+                data-term="真实"
+                data-module="github"
+                data-def="真实的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">真实</abbr></span
+              >性<span
+                class="term-tip"
+                data-term="分类"
+                data-module="vue3"
+                data-def="分组和组织"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分类</abbr></span
+              >器”
+            </td>
+            <td>
+              D
+              <span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >每<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >分数而非全局分数。
+            </td>
+          </tr>
+          <tr>
+            <td>CycleGAN</td>
+            <td>
+              ”非<span
+                class="term-tip"
+                data-term="配对"
+                data-module="github"
+                data-def="配对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">配对</abbr></span
+              >图像<span
+                class="term-tip"
+                data-term="翻译"
+                data-module="vue3"
+                data-def="国际化翻译"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">翻译</abbr></span
+              >”
+            </td>
+            <td>
+              两个 G +
+              <span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >一致性损失；无需<span
+                class="term-tip"
+                data-term="配对"
+                data-module="github"
+                data-def="配对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">配对</abbr></span
+              >数据。
+            </td>
+          </tr>
+          <tr>
+            <td>SPADE</td>
+            <td>”GauGAN”</td>
+            <td>
+              用<span
+                class="term-tip"
+                data-term="语义"
+                data-module="cpp"
+                data-def="语义"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语义</abbr></span
+              >图归一化<span
+                class="term-tip"
+                data-term="中间"
+                data-module="github"
+                data-def="中间的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">中间</abbr></span
+              >激活；<span
+                class="term-tip"
+                data-term="分割"
+                data-module="github"
+                data-def="分割"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分割</abbr></span
+              >到<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>FiLM</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="特征"
+                data-module="c"
+                data-def="语言提供的功能"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特征</abbr></span
+              >级<span
+                class="term-tip"
+                data-term="线性"
+                data-module="github"
+                data-def="线性的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">线性</abbr></span
+              >调制”
+            </td>
+            <td>
+              来自<span
+                class="term-tip"
+                data-term="条件"
+                data-module="github"
+                data-def="条件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">条件</abbr></span
+              >的每<span
+                class="term-tip"
+                data-term="特征"
+                data-module="c"
+                data-def="语言提供的功能"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">特征</abbr></span
+              >仿射<span
+                class="term-tip"
+                data-term="变换"
+                data-module="cpp"
+                data-def="变换"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">变换</abbr></span
+              >；廉价<span
+                class="term-tip"
+                data-term="条件"
+                data-module="github"
+                data-def="条件"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">条件</abbr></span
+              >化。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="生产笔记pix2pix-作为延迟约束基线">
+        <a href="#生产笔记pix2pix-作为延迟约束基线">生产笔记：Pix2Pix 作为延迟约束基线</a>
+      </h2>
+      <p>
+        当你有<span
+          class="term-tip"
+          data-term="配对"
+          data-module="github"
+          data-def="配对"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">配对</abbr></span
+        >数据和一个窄<span
+          class="term-tip"
+          data-term="任务"
+          data-module="cpp"
+          data-def="任务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">任务</abbr></span
+        >（草<span
+          class="term-tip"
+          data-term="图"
+          data-module="algorithm"
+          data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+          data-slug="algorithm/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">图</abbr></span
+        >
+        →
+        <span
+          class="term-tip"
+          data-term="渲染"
+          data-module="html5"
+          data-def="将代码转为可视内容"
+          data-slug="html5/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">渲染</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="语义"
+          data-module="cpp"
+          data-def="语义"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">语义</abbr></span
+        >图 → 照片，白天 → 夜晚）时，Pix2Pix 的一次性<span
+          class="term-tip"
+          data-term="推理"
+          data-module="github"
+          data-def="推理"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">推理</abbr></span
+        >在<span
+          class="term-tip"
+          data-term="延迟"
+          data-module="cpp"
+          data-def="延迟操作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">延迟</abbr></span
+        >上比扩散快一个<span
+          class="term-tip"
+          data-term="数量"
+          data-module="github"
+          data-def="数量"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">数量</abbr></span
+        >级。<span
+          class="term-tip"
+          data-term="生产"
+          data-module="github"
+          data-def="生产"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生产</abbr></span
+        >比较通常是：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="路径"
+                data-module="github"
+                data-def="路径"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路径</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="步骤"
+                data-module="vue3"
+                data-def="处理步骤"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">步骤</abbr></span
+              >
+            </th>
+            <th>
+              512²
+              <span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >
+              L4 上的<span
+                class="term-tip"
+                data-term="典型"
+                data-module="cpp"
+                data-def="典型的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">典型</abbr></span
+              >延迟
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              Pix2Pix (U-Net
+              <span
+                class="term-tip"
+                data-term="forward"
+                data-module="cpp"
+                data-def="转发参数"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">forward</abbr></span
+              >)
+            </td>
+            <td>1</td>
+            <td>~30 ms</td>
+          </tr>
+          <tr>
+            <td>SD-Inpaint 或 SD-Img2Img</td>
+            <td>20</td>
+            <td>~1.2 s</td>
+          </tr>
+          <tr>
+            <td>SDXL-Turbo Img2Img</td>
+            <td>1-4</td>
+            <td>~0.15-0.35 s</td>
+          </tr>
+          <tr>
+            <td>ControlNet + SDXL base</td>
+            <td>20-30</td>
+            <td>~3-5 s</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        Pix2Pix 在<span
+          class="term-tip"
+          data-term="静态"
+          data-module="cpp"
+          data-def="静态"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">静态</abbr></span
+        >批次的<span
+          class="term-tip"
+          data-term="吞吐量"
+          data-module="cpp"
+          data-def="吞吐量"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">吞吐量</abbr></span
+        >上获胜（每个<span
+          class="term-tip"
+          data-term="请求"
+          data-module="vue3"
+          data-def="HTTP 请求"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">请求</abbr></span
+        >是相同的 FLOPs）。扩散在<span
+          class="term-tip"
+          data-term="质量"
+          data-module="github"
+          data-def="质量"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">质量</abbr></span
+        >和<span
+          class="term-tip"
+          data-term="泛化"
+          data-module="agent"
+          data-def="模型在未见过的新数据上保持良好性能的能力，是衡量模型质量的关键指标"
+          data-slug="agent/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">泛化</abbr></span
+        >上获胜。现代做法通常是为窄<span
+          class="term-tip"
+          data-term="任务"
+          data-module="cpp"
+          data-def="任务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">任务</abbr></span
+        >部署 Pix2Pix 风<span
+          class="term-tip"
+          data-term="格"
+          data-module="discrete-math"
+          data-def="任意两个元素都有上确界和下确界的偏序集"
+          data-slug="discrete-math/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">格</abbr></span
+        >的蒸馏模型，为尾部<span
+          class="term-tip"
+          data-term="输入"
+          data-module="c"
+          data-def="从外部获取数据"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">输入</abbr></span
+        >提供扩散<span
+          class="term-tip"
+          data-term="回退"
+          data-module="vue3"
+          data-def="备选方案"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">回退</abbr></span
+        >。
+      </p>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/1411.1784"
+            >Mirza &#x26; Osindero (2014). Conditional Generative Adversarial Nets</a
+          >
+          — cGAN 论文。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1611.07004"
+            >Isola et al. (2017). Image-to-Image Translation with Conditional Adversarial
+            Networks</a
+          >
+          — Pix2Pix。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1703.10593"
+            >Zhu et al. (2017). Unpaired Image-to-Image Translation using Cycle-Consistent
+            Adversarial Networks</a
+          >
+          — CycleGAN。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1711.11585"
+            >Wang et al. (2018). High-Resolution Image Synthesis with Conditional GANs</a
+          >
+          — Pix2PixHD。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1903.07291"
+            >Park et al. (2019). Semantic Image Synthesis with Spatially-Adaptive Normalization</a
+          >
+          — SPADE / GauGAN。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1802.05637"
+            >Miyato &#x26; Koyama (2018). cGANs with Projection Discriminator</a
+          >
+          —
+          <span
+            class="term-tip"
+            data-term="投影"
+            data-module="c"
+            data-def="提取类型的部分属性"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">投影</abbr></span
+          >
+          D。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

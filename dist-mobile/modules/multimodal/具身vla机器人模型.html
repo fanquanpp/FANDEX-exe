@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>具身VLA：RT-2、OpenVLA、pi0与GR00T</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">具身VLA：RT-2、OpenVLA、pi0与GR00T</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            12 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">VLA</span><span class="doc-tag">机器人</span
+          ><span class="doc-tag">RT-2</span><span class="doc-tag">OpenVLA</span
+          ><span class="doc-tag">pi0</span><span class="doc-tag">GR00T</span
+          ><span class="doc-tag">动作分词</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解视觉-语言-动作模型的演进，从离散动作token到流匹配动作专家</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="具身vlart-2openvlapi0与gr00t">
+        <a href="#具身vlart-2openvlapi0与gr00t">具身VLA：RT-2、OpenVLA、pi0与GR00T</a>
+      </h1>
+      <blockquote>
+        <p>
+          模型第一次从网站读取食谱并在厨房机器人上执行是RT-2 (Google DeepMind,
+          2023年7月)。RT-2将动作离散化为文本token，在Web数据加机器人动作数据上共同微调VLM，证明了Web级视觉-语言知识可以迁移到机器人控制。OpenVLA
+          (2024年6月)发布了开放7B参考。Physical
+          Intelligence的pi0系列(2024-2025)添加了流匹配动作专家。NVIDIA的GR00T N1
+          (2025年3月)为人形机器人规模交付了双系统(System 1 / System
+          2)控制。VLA原语——视觉-语言-动作，一个能看、读、行动的单一模型——是本阶段理解模型与Phase
+          15自主系统之间的桥梁。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib, 动作分词器 + VLA推理骨架)
+        <strong>前置知识:</strong> Phase 12 · 05 (LLaVA), Phase 15 (自主系统，参考)
+        <strong>时间:</strong> ~180分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>描述动作分词化：离散bin编码(RT-2)、FAST高效动作token、连续流匹配动作(pi0)。</li>
+        <li>解释为什么在Web + 机器人数据上共同微调保留了对新任务的通用知识迁移。</li>
+        <li>
+          比较OpenVLA(开放7B Llama+VLM)、pi0(流匹配)和GR00T N1(双系统)在相同机器人任务上的表现。
+        </li>
+        <li>说出Open X-Embodiment数据集及其作为RT-X训练语料的角色。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        从自然语言指令做家务的机器人自1970年代以来就是研究目标。2020年代的答案：视觉-语言-动作(VLA)模型。与VQA使用的相同VLM架构，但输出是动作(关节力矩、末端执行器位姿、离散命令)而非文本。
+      </p>
+      <p>VLA特有挑战：</p>
+      <ol>
+        <li>动作空间是连续的(关节角度、力)且高维(7自由度臂 + 3自由度夹爪 = 30 Hz下10维)。</li>
+        <li>机器人特定训练数据稀缺。Open X-Embodiment约100万轨迹；Web文本-图像50亿+。</li>
+        <li>控制频率很重要。30 Hz控制循环意味着每个动作33ms预算。</li>
+        <li>安全性。错误动作损坏硬件、人员或财产。</li>
+      </ol>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="动作分词化rt-2"><a href="#动作分词化rt-2">动作分词化(RT-2)</a></h3>
+      <p>
+        RT-2的技巧：将每个关节目标表示为量化文本token。将归一化[-1,
+        1]范围离散化为256个bin，每个bin映射到词表ID。10自由度动作在每个控制步骤变为10个token。
+      </p>
+      <p>在混合数据上共同微调PaLM-X VLM：</p>
+      <ul>
+        <li>Web图像-文本对(标题生成、VQA)。</li>
+        <li>机器人演示，动作作为token。</li>
+      </ul>
+      <p>
+        模型看到”拿起红色方块”(语言) → 图像(视觉) → 10
+        token动作序列(离散化关节目标)。Web预训练保留通用知识迁移：RT-2可以遵循”向快速移动的物体移动”，即使”快速移动”不在训练数据中。
+      </p>
+      <p>RT-2论文中推理3-5 Hz，受VLM自回归解码限制。</p>
+      <h3 id="openvla--开放7b参考"><a href="#openvla--开放7b参考">OpenVLA — 开放7B参考</a></h3>
+      <p>
+        OpenVLA (Kim等人, 2024年6月)是开放权重的RT-2等价物。7B Llama骨干，DINOv2 +
+        SigLIP双视觉编码器，256 bin上的动作分词化。
+      </p>
+      <p>在Open X-Embodiment(22个机器人97万轨迹)上训练。附带LoRA微调支持以适配新机器人。</p>
+      <p>推理：A100上量化后4-5 Hz。对慢速操作足够，对高频控制不够。</p>
+      <h3 id="fast分词器--更快动作解码">
+        <a href="#fast分词器--更快动作解码">FAST分词器 — 更快动作解码</a>
+      </h3>
+      <p>
+        Pertsch等人(2024)表明离散bin分词化效率低——大多数动作聚集在bin空间的小区域。FAST(频域动作序列分词器)通过DCT压缩动作序列并量化系数。
+      </p>
+      <p>30步动作轨迹变为约10个FAST token而非300个离散bin token。推理加速3-5倍无质量损失。</p>
+      <h3 id="pi0与流匹配动作"><a href="#pi0与流匹配动作">pi0与流匹配动作</a></h3>
+      <p>Physical Intelligence的pi0 (Black等人, 2024年10月)用流匹配动作专家替换离散动作token：</p>
+      <ul>
+        <li>小型动作Transformer读取VLM隐藏状态并通过rectified flow输出连续50步动作序列。</li>
+        <li>动作头用流匹配损失训练；VLM预训练不变。</li>
+        <li>推理：约5个去噪步骤发出完整动作序列，有效50 Hz控制。</li>
+      </ul>
+      <p>pi0声称：在广泛操作任务套件上击败OpenVLA和Octo。连续动作公式保留了离散化破坏的平滑性。</p>
+      <p>pi0.5和pi0-FAST是增量升级。pi0-FAST结合FAST分词化与流匹配。</p>
+      <h3 id="gr00t-n1--人形机器人双系统">
+        <a href="#gr00t-n1--人形机器人双系统">GR00T N1 — 人形机器人双系统</a>
+      </h3>
+      <p>NVIDIA的GR00T N1 (2025年3月)为人形机器人(>30自由度，全身)构建：</p>
+      <ul>
+        <li>System 2：大型VLM读取场景 + 指令，约1 Hz产生高级子目标。</li>
+        <li>System 1：小型动作头Transformer基于子目标产生低级50-100 Hz关节命令。</li>
+      </ul>
+      <p>
+        拆分映射到Kahneman的快慢思考：System 2规划，System
+        1行动。好处：慢速VLM级规划不阻塞快速控制；System 1保持小型以降低延迟。
+      </p>
+      <p>GR00T N1.7(2025年底)改进数据缩放。GR00T用Omniverse的sim-to-real数据微调。</p>
+      <h3 id="open-x-embodiment"><a href="#open-x-embodiment">Open X-Embodiment</a></h3>
+      <p>
+        训练数据。RT-X (2023年10月)组装了22个数据集覆盖22个机器人的100万轨迹。Open
+        X-Embodiment是所有人使用的语料：
+      </p>
+      <ul>
+        <li>ALOHA / Bridge V2 / Droid / RT-2 Kitchen / Language Table。</li>
+        <li>每个样本：(机器人状态、摄像头视图、指令、动作序列)。</li>
+        <li>训练卫生：统一动作空间、归一化关节范围、调整摄像头大小。</li>
+      </ul>
+      <p>
+        OpenVLA和pi0在Open
+        X-Embodiment上训练。到任何特定机器人的域差距通过100-1000个任务特定演示的LoRA微调弥合。
+      </p>
+      <h3 id="共同微调-vs-仅机器人"><a href="#共同微调-vs-仅机器人">共同微调 vs 仅机器人</a></h3>
+      <p>
+        共同微调混合Web
+        VQA数据与机器人轨迹。比例很重要：太多VQA模型忘记动作；太多机器人数据模型丢失通用知识。
+      </p>
+      <p>
+        RT-2比例：约1:1。OpenVLA：约0.5:1
+        Web对机器人。pi0：类似。精确比例是按数据集大小调优的超参数。
+      </p>
+      <p>
+        仅机器人训练产生在分布外指令上失败的任务特定模型。共同微调是”拿起红色方块(在演示中)“和”从左边拿起第三大的物体(新措辞)“之间的区别。
+      </p>
+      <h3 id="安全和动作限制"><a href="#安全和动作限制">安全和动作限制</a></h3>
+      <p>每个生产VLA附带：</p>
+      <ul>
+        <li>硬关节限制(不能超过规格的力矩)。</li>
+        <li>速度限制(软裁剪)。</li>
+        <li>工作空间边界(末端执行器不能离开桌面)。</li>
+        <li>新任务的人工审批循环。</li>
+      </ul>
+      <p>这些作为控制层检查位于VLA之外。VLA的输出是建议，不是命令。</p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code>：</p>
+      <ul>
+        <li>实现256 bin动作分词化和反分词化。</li>
+        <li>基于DCT + 量化的FAST分词器草图。</li>
+        <li>比较(离散bin, FAST, 连续流)每动作步骤的token数。</li>
+        <li>打印RT-2 → OpenVLA → pi0 → GR00T的谱系摘要。</li>
+      </ul>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-vla-action-format-picker.md</code>。给定机器人任务(操作、导航、人形全身)，在离散bin
+        + RT-2、FAST + OpenVLA、流匹配 + pi0或双系统 + GR00T之间选择。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            10自由<span
+              class="term-tip"
+              data-term="度"
+              data-module="algorithm"
+              data-def="与顶点关联的边数，有向图分为入度和出度"
+              data-slug="algorithm/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">度</abbr></span
+            >臂30 Hz控制速<span
+              class="term-tip"
+              data-term="率"
+              data-module="cpp"
+              data-def="速率"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">率</abbr></span
+            >。256 bin离散分词化每秒发出<span
+              class="term-tip"
+              data-term="多"
+              data-module="github"
+              data-def="多个的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">多</abbr></span
+            >少token？7B VLM能跟上吗？
+          </p>
+        </li>
+        <li>
+          <p>
+            FAST分词化将30步<span
+              class="term-tip"
+              data-term="轨迹"
+              data-module="html5"
+              data-def="视频字幕轨道"
+              data-slug="html5/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">轨迹</abbr></span
+            >压缩到约10
+            <span
+              class="term-tip"
+              data-term="token"
+              data-module="python"
+              data-def="词法分析的最小语法单元"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">token</abbr></span
+            >。如果<span
+              class="term-tip"
+              data-term="轨迹"
+              data-module="html5"
+              data-def="视频字幕轨道"
+              data-slug="html5/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">轨迹</abbr></span
+            >有<span
+              class="term-tip"
+              data-term="高"
+              data-module="github"
+              data-def="高的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">高</abbr></span
+            >频<span
+              class="term-tip"
+              data-term="运动"
+              data-module="github"
+              data-def="运动"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">运动</abbr></span
+            >(如打鼓)<span
+              class="term-tip"
+              data-term="用户"
+              data-module="cpp"
+              data-def="用户"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">用户</abbr></span
+            >丢失什么？
+          </p>
+        </li>
+        <li>
+          <p>
+            pi0的<span
+              class="term-tip"
+              data-term="流"
+              data-module="cpp"
+              data-def="数据输入输出的抽象"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">流</abbr></span
+            >匹配<span
+              class="term-tip"
+              data-term="头"
+              data-module="github"
+              data-def="头"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">头</abbr></span
+            >在约5步去噪。<span
+              class="term-tip"
+              data-term="比较"
+              data-module="github"
+              data-def="比较两个分支或提交"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">比较</abbr></span
+            >吞吐量与OpenVLA 4-5 Hz的自回归<span
+              class="term-tip"
+              data-term="解码"
+              data-module="javascript"
+              data-def="将编码数据还原为原始形式"
+              data-slug="javascript/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">解码</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            GR00T的System 1 / System 2拆分<span
+              class="term-tip"
+              data-term="映射"
+              data-module="c"
+              data-def="类型到另一类型的对应关系"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">映射</abbr></span
+            >到Kahneman。提出可能<span
+              class="term-tip"
+              data-term="帮助"
+              data-module="github"
+              data-def="帮助"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">帮助</abbr></span
+            >双足<span
+              class="term-tip"
+              data-term="行"
+              data-module="vue3"
+              data-def="数据行"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行</abbr></span
+            >走的不同<span
+              class="term-tip"
+              data-term="拆分"
+              data-module="cpp"
+              data-def="拆分"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">拆分</abbr></span
+            >(System 3?)。
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读Open X-Embodiment第4节<span
+              class="term-tip"
+              data-term="关于"
+              data-module="github"
+              data-def="关于"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">关于</abbr></span
+            >数据集<span
+              class="term-tip"
+              data-term="管理"
+              data-module="github"
+              data-def="管理"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">管理</abbr></span
+            >。说出防止<span
+              class="term-tip"
+              data-term="域"
+              data-module="discrete-math"
+              data-def="同时满足加法和乘法群性质且满足分配律的代数结构，如有理数域、有限域"
+              data-slug="discrete-math/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">域</abbr></span
+            >泄漏的三条<span
+              class="term-tip"
+              data-term="管理"
+              data-module="github"
+              data-def="管理"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">管理</abbr></span
+            >规则。
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>VLA</td>
+            <td>
+              ”视觉-<span
+                class="term-tip"
+                data-term="语言"
+                data-module="github"
+                data-def="编程语言"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">语言</abbr></span
+              >-动作”
+            </td>
+            <td>
+              接受<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >+<span
+                class="term-tip"
+                data-term="指令"
+                data-module="github"
+                data-def="指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指令</abbr></span
+              >并<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >动作<span
+                class="term-tip"
+                data-term="命令"
+                data-module="github"
+                data-def="命令指令"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">命令</abbr></span
+              >的模型
+            </td>
+          </tr>
+          <tr>
+            <td>动作分词化</td>
+            <td>”离散bin”</td>
+            <td>
+              将<span
+                class="term-tip"
+                data-term="连续"
+                data-module="calculus"
+                data-def="函数在某点的极限值等于函数值，图像在该点无间断"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连续</abbr></span
+              >关<span
+                class="term-tip"
+                data-term="节目"
+                data-module="github"
+                data-def="节目"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">节目</abbr></span
+              >标量化为每维256 bin，每个是词表ID
+            </td>
+          </tr>
+          <tr>
+            <td>FAST分词器</td>
+            <td>
+              ”频<span
+                class="term-tip"
+                data-term="域"
+                data-module="discrete-math"
+                data-def="同时满足加法和乘法群性质且满足分配律的代数结构，如有理数域、有限域"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">域</abbr></span
+              >动作<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >”
+            </td>
+            <td>
+              DCT + 量化将30步<span
+                class="term-tip"
+                data-term="轨迹"
+                data-module="html5"
+                data-def="视频字幕轨道"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轨迹</abbr></span
+              >压缩到约10
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              共同<span
+                class="term-tip"
+                data-term="微调"
+                data-module="agent"
+                data-def="在预训练模型基础上使用特定领域数据进一步训练，使模型适应特定任务"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">微调</abbr></span
+              >
+            </td>
+            <td>
+              ”混合Web+<span
+                class="term-tip"
+                data-term="机器"
+                data-module="github"
+                data-def="机器"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">机器</abbr></span
+              >人”
+            </td>
+            <td>
+              在Web VQA数据旁<span
+                class="term-tip"
+                data-term="机器"
+                data-module="github"
+                data-def="机器"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">机器</abbr></span
+              >人<span
+                class="term-tip"
+                data-term="演示"
+                data-module="github"
+                data-def="演示"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">演示</abbr></span
+              >上<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >以<span
+                class="term-tip"
+                data-term="保留"
+                data-module="github"
+                data-def="保留"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保留</abbr></span
+              >通用<span
+                class="term-tip"
+                data-term="知识"
+                data-module="github"
+                data-def="知识"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">知识</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="流"
+                data-module="cpp"
+                data-def="数据输入输出的抽象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">流</abbr></span
+              >匹配动作<span
+                class="term-tip"
+                data-term="头"
+                data-module="github"
+                data-def="头"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">头</abbr></span
+              >
+            </td>
+            <td>
+              ”pi0连续<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >”
+            </td>
+            <td>
+              通过rectified flow输出50步动作<span
+                class="term-tip"
+                data-term="序列"
+                data-module="github"
+                data-def="序列"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">序列</abbr></span
+              >的小型Transformer
+            </td>
+          </tr>
+          <tr>
+            <td>System 1 / System 2</td>
+            <td>
+              ”双<span
+                class="term-tip"
+                data-term="系统"
+                data-module="cpp"
+                data-def="系统"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">系统</abbr></span
+              >控制”
+            </td>
+            <td>
+              大型VLM慢<span
+                class="term-tip"
+                data-term="规划"
+                data-module="agent"
+                data-def="智能体将复杂目标分解为可执行步骤序列的推理过程"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">规划</abbr></span
+              >，小型动作<span
+                class="term-tip"
+                data-term="头"
+                data-module="github"
+                data-def="头"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">头</abbr></span
+              >快<span
+                class="term-tip"
+                data-term="执行"
+                data-module="github"
+                data-def="执行"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行</abbr></span
+              >；GR00T模式
+            </td>
+          </tr>
+          <tr>
+            <td>Open X-Embodiment</td>
+            <td>”RT-X数据集”</td>
+            <td>
+              100万<span
+                class="term-tip"
+                data-term="轨迹"
+                data-module="html5"
+                data-def="视频字幕轨道"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">轨迹</abbr></span
+              >跨<span
+                class="term-tip"
+                data-term="机器"
+                data-module="github"
+                data-def="机器"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">机器</abbr></span
+              >人数据集；<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >语料
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li><a href="https://arxiv.org/abs/2307.15818">Brohan等人 — RT-2 (arXiv:2307.15818)</a></li>
+        <li><a href="https://arxiv.org/abs/2406.09246">Kim等人 — OpenVLA (arXiv:2406.09246)</a></li>
+        <li><a href="https://arxiv.org/abs/2410.24164">Black等人 — pi0 (arXiv:2410.24164)</a></li>
+        <li><a href="https://arxiv.org/abs/2503.14734">NVIDIA — GR00T N1 (arXiv:2503.14734)</a></li>
+        <li>
+          <a href="https://arxiv.org/abs/2310.08864"
+            >Open X-Embodiment Collab — RT-X (arXiv:2310.08864)</a
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

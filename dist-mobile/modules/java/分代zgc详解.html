@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>分代ZGC详解</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">分代ZGC详解</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">JDK 21分代ZGC详解：原理、配置与调优。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="概述"><a href="#概述">概述</a></h2>
+      <p>
+        ZGC（Z Garbage Collector）是 Oracle 开发的低延迟垃圾收集器，目标是将 GC 停顿时间控制在 1
+        毫秒以内，且停顿时间不随堆大小增加而增长。JDK 21 引入的分代 ZGC
+        将堆分为新生代和老年代，利用弱分代假说提升回收效率，是当前最先进的垃圾回收器之一。
+      </p>
+      <h2 id="基础概念"><a href="#基础概念">基础概念</a></h2>
+      <h3 id="zgc-核心技术"><a href="#zgc-核心技术">ZGC 核心技术</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>技术</th>
+            <th>说明</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>着色指针</td>
+            <td>在指针中存储 GC 元数据，无需额外的标记位图</td>
+          </tr>
+          <tr>
+            <td>读屏障</td>
+            <td>在对象引用加载时执行检查，确保引用正确性</td>
+          </tr>
+          <tr>
+            <td>并发整理</td>
+            <td>
+              与<span
+                class="term-tip"
+                data-term="应用"
+                data-module="github"
+                data-def="GitHub 应用程序"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">应用</abbr></span
+              >线程并发<span
+                class="term-tip"
+                data-term="执行"
+                data-module="github"
+                data-def="执行"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行</abbr></span
+              >对象移动，减少停顿
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="区域"
+                data-module="cpp"
+                data-def="区域"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">区域</abbr></span
+              >化内存
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="堆"
+                data-module="algorithm"
+                data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">堆</abbr></span
+              >被划分为<span
+                class="term-tip"
+                data-term="大小"
+                data-module="github"
+                data-def="大小"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">大小</abbr></span
+              >不等的<span
+                class="term-tip"
+                data-term="区域"
+                data-module="cpp"
+                data-def="区域"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">区域</abbr></span
+              >（ZPage）
+            </td>
+          </tr>
+          <tr>
+            <td>
+              转发<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="记录"
+                data-module="github"
+                data-def="记录"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记录</abbr></span
+              >对象<span
+                class="term-tip"
+                data-term="移动"
+                data-module="github"
+                data-def="移动"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">移动</abbr></span
+              >后的新地址，用于<span
+                class="term-tip"
+                data-term="指针"
+                data-module="c"
+                data-def="存储内存地址的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">指针</abbr></span
+              >修正
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="为什么需要分代"><a href="#为什么需要分代">为什么需要分代</a></h3>
+      <ul>
+        <li>
+          大<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >数<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >朝生夕死（<span
+            class="term-tip"
+            data-term="弱"
+            data-module="cpp"
+            data-def="弱"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">弱</abbr></span
+          >分代假说），新生代<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >存活<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >低
+        </li>
+        <li>
+          非分代 ZGC 每次都扫描整个<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >短命<span
+            class="term-tip"
+            data-term="对象"
+            data-module="cpp"
+            data-def="类的实例"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对象</abbr></span
+          >回收<span
+            class="term-tip"
+            data-term="效率"
+            data-module="cpp"
+            data-def="效率性能"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">效率</abbr></span
+          >低
+        </li>
+        <li>
+          分代后可以更频繁地<span
+            class="term-tip"
+            data-term="回收"
+            data-module="github"
+            data-def="回收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">回收</abbr></span
+          >新生代，<span
+            class="term-tip"
+            data-term="减少"
+            data-module="github"
+            data-def="减少"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">减少</abbr></span
+          >全<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >扫描开销
+        </li>
+        <li>
+          老<span
+            class="term-tip"
+            data-term="年"
+            data-module="cpp"
+            data-def="年"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">年</abbr></span
+          >代<span
+            class="term-tip"
+            data-term="回收"
+            data-module="github"
+            data-def="回收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">回收</abbr></span
+          >频<span
+            class="term-tip"
+            data-term="率"
+            data-module="cpp"
+            data-def="速率"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">率</abbr></span
+          >降低，<span
+            class="term-tip"
+            data-term="减少"
+            data-module="github"
+            data-def="减少"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">减少</abbr></span
+          >长<span
+            class="term-tip"
+            data-term="生命周期"
+            data-module="cpp"
+            data-def="生命周期"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生命周期</abbr></span
+          >对象的<span
+            class="term-tip"
+            data-term="处理"
+            data-module="cpp"
+            data-def="处理"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">处理</abbr></span
+          >开销
+        </li>
+      </ul>
+      <h3 id="zpage-类型"><a href="#zpage-类型">ZPage 类型</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="类型"
+                data-module="c"
+                data-def="数据的分类"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="大小"
+                data-module="github"
+                data-def="大小"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">大小</abbr></span
+              >
+            </th>
+            <th>用途</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Small</td>
+            <td>2MB</td>
+            <td>
+              小<span
+                class="term-tip"
+                data-term="对象"
+                data-module="cpp"
+                data-def="类的实例"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对象</abbr></span
+              >分配
+            </td>
+          </tr>
+          <tr>
+            <td>Medium</td>
+            <td>32MB</td>
+            <td>
+              中等<span
+                class="term-tip"
+                data-term="大小"
+                data-module="github"
+                data-def="大小"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">大小</abbr></span
+              >对象
+            </td>
+          </tr>
+          <tr>
+            <td>Large</td>
+            <td>N * 2MB</td>
+            <td>
+              大<span
+                class="term-tip"
+                data-term="对象"
+                data-module="cpp"
+                data-def="类的实例"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对象</abbr></span
+              >（<span
+                class="term-tip"
+                data-term="连续"
+                data-module="calculus"
+                data-def="函数在某点的极限值等于函数值，图像在该点无间断"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连续</abbr></span
+              >内存）
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="快速上手"><a href="#快速上手">快速上手</a></h2>
+      <h3 id="启用分代-zgc"><a href="#启用分代-zgc">启用分代 ZGC</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># JDK 21+ 启用分代 ZGC</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">java</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+UseZGC</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+ZGenerational</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -Xms4g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -Xmx4g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -jar</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> app.jar</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 验证 ZGC 是否启用</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">java</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+UseZGC</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+ZGenerational</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -Xlog:gc</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -jar</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> app.jar</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 输出中应包含 "Using The Z Garbage Collector" 和 "Generational"</span></span></code></pre>
+      <h3 id="基本-gc-日志"><a href="#基本-gc-日志">基本 GC 日志</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 查看 ZGC 日志</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">java</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+UseZGC</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+ZGenerational</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -Xlog:gc</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">:file=gc.log:time,uptime,level,tags</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -jar</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> app.jar</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 实时监控 GC</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">jstat</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -gcutil</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">pi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">d</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000</span></span></code></pre>
+      <h2 id="详细用法"><a href="#详细用法">详细用法</a></h2>
+      <h3 id="核心配置参数"><a href="#核心配置参数">核心配置参数</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 基本参数</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:+UseZGC</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">                # 启用 ZGC</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:+ZGenerational</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">         # 启用分代模式（JDK 21+）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-Xms4g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -Xmx4g</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">              # 堆大小（建议 Xms=Xmx）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 调优参数</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:ZAllocationSpikeTolerance</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">=2</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # 分配峰值容忍度（默认2）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:SoftMaxHeapSize</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">=3g</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">             # 软最大堆大小（GC 努力维持的目标）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:ConcGCThreads</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">=4</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">                # 并发 GC 线程数（默认为 CPU 核数的 12.5%）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:ZFragmentLimit</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">=5</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">               # 碎片率上限（百分比，默认5）</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 高级参数</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:+UnlockExperimentalVMOptions</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   # 解锁实验性选项</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:+ZVerifyForwarding</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">             # 验证转发表正确性（调试用）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:+ZVerifyViews</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">                  # 验证指针视图（调试用）</span></span></code></pre>
+      <h3 id="内存分配与回收流程"><a href="#内存分配与回收流程">内存分配与回收流程</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>对象分配流程：</span></span>
+<span class="line"><span>1. 线程本地分配（TLAB） -> 快速路径</span></span>
+<span class="line"><span>2. ZPage 分配 -> 中等路径</span></span>
+<span class="line"><span>3. 新 ZPage 创建 -> 慢速路径（可能触发 GC）</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>新生代回收流程：</span></span>
+<span class="line"><span>1. 标记阶段：并发标记存活对象</span></span>
+<span class="line"><span>2. 转移阶段：并发将存活对象移到新 ZPage</span></span>
+<span class="line"><span>3. 重定位阶段：修正指向已移动对象的引用</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>老年代回收流程：</span></span>
+<span class="line"><span>1. 与新生代类似，但频率更低</span></span>
+<span class="line"><span>2. 可与新生代回收并发执行</span></span></code></pre>
+      <h3 id="分代-zgc-的内存布局"><a href="#分代-zgc-的内存布局">分代 ZGC 的内存布局</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>+--------------------------------------------------+</span></span>
+<span class="line"><span>|                   ZHeap                           |</span></span>
+<span class="line"><span>|  +------------------+  +------------------+       |</span></span>
+<span class="line"><span>|  |    新生代         |  |    老年代         |       |</span></span>
+<span class="line"><span>|  |  ZPage(Small)    |  |  ZPage(Small)    |       |</span></span>
+<span class="line"><span>|  |  ZPage(Small)    |  |  ZPage(Medium)   |       |</span></span>
+<span class="line"><span>|  |  ZPage(Medium)   |  |  ZPage(Large)    |       |</span></span>
+<span class="line"><span>|  +------------------+  +------------------+       |</span></span>
+<span class="line"><span>+--------------------------------------------------+</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>- 新生代和老年代各自维护独立的 ZPage 集合</span></span>
+<span class="line"><span>- 对象在新生代存活足够长时间后晋升到老年代</span></span>
+<span class="line"><span>- 新生代和老年代可以独立回收，也可以同时回收</span></span></code></pre>
+      <h2 id="常见场景"><a href="#常见场景">常见场景</a></h2>
+      <h3 id="低延迟交易系统"><a href="#低延迟交易系统">低延迟交易系统</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 交易系统配置：追求极低停顿</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">java</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+UseZGC</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+ZGenerational</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -Xms16g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -Xmx16g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -XX:SoftMaxHeapSize=12g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -XX:ConcGCThreads=8</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -XX:ZAllocationSpikeTolerance=3</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -XX:+UseLargePages</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -XX:LargePageSizeInBytes=2m</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -jar</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> trading-app.jar</span></span></code></pre>
+      <h3 id="大内存缓存服务"><a href="#大内存缓存服务">大内存缓存服务</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 缓存服务配置：大堆内存</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">java</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+UseZGC</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+ZGenerational</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -Xms64g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -Xmx64g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -XX:SoftMaxHeapSize=48g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -XX:ConcGCThreads=12</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -XX:ZFragmentLimit=3</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -jar</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cache-service.jar</span></span></code></pre>
+      <h3 id="从-g1-迁移到-zgc"><a href="#从-g1-迁移到-zgc">从 G1 迁移到 ZGC</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 迁移步骤：</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 1. 在测试环境启用分代 ZGC</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">java</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+UseZGC</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+ZGenerational</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -Xms4g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -Xmx4g</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -jar</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> app.jar</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 2. 收集 GC 日志并分析停顿时间</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">java</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+UseZGC</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+ZGenerational</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -Xlog:gc</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">:file=zgc.log:time,uptime</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -jar</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> app.jar</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 3. 对比 G1 和 ZGC 的性能指标</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#    - 最大停顿时间</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#    - 吞吐量</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#    - CPU 使用率</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#    - 内存使用量</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 4. 调整 ConcGCThreads 和 SoftMaxHeapSize</span></span></code></pre>
+      <h2 id="注意事项"><a href="#注意事项">注意事项</a></h2>
+      <ul>
+        <li>
+          分代 ZGC 从 JDK 21 开始<span
+            class="term-tip"
+            data-term="提供"
+            data-module="github"
+            data-def="提供"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提供</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="早期"
+            data-module="github"
+            data-def="早期的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">早期</abbr></span
+          >版本仅<span
+            class="term-tip"
+            data-term="支持"
+            data-module="cpp"
+            data-def="支持"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">支持</abbr></span
+          >非分代<span
+            class="term-tip"
+            data-term="模式"
+            data-module="github"
+            data-def="模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模式</abbr></span
+          >
+        </li>
+        <li>
+          ZGC 的<span
+            class="term-tip"
+            data-term="吞吐量"
+            data-module="cpp"
+            data-def="吞吐量"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">吞吐量</abbr></span
+          >略低于 G1（约低 5-10%），但停顿<span
+            class="term-tip"
+            data-term="时间"
+            data-module="cpp"
+            data-def="时间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">时间</abbr></span
+          >大幅降低
+        </li>
+        <li>
+          ZGC 需要更<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >外内存用于<span
+            class="term-tip"
+            data-term="存储"
+            data-module="cpp"
+            data-def="存储"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">存储</abbr></span
+          >元数据（约为<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >大小的 3%）
+        </li>
+        <li>
+          读屏障会带来约 4% 的<span
+            class="term-tip"
+            data-term="性能"
+            data-module="github"
+            data-def="性能"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">性能</abbr></span
+          >开销，但换来的是极低的停顿
+        </li>
+        <li>
+          在 Linux 上<span
+            class="term-tip"
+            data-term="建议"
+            data-module="github"
+            data-def="建议"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">建议</abbr></span
+          >启用大页内存（-XX:+UseLargePages）<span
+            class="term-tip"
+            data-term="提升"
+            data-module="github"
+            data-def="提升"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">提升</abbr></span
+          >性能
+        </li>
+        <li>
+          ZGC 不<span
+            class="term-tip"
+            data-term="支持"
+            data-module="cpp"
+            data-def="支持"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">支持</abbr></span
+          >压缩<span
+            class="term-tip"
+            data-term="指针"
+            data-module="c"
+            data-def="存储内存地址的变量"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">指针</abbr></span
+          >（CompressedOops），32GB 以下<span
+            class="term-tip"
+            data-term="堆"
+            data-module="algorithm"
+            data-def="满足堆序性质的完全二叉树，最大堆父节点>=子节点，最小堆反之"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆</abbr></span
+          >可能不如 G1
+        </li>
+      </ul>
+      <h2 id="进阶用法"><a href="#进阶用法">进阶用法</a></h2>
+      <h3 id="zgc-调优策略"><a href="#zgc-调优策略">ZGC 调优策略</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 策略一：调整并发线程数</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># ConcGCThreads 默认为 CPU 核数的 12.5%</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 如果 GC 频率高，可以增加并发线程数</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:ConcGCThreads</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">=8</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 8核机器可以设为2-4</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 策略二：调整软最大堆</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># SoftMaxHeapSize 是 GC 努力维持的目标</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 实际堆使用可以超过此值，但 GC 会更积极地回收</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:SoftMaxHeapSize</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">=3g</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 在4GB堆中设为3GB</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 策略三：调整分配容忍度</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># ZAllocationSpikeTolerance 控制分配高峰时的容忍度</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 如果有突发流量，可以适当增大</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">-XX:ZAllocationSpikeTolerance</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">=3</span></span></code></pre>
+      <h3 id="zgc-监控与诊断"><a href="#zgc-监控与诊断">ZGC 监控与诊断</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 使用 JFR（Java Flight Recorder）监控 ZGC</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">java</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+UseZGC</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> -XX:+ZGenerational</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -XX:StartFlightRecording=duration=60s,filename=zgc.jfr</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  -jar</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> app.jar</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 使用 JMX 监控 ZGC 指标</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 关键 MBean：java.lang:type=GarbageCollector,name=ZGC</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 使用 jcmd 获取 ZGC 详细信息</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">jcmd</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">pi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">d</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> GC.heap_info</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">jcmd</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">pi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">d</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> GC.class_histogram</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">jcmd</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">pi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">d</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> VM.info</span></span></code></pre>
+      <h3 id="非分代到分代的迁移注意事项">
+        <a href="#非分代到分代的迁移注意事项">非分代到分代的迁移注意事项</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 分代 ZGC 的行为变化：</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 1. 新生代回收频率高于老年代</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 2. 对象晋升条件：经历多次新生代回收仍存活</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 3. Mixed GC：同时回收新生代和部分老年代</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 4. 内存使用模式可能不同，需要重新评估堆大小</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 迁移后需要验证：</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># - GC 停顿时间是否满足要求</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># - 吞吐量是否可接受</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># - 内存使用是否合理</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># - 是否有晋升失败等问题</span></span></code></pre>
+    </article>
+  </body>
+</html>

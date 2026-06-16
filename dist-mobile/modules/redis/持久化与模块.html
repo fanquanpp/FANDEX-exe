@@ -1,0 +1,1107 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>持久化与模块</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">持久化与模块</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          RDB快照、AOF日志、混合持久化、无盘复制；RedisJSON、RedisTimeSeries、RedisBloom、RediSearch、Cuckoo
+          Filter、T-Digest；统一模块化架构。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-rdb-快照"><a href="#1-rdb-快照">1. RDB 快照</a></h2>
+      <h3 id="11-rdb-原理"><a href="#11-rdb-原理">1.1 RDB 原理</a></h3>
+      <p>RDB（Redis Database）将某一时刻的内存数据以二进制形式写入磁盘文件。</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>RDB 触发方式:</span></span>
+<span class="line"><span>1. save — 同步保存（阻塞主线程，生产禁用）</span></span>
+<span class="line"><span>2. bgsave — 异步保存（fork 子进程）</span></span>
+<span class="line"><span>3. 自动保存（配置触发条件）</span></span>
+<span class="line"><span>4. shutdown 时自动保存</span></span>
+<span class="line"><span>5. 主从全量同步时</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>bgsave 流程:</span></span>
+<span class="line"><span>  主进程 ──fork()──→ 子进程</span></span>
+<span class="line"><span>    │                   │</span></span>
+<span class="line"><span>    │ 继续处理请求      │ 写入临时 RDB 文件</span></span>
+<span class="line"><span>    │（写时复制 COW）   │</span></span>
+<span class="line"><span>    │                   │ 写入完成</span></span>
+<span class="line"><span>    │←── 信号通知 ──────│</span></span>
+<span class="line"><span>    │ 替换旧 RDB 文件</span></span></code></pre>
+      <h3 id="12-rdb-配置"><a href="#12-rdb-配置">1.2 RDB 配置</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="ini"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># redis.conf</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 自动保存条件（满足任一即触发）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">save 3600 1         </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 3600秒内有1次修改</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">save 300 100        </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 300秒内有100次修改</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">save 60 10000       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 60秒内有10000次修改</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 禁用 RDB</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">save </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">""</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># RDB 文件配置</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">dbfilename dump.rdb</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">dir /var/lib/redis</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 压缩</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">rdbcompression yes       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># LZF 压缩字符串</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">rdbchecksum yes          </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># CRC64 校验</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 写时复制期间不执行 save</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">stop-writes-on-bgsave-error yes</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># RDB 增量备份（Redis 7.0+）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">rdb-del-sync-files no</span></span></code></pre>
+      <h3 id="13-rdb-优缺点"><a href="#13-rdb-优缺点">1.3 RDB 优缺点</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th align="left">优点</th>
+            <th align="left">缺点</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="left">文件紧凑，适合备份</td>
+            <td align="left">非实时，可能丢失数据</td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="恢复"
+                data-module="github"
+                data-def="恢复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">恢复</abbr></span
+              >速<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >快（<span
+                class="term-tip"
+                data-term="直接"
+                data-module="github"
+                data-def="直接的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">直接</abbr></span
+              >加载）
+            </td>
+            <td align="left">fork() 有内存开销（COW）</td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >性能<span
+                class="term-tip"
+                data-term="影响"
+                data-module="github"
+                data-def="影响"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">影响</abbr></span
+              >小（<span
+                class="term-tip"
+                data-term="子"
+                data-module="cpp"
+                data-def="子"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">子</abbr></span
+              >进程）
+            </td>
+            <td align="left">数据量大时 fork 耗时</td>
+          </tr>
+          <tr>
+            <td align="left">
+              适合灾难<span
+                class="term-tip"
+                data-term="恢复"
+                data-module="github"
+                data-def="恢复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">恢复</abbr></span
+              >
+            </td>
+            <td align="left">
+              不适合<span
+                class="term-tip"
+                data-term="要求"
+                data-module="github"
+                data-def="要求"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">要求</abbr></span
+              >高数据<span
+                class="term-tip"
+                data-term="安全"
+                data-module="cpp"
+                data-def="安全性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">安全</abbr></span
+              >性的场景
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="2-aof-日志"><a href="#2-aof-日志">2. AOF 日志</a></h2>
+      <h3 id="21-aof-原理"><a href="#21-aof-原理">2.1 AOF 原理</a></h3>
+      <p>
+        AOF（Append Only File）以<span
+          class="term-tip"
+          data-term="日志"
+          data-module="github"
+          data-def="日志"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">日志</abbr></span
+        >形式<span
+          class="term-tip"
+          data-term="记录"
+          data-module="github"
+          data-def="记录"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">记录</abbr></span
+        >每次写<span
+          class="term-tip"
+          data-term="操作"
+          data-module="github"
+          data-def="GitHub Actions 工作流"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">操作</abbr></span
+        >。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>AOF 写入流程:</span></span>
+<span class="line"><span>  命令 → AOF 缓冲区 → fsync 到磁盘</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>三种同步策略（appendfsync）:</span></span>
+<span class="line"><span>  always    — 每条命令 fsync（最安全，最慢）</span></span>
+<span class="line"><span>  everysec  — 每秒 fsync（推荐，最多丢1秒数据）</span></span>
+<span class="line"><span>  no        — 由 OS 决定（最快，可能丢数据）</span></span></code></pre>
+      <h3 id="22-aof-配置"><a href="#22-aof-配置">2.2 AOF 配置</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="ini"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># redis.conf</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">appendonly yes</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">appendfilename </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"appendonly.aof"</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">appendfsync everysec</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># AOF 目录（Redis 7.0+ 多文件 AOF）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">appenddirname </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"appendonlydir"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># AOF 重写配置</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">auto-aof-rewrite-percentage 100    </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># AOF 文件大小增长 100% 时触发</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">auto-aof-rewrite-min-size 64mb     </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># AOF 文件最小 64MB 才触发</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">no-appendfsync-on-rewrite no       </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 重写期间是否暂停 fsync</span></span></code></pre>
+      <h3 id="23-aof-重写"><a href="#23-aof-重写">2.3 AOF 重写</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>AOF 重写原理:</span></span>
+<span class="line"><span>  fork 子进程 → 遍历内存数据 → 生成最简命令 → 写入新 AOF</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>重写过程:</span></span>
+<span class="line"><span>  1. 主进程 fork 子进程</span></span>
+<span class="line"><span>  2. 子进程生成新 AOF（基于当前内存状态）</span></span>
+<span class="line"><span>  3. 主进程将新写命令追加到重写缓冲区</span></span>
+<span class="line"><span>  4. 子进程完成后，主进程追加重写缓冲区</span></span>
+<span class="line"><span>  5. 用新 AOF 替换旧 AOF</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>示例:</span></span>
+<span class="line"><span>  旧 AOF:</span></span>
+<span class="line"><span>    SET counter 1</span></span>
+<span class="line"><span>    INCR counter</span></span>
+<span class="line"><span>    INCR counter</span></span>
+<span class="line"><span>    INCR counter</span></span>
+<span class="line"><span>    DEL temp_key</span></span>
+<span class="line"><span>    SET counter 4</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>  重写后:</span></span>
+<span class="line"><span>    SET counter 4</span></span>
+<span class="line"><span>    # temp_key 已删除，不记录</span></span></code></pre>
+      <h3 id="24-多文件-aofredis-70">
+        <a href="#24-多文件-aofredis-70">2.4 多文件 AOF（Redis 7.0+）</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>AOF 目录结构:</span></span>
+<span class="line"><span>  appendonlydir/</span></span>
+<span class="line"><span>  ├── appendonly.aof.manifest     # 清单文件</span></span>
+<span class="line"><span>  ├── base-1.aof                  # 基础文件（RDB 格式或 AOF 格式）</span></span>
+<span class="line"><span>  └── incr-1.aof                  # 增量文件（新增写命令）</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>优势:</span></span>
+<span class="line"><span>  - 重写时只需生成新的 base 文件</span></span>
+<span class="line"><span>  - 增量文件可以独立追加</span></span>
+<span class="line"><span>  - 避免单文件过大</span></span>
+<span class="line"><span>  - 支持增量备份</span></span></code></pre>
+      <h2 id="3-混合持久化"><a href="#3-混合持久化">3. 混合持久化</a></h2>
+      <h3 id="31-混合持久化原理"><a href="#31-混合持久化原理">3.1 混合持久化原理</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>混合持久化 = RDB + AOF</span></span>
+<span class="line"><span>  AOF 重写时，前半部分写入 RDB 格式（快速加载），后半部分写入 AOF 格式（增量数据）</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>文件结构:</span></span>
+<span class="line"><span>  ┌─────────────────────┐</span></span>
+<span class="line"><span>  │ RDB 格式数据（前半） │  ← 快速加载</span></span>
+<span class="line"><span>  ├─────────────────────┤</span></span>
+<span class="line"><span>  │ AOF 增量命令（后半） │  ← 完整数据</span></span>
+<span class="line"><span>  └─────────────────────┘</span></span></code></pre>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="ini"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># redis.conf</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">aof-use-rdb-preamble yes    </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 启用混合持久化（默认开启）</span></span></code></pre>
+      <h3 id="32-持久化方案对比"><a href="#32-持久化方案对比">3.2 持久化方案对比</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th align="left">
+              <span
+                class="term-tip"
+                data-term="方案"
+                data-module="javascript"
+                data-def="数据结构定义"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">方案</abbr></span
+              >
+            </th>
+            <th align="left">
+              数据<span
+                class="term-tip"
+                data-term="安全"
+                data-module="cpp"
+                data-def="安全性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">安全</abbr></span
+              >
+            </th>
+            <th align="left">
+              <span
+                class="term-tip"
+                data-term="恢复"
+                data-module="github"
+                data-def="恢复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">恢复</abbr></span
+              >速<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+            </th>
+            <th align="left">磁盘占用</th>
+            <th align="left">适用场景</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="left">仅 RDB</td>
+            <td align="left">
+              可能丢<span
+                class="term-tip"
+                data-term="分钟"
+                data-module="github"
+                data-def="分钟"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分钟</abbr></span
+              >级数据
+            </td>
+            <td align="left">快</td>
+            <td align="left">小</td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >场景
+            </td>
+          </tr>
+          <tr>
+            <td align="left">仅 AOF</td>
+            <td align="left">
+              最<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >丢1秒
+            </td>
+            <td align="left">慢</td>
+            <td align="left">大</td>
+            <td align="left">
+              数据<span
+                class="term-tip"
+                data-term="存储"
+                data-module="cpp"
+                data-def="存储"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存储</abbr></span
+              >场景
+            </td>
+          </tr>
+          <tr>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="混合"
+                data-module="github"
+                data-def="混合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">混合</abbr></span
+              >持久化
+            </td>
+            <td align="left">
+              最<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >丢1秒
+            </td>
+            <td align="left">较快</td>
+            <td align="left">中</td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="推荐"
+                data-module="github"
+                data-def="推荐"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推荐</abbr></span
+              >（兼顾<span
+                class="term-tip"
+                data-term="安全"
+                data-module="cpp"
+                data-def="安全性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">安全</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="性能"
+                data-module="github"
+                data-def="性能"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">性能</abbr></span
+              >）
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="4-无盘复制"><a href="#4-无盘复制">4. 无盘复制</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="ini"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 无盘复制：主节点直接通过网络发送 RDB 给从节点，不生成磁盘文件</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">repl-diskless-sync yes</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">repl-diskless-sync-delay 5    </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 等待5秒让更多从节点一起接收</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 无盘复制加载（Redis 7.0+）</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">repl-diskless-load swapdb     </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 先加载到备用数据库，成功后切换</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 适用场景:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># - 磁盘 I/O 慢（云盘、网络存储）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># - 多个从节点同时全量同步</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># - 内存充足</span></span></code></pre>
+      <h2 id="5-redis-模块"><a href="#5-redis-模块">5. Redis 模块</a></h2>
+      <h3 id="51-redisjson"><a href="#51-redisjson">5.1 RedisJSON</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 安装</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># redis-server --loadmodule /path/to/rejson.so</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 设置 JSON</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.SET</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user:1001</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $ </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'{"name":"Alice","age":30,"address":{"city":"Beijing"}}'</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># JSONPath 查询</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.GET</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user:1001</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">.name</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">                    # "Alice"</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.GET</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user:1001</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">.address.city</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # "Beijing"</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.GET</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user:1001</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $                         </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 完整 JSON</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 修改 JSON</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.SET</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user:1001</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">.age</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 31</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.SET</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user:1001</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">.address.city</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "Shanghai"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 数组操作</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.SET</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tags:1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $ </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'["redis","database"]'</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.ARRAPPEND</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tags:1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $ </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'"nosql"'</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 追加元素</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.ARRLEN</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tags:1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $                          </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 数组长度</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.ARRPOP</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> tags:1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $ </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">-1</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">                       # 弹出最后一个</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 数值操作</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.NUMINCRBY</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user:1001</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">.age</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">              # 年龄+1</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 删除字段</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">JSON.DEL</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> user:1001</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> $</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">.address</span></span></code></pre>
+      <h3 id="52-redistimeseries"><a href="#52-redistimeseries">5.2 RedisTimeSeries</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 创建时间序列</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TS.CREATE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu:usage:server1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> RETENTION</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 86400000</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> LABELS</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> host</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> server1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> metric</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># RETENTION: 保留时间（毫秒），0=永久</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 添加数据点</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TS.ADD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu:usage:server1</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> *</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 75.5</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">              # * = 当前时间戳</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TS.ADD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu:usage:server1</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1704067200000</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 80.2</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 指定时间戳</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 批量添加</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TS.MADD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu:usage:server1</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1704067200000</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 80.2</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">         cpu:usage:server1</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1704067260000</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 82.1</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">         cpu:usage:server1</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1704067320000</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 78.5</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 查询</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TS.RANGE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu:usage:server1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> -</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> +</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> AGGREGATION</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> avg</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 60000</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 按分钟平均</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TS.RANGE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu:usage:server1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> -</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> +</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> COUNT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">               # 最近100个点</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 降采样规则</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TS.CREATE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu:usage:server1:1min</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> RULES</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> cpu:usage:server1:1h</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> avg</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 3600000</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 每小时平均值存入 1h 序列</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 多序列查询</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TS.MRANGE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> -</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> +</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> AGGREGATION</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> avg</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 60000</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> FILTER</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> metric=cpu</span></span></code></pre>
+      <h3 id="53-redisbloom"><a href="#53-redisbloom">5.3 RedisBloom</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 布隆过滤器</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BF.CREATE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> users:seen</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> EXPANSION</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ERROR</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.01</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> CAPACITY</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000000</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BF.ADD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> users:seen</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "user:1001"</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">               # 添加</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BF.EXISTS</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> users:seen</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "user:1001"</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 判断是否存在（可能有假阳性）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BF.EXISTS</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> users:seen</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "user:9999"</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">            # 不存在则一定不存在</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BF.MADD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> users:seen</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "user:1002"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "user:1003"</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">BF.INFO</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> users:seen</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># Cuckoo Filter（支持删除）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CF.CREATE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> emails:seen</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> CAPACITY</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1000000</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CF.ADD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> emails:seen</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "test@example.com"</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CF.EXISTS</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> emails:seen</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "test@example.com"</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CF.DEL</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> emails:seen</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "test@example.com"</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 支持删除！</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CF.COUNT</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> emails:seen</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># Count-Min Sketch（频率统计）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CMS.CREATE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> page:views</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2000</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 10</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CMS.INCRBY</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> page:views</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "home"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "about"</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 3</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">CMS.QUERY</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> page:views</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "home"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "about"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># Top-K（高频元素）</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TOPK.CREATE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> search:topk</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 10</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 50</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 4</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.9</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TOPK.ADD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> search:topk</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "redis"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "python"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "redis"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "java"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "redis"</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TOPK.LIST</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> search:topk</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TOPK.QUERY</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> search:topk</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "redis"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "python"</span></span></code></pre>
+      <h3 id="54-redisearch"><a href="#54-redisearch">5.4 RediSearch</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 创建索引</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">FT.CREATE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> idx:products</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> ON</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> JSON</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> PREFIX</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> product:</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> SCHEMA</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">  $.name</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> TEXT</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> WEIGHT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2.0</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">  $.description</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> TEXT</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">  $.price</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> NUMERIC</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">  $.category</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> TAG</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">  $.created_at</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> NUMERIC</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> SORTABLE</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 全文搜索</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">FT.SEARCH</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> idx:products</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "redis database"</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">FT.SEARCH</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> idx:products</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "@name:redis @category:database"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 数值过滤</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">FT.SEARCH</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> idx:products</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "redis"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> FILTER</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> price</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 标签过滤</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">FT.SEARCH</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> idx:products</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "*"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> FILTER</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> category</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> nosql</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 聚合查询</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">FT.AGGREGATE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> idx:products</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "*"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> GROUPBY</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> @category</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> REDUCE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> COUNT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> AS</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> count</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 高亮和摘要</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">FT.SEARCH</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> idx:products</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "redis"</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> HIGHLIGHT</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> FIELDS</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> name</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> description</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> SUMMARIZE</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 拼写建议</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">FT.SPELLCHECK</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> idx:products</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> "reddis"</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 删除索引</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">FT.DROPINDEX</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> idx:products</span></span></code></pre>
+      <h3 id="55-t-digest"><a href="#55-t-digest">5.5 T-Digest</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># T-Digest: 流式分位数估算</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 安装: redis-server --loadmodule /path/to/tdigest.so</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 创建</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TDIGEST.CREATE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> latency:api</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 添加数据</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TDIGEST.ADD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> latency:api</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 12.5</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 18.3</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 15.7</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 22.1</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 19.8</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 14.2</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 25.6</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 查询分位数</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TDIGEST.QUANTILE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> latency:api</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.5</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">    # 中位数</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TDIGEST.QUANTILE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> latency:api</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.95</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   # P95</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TDIGEST.QUANTILE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> latency:api</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.99</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">   # P99</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 查询 CDF</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TDIGEST.CDF</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> latency:api</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 20</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">          # ≤20ms 的请求比例</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 合并</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TDIGEST.MERGE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> latency:all</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> latency:api</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> latency:db</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 信息</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">TDIGEST.INFO</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> latency:api</span></span></code></pre>
+      <h2 id="6-统一模块化架构"><a href="#6-统一模块化架构">6. 统一模块化架构</a></h2>
+      <h3 id="61-模块管理"><a href="#61-模块管理">6.1 模块管理</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="bash"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 加载模块</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">redis-server</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> --loadmodule</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> /path/to/rejson.so</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">             --loadmodule</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> /path/to/redisearch.so</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> \</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">             --loadmodule</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> /path/to/redisbloom.so</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># redis.conf 配置</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">loadmodule</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> /path/to/rejson.so</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">loadmodule</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> /path/to/redisearch.so</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">loadmodule</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> /path/to/redisbloom.so</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 运行时加载</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">MODULE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> LOAD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> /path/to/rejson.so</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 查看已加载模块</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">MODULE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> LIST</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 卸载模块</span></span>
+<span class="line"><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">MODULE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> UNLOAD</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> rejson</span></span></code></pre>
+      <h3 id="62-模块生态"><a href="#62-模块生态">6.2 模块生态</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th align="left">
+              <span
+                class="term-tip"
+                data-term="模块"
+                data-module="github"
+                data-def="模块"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模块</abbr></span
+              >
+            </th>
+            <th align="left">功能</th>
+            <th align="left">适用场景</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td align="left">RedisJSON</td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="JSON"
+                data-module="html5"
+                data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">JSON</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="文档"
+                data-module="vue3"
+                data-def="代码说明文档"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文档</abbr></span
+              >存储
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="文档"
+                data-module="vue3"
+                data-def="代码说明文档"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文档</abbr></span
+              >型数据、<span
+                class="term-tip"
+                data-term="配置"
+                data-module="cpp"
+                data-def="配置参数"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">配置</abbr></span
+              >管理
+            </td>
+          </tr>
+          <tr>
+            <td align="left">RediSearch</td>
+            <td align="left">
+              全文检索与<span
+                class="term-tip"
+                data-term="二级索引"
+                data-module="mysql"
+                data-def="除主键外的其他索引"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">二级索引</abbr></span
+              >
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="搜索"
+                data-module="cpp"
+                data-def="搜索"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">搜索</abbr></span
+              >引擎、自动补全
+            </td>
+          </tr>
+          <tr>
+            <td align="left">RedisBloom</td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="概率"
+                data-module="github"
+                data-def="概率"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">概率</abbr></span
+              >数据<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="去重"
+                data-module="data-analysis"
+                data-def="删除数据集中重复记录的操作，Pandas中用drop_duplicates()实现"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">去重</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="频率"
+                data-module="cpp"
+                data-def="频率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">频率</abbr></span
+              >统计、Top-K
+            </td>
+          </tr>
+          <tr>
+            <td align="left">RedisTimeSeries</td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="时间序列"
+                data-module="data-analysis"
+                data-def="按时间顺序排列的数据序列，Pandas中用DatetimeIndex支持时间序列操作"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间序列</abbr></span
+              >数据<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="监控"
+                data-module="devops"
+                data-def="持续采集和展示系统指标（CPU、内存、延迟等）的过程，用于了解系统运行状态"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">监控</abbr></span
+              >指标、IoT 数据
+            </td>
+          </tr>
+          <tr>
+            <td align="left">RedisGraph</td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="图"
+                data-module="algorithm"
+                data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图</abbr></span
+              >数据<span
+                class="term-tip"
+                data-term="库"
+                data-module="cpp"
+                data-def="可复用的代码集合"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">库</abbr></span
+              >
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="社交"
+                data-module="github"
+                data-def="社交的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">社交</abbr></span
+              >关系、<span
+                class="term-tip"
+                data-term="知识"
+                data-module="github"
+                data-def="知识"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">知识</abbr></span
+              >图谱
+            </td>
+          </tr>
+          <tr>
+            <td align="left">RedisCell</td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="限流"
+                data-module="sql"
+                data-def="数据库对并发请求数量或频率进行限制的机制，防止系统过载"
+                data-slug="sql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限流</abbr></span
+              >器
+            </td>
+            <td align="left">
+              API
+              <span
+                class="term-tip"
+                data-term="限流"
+                data-module="sql"
+                data-def="数据库对并发请求数量或频率进行限制的机制，防止系统过载"
+                data-slug="sql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">限流</abbr></span
+              >、速<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >控制
+            </td>
+          </tr>
+          <tr>
+            <td align="left">T-Digest</td>
+            <td align="left">
+              分<span
+                class="term-tip"
+                data-term="位"
+                data-module="c"
+                data-def="二进制数字，基本存储单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位</abbr></span
+              >数估算
+            </td>
+            <td align="left">
+              <span
+                class="term-tip"
+                data-term="延迟"
+                data-module="cpp"
+                data-def="延迟操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">延迟</abbr></span
+              >监控、<span
+                class="term-tip"
+                data-term="SLA"
+                data-module="devops"
+                data-def="服务提供商与客户之间定义的正式服务质量承诺，包含违约赔偿条款"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SLA</abbr></span
+              >
+              <span
+                class="term-tip"
+                data-term="告警"
+                data-module="devops"
+                data-def="当监控指标超过预设阈值时自动发送通知的机制，确保运维团队及时响应异常"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">告警</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </article>
+  </body>
+</html>

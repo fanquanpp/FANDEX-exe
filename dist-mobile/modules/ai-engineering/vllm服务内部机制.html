@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>vLLM服务内部：PagedAttention、连续批处理、分块预填充</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">vLLM服务内部：PagedAttention、连续批处理、分块预填充</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            13 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">vLLM</span><span class="doc-tag">PagedAttention</span
+          ><span class="doc-tag">连续批处理</span><span class="doc-tag">分块预填充</span
+          ><span class="doc-tag">KV缓存</span><span class="doc-tag">调度器</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">深入理解vLLM三大核心优化机制及其调度器工作原理</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="vllm服务内部pagedattention连续批处理分块预填充">
+        <a href="#vllm服务内部pagedattention连续批处理分块预填充"
+          >vLLM服务内部：PagedAttention、连续批处理、分块预填充</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          vLLM在2026年的主导地位基于三个复合默认值，不是单一技巧。PagedAttention始终开启。连续批处理在解码迭代之间注入新请求到活跃批次。分块预填充切片长prompt使解码token永不饥饿。三个全开后Llama
+          3.3 70B FP8在单个H100 SXM5上128并发推送2,200-2,400
+          tok/s——比vLLM自身默认高约25%，比朴素PyTorch循环高3-4倍。本课程以你可以画图的水平阅读调度器和注意力核，以<code>code/main.py</code>中按vLLM方式调度预填充和解码的toy连续批处理器结束。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib, toy连续批处理调度器)
+        <strong>前置知识:</strong> Phase 17 · 01 (模型服务), Phase 11 (LLM工程)
+        <strong>时间:</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>解释PagedAttention作为KV缓存分配器：块、块表以及为什么生产负载下碎片率保持4%以下。</li>
+        <li>画出迭代级别的连续批处理：完成的序列如何离开批次和新序列如何加入而无需排空。</li>
+        <li>用一句话描述分块预填充并命名它保护哪个延迟指标(提示：是TTFT尾部，非平均吞吐)。</li>
+        <li>说出2026年vLLM v0.18.0中同时启用所有优化会咬人的坑。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        朴素PyTorch服务循环一次运行一个请求：分词、预填充、解码到EOS、返回。一个用户时可行。一百个时，是耐心人群的队列。明显修复——静态批处理——将每个请求pad到窗口中最长prompt，将每个解码pad到最长预期输出，并在最慢序列上停滞整个批次。你为从未使用的padding付费，快请求等慢请求。
+      </p>
+      <p>
+        vLLM一次解决三个问题。PagedAttention阻止KV缓存碎片像经典连续分配那样吃掉60-80%的GPU内存。连续批处理让请求在每个解码迭代之间加入和离开批次，所以批次总是充满真正的工作。分块预填充将32k
+        token prompt分成约512 token的切片与解码交错，所以长prompt不冻结GPU上每个解码token。
+      </p>
+      <p>2026年生产默认是三个全开。你需要理解每个做什么因为失败模式都在调度器上，不在模型上。</p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="pagedattention作为虚拟内存系统">
+        <a href="#pagedattention作为虚拟内存系统">PagedAttention作为虚拟内存系统</a>
+      </h3>
+      <p>
+        KV缓存每序列是<code
+          >num_layers x 2 x num_heads x head_dim x seq_len x bytes_per_element</code
+        >。对Llama 3.3 70B在8192 token，BF16中约1.25
+        GB每序列。如果你为每个请求预预留8192槽但平均请求只用1500
+        token，你浪费了预留HBM的约82%。经典批处理付这个浪费。
+      </p>
+      <p>
+        PagedAttention从OS虚拟内存借鉴想法。KV缓存不是每序列连续的。它以固定大小块(默认16
+        token)分配。每个序列有一个块表将其逻辑token位置映射到物理块ID。当序列增长超过已分配块时，添加一个更多块。完成时，其块返回池。
+      </p>
+      <p>
+        碎片率从60-80%(经典)降到4%以下(PagedAttention)。你不用标志启用PagedAttention——它是vLLM唯一附带的分配器。旋钮是<code>--gpu-memory-utilization</code>(默认0.9)，告诉vLLM加载权重和激活后为KV块预留多少HBM。
+      </p>
+      <h3 id="迭代级别的连续批处理"><a href="#迭代级别的连续批处理">迭代级别的连续批处理</a></h3>
+      <p>
+        旧”动态批处理”等窗口(比如10ms)填满批次，然后运行预填充+解码+解码+解码直到每个序列完成。快序列提前离开并空闲等GPU完成慢序列。
+      </p>
+      <p>
+        连续批处理在每个解码步骤之间操作。称运行中序列集合为<code>RUNNING</code>列表。每次迭代：
+      </p>
+      <ol>
+        <li><code>RUNNING</code>中刚命中EOS或max_tokens的任何序列被移除。</li>
+        <li>调度器查看等待队列。如果有空闲KV块，它接纳新序列(预填充或恢复)。</li>
+        <li>前向传播在<code>RUNNING</code>中当前任何内容上运行，每个序列发出一个新token。</li>
+      </ol>
+      <p>
+        批次大小从不pad到固定数字。不同输出位置的序列共享一次融合前向。2026年vLLM中这叫<code>V1调度器</code>。关键不变量：调度器每个解码迭代运行一次，不是每个请求一次。
+      </p>
+      <h3 id="分块预填充保护ttft尾部">
+        <a href="#分块预填充保护ttft尾部">分块预填充保护TTFT尾部</a>
+      </h3>
+      <p>
+        预填充是计算密集的。32k token prompt在Llama 3.3
+        70B上在单个H100上纯预填充约800ms。预填充运行时，批次中每个其他序列的解码token等待。在服务循环中，一个长prompt的首token延迟(TTFT)成为数十个其他用户的token间延迟(ITL)毛刺。
+      </p>
+      <p>
+        分块预填充将预填充分成固定大小块(默认512
+        token)并将每个块作为一个单元调度。块之间调度器可以推进解码序列一个token。你用小的绝对预填充延迟损失(每块几ms)换取低得多的解码时间抖动。混合负载下P99
+        ITL从约50ms降到约15ms。
+      </p>
+      <h3 id="三个默认值交互"><a href="#三个默认值交互">三个默认值交互</a></h3>
+      <p>
+        三个功能相互假设。PagedAttention给调度器细粒度KV资源来权衡。连续批处理需要该细粒度资源使接纳新序列不强制全局重排。分块预填充是调度器在相同<code>RUNNING</code>列表上做的决策——它是一个更多调度策略，不是独立系统。
+      </p>
+      <p>
+        你不需要知道每个标志。你需要知道调度器优化什么：KV块预算下的goodput，受分块预填充切片约束。
+      </p>
+      <h3 id="2026年v0180的坑"><a href="#2026年v0180的坑">2026年v0.18.0的坑</a></h3>
+      <p>
+        vLLM
+        v0.18.0中你不能将<code>--enable-chunked-prefill</code>与draft-model投机解码(<code>--speculative-model</code>)组合。文档化的例外是V1调度器中的N-gram
+        GPU投机解码。不读发布说明就翻转每个标志的团队在启动时得到运行时错误，不是软退化。如果你的投机收益值得启用分块预填充，重新审视选择——2026年的正确答案通常是EAGLE-3不带分块预填充，而非draft模型加分块预填充但不编译。
+      </p>
+      <h3 id="你应该记住的数字"><a href="#你应该记住的数字">你应该记住的数字</a></h3>
+      <ul>
+        <li>Llama 3.3 70B FP8，H100 SXM5，128并发，三个全开：2,200-2,400 tok/s。</li>
+        <li>同模型，默认vLLM(无分块预填充)：约1,800 tok/s。</li>
+        <li>同模型，朴素PyTorch前向循环：约600 tok/s。</li>
+        <li>生产负载下PagedAttention的KV碎片浪费：&#x3C;4%。</li>
+        <li>混合负载下P99 ITL：分块预填充约15ms，无约50ms。</li>
+      </ul>
+      <h3 id="调度器长什么样"><a href="#调度器长什么样">调度器长什么样</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>while True:</span></span>
+<span class="line"><span>    finished = [s for s in RUNNING if s.is_done()]</span></span>
+<span class="line"><span>    for s in finished: release_blocks(s); RUNNING.remove(s)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    while WAITING and have_free_blocks_for(WAITING[0]):</span></span>
+<span class="line"><span>        s = WAITING.pop(0)</span></span>
+<span class="line"><span>        allocate_initial_blocks(s)</span></span>
+<span class="line"><span>        RUNNING.append(s)</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    # 在一个批次中调度预填充块 + 解码</span></span>
+<span class="line"><span>    batch = []</span></span>
+<span class="line"><span>    for s in RUNNING:</span></span>
+<span class="line"><span>        if s.in_prefill:</span></span>
+<span class="line"><span>            batch.append(next_prefill_chunk(s))   # 例如512 token</span></span>
+<span class="line"><span>        else:</span></span>
+<span class="line"><span>            batch.append(decode_one_token(s))     # 1 token</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>    run_forward(batch)                            # 一次融合GPU调用</span></span></code></pre>
+      <p>
+        <code>code/main.py</code>正是这个循环的stdlib
+        Python版本，带假token计数和假前向延迟。运行它展示分块预填充如何在长预填充期间保持解码序列活跃。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code>模拟带可切换功能的vLLM风格调度器。运行它看：</p>
+      <ul>
+        <li><code>NAIVE</code>模式：一次一个请求，无批处理。</li>
+        <li><code>STATIC</code>模式：pad和等待，经典批处理。</li>
+        <li><code>CONTINUOUS</code>模式：迭代级接纳和释放。</li>
+        <li><code>CONTINUOUS + CHUNKED</code>模式：预填充切片与解码交错。</li>
+      </ul>
+      <p>
+        输出显示总吞吐(每虚拟秒token)、TTFT均值和P99 ITL。<code>CONTINUOUS + CHUNKED</code
+        >行应在混合流量上占优。
+      </p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-vllm-scheduler-reader.md</code>。给定服务配置(批次大小、KV内存利用率、分块预填充大小、投机配置)，它产生命名三个默认值中哪个是瓶颈以及调什么的调度器诊断。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          运行<code>code/main.py</code>。在混合短长请求的工作负载上比较<code>STATIC</code>与<code>CONTINUOUS</code>。吞吐差距从哪来——预填充效率、解码效率还是尾部延迟？
+        </li>
+        <li>
+          修改toy调度器添加<code>--max-num-batched-tokens</code>。H100上运行Llama 3.3 70B
+          FP8的正确值是什么？(提示：是KV块大小和空闲块数的函数，非原始HBM。)
+        </li>
+        <li>重读vLLM v0.18.0发布说明。哪些标志组合互斥？列出它们。</li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="计算"
+            data-module="cpp"
+            data-def="计算过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">计算</abbr></span
+          >平均1500输出<span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >、<span
+            class="term-tip"
+            data-term="标准"
+            data-module="c"
+            data-def="语言规范文档"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标准</abbr></span
+          >差600 token的1000请求轨迹在(a)8192最大连续每请求分配、(b)16
+          token块PagedAttention下的KV缓存碎片浪费。
+        </li>
+        <li>
+          用一<span
+            class="term-tip"
+            data-term="段"
+            data-module="vue3"
+            data-def="URL 的一段"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">段</abbr></span
+          >话<span
+            class="term-tip"
+            data-term="解释"
+            data-module="github"
+            data-def="解释"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解释</abbr></span
+          >为什么分<span
+            class="term-tip"
+            data-term="块"
+            data-module="c"
+            data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">块</abbr></span
+          >预<span
+            class="term-tip"
+            data-term="填充"
+            data-module="html5"
+            data-def="SVG 填充属性"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">填充</abbr></span
+          >帮助P99 ITL但不<span
+            class="term-tip"
+            data-term="帮助"
+            data-module="github"
+            data-def="帮助"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">帮助</abbr></span
+          >孤立吞吐。<span
+            class="term-tip"
+            data-term="实践"
+            data-module="github"
+            data-def="实践"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实践</abbr></span
+          >中的吞吐赢从哪来？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>PagedAttention</td>
+            <td>”KV技巧”</td>
+            <td>
+              KV缓存的<span
+                class="term-tip"
+                data-term="固定大小"
+                data-module="cpp"
+                data-def="固定大小"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">固定大小</abbr></span
+              >块<span
+                class="term-tip"
+                data-term="分配"
+                data-module="github"
+                data-def="将 Issue 指派给某人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分配</abbr></span
+              >器；碎片&#x3C;4%
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >表
+            </td>
+            <td>
+              ”页<span
+                class="term-tip"
+                data-term="表"
+                data-module="cpp"
+                data-def="表"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">表</abbr></span
+              >”
+            </td>
+            <td>
+              每<span
+                class="term-tip"
+                data-term="序列"
+                data-module="github"
+                data-def="序列"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">序列</abbr></span
+              >从逻辑<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >位置到物理KV块的<span
+                class="term-tip"
+                data-term="映射"
+                data-module="c"
+                data-def="类型到另一类型的对应关系"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">映射</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="连续"
+                data-module="calculus"
+                data-def="函数在某点的极限值等于函数值，图像在该点无间断"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连续</abbr></span
+              >批<span
+                class="term-tip"
+                data-term="处理"
+                data-module="cpp"
+                data-def="处理"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">处理</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="动态"
+                data-module="github"
+                data-def="动态的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">动态</abbr></span
+              >批<span
+                class="term-tip"
+                data-term="处理"
+                data-module="cpp"
+                data-def="处理"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">处理</abbr></span
+              >，但正确的”
+            </td>
+            <td>
+              每个<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >迭代做接纳/<span
+                class="term-tip"
+                data-term="释放"
+                data-module="github"
+                data-def="释放"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">释放</abbr></span
+              >决策
+            </td>
+          </tr>
+          <tr>
+            <td>
+              分<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >预<span
+                class="term-tip"
+                data-term="填充"
+                data-module="html5"
+                data-def="SVG 填充属性"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">填充</abbr></span
+              >
+            </td>
+            <td>
+              ”预<span
+                class="term-tip"
+                data-term="填充"
+                data-module="html5"
+                data-def="SVG 填充属性"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">填充</abbr></span
+              >拆分”
+            </td>
+            <td>
+              将长预<span
+                class="term-tip"
+                data-term="填充"
+                data-module="html5"
+                data-def="SVG 填充属性"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">填充</abbr></span
+              >分成与<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >交错的512
+              <span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >切片
+            </td>
+          </tr>
+          <tr>
+            <td>TTFT</td>
+            <td>
+              ”首<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >时间”
+            </td>
+            <td>
+              预<span
+                class="term-tip"
+                data-term="填充"
+                data-module="html5"
+                data-def="SVG 填充属性"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">填充</abbr></span
+              >+<span
+                class="term-tip"
+                data-term="队列"
+                data-module="c"
+                data-def="先进先出的数据结构"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">队列</abbr></span
+              >+<span
+                class="term-tip"
+                data-term="网络"
+                data-module="github"
+                data-def="网络"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网络</abbr></span
+              >；长prompt时由预<span
+                class="term-tip"
+                data-term="填充"
+                data-module="html5"
+                data-def="SVG 填充属性"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">填充</abbr></span
+              >主导
+            </td>
+          </tr>
+          <tr>
+            <td>ITL</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >间<span
+                class="term-tip"
+                data-term="延迟"
+                data-module="cpp"
+                data-def="延迟操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">延迟</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="连续"
+                data-module="calculus"
+                data-def="函数在某点的极限值等于函数值，图像在该点无间断"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连续</abbr></span
+              >解码<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >间的<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >；由批次<span
+                class="term-tip"
+                data-term="大小"
+                data-module="github"
+                data-def="大小"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">大小</abbr></span
+              >主导
+            </td>
+          </tr>
+          <tr>
+            <td>Goodput</td>
+            <td>
+              ”满足<span
+                class="term-tip"
+                data-term="SLO"
+                data-module="devops"
+                data-def="团队为 SLI 设定的内部目标值，如 99.9% 可用性或 P99 延迟 < 200ms"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">SLO</abbr></span
+              >的吞吐”
+            </td>
+            <td>
+              每个<span
+                class="term-tip"
+                data-term="请求"
+                data-module="vue3"
+                data-def="HTTP 请求"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">请求</abbr></span
+              >仍命中TTFT和ITL目标的<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >/秒
+            </td>
+          </tr>
+          <tr>
+            <td>
+              V1调<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >器
+            </td>
+            <td>
+              ”新<span
+                class="term-tip"
+                data-term="调度器"
+                data-module="c"
+                data-def="决定线程执行顺序的组件"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调度器</abbr></span
+              >”
+            </td>
+            <td>
+              vLLM 2026调<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >器；N-gram投机<span
+                class="term-tip"
+                data-term="解码"
+                data-module="javascript"
+                data-def="将编码数据还原为原始形式"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解码</abbr></span
+              >是分<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >预<span
+                class="term-tip"
+                data-term="填充"
+                data-module="html5"
+                data-def="SVG 填充属性"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">填充</abbr></span
+              >兼容<span
+                class="term-tip"
+                data-term="路径"
+                data-module="github"
+                data-def="路径"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路径</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td><code>--gpu-memory-utilization</code></td>
+            <td>”内存旋钮”</td>
+            <td>
+              加载权重和<span
+                class="term-tip"
+                data-term="激活"
+                data-module="vue3"
+                data-def="组件或路由变为活跃状态"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">激活</abbr></span
+              >后为KV块预留的HBM比例
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://docs.vllm.ai/en/latest/features/spec_decode/"
+            >vLLM documentation — Speculative Decoding</a
+          >
+        </li>
+        <li><a href="https://blog.vllm.ai/2023/06/20/vllm.html">vLLM Blog — PagedAttention</a></li>
+        <li>
+          <a href="https://arxiv.org/abs/2309.06180">PagedAttention paper (arXiv:2309.06180)</a>
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

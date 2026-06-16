@@ -1,0 +1,705 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MIO与任意到任意流式多模态模型</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">MIO与任意到任意流式多模态模型</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            12 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">MIO</span><span class="doc-tag">任意到任意</span
+          ><span class="doc-tag">流式解码</span><span class="doc-tag">多模态分词器</span
+          ><span class="doc-tag">残差VQ</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          理解MIO如何通过四种分词器和一个Transformer实现任意模态间的流式转换
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="mio与任意到任意流式多模态模型">
+        <a href="#mio与任意到任意流式多模态模型">MIO与任意到任意流式多模态模型</a>
+      </h1>
+      <blockquote>
+        <p>
+          GPT-4o发布了一个大多数开放模型无法复制的产品：一个能听语音、看视频并实时语音回复的agent。到2024年底，开放生态系统的答案是MIO
+          (Wang等人,
+          2024年9月)。MIO将文本、图像、语音和音乐分词，在交错序列上训练一个因果Transformer，并实现任意模态到任意模态的生成。AnyGPT
+          (Zhan等人, 2024年2月)是概念验证；MIO是规模化版本；Unified-IO 2 (Allen AI,
+          2023年12月)是带有视觉+动作接地能力的表亲。本课程阅读任意到任意模式——四种分词器，一个Transformer，流式友好解码。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib, 四模态token分配器 +
+        流式解码循环) <strong>前置知识:</strong> Phase 12 · 11 (Chameleon), Phase 6 (语音与音频)
+        <strong>时间:</strong> ~120分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>设计托管文本、图像、语音和音乐token且无冲突的共享词表。</li>
+        <li>比较SEED-Tokenizer(图像)和SpeechTokenizer残差VQ(语音)在压缩与重建权衡上的差异。</li>
+        <li>解释构建任意到任意生成能力的四阶段课程。</li>
+        <li>说出三种开放任意到任意方案及其主要权衡：MIO、AnyGPT、Unified-IO 2。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        统一多模态模型容易声称但难以大规模构建。到2024年大多数”任意到任意”系统是管道式的：视觉模型 →
+        文本表示 → 语音模型 →
+        音频。每跳丢失信息、增加延迟、复杂化训练。GPT-4o的演示视频展示了亚秒响应的单模型替代方案；开放系统落后数月。
+      </p>
+      <p>工程挑战：</p>
+      <ul>
+        <li>
+          每种模态的分词器必须存在，压缩到足够无损以重建，并以Transformer可消费的速率产生token。
+        </li>
+        <li>
+          单一词表必须为文本(32k+)、图像(16k+)、语音(4k+)、音乐(8k+)分配空间。至少四万以上条目。
+        </li>
+        <li>训练数据必须覆盖每个输入-输出对(文本→图像、图像→语音、语音→图像等)或模型必须组合。</li>
+        <li>推理必须足够快地流式输出token以满足对话延迟(&#x3C;500ms首音频字节时间)。</li>
+      </ul>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="四种模态的四种分词器"><a href="#四种模态的四种分词器">四种模态的四种分词器</a></h3>
+      <p>MIO的分词器栈：</p>
+      <ul>
+        <li>文本：标准BPE，词表约32000。</li>
+        <li>图像：SEED-Tokenizer (2023)——带离散码本的量化VAE，4096条目，每张图像32x32 token。</li>
+        <li>
+          语音：SpeechTokenizer残差VQ
+          (2023)——将16kHz波形编码为8个层次化码本；第一层是粗粒度内容，后续层添加韵律和说话人身份。
+        </li>
+        <li>音乐：类似残差VQ(Meta的MusicGen / Encodec家族)，4-8个码本。</li>
+      </ul>
+      <p>每种模态产生整数token。token在共享词表中获得不相交的ID范围：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>text:   0..31999</span></span>
+<span class="line"><span>image:  32000..36095  (4096个图像token)</span></span>
+<span class="line"><span>speech: 36096..40191  (4096个语音基础token，加残差层)</span></span>
+<span class="line"><span>music:  40192..48383  (8192个音乐token)</span></span>
+<span class="line"><span>sep:    48384..48390  (&#x3C;image>, &#x3C;speech>, &#x3C;music>, &#x3C;/...>, 等)</span></span></code></pre>
+      <p>总计：约48k词表。输入嵌入和输出投影覆盖全部。</p>
+      <h3 id="流式解码"><a href="#流式解码">流式解码</a></h3>
+      <p>
+        语音生成使用残差VQ。Transformer预测基础(层0)语音token；并行解码的残差量化器预测后续层。每个层0
+        token大约是16kHz下50ms的音频。
+      </p>
+      <p>流式模式：</p>
+      <ol>
+        <li>用户对麦克风说话；实时音频分词器每50ms发出语音token。</li>
+        <li>MIO在token到达时消费(prompt预填充 + 增量前向)。</li>
+        <li>输出token在生成时流出；并行语音解码器以约50-150ms延迟将它们转换为音频样本。</li>
+        <li>首音频字节时间：MIO论文中约300-500ms，接近GPT-4o的约250ms。</li>
+      </ol>
+      <p>
+        Mini-Omni (arXiv:2408.16725)、GLM-4-Voice (arXiv:2412.02612)和Moshi
+        (arXiv:2410.00037)是互补的流式语音LLM设计。Moshi特别在单GPU上实现了160ms往返。
+      </p>
+      <h3 id="四阶段课程"><a href="#四阶段课程">四阶段课程</a></h3>
+      <p>MIO的训练课程：</p>
+      <ol>
+        <li>
+          阶段1——对齐。大规模模态对语料：文本-图像、文本-语音、文本-音乐。每对使用自己的token词表段。训练共享词表。
+        </li>
+        <li>阶段2——交错。多模态交错文档(带图像+视频的博客、带转录的播客等)。训练跨模态上下文。</li>
+        <li>阶段3——语音增强。额外音频数据提升语音质量而不丢失文本能力。</li>
+        <li>阶段4——SFT。跨模态指令微调：VQA、标题生成、叙述、语音到语音对话。</li>
+      </ol>
+      <p>跳过阶段会退化特定能力：跳过阶段2模型失去跨模态上下文；跳过阶段3语音质量差。</p>
+      <h3 id="视觉思维链"><a href="#视觉思维链">视觉思维链</a></h3>
+      <p>MIO引入视觉思维链：模型发出中间图像token作为推理步骤。对于”猫在爬树吗？“模型：</p>
+      <ol>
+        <li>发出<code>&#x3C;image></code> token渲染场景(来自输入图像或草图)。</li>
+        <li>发出文本分析草图。</li>
+        <li>发出最终答案。</li>
+      </ol>
+      <p>渲染的中间图像作为草稿板。空间推理任务的基准改善。该想法映射了文本推理的思维链。</p>
+      <h3 id="任意到任意竞争者"><a href="#任意到任意竞争者">任意到任意竞争者</a></h3>
+      <ul>
+        <li>AnyGPT (arXiv:2402.12226)：4种模态(文本、图像、语音、音乐)，类似设计。</li>
+        <li>
+          Unified-IO 2 (arXiv:2312.17172)：添加视觉动作输出、深度、法线。更多任务多样性，更小规模。
+        </li>
+        <li>NExT-GPT (arXiv:2309.05519)：LLM + 模态特定扩散解码器。非单模型方法。</li>
+        <li>CoDi (arXiv:2305.11846)：可组合扩散；通过共享潜变量的任意到任意。</li>
+      </ul>
+      <p>MIO最接近纯token任意到任意。AnyGPT是其概念祖先。</p>
+      <h3 id="延迟预算"><a href="#延迟预算">延迟预算</a></h3>
+      <p>对于对话产品，每个组件的延迟都很重要：</p>
+      <ul>
+        <li>麦克风到音频token：约50ms。</li>
+        <li>预填充(音频token + 历史)：8B模型上约100ms。</li>
+        <li>首个输出token：约50ms。</li>
+        <li>并行残差VQ + 语音解码器：约100-150ms。</li>
+      </ul>
+      <p>
+        首音频字节总时间：最低约300ms。GPT-4o声称约250ms。Moshi声称160ms。MIO/AnyGPT在公开基准上约400-600ms。
+      </p>
+      <h3 id="为什么任意到任意仍然困难">
+        <a href="#为什么任意到任意仍然困难">为什么任意到任意仍然困难</a>
+      </h3>
+      <p>即使在2026年，开放任意到任意模型在两个轴上落后于封闭模型：</p>
+      <ul>
+        <li>语音质量。残差VQ分词器是有损的；对话语音相比ElevenLabs级别的声音听起来机械。</li>
+        <li>跨模态推理。要求模型”唱出你看到的”仍然比纯视觉任务更频繁地失败。</li>
+      </ul>
+      <p>这些是开放研究问题。Qwen3-Omni(课程12.20)是2025年最先进的开放尝试。</p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code>：</p>
+      <ul>
+        <li>定义四模态词表分配并打印。</li>
+        <li>通过分词器路由器路由多模态输入列表(文本、图像、音频片段、音乐)。</li>
+        <li>模拟文本到语音响应的流式解码并计算延迟。</li>
+        <li>给定编码器、预填充和解码器延迟计算预期首音频字节时间。</li>
+      </ul>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-any-to-any-pipeline-auditor.md</code>。给定<span
+          class="term-tip"
+          data-term="对"
+          data-module="github"
+          data-def="对"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对</abbr></span
+        >话<span
+          class="term-tip"
+          data-term="产品"
+          data-module="github"
+          data-def="产品"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">产品</abbr></span
+        >规<span
+          class="term-tip"
+          data-term="格"
+          data-module="discrete-math"
+          data-def="任意两个元素都有上确界和下确界的偏序集"
+          data-slug="discrete-math/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">格</abbr></span
+        >(输入模态、输出模态、延迟目标)，它审计MIO家族设计选择并计算延迟预算。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            你的<span
+              class="term-tip"
+              data-term="产品"
+              data-module="github"
+              data-def="产品"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">产品</abbr></span
+            >接受语音<span
+              class="term-tip"
+              data-term="输入"
+              data-module="c"
+              data-def="从外部获取数据"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">输入</abbr></span
+            >并<span
+              class="term-tip"
+              data-term="返回"
+              data-module="vue3"
+              data-def="返回值"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">返回</abbr></span
+            >语音<span
+              class="term-tip"
+              data-term="输出"
+              data-module="c"
+              data-def="向外部发送数据"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">输出</abbr></span
+            >。<span
+              class="term-tip"
+              data-term="端到端"
+              data-module="cpp"
+              data-def="端到端"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">端到端</abbr></span
+            >延迟预算<span
+              class="term-tip"
+              data-term="目标"
+              data-module="cpp"
+              data-def="目标"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">目标</abbr></span
+            >是什么？列出花费<span
+              class="term-tip"
+              data-term="时间"
+              data-module="cpp"
+              data-def="时间"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">时间</abbr></span
+            >的<span
+              class="term-tip"
+              data-term="组件"
+              data-module="cpp"
+              data-def="组成整体的部分"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">组件</abbr></span
+            >。
+          </p>
+        </li>
+        <li>
+          <p>
+            SpeechTokenizer残差VQ使用8个码本。提出为什么<span
+              class="term-tip"
+              data-term="并行"
+              data-module="github"
+              data-def="并行的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">并行</abbr></span
+            >解码残差层是必要的(vs顺序)以及它带来什么<span
+              class="term-tip"
+              data-term="延迟"
+              data-module="cpp"
+              data-def="延迟操作"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">延迟</abbr></span
+            >节省。
+          </p>
+        </li>
+        <li>
+          <p>
+            你的词<span
+              class="term-tip"
+              data-term="表"
+              data-module="cpp"
+              data-def="表"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">表</abbr></span
+            >有32k文本 + 4k图像 + 4k语音。添加8k音乐和约10个分隔符。隐藏维度4096时<span
+              class="term-tip"
+              data-term="嵌入"
+              data-module="agent"
+              data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">嵌入</abbr></span
+            >矩阵<span
+              class="term-tip"
+              data-term="参数"
+              data-module="c"
+              data-def="函数定义时的变量"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">参数</abbr></span
+            >成本是<span
+              class="term-tip"
+              data-term="多"
+              data-module="github"
+              data-def="多个的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">多</abbr></span
+            >少？
+          </p>
+        </li>
+        <li>
+          <p>
+            视觉<span
+              class="term-tip"
+              data-term="思维链"
+              data-module="agent"
+              data-def="通过在提示中展示逐步推理过程来引导模型进行复杂推理的技术"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">思维链</abbr></span
+            >发出<span
+              class="term-tip"
+              data-term="中间"
+              data-module="github"
+              data-def="中间的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">中间</abbr></span
+            >图像。什么<span
+              class="term-tip"
+              data-term="类型"
+              data-module="c"
+              data-def="数据的分类"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">类型</abbr></span
+            >的<span
+              class="term-tip"
+              data-term="问题"
+              data-module="github"
+              data-def="跟踪任务、缺陷、想法"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">问题</abbr></span
+            >受益？什么<span
+              class="term-tip"
+              data-term="类型"
+              data-module="c"
+              data-def="数据的分类"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">类型</abbr></span
+            >被额外<span
+              class="term-tip"
+              data-term="token"
+              data-module="python"
+              data-def="词法分析的最小语法单元"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">token</abbr></span
+            >损害？
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读Moshi (arXiv:2410.00037)。<span
+              class="term-tip"
+              data-term="描述"
+              data-module="github"
+              data-def="描述"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">描述</abbr></span
+            >其”内心独白”技术并与MIO的视觉<span
+              class="term-tip"
+              data-term="思维链"
+              data-module="agent"
+              data-def="通过在提示中展示逐步推理过程来引导模型进行复杂推理的技术"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">思维链</abbr></span
+            >比较。
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>任意到任意</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="多模态"
+                data-module="agent"
+                data-def="能够同时处理和理解多种模态数据（文本、图像、音频、视频）的 AI 能力"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多模态</abbr></span
+              >输入/<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >”
+            </td>
+            <td>
+              接受和发出<span
+                class="term-tip"
+                data-term="文本"
+                data-module="cpp"
+                data-def="文本"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">文本</abbr></span
+              >、<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >、语音和<span
+                class="term-tip"
+                data-term="音乐"
+                data-module="github"
+                data-def="音乐"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">音乐</abbr></span
+              >的任意方向<span
+                class="term-tip"
+                data-term="单一"
+                data-module="cpp"
+                data-def="单一的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单一</abbr></span
+              >模型
+            </td>
+          </tr>
+          <tr>
+            <td>残差VQ</td>
+            <td>
+              ”语音分词器<span
+                class="term-tip"
+                data-term="栈"
+                data-module="c"
+                data-def="后进先出的数据结构"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">栈</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >码本分词化，每层添加<span
+                class="term-tip"
+                data-term="信息"
+                data-module="github"
+                data-def="信息"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">信息</abbr></span
+              >；基础层是<span
+                class="term-tip"
+                data-term="内容"
+                data-module="cpp"
+                data-def="内容部分"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内容</abbr></span
+              >，后续层是韵律
+            </td>
+          </tr>
+          <tr>
+            <td>SEED-Tokenizer</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >代码”
+            </td>
+            <td>
+              MIO使用的4096条目码本离散<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >分词器
+            </td>
+          </tr>
+          <tr>
+            <td>
+              视觉<span
+                class="term-tip"
+                data-term="思维链"
+                data-module="agent"
+                data-def="通过在提示中展示逐步推理过程来引导模型进行复杂推理的技术"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">思维链</abbr></span
+              >
+            </td>
+            <td>”视觉草稿板”</td>
+            <td>
+              模型在<span
+                class="term-tip"
+                data-term="最终"
+                data-module="cpp"
+                data-def="最终的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">最终</abbr></span
+              >答案前<span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >中间<span
+                class="term-tip"
+                data-term="图像"
+                data-module="github"
+                data-def="图像"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">图像</abbr></span
+              >作为<span
+                class="term-tip"
+                data-term="推理"
+                data-module="github"
+                data-def="推理"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">推理</abbr></span
+              >步骤
+            </td>
+          </tr>
+          <tr>
+            <td>
+              首音频<span
+                class="term-tip"
+                data-term="字节"
+                data-module="c"
+                data-def="8 位组成的数据单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">字节</abbr></span
+              >时间
+            </td>
+            <td>”TTFAB”</td>
+            <td>
+              从<span
+                class="term-tip"
+                data-term="用户"
+                data-module="cpp"
+                data-def="用户"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">用户</abbr></span
+              >语音到首个音频<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="延迟"
+                data-module="cpp"
+                data-def="延迟操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">延迟</abbr></span
+              >；&#x3C;500ms才有<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >话感
+            </td>
+          </tr>
+          <tr>
+            <td>
+              四<span
+                class="term-tip"
+                data-term="阶段"
+                data-module="github"
+                data-def="阶段"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">阶段</abbr></span
+              >课程
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >方案”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="对齐"
+                data-module="agent"
+                data-def="确保 AI 系统的行为与人类价值观和意图一致的技术和治理方法"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对齐</abbr></span
+              >
+              → 交错 → 语音增强 → SFT，按此顺序
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li><a href="https://arxiv.org/abs/2409.17692">Wang等人 — MIO (arXiv:2409.17692)</a></li>
+        <li><a href="https://arxiv.org/abs/2402.12226">Zhan等人 — AnyGPT (arXiv:2402.12226)</a></li>
+        <li>
+          <a href="https://arxiv.org/abs/2312.17172">Lu等人 — Unified-IO 2 (arXiv:2312.17172)</a>
+        </li>
+        <li><a href="https://arxiv.org/abs/2309.05519">Wu等人 — NExT-GPT (arXiv:2309.05519)</a></li>
+        <li><a href="https://arxiv.org/abs/2305.11846">Tang等人 — CoDi (arXiv:2305.11846)</a></li>
+      </ul>
+    </article>
+  </body>
+</html>

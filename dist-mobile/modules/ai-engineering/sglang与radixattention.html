@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SGLang与RadixAttention前缀密集工作负载</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">SGLang与RadixAttention前缀密集工作负载</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">SGLang</span><span class="doc-tag">RadixAttention</span
+          ><span class="doc-tag">基数树</span><span class="doc-tag">前缀共享</span
+          ><span class="doc-tag">KV缓存复用</span><span class="doc-tag">缓存感知调度</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解SGLang如何通过基数树KV缓存和缓存感知调度实现前缀共享加速</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="sglang与radixattention前缀密集工作负载">
+        <a href="#sglang与radixattention前缀密集工作负载">SGLang与RadixAttention前缀密集工作负载</a>
+      </h1>
+      <blockquote>
+        <p>
+          SGLang将KV缓存视为存储在基数树中的一等可复用资源。vLLM按FCFS调度请求，SGLang的缓存感知调度器优先处理具有更长共享前缀的请求——实际上是深度优先基数遍历，使热分支常驻HBM。在Llama
+          3.1 8B上使用ShareGPT类1K prompt，SGLang达到约16,200
+          tok/s而vLLM约12,500，约29%优势。在前缀密集RAG工作负载上优势达到6.4x。在语音克隆形状工作负载上缓存命中率超过86%。2026年部署在xAI、LinkedIn、Cursor、Oracle、GCP、Azure、AWS的400,000+
+          GPU上。坑是6.4x数字在前缀排序不一致时蒸发——排序是工程师的杠杆。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib, toy基数树缓存 +
+        缓存感知调度器) <strong>前置知识:</strong> Phase 17 · 04 (vLLM服务内部), Phase 14 (Agent
+        RAG) <strong>时间:</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>画出RadixAttention：前缀如何存储在基数树中以及KV块如何在根于同一分支的序列间共享。</li>
+        <li>解释缓存感知调度以及为什么FCFS对前缀密集流量是错误的。</li>
+        <li>给定前缀缓存命中率和prompt长度分布计算工作负载的预期加速。</li>
+        <li>说出使6.4x数字成为现实vs丢失上行空间的prompt排序纪律。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        经典服务将每个请求的prompt视为不透明的。即使5,000个RAG请求都以相同的2,000
+        token系统prompt加相同检索前言开始，vLLM也会预填充那个2,000
+        token前缀5,000次。GPU一遍又一遍做相同的工作。
+      </p>
+      <p>
+        观察：Agent和RAG工作负载中的prompt几乎总是共享长前缀。系统prompt、工具schema、少样本示例、检索header、对话历史——都在请求间重复。如果你存储一次前缀的KV缓存并复用它，就不需要再次预填充。
+      </p>
+      <p>
+        RadixAttention正是这样做的。Token在基数树中索引；每个节点拥有从根到其路径上token序列的KV块。新请求遍历树：任何token匹配的节点复用该节点的KV块。预填充成本与”新”后缀成比例，而非完整prompt。
+      </p>
+      <p>
+        挑战是调度。如果两个请求共享2,000 token前缀，第三个只共享相同前缀的200
+        token，你想一起服务两个长共享请求使长前缀留在HBM。FCFS做的相反——它先服务先到的，可能在下一个长前缀请求到达前驱逐热分支。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="基数树作为kv索引"><a href="#基数树作为kv索引">基数树作为KV索引</a></h3>
+      <p>
+        基数树(也叫压缩前缀树)存储token序列。每个节点代表一个token序列前缀并拥有该前缀的KV块。当新请求到达时：
+      </p>
+      <ol>
+        <li>从根遍历树，匹配token。</li>
+        <li>在匹配结束处，复用现有节点的KV块。</li>
+        <li>对不匹配的后缀，分配新KV块并添加新分支。</li>
+      </ol>
+      <p>
+        示例：请求A有prompt <code>[sys, tool, fewshot, query_A]</code>。请求B有<code
+          >[sys, tool, fewshot, query_B]</code
+        >。两者共享<code>[sys, tool, fewshot]</code>前缀。基数树有一个节点拥有<code
+          >[sys, tool, fewshot]</code
+        >的KV块，两个子节点分别拥有<code>query_A</code>和<code>query_B</code>的KV块。请求B只预填充<code>query_B</code>——约50
+        token而非2,050。
+      </p>
+      <h3 id="缓存感知调度"><a href="#缓存感知调度">缓存感知调度</a></h3>
+      <p>
+        SGLang的调度器不只是FCFS。它优先处理与已在KV缓存中的前缀有更多重叠的请求。效果：热前缀留在HBM；冷前缀被驱逐。
+      </p>
+      <p>调度策略：</p>
+      <ol>
+        <li>对每个等待请求，计算与缓存前缀的重叠长度。</li>
+        <li>按重叠长度降序排序。</li>
+        <li>在KV块预算内接纳最高重叠请求。</li>
+      </ol>
+      <p>这确保共享长前缀的请求一起调度，最大化缓存命中。</p>
+      <h3 id="64x从哪来"><a href="#64x从哪来">6.4x从哪来</a></h3>
+      <p>
+        在RAG工作负载中，每个请求共享相同的系统prompt(约1,000 token)加检索前言(约500
+        token)。没有前缀共享，每个请求预填充1,500 token。有前缀共享，只有检索结果(约200
+        token)需要预填充。预填充成本降低约7.5x。加上调度效率，净加速约6.4x。
+      </p>
+      <h3 id="排序纪律"><a href="#排序纪律">排序纪律</a></h3>
+      <p>
+        6.4x数字需要前缀排序一致。如果请求以随机顺序到达，缓存命中率下降因为基数树不断驱逐和重建。排序纪律是：
+      </p>
+      <ul>
+        <li>所有请求使用相同系统prompt(标准化)。</li>
+        <li>检索结果在系统prompt后以一致顺序放置。</li>
+        <li>对话历史在检索前以一致顺序放置。</li>
+      </ul>
+      <p>
+        如果团队使用不同系统prompt或以不同顺序放置检索结果，缓存命中率下降。排序是工程师的杠杆。
+      </p>
+      <h3 id="语音克隆形状工作负载"><a href="#语音克隆形状工作负载">语音克隆形状工作负载</a></h3>
+      <p>
+        语音克隆工作负载有独特的形状：长固定prompt(说话人参考音频编码)加短变化输入。缓存命中率超过86%因为参考音频跨请求共享。SGLang在此形状上显著优于vLLM。
+      </p>
+      <h3 id="vllm-vs-sglang何时用什么">
+        <a href="#vllm-vs-sglang何时用什么">vLLM vs SGLang：何时用什么</a>
+      </h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>工作负载</th>
+            <th>vLLM</th>
+            <th>SGLang</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>通用聊天(低前缀共享)</td>
+            <td>更好(更成熟)</td>
+            <td>类似</td>
+          </tr>
+          <tr>
+            <td>RAG(高前缀共享)</td>
+            <td>基线</td>
+            <td>6.4x</td>
+          </tr>
+          <tr>
+            <td>Agent(系统prompt + 工具)</td>
+            <td>基线</td>
+            <td>2-3x</td>
+          </tr>
+          <tr>
+            <td>语音克隆</td>
+            <td>基线</td>
+            <td>5-8x</td>
+          </tr>
+          <tr>
+            <td>代码补全(低前缀共享)</td>
+            <td>更好</td>
+            <td>类似</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>2026年两者都在生产部署。选择基于工作负载形状。</p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code>模拟基数树KV缓存和缓存感知调度器。比较FCFS vs
+        缓存感知调度在RAG形状工作负载上。
+      </p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-prefix-cache-auditor.md</code>。给定<span
+          class="term-tip"
+          data-term="工作"
+          data-module="cpp"
+          data-def="工作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">工作</abbr></span
+        >负载，审计前缀共享机会并推荐SGLang vs vLLM加排序纪律。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          计算<span
+            class="term-tip"
+            data-term="RAG"
+            data-module="agent"
+            data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">RAG</abbr></span
+          >工作<span
+            class="term-tip"
+            data-term="负载"
+            data-module="github"
+            data-def="负载"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">负载</abbr></span
+          >的预期加速：系统prompt 1,000
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >，检索前言500
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >，检索结果200
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="用户"
+            data-module="cpp"
+            data-def="用户"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">用户</abbr></span
+          >查询50
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >。
+        </li>
+        <li>
+          为什么FCFS对<span
+            class="term-tip"
+            data-term="前缀"
+            data-module="cpp"
+            data-def="前缀"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">前缀</abbr></span
+          >密集<span
+            class="term-tip"
+            data-term="流量"
+            data-module="github"
+            data-def="流量"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">流量</abbr></span
+          >是<span
+            class="term-tip"
+            data-term="错误"
+            data-module="cpp"
+            data-def="错误情况"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">错误</abbr></span
+          >的？给出具体例<span
+            class="term-tip"
+            data-term="子"
+            data-module="cpp"
+            data-def="子"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">子</abbr></span
+          >。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="设计"
+            data-module="github"
+            data-def="设计"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设计</abbr></span
+          >排序纪律：3个团队使用不同系统prompt。如何<span
+            class="term-tip"
+            data-term="标准化"
+            data-module="data-analysis"
+            data-def="将数据转换为均值为0、标准差为1的分布，z=(x-mu)/sigma"
+            data-slug="data-analysis/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标准化</abbr></span
+          >？
+        </li>
+        <li>
+          阅读SGLang论文第4节。<span
+            class="term-tip"
+            data-term="描述"
+            data-module="github"
+            data-def="描述"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">描述</abbr></span
+          >缓存感知<span
+            class="term-tip"
+            data-term="调度"
+            data-module="c"
+            data-def="分配 CPU 时间给线程"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">调度</abbr></span
+          >算法的复杂<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >。
+        </li>
+        <li>
+          你的<span
+            class="term-tip"
+            data-term="工作"
+            data-module="cpp"
+            data-def="工作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工作</abbr></span
+          >负载是50%<span
+            class="term-tip"
+            data-term="通用"
+            data-module="cpp"
+            data-def="通用"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">通用</abbr></span
+          >聊天和50%
+          <span
+            class="term-tip"
+            data-term="RAG"
+            data-module="agent"
+            data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">RAG</abbr></span
+          >。应该用vLLM还是SGLang？论证。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>RadixAttention</td>
+            <td>”前缀KV缓存”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="基数"
+                data-module="discrete-math"
+                data-def="集合中元素的数量，分为有限基数和无限基数（如可数集与不可数集）"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">基数</abbr></span
+              >树<span
+                class="term-tip"
+                data-term="索引"
+                data-module="c"
+                data-def="数组中元素的位置"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">索引</abbr></span
+              >的KV缓存；<span
+                class="term-tip"
+                data-term="共享"
+                data-module="cpp"
+                data-def="共享"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">共享</abbr></span
+              >前缀的<span
+                class="term-tip"
+                data-term="请求"
+                data-module="vue3"
+                data-def="HTTP 请求"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">请求</abbr></span
+              >复用KV块
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="基数"
+                data-module="discrete-math"
+                data-def="集合中元素的数量，分为有限基数和无限基数（如可数集与不可数集）"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">基数</abbr></span
+              >树
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="压缩"
+                data-module="html5"
+                data-def="GZIP、Brotli 资源压缩"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">压缩</abbr></span
+              >前缀<span
+                class="term-tip"
+                data-term="树"
+                data-module="algorithm"
+                data-def="n个节点的有限集合，连通无环图，n个节点有n-1条边"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">树</abbr></span
+              >”
+            </td>
+            <td>
+              按<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >前缀索引KV块的数据<span
+                class="term-tip"
+                data-term="结构"
+                data-module="cpp"
+                data-def="结构"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">结构</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >感知<span
+                class="term-tip"
+                data-term="调度"
+                data-module="c"
+                data-def="分配 CPU 时间给线程"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调度</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="前缀"
+                data-module="cpp"
+                data-def="前缀"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">前缀</abbr></span
+              >优先<span
+                class="term-tip"
+                data-term="调度"
+                data-module="c"
+                data-def="分配 CPU 时间给线程"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调度</abbr></span
+              >”
+            </td>
+            <td>
+              优先<span
+                class="term-tip"
+                data-term="处理"
+                data-module="cpp"
+                data-def="处理"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">处理</abbr></span
+              >与<span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >前缀有更<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >重叠的<span
+                class="term-tip"
+                data-term="请求"
+                data-module="vue3"
+                data-def="HTTP 请求"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">请求</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="排序"
+                data-module="cpp"
+                data-def="排序"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">排序</abbr></span
+              >纪律
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="标准"
+                data-module="c"
+                data-def="语言规范文档"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标准</abbr></span
+              >化prompt顺序”
+            </td>
+            <td>
+              确保<span
+                class="term-tip"
+                data-term="请求"
+                data-module="vue3"
+                data-def="HTTP 请求"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">请求</abbr></span
+              >以一致顺序放置<span
+                class="term-tip"
+                data-term="前缀"
+                data-module="cpp"
+                data-def="前缀"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">前缀</abbr></span
+              >的<span
+                class="term-tip"
+                data-term="工程"
+                data-module="github"
+                data-def="工程"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工程</abbr></span
+              >实践
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="前缀"
+                data-module="cpp"
+                data-def="前缀"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">前缀</abbr></span
+              >共享
+            </td>
+            <td>”KV复用”</td>
+            <td>
+              跨<span
+                class="term-tip"
+                data-term="请求"
+                data-module="vue3"
+                data-def="HTTP 请求"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">请求</abbr></span
+              >复用共享prompt前缀的KV缓存
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >命中<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >
+            </td>
+            <td>
+              ”KV复用<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >”
+            </td>
+            <td>
+              从<span
+                class="term-tip"
+                data-term="缓存"
+                data-module="vue3"
+                data-def="存储数据供后续使用"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓存</abbr></span
+              >服务而非重新预<span
+                class="term-tip"
+                data-term="填充"
+                data-module="html5"
+                data-def="SVG 填充属性"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">填充</abbr></span
+              >的KV块<span
+                class="term-tip"
+                data-term="比例"
+                data-module="vue3"
+                data-def="缩放比例"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">比例</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2312.07104">Zheng等人 — SGLang (arXiv:2312.07104)</a>
+        </li>
+        <li><a href="https://github.com/sgl-project/sglang">SGLang GitHub</a></li>
+      </ul>
+    </article>
+  </body>
+</html>

@@ -1,0 +1,954 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DQN深度Q网络</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">DQN深度Q网络</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">DQN</span><span class="doc-tag">深度Q网络</span
+          ><span class="doc-tag">经验回放</span><span class="doc-tag">目标网络</span
+          ><span class="doc-tag">深度强化学习</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">Q学习与深度神经网络的结合，经验回放与目标网络的核心机制</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="dqn-深度-q-网络"><a href="#dqn-深度-q-网络">DQN 深度 Q 网络</a></h1>
+      <blockquote>
+        <p>
+          表格 Q 学习在 10 个状态上工作。Atari 有 10^160 个状态。Mnih et al. (2015) 用一个 CNN 替换
+          Q 表，加上两个技巧——经验回放和目标网络——在 49 个 Atari 游戏上达到人类水平。深度 RL
+          就此开始。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置知识:</strong> Phase 9
+        · 04 (Q 学习), Phase 3 · 07 (CNN) <strong>时间:</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        表格 Q 学习为每个 (状态, 动作) 对维护一个 Q 值。当状态空间很大（Atari
+        像素）或连续（机器人关节角度）时，Q 表不可行。解决方案：用函数近似器（神经网络）表示 Q
+        函数。
+      </p>
+      <p>但直接将 Q 学习与神经网络结合会失败。三个原因：</p>
+      <ol>
+        <li>
+          <strong>相关样本。</strong> Q 学习的每步更新使用连续的 (s, a, r, s’)
+          转移。连续转移高度相关，违反 SGD 的独立同分布假设。
+        </li>
+        <li>
+          <strong>移动目标。</strong> Q 学习的 TD 目标 <code>r + γ · max Q(s', a')</code> 依赖 Q
+          网络本身。更新 Q 网络改变目标，导致不稳定。
+        </li>
+        <li><strong>灾难性遗忘。</strong> 新经验覆盖旧经验。网络”忘记”早期学到的策略。</li>
+      </ol>
+      <p>DQN 用三个技巧解决这些问题。</p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <p>
+        <strong>深度 Q 网络。</strong> 一个 CNN（或 MLP）接收状态（Atari 帧堆叠），输出每个动作的 Q
+        值。<code>Q_θ(s, a)</code> = 网络在动作 a 输出端的值。
+      </p>
+      <p>
+        <strong>经验回放。</strong> 将每个转移
+        <code>(s, a, r, s', done)</code>
+        存入回放缓冲区。训练时从缓冲区随机采样小批量。打破时间相关性，使样本更接近独立同分布。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">replay_buffer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># Store transition</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">replay_buffer.append((s, a, r, s_next, done))</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># Sample random batch</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">batch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> random.sample(replay_buffer, batch_size)</span></span></code></pre>
+      <p>
+        <strong>目标网络。</strong> 维护两个 Q 网络：在线网络 <code>Q_θ</code> 和目标网络
+        <code>Q_θ'</code>。TD 目标用目标网络计算：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>y = r + γ · max_{a'} Q_θ'(s', a')</span></span></code></pre>
+      <p>
+        目标网络参数定期（每 C 步）从在线网络复制：<code>θ' ← θ</code>。或者使用软更新：<code
+          >θ' ← τ · θ + (1-τ) · θ'</code
+        >，τ ≈ 0.005。
+      </p>
+      <p><strong>损失函数。</strong> 在线网络的 MSE 损失：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>L(θ) = E[(y - Q_θ(s, a))²]</span></span></code></pre>
+      <p>其中 <code>y = r + γ · max_{a'} Q_θ'(s', a')</code>（如果 done，<code>y = r</code>）。</p>
+      <p>
+        <strong>ε-贪心探索。</strong> 与表格 Q 学习相同，但 ε 通常从 1.0 线性衰减到 0.01（前 100k
+        步）。
+      </p>
+      <p>
+        <strong>帧预处理（Atari 特定）。</strong> 灰度化 → 缩放到 84×84 → 堆叠最近 4 帧 → 归一化到
+        [0, 1]。这给网络运动信息（球的方向、速度）。
+      </p>
+      <h2 id="dqn-变体"><a href="#dqn-变体">DQN 变体</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>变体</th>
+            <th>年份</th>
+            <th>改进</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>DQN</td>
+            <td>2015</td>
+            <td>经验回放 + 目标网络</td>
+          </tr>
+          <tr>
+            <td>双 DQN</td>
+            <td>2016</td>
+            <td>用在线网络选动作，目标网络评估，减少最大化偏差</td>
+          </tr>
+          <tr>
+            <td>Dueling DQN</td>
+            <td>2016</td>
+            <td>分离 V(s) 和 A(s,a) 流，更好的值估计</td>
+          </tr>
+          <tr>
+            <td>优先经验回放</td>
+            <td>2016</td>
+            <td>按 TD 误差优先采样</td>
+          </tr>
+          <tr>
+            <td>分布式 DQN (C51)</td>
+            <td>2017</td>
+            <td>学习回报分布而非期望</td>
+          </tr>
+          <tr>
+            <td>Rainbow</td>
+            <td>2017</td>
+            <td>所有改进组合</td>
+          </tr>
+          <tr>
+            <td>R2D2</td>
+            <td>2019</td>
+            <td>分布式训练 + LSTM + 优先回放</td>
+          </tr>
+          <tr>
+            <td>IQN</td>
+            <td>2018</td>
+            <td>隐式分位网络，更灵活的分布</td>
+          </tr>
+          <tr>
+            <td>Agent57</td>
+            <td>2020</td>
+            <td>在所有 57 个 Atari 游戏上超人类</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="动手构建"><a href="#动手构建">动手构建</a></h2>
+      <p><code>code/main.py</code> 实现了一个简化版 DQN，使用 MLP 在 CartPole 环境上训练。</p>
+      <h3 id="步骤-1q-网络"><a href="#步骤-1q-网络">步骤 1：Q 网络</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> QNetwork</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, state_dim, n_actions, hidden_dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">128</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.W1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> np.random.randn(state_dim, hidden_dim) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.01</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.b1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> np.zeros(hidden_dim)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.W2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> np.random.randn(hidden_dim, n_actions) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.01</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.b2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> np.zeros(n_actions)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> forward</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, x):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        h </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> np.maximum(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">@</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.W1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.b1)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># ReLU</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> h </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">@</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.W2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.b2</span></span></code></pre>
+      <h3 id="步骤-2经验回放"><a href="#步骤-2经验回放">步骤 2：经验回放</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> ReplayBuffer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, capacity</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.buffer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.capacity </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> capacity</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> push</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, transition):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.buffer) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.capacity:</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">            self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.buffer.pop(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.buffer.append(transition)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> sample</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, batch_size):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> random.sample(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.buffer, batch_size)</span></span></code></pre>
+      <h3 id="步骤-3dqn-更新"><a href="#步骤-3dqn-更新">步骤 3：DQN 更新</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> dqn_update</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(online_net, target_net, batch, gamma, lr):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s, a, r, s_next, done </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch:</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # TD target using target network</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> done:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            y </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> r</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        else</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            y </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> r </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> gamma </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> np.max(target_net.forward(s_next))</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # Predicted Q value using online network</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        q_values </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> online_net.forward(s)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        td_error </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> y </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> q_values[a]</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # Gradient step (simplified)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        q_values[a] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> lr </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> td_error</span></span></code></pre>
+      <h3 id="步骤-4训练循环"><a href="#步骤-4训练循环">步骤 4：训练循环</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> train_dqn</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(env, n_episodes</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">500</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    online_net </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> QNetwork(state_dim, n_actions)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    target_net </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> QNetwork(state_dim, n_actions)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    buffer </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ReplayBuffer()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    epsilon </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1.0</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> episode </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n_episodes):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> env.reset()</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        while</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            a </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> epsilon_greedy(online_net, s, epsilon)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            s_next, r, done </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> env.step(a)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            buffer.push((s, a, r, s_next, done))</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(buffer) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">>=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> batch_size:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                batch </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> buffer.sample(batch_size)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                dqn_update(online_net, target_net, batch, gamma, lr)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            s </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s_next</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> done:</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                break</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # Decay epsilon</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        epsilon </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> max</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.01</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, epsilon </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0.001</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # Update target network every C episodes</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> episode </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">%</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> target_update_freq </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            target_net </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> copy(online_net)</span></span></code></pre>
+      <h2 id="常见陷阱"><a href="#常见陷阱">常见陷阱</a></h2>
+      <ul>
+        <li>
+          <strong>目标网络更新太频繁。</strong> 每步更新目标网络 = 没有目标网络的效果。修复：每
+          1000-10000 步更新一次。
+        </li>
+        <li>
+          <strong>回放缓冲区太小。</strong> 缓冲区太小 = 样本多样性不足。修复：至少 100k 转移。
+        </li>
+        <li>
+          <strong>回放缓冲区太大。</strong> 缓冲区太大 = 旧经验太多，策略已改变。修复：50k-1M
+          通常足够。
+        </li>
+        <li>
+          <strong>学习率太大。</strong> DQN 对学习率敏感。修复：从 1e-4 开始，使用 Adam 或 RMSProp。
+        </li>
+        <li>
+          <strong>奖励裁剪。</strong> Atari 中奖励被裁剪到 [-1, 1] 以稳定训练。不裁剪 = 高方差梯度。
+        </li>
+        <li><strong>帧堆叠不够。</strong> 单帧没有运动信息。修复：堆叠 4 帧。</li>
+        <li><strong>没有梯度裁剪。</strong> 梯度可能爆炸。修复：裁剪梯度范数到 10。</li>
+      </ul>
+      <h2 id="实际应用"><a href="#实际应用">实际应用</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>DQN 适用性</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>离散动作，高维状态</td>
+            <td>非常适合</td>
+          </tr>
+          <tr>
+            <td>连续动作</td>
+            <td>不适合（用 DDPG/SAC）</td>
+          </tr>
+          <tr>
+            <td>Atari 游戏</td>
+            <td>经典应用</td>
+          </tr>
+          <tr>
+            <td>棋类游戏</td>
+            <td>适合（配合 MCTS）</td>
+          </tr>
+          <tr>
+            <td>推荐系统</td>
+            <td>适合（离散候选）</td>
+          </tr>
+          <tr>
+            <td>机器人控制</td>
+            <td>不适合（连续动作）</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="交付物"><a href="#交付物">交付物</a></h2>
+      <p>
+        保存 <code>outputs/skill-dqn-trainer.md</code>。技能接收环境描述 +
+        计算预算，输出：网络架构、回放缓冲区大小、目标网络更新频率、ε 调度和训练超参数。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong>简单。</strong> 运行
+          <code>code/main.py</code
+          >，比较有和没有目标网络的训练稳定性。目标网络更新频率如何影响稳定性？
+        </li>
+        <li>
+          <strong>中等。</strong> 实现双 DQN：用在线网络选择动作
+          <code>a* = argmax Q_online(s', a)</code>，用目标网络评估
+          <code>Q_target(s', a*)</code>。比较与标准 DQN 的 Q 值偏差。
+        </li>
+        <li>
+          <strong>困难。</strong> 实现优先经验回放：按 TD
+          误差的绝对值优先采样。比较与均匀采样的样本效率。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>人们怎么说</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>DQN</td>
+            <td>
+              ”深<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >
+              Q 网络”
+            </td>
+            <td>
+              Q 学习 + 神经<span
+                class="term-tip"
+                data-term="网络"
+                data-module="github"
+                data-def="网络"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网络</abbr></span
+              >
+              +
+              <span
+                class="term-tip"
+                data-term="经验"
+                data-module="github"
+                data-def="经验"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">经验</abbr></span
+              >回放 +
+              <span
+                class="term-tip"
+                data-term="目标"
+                data-module="cpp"
+                data-def="目标"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目标</abbr></span
+              >网络。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="经验"
+                data-module="github"
+                data-def="经验"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">经验</abbr></span
+              >回放
+            </td>
+            <td>
+              ”回放<span
+                class="term-tip"
+                data-term="缓冲区"
+                data-module="c"
+                data-def="临时存储数据的内存区域"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">缓冲区</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="存储"
+                data-module="cpp"
+                data-def="存储"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存储</abbr></span
+              >转移，<span
+                class="term-tip"
+                data-term="随机"
+                data-module="github"
+                data-def="随机的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">随机</abbr></span
+              >采样<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >，打破<span
+                class="term-tip"
+                data-term="相关性"
+                data-module="c"
+                data-def="两个值的关系"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">相关性</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="目标"
+                data-module="cpp"
+                data-def="目标"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目标</abbr></span
+              >网络
+            </td>
+            <td>
+              ”慢<span
+                class="term-tip"
+                data-term="网络"
+                data-module="github"
+                data-def="网络"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网络</abbr></span
+              >”
+            </td>
+            <td>
+              独立的 Q
+              <span
+                class="term-tip"
+                data-term="网络"
+                data-module="github"
+                data-def="网络"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">网络</abbr></span
+              >，定期<span
+                class="term-tip"
+                data-term="更新"
+                data-module="c"
+                data-def="修改变量值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">更新</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="稳定"
+                data-module="github"
+                data-def="稳定"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">稳定</abbr></span
+              >训练。
+            </td>
+          </tr>
+          <tr>
+            <td>双 DQN</td>
+            <td>”去偏差”</td>
+            <td>
+              在线选动作，<span
+                class="term-tip"
+                data-term="目标"
+                data-module="cpp"
+                data-def="目标"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">目标</abbr></span
+              >评估，<span
+                class="term-tip"
+                data-term="减少"
+                data-module="github"
+                data-def="减少"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">减少</abbr></span
+              >最大化偏差。
+            </td>
+          </tr>
+          <tr>
+            <td>Dueling DQN</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="分离"
+                data-module="github"
+                data-def="分离"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分离</abbr></span
+              >流”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="分离"
+                data-module="github"
+                data-def="分离"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">分离</abbr></span
+              >
+              V(s) 和 A(s,a)，更好的<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >估计。
+            </td>
+          </tr>
+          <tr>
+            <td>优先回放</td>
+            <td>”按需采样”</td>
+            <td>
+              按 TD 误差优先采样重要<span
+                class="term-tip"
+                data-term="转移"
+                data-module="github"
+                data-def="转移"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">转移</abbr></span
+              >。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="生产笔记dqn-的经验回放是-rl-的-kv-cache">
+        <a href="#生产笔记dqn-的经验回放是-rl-的-kv-cache"
+          >生产笔记：DQN 的经验回放是 RL 的 KV-Cache</a
+        >
+      </h2>
+      <p>
+        <span
+          class="term-tip"
+          data-term="经验"
+          data-module="github"
+          data-def="经验"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">经验</abbr></span
+        >回放<span
+          class="term-tip"
+          data-term="缓冲区"
+          data-module="c"
+          data-def="临时存储数据的内存区域"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">缓冲区</abbr></span
+        >是 DQN
+        <span
+          class="term-tip"
+          data-term="训练"
+          data-module="github"
+          data-def="培训"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">训练</abbr></span
+        >中最昂贵的<span
+          class="term-tip"
+          data-term="存储"
+          data-module="cpp"
+          data-def="存储"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">存储</abbr></span
+        >组件。一个 1M
+        <span
+          class="term-tip"
+          data-term="转移"
+          data-module="github"
+          data-def="转移"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">转移</abbr></span
+        >的<span
+          class="term-tip"
+          data-term="缓冲区"
+          data-module="c"
+          data-def="临时存储数据的内存区域"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">缓冲区</abbr></span
+        >，每个<span
+          class="term-tip"
+          data-term="转移"
+          data-module="github"
+          data-def="转移"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">转移</abbr></span
+        >
+        4 个 84×84×4 帧<span
+          class="term-tip"
+          data-term="堆叠"
+          data-module="html5"
+          data-def="z-index 层叠顺序"
+          data-slug="html5/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">堆叠</abbr></span
+        >
+        = 约 113 GB
+        <span
+          class="term-tip"
+          data-term="原始"
+          data-module="vue3"
+          data-def="原始的、最初的"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">原始</abbr></span
+        >数据。<span
+          class="term-tip"
+          data-term="生产"
+          data-module="github"
+          data-def="生产"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生产</abbr></span
+        >
+        DQN
+        <span
+          class="term-tip"
+          data-term="训练"
+          data-module="github"
+          data-def="培训"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">训练</abbr></span
+        >使用：
+      </p>
+      <ul>
+        <li>
+          <strong
+            >帧<span
+              class="term-tip"
+              data-term="压缩"
+              data-module="html5"
+              data-def="GZIP、Brotli 资源压缩"
+              data-slug="html5/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">压缩</abbr></span
+            >。</strong
+          >
+          只<span
+            class="term-tip"
+            data-term="存储"
+            data-module="cpp"
+            data-def="存储"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">存储</abbr></span
+          >唯一帧的<span
+            class="term-tip"
+            data-term="引用"
+            data-module="c"
+            data-def="变量的别名"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">引用</abbr></span
+          >，用<span
+            class="term-tip"
+            data-term="索引"
+            data-module="c"
+            data-def="数组中元素的位置"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">索引</abbr></span
+          >重建<span
+            class="term-tip"
+            data-term="堆叠"
+            data-module="html5"
+            data-def="z-index 层叠顺序"
+            data-slug="html5/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">堆叠</abbr></span
+          >。内存降低约 4 倍。
+        </li>
+        <li>
+          <strong
+            >优先回放的数据<span
+              class="term-tip"
+              data-term="结构"
+              data-module="cpp"
+              data-def="结构"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">结构</abbr></span
+            >。</strong
+          >
+          分<span
+            class="term-tip"
+            data-term="段"
+            data-module="vue3"
+            data-def="URL 的一段"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">段</abbr></span
+          >树 (segment tree)
+          <span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >
+          O(<span
+            class="term-tip"
+            data-term="log"
+            data-module="c"
+            data-def="自然对数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">log</abbr></span
+          >
+          N) 采样和<span
+            class="term-tip"
+            data-term="优先级"
+            data-module="cpp"
+            data-def="优先级"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">优先级</abbr></span
+          >更新。
+        </li>
+        <li>
+          <strong>分布式回放。</strong> R2D2 使用分布式 actor 收集<span
+            class="term-tip"
+            data-term="经验"
+            data-module="github"
+            data-def="经验"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">经验</abbr></span
+          >，中心 learner 从<span
+            class="term-tip"
+            data-term="共享"
+            data-module="cpp"
+            data-def="共享"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">共享</abbr></span
+          >缓冲区采样。
+        </li>
+      </ul>
+      <p>
+        <span
+          class="term-tip"
+          data-term="推理"
+          data-module="github"
+          data-def="推理"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">推理</abbr></span
+        >时，DQN 是一个<span
+          class="term-tip"
+          data-term="简单"
+          data-module="github"
+          data-def="简单"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">简单</abbr></span
+        >的前向传播：<code>Q(s) → [Q(s,a_1), ..., Q(s,a_n)]</code>。<span
+          class="term-tip"
+          data-term="选择"
+          data-module="cpp"
+          data-def="选择"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">选择</abbr></span
+        >
+        argmax。<span
+          class="term-tip"
+          data-term="延迟"
+          data-module="cpp"
+          data-def="延迟操作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">延迟</abbr></span
+        >
+        = 一次 CNN 前向传播，与<span
+          class="term-tip"
+          data-term="标准"
+          data-module="c"
+          data-def="语言规范文档"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">标准</abbr></span
+        >分<span
+          class="term-tip"
+          data-term="类"
+          data-module="cpp"
+          data-def="定义对象的结构和行为"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">类</abbr></span
+        >相同。
+      </p>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://www.nature.com/articles/nature14236"
+            >Mnih et al. (2015). Human-level control through deep reinforcement learning</a
+          >
+          — DQN 论文。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1509.06461"
+            >van Hasselt, Guez, Silver (2016). Deep Reinforcement Learning with Double Q-learning</a
+          >
+          — 双 DQN。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1511.06581"
+            >Wang et al. (2016). Dueling Network Architectures for Deep Reinforcement Learning</a
+          >
+          — Dueling DQN。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1511.05952"
+            >Schaul et al. (2016). Prioritized Experience Replay</a
+          >
+          — 优先回放。
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/1710.02298"
+            >Hessel et al. (2018). Rainbow: Combining Improvements in Deep Reinforcement Learning</a
+          >
+          — Rainbow。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

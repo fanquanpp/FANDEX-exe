@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>百万Token上下文下的长视频理解</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">百万Token上下文下的长视频理解</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            11 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">长视频</span><span class="doc-tag">百万Token上下文</span
+          ><span class="doc-tag">环形注意力</span><span class="doc-tag">Agent检索</span
+          ><span class="doc-tag">Needle-in-Haystack</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解暴力上下文、环形注意力和Agent检索三种长视频扩展路径</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="百万token上下文下的长视频理解">
+        <a href="#百万token上下文下的长视频理解">百万Token上下文下的长视频理解</a>
+      </h1>
+      <blockquote>
+        <p>
+          1小时4K视频在24 FPS下，patch和嵌入后产生约6000万token。2小时播客转录是30,000
+          token。一部完整蓝光电影，即使激进池化压缩，也是数十万token。Google的Gemini 1.5
+          (2024年3月)以1000万token上下文开启了这一时代，在小时级视频上实现可靠的大海捞针回忆。LWM
+          (Liu等人,
+          2024年2月)展示了环形注意力的扩展路径。LongVILA和Video-XL进一步扩展了摄入。VideoAgent用Agent检索替换了原始上下文。每种方法在计算、回忆和工程复杂性上是不同的权衡。本课程并排阅读它们。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python (stdlib, 大海捞针模拟器 +
+        Agent检索路由器) <strong>前置知识:</strong> Phase 12 · 17 (视频时间token)
+        <strong>时间:</strong> ~180分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>计算不同FPS和池化下长视频的总视觉token数。</li>
+        <li>
+          解释三条扩展路径：暴力上下文(Gemini 1.5)、环形注意力(LWM)、token压缩(LongVILA /
+          Video-XL)。
+        </li>
+        <li>比较原始上下文视频VLM vs Agent检索视频VLM(VideoAgent)在准确率和延迟上的差异。</li>
+        <li>为30分钟视频设计大海捞针测试并测量特定分钟的回忆率。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        Qwen2.5-VL规模patch在384原生分辨率下的一帧约729 token。3x3池化后每帧81 token。30分钟1 FPS =
+        1800帧 = 145,800 token。2025年开放VLM可行，但紧张。2 FPS下291,600
+        token——只有最大上下文才放得下。
+      </p>
+      <p>2小时电影1 FPS是583k token。超过大多数2026年开放模型；需要Gemini 2.5 Pro或更激进池化。</p>
+      <p>出现了三条扩展路径。</p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="路径1暴力上下文gemini-15-claude-opus">
+        <a href="#路径1暴力上下文gemini-15-claude-opus"
+          >路径1：暴力上下文(Gemini 1.5, Claude Opus)</a
+        >
+      </h3>
+      <p>用硬件解决问题。将上下文扩展到数百万token，一次前向传播处理所有内容。</p>
+      <p>
+        Gemini 1.5 Pro以1M token发布；Gemini 1.5 Ultra达到10M；2026年Gemini 2.5
+        Pro可靠处理数小时视频。论文(arXiv:2403.05530)记录了高达约9.5M token时99.7%的大海捞针回忆率。
+      </p>
+      <p>
+        工程：带内存层次(局部+全局+稀疏)加MoE专家路由用于长上下文效率的自定义注意力实现。未完整发布。非开源。
+      </p>
+      <h3 id="路径2环形注意力lwm-longvila">
+        <a href="#路径2环形注意力lwm-longvila">路径2：环形注意力(LWM, LongVILA)</a>
+      </h3>
+      <p>
+        环形注意力以”环”方式将长序列分布到设备上，每个设备持有一个块。全序列的注意力通过每个设备将其块发送到环中下一个设备、计算部分注意力并聚合来实现。
+      </p>
+      <p>
+        LWM (Liu等人, 2024)以此方式训练了1M
+        token上下文模型。训练计算随上下文线性扩展，而非二次方——注意力的二次方开销被环的设备分摊。
+      </p>
+      <p>
+        LongVILA (arXiv:2408.10188)将模式适配到VLM。1400帧视频每帧192 token =
+        268k上下文，用8路并行环形注意力训练。
+      </p>
+      <h3 id="路径3token压缩video-xl-longva">
+        <a href="#路径3token压缩video-xl-longva">路径3：Token压缩(Video-XL, LongVA)</a>
+      </h3>
+      <p>比暴力上下文更便宜：在LLM看到序列之前激进压缩。</p>
+      <p>
+        Video-XL
+        (arXiv:2409.14485)使用视觉摘要token：N帧的每个片段产生一个对所有N帧关注的单一”摘要”token。推理时LLM每个片段看到一个摘要token，大幅缩减上下文。
+      </p>
+      <p>
+        LongVA通过”长上下文迁移”技术将LLM上下文从200k扩展到2M。在长上下文文本上训练，通过共享表示迁移到长上下文视频。
+      </p>
+      <p>Token压缩用特定时间戳的回忆换取可扩展性。模型大致知道发生了什么但有时错过精确帧。</p>
+      <h3 id="路径4agent检索videoagent">
+        <a href="#路径4agent检索videoagent">路径4：Agent检索(VideoAgent)</a>
+      </h3>
+      <p>不要将完整视频喂给LLM。而是将视频视为数据库，用LLM查询它。</p>
+      <p>VideoAgent (arXiv:2403.10517)：</p>
+      <ol>
+        <li>LLM读取问题。</li>
+        <li>LLM向检索工具请求相关片段(“显示有猫的片段”)。</li>
+        <li>工具返回匹配的片段时间戳。</li>
+        <li>LLM通过VLM读取这些片段。</li>
+        <li>LLM组织答案或提出后续查询。</li>
+      </ol>
+      <p>
+        这是应用于长视频的LLM-as-agent模式。推理更便宜(仅编码相关片段)，工程更难(检索质量成为瓶颈)。
+      </p>
+      <h3 id="大海捞针基准"><a href="#大海捞针基准">大海捞针基准</a></h3>
+      <p>标准长上下文测试：在视频随机位置插入唯一视觉或文本标记，然后提问需要回忆它的查询。</p>
+      <p>指标：跨视频长度和标记位置的Recall@k。</p>
+      <p>
+        Gemini 2.5 Pro在长达90分钟视频上得分>99%回忆率。开放72B模型(Qwen2.5-VL-72B,
+        InternVL3-78B)在30分钟时约85-90%，60分钟后退化。
+      </p>
+      <p>VideoAgent在2小时以上可以匹配或击败原始上下文模型，因为如果工具好，检索能命中目标。</p>
+      <h3 id="选择哪条路径"><a href="#选择哪条路径">选择哪条路径</a></h3>
+      <p>15分钟片段前沿准确率：开放72B + 原生上下文通常有效。选Qwen2.5-VL-72B。</p>
+      <p>
+        30分钟到1小时内容：LongVILA或Video-XL用于开放；Gemini 2.5
+        Pro用于封闭。质量标准很重要——前沿选封闭。
+      </p>
+      <p>2小时以上内容：VideoAgent或类似检索模式。或者，摘要为更小块并喂入层次化摘要。</p>
+      <h3 id="2026年生产模式"><a href="#2026年生产模式">2026年生产模式</a></h3>
+      <p>实践中，生产长视频管道是混合的：</p>
+      <ol>
+        <li>在整个视频上运行动态FPS采样 + 激进池化(获得100k token全局表示)。</li>
+        <li>传递给72B VLM获取全局摘要。</li>
+        <li>如果用户提出详细问题，使用摘要作为索引运行Agent检索。</li>
+      </ol>
+      <p>这结合了暴力上下文用于全局理解和检索用于局部细节。</p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code>：</p>
+      <ul>
+        <li>计算从1分钟到3小时视频在不同FPS + 池化下的token预算。</li>
+        <li>模拟大海捞针运行：在随机时间戳注入标记，提问，评分回忆。</li>
+        <li>包含选择特定片段喂给下游VLM的Agent检索路由器模拟器。</li>
+      </ul>
+      <p>运行预算表，感受规模差距。</p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-long-video-strategy-planner.md</code>。给定视频时长和查询复杂度，它在暴力上下文、压缩和Agent检索之间选择，并计算延迟
+        + 质量预期。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>45分钟讲座1 FPS，每帧81 token。总token数？适合哪些模型的上下文？</p>
+        </li>
+        <li>
+          <p>设计大海捞针测试：你在哪一分钟注入标记，精确查询格式是什么？</p>
+        </li>
+        <li>
+          <p>
+            比较暴力上下文Qwen2.5-VL-72B(80k上下文)与VideoAgent(Claude 3.5 +
+            检索)在1小时视频上。哪个在回忆率上赢？哪个在延迟上赢？
+          </p>
+        </li>
+        <li>
+          <p>
+            <span
+              class="term-tip"
+              data-term="环"
+              data-module="discrete-math"
+              data-def="具有加法群和乘法半群结构且满足分配律的代数系统"
+              data-slug="discrete-math/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">环</abbr></span
+            >形<span
+              class="term-tip"
+              data-term="注意"
+              data-module="github"
+              data-def="注意"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">注意</abbr></span
+            >力的内存成本随<span
+              class="term-tip"
+              data-term="序列"
+              data-module="github"
+              data-def="序列"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">序列</abbr></span
+            >长<span
+              class="term-tip"
+              data-term="度"
+              data-module="algorithm"
+              data-def="与顶点关联的边数，有向图分为入度和出度"
+              data-slug="algorithm/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">度</abbr></span
+            >线性<span
+              class="term-tip"
+              data-term="增长"
+              data-module="github"
+              data-def="增长"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">增长</abbr></span
+            >，随<span
+              class="term-tip"
+              data-term="设备"
+              data-module="cpp"
+              data-def="设备对象"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">设备</abbr></span
+            >数<span
+              class="term-tip"
+              data-term="线性"
+              data-module="github"
+              data-def="线性的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">线性</abbr></span
+            >增长。<span
+              class="term-tip"
+              data-term="解释"
+              data-module="github"
+              data-def="解释"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">解释</abbr></span
+            >为什么以及如果去掉<span
+              class="term-tip"
+              data-term="环"
+              data-module="discrete-math"
+              data-def="具有加法群和乘法半群结构且满足分配律的代数系统"
+              data-slug="discrete-math/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">环</abbr></span
+            >旋转<span
+              class="term-tip"
+              data-term="阶段"
+              data-module="github"
+              data-def="阶段"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">阶段</abbr></span
+            >会出什么问题。
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读Gemini 1.5第5节<span
+              class="term-tip"
+              data-term="关于"
+              data-module="github"
+              data-def="关于"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">关于</abbr></span
+            >大海捞针。论文在1M vs 10M
+            <span
+              class="term-tip"
+              data-term="token"
+              data-module="python"
+              data-def="词法分析的最小语法单元"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">token</abbr></span
+            >边界处<span
+              class="term-tip"
+              data-term="发现"
+              data-module="github"
+              data-def="发现"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">发现</abbr></span
+            >了什么<span
+              class="term-tip"
+              data-term="关于"
+              data-module="github"
+              data-def="关于"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">关于</abbr></span
+            >回忆<span
+              class="term-tip"
+              data-term="率"
+              data-module="cpp"
+              data-def="速率"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">率</abbr></span
+            >的？
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              暴力<span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >
+            </td>
+            <td>
+              ”就是更多<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >”
+            </td>
+            <td>
+              将LLM上下文<span
+                class="term-tip"
+                data-term="扩展"
+                data-module="cpp"
+                data-def="添加的功能"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">扩展</abbr></span
+              >到数百万<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >；一次前向传播<span
+                class="term-tip"
+                data-term="处理"
+                data-module="cpp"
+                data-def="处理"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">处理</abbr></span
+              >所有<span
+                class="term-tip"
+                data-term="内容"
+                data-module="cpp"
+                data-def="内容部分"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">内容</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="环"
+                data-module="discrete-math"
+                data-def="具有加法群和乘法半群结构且满足分配律的代数系统"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">环</abbr></span
+              >形<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力
+            </td>
+            <td>
+              ”LWM风<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >并<span
+                class="term-tip"
+                data-term="行"
+                data-module="vue3"
+                data-def="数据行"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">行</abbr></span
+              >”
+            </td>
+            <td>
+              每个<span
+                class="term-tip"
+                data-term="设备"
+                data-module="cpp"
+                data-def="设备对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">设备</abbr></span
+              >持有一个<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >并旋转的分布式<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Token"
+                data-module="agent"
+                data-def="大语言模型处理文本的最小单位，一个 token 约对应 0.75 个英文单词或 0.5-1 个中文字符"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Token</abbr></span
+              >压缩
+            </td>
+            <td>
+              ”摘要<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >”
+            </td>
+            <td>
+              在LLM前<span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >学习<span
+                class="term-tip"
+                data-term="压缩"
+                data-module="html5"
+                data-def="GZIP、Brotli 资源压缩"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">压缩</abbr></span
+              >器<span
+                class="term-tip"
+                data-term="减少"
+                data-module="github"
+                data-def="减少"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">减少</abbr></span
+              >每片段<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>大海捞针</td>
+            <td>”NIH测试”</td>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="随机"
+                data-module="github"
+                data-def="随机的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">随机</abbr></span
+              >点<span
+                class="term-tip"
+                data-term="插入"
+                data-module="mysql"
+                data-def="向表中添加新数据"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">插入</abbr></span
+              >唯一<span
+                class="term-tip"
+                data-term="标记"
+                data-module="c"
+                data-def="标记数据位置的符号"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">标记</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="测试"
+                data-module="cpp"
+                data-def="测试"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">测试</abbr></span
+              >时<span
+                class="term-tip"
+                data-term="要求"
+                data-module="github"
+                data-def="要求"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">要求</abbr></span
+              >模型回忆
+            </td>
+          </tr>
+          <tr>
+            <td>Agent检索</td>
+            <td>
+              ”LLM作为<span
+                class="term-tip"
+                data-term="查询"
+                data-module="cpp"
+                data-def="查询操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">查询</abbr></span
+              >规划器”
+            </td>
+            <td>
+              LLM向检索<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >请求<span
+                class="term-tip"
+                data-term="相关"
+                data-module="cpp"
+                data-def="相关的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">相关</abbr></span
+              >片<span
+                class="term-tip"
+                data-term="段"
+                data-module="vue3"
+                data-def="URL 的一段"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">段</abbr></span
+              >，通过VLM读取，<span
+                class="term-tip"
+                data-term="组织"
+                data-module="github"
+                data-def="团队账户和仓库集合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">组织</abbr></span
+              >答案
+            </td>
+          </tr>
+          <tr>
+            <td>VideoAgent</td>
+            <td>
+              ”视频检索<span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >”
+            </td>
+            <td>
+              规范Agent检索<span
+                class="term-tip"
+                data-term="设计"
+                data-module="github"
+                data-def="设计"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">设计</abbr></span
+              >：<span
+                class="term-tip"
+                data-term="问题"
+                data-module="github"
+                data-def="跟踪任务、缺陷、想法"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">问题</abbr></span
+              >
+              →
+              <span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >
+              →
+              <span
+                class="term-tip"
+                data-term="片段"
+                data-module="c"
+                data-def="内存块的组成部分"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">片段</abbr></span
+              >
+              → 答案
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2403.05530">Gemini Team — Gemini 1.5 (arXiv:2403.05530)</a>
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2402.08268"
+            >Liu等人 — LWM / RingAttention (arXiv:2402.08268)</a
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2408.10188">Xue等人 — LongVILA (arXiv:2408.10188)</a>
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2409.14485">Shu等人 — Video-XL (arXiv:2409.14485)</a>
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2403.10517">Wang等人 — VideoAgent (arXiv:2403.10517)</a>
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

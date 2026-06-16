@@ -1,0 +1,1226 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>开源模型架构详解</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">开源模型架构详解</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">architecture</span><span class="doc-tag">LLaMA</span
+          ><span class="doc-tag">Mistral</span><span class="doc-tag">Mixtral</span
+          ><span class="doc-tag">MoE</span><span class="doc-tag">模型架构</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          深入分析主流开源 LLM 的架构设计，包括 LLaMA、Mistral、Mixtral 和 Qwen
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="开源模型架构详解"><a href="#开源模型架构详解">开源模型架构详解</a></h1>
+      <blockquote>
+        <p>
+          每个 LLM 的架构选择都有原因。LLaMA 为什么用 RoPE？Mistral 为什么用滑动窗口注意力？Mixtral
+          的 MoE 是怎么工作的？理解这些设计决策，你才能选择合适的模型。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 概念 <strong>前置条件：</strong> Phase 10 Lesson 04（预训练
+        Mini-GPT） <strong>预计时间：</strong> ~60 分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>理解主流开源 LLM 的架构差异</li>
+        <li>掌握关键架构组件：RoPE、GQA、SwiGLU、滑动窗口注意力</li>
+        <li>理解 MoE（混合专家）架构的工作原理</li>
+        <li>能够根据任务需求选择合适的模型</li>
+      </ul>
+      <h2 id="架构对比"><a href="#架构对比">架构对比</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>特性</th>
+            <th>GPT 系列</th>
+            <th>LLaMA 2</th>
+            <th>Mistral</th>
+            <th>Mixtral</th>
+            <th>Qwen2</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>位置编码</td>
+            <td>学习式</td>
+            <td>RoPE</td>
+            <td>RoPE</td>
+            <td>RoPE</td>
+            <td>RoPE</td>
+          </tr>
+          <tr>
+            <td>注意力</td>
+            <td>MHA</td>
+            <td>GQA</td>
+            <td>GQA + 滑动窗口</td>
+            <td>GQA + 滑动窗口</td>
+            <td>GQA</td>
+          </tr>
+          <tr>
+            <td>激活函数</td>
+            <td>GeLU</td>
+            <td>SwiGLU</td>
+            <td>SwiGLU</td>
+            <td>SwiGLU</td>
+            <td>SwiGLU</td>
+          </tr>
+          <tr>
+            <td>归一化</td>
+            <td>LayerNorm</td>
+            <td>RMSNorm</td>
+            <td>RMSNorm</td>
+            <td>RMSNorm</td>
+            <td>RMSNorm</td>
+          </tr>
+          <tr>
+            <td>偏置项</td>
+            <td>有</td>
+            <td>无</td>
+            <td>无</td>
+            <td>无</td>
+            <td>无</td>
+          </tr>
+          <tr>
+            <td>MoE</td>
+            <td>否</td>
+            <td>否</td>
+            <td>否</td>
+            <td>是（8 选 2）</td>
+            <td>否</td>
+          </tr>
+          <tr>
+            <td>词表大小</td>
+            <td>100K+</td>
+            <td>32K</td>
+            <td>32K</td>
+            <td>32K</td>
+            <td>152K</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="rope旋转位置编码"><a href="#rope旋转位置编码">RoPE（旋转位置编码）</a></h2>
+      <p>RoPE 通过旋转矩阵将位置信息注入注意力计算：</p>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.625em; vertical-align: -0.1944em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.0359em">q</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: -0.0359em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">m</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.9694em; vertical-align: -0.2861em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.0077em">R</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3361em"
+                        ><span style="top: -2.55em; margin-left: -0.0077em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0278em"
+                                >θ</span
+                              ><span class="mpunct mtight">,</span
+                              ><span class="mord mathnormal mtight">m</span></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">⋅</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.9694em; vertical-align: -0.2861em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">W</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.0359em"
+                              >q</span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">⋅</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.5806em; vertical-align: -0.15em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal">x</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">m</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span></span></span
+        ></span>
+      </p>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.8444em; vertical-align: -0.15em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.0315em">k</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: -0.0315em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">n</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.9694em; vertical-align: -0.2861em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.0077em">R</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3361em"
+                        ><span style="top: -2.55em; margin-left: -0.0077em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0278em"
+                                >θ</span
+                              ><span class="mpunct mtight">,</span
+                              ><span class="mord mathnormal mtight">n</span></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">⋅</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.8333em; vertical-align: -0.15em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">W</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3361em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.0315em"
+                              >k</span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">⋅</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.5806em; vertical-align: -0.15em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal">x</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">n</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span></span></span
+        ></span>
+      </p>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 1.0883em; vertical-align: -0.247em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.0359em">q</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.8413em"
+                        ><span style="top: -2.453em; margin-left: -0.0359em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">m</span></span
+                          ></span
+                        ><span style="top: -3.063em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.1389em"
+                              >T</span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.247em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.0315em">k</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: -0.0315em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">n</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1.2244em; vertical-align: -0.3831em"></span
+              ><span class="mord"
+                ><span class="mord mathnormal">x</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.8413em"
+                        ><span style="top: -2.453em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">m</span></span
+                          ></span
+                        ><span style="top: -3.063em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.1389em"
+                              >T</span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.247em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">W</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.8413em"
+                        ><span style="top: -2.453em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.0359em"
+                              >q</span
+                            ></span
+                          ></span
+                        ><span style="top: -3.063em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.1389em"
+                              >T</span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3831em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.0077em">R</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3361em"
+                        ><span style="top: -2.55em; margin-left: -0.0077em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight"
+                              ><span class="mord mathnormal mtight" style="margin-right: 0.0278em"
+                                >θ</span
+                              ><span class="mpunct mtight">,</span
+                              ><span class="mord mathnormal mtight">n</span
+                              ><span class="mbin mtight">−</span
+                              ><span class="mord mathnormal mtight">m</span></span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">W</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3361em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.0315em"
+                              >k</span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mord"
+                ><span class="mord mathnormal">x</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: 0em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight">n</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span></span></span
+        ></span>
+      </p>
+      <p>
+        RoPE 的优势：<span
+          class="term-tip"
+          data-term="注意"
+          data-module="github"
+          data-def="注意"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">注意</abbr></span
+        >力分数只<span
+          class="term-tip"
+          data-term="依赖"
+          data-module="c"
+          data-def="两个计算之间的顺序关系"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">依赖</abbr></span
+        >相对位置
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 0.6667em; vertical-align: -0.0833em"></span
+              ><span class="mord mathnormal">n</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">−</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 0.4306em"></span
+              ><span class="mord mathnormal">m</span></span
+            ></span
+          ></span
+        >，天然<span
+          class="term-tip"
+          data-term="支持"
+          data-module="cpp"
+          data-def="支持"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">支持</abbr></span
+        >外推。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> precompute_rope_freqs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(dim, max_seq_len</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">4096</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, base</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10000</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """预计算 RoPE 频率"""</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    freqs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1.0</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> /</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (base </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">**</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (torch.arange(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, dim, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).float() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dim))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    t </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.arange(max_seq_len)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    freqs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.outer(t, freqs)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.cos(freqs), torch.sin(freqs)</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> apply_rope</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(x, cos, sin):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """应用 RoPE"""</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x.shape[</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">//</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    x1, x2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, :d], x[</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">...</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, d:]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    rotated </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.cat([</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">x2, x1], </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cos </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rotated </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> sin</span></span></code></pre>
+      <h2 id="gqa分组查询注意力"><a href="#gqa分组查询注意力">GQA（分组查询注意力）</a></h2>
+      <p>
+        GQA 在 MHA（<span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >头<span
+          class="term-tip"
+          data-term="注意"
+          data-module="github"
+          data-def="注意"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">注意</abbr></span
+        >力）和 MQA（<span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >查询<span
+          class="term-tip"
+          data-term="注意"
+          data-module="github"
+          data-def="注意"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">注意</abbr></span
+        >力）之间取折衷：
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="类型"
+                data-module="c"
+                data-def="数据的分类"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类型</abbr></span
+              >
+            </th>
+            <th>
+              Q
+              <span
+                class="term-tip"
+                data-term="头"
+                data-module="github"
+                data-def="头"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">头</abbr></span
+              >数
+            </th>
+            <th>
+              K/V
+              <span
+                class="term-tip"
+                data-term="头"
+                data-module="github"
+                data-def="头"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">头</abbr></span
+              >数
+            </th>
+            <th>内存</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>MHA</td>
+            <td>32</td>
+            <td>32</td>
+            <td>高</td>
+            <td>最好</td>
+          </tr>
+          <tr>
+            <td>GQA</td>
+            <td>32</td>
+            <td>8</td>
+            <td>中</td>
+            <td>接近 MHA</td>
+          </tr>
+          <tr>
+            <td>MQA</td>
+            <td>32</td>
+            <td>1</td>
+            <td>低</td>
+            <td>略差</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        GQA 让<span
+          class="term-tip"
+          data-term="多"
+          data-module="github"
+          data-def="多个的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">多</abbr></span
+        >组 Q
+        <span
+          class="term-tip"
+          data-term="头"
+          data-module="github"
+          data-def="头"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">头</abbr></span
+        >共享同一组 K/V
+        <span
+          class="term-tip"
+          data-term="头"
+          data-module="github"
+          data-def="头"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">头</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="减少"
+          data-module="github"
+          data-def="减少"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">减少</abbr></span
+        >
+        KV Cache
+        <span
+          class="term-tip"
+          data-term="大小"
+          data-module="github"
+          data-def="大小"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">大小</abbr></span
+        >而不<span
+          class="term-tip"
+          data-term="显著"
+          data-module="github"
+          data-def="重要的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">显著</abbr></span
+        >损失<span
+          class="term-tip"
+          data-term="质量"
+          data-module="github"
+          data-def="质量"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">质量</abbr></span
+        >。
+      </p>
+      <h2 id="swiglu-激活函数"><a href="#swiglu-激活函数">SwiGLU 激活函数</a></h2>
+      <p>
+        SwiGLU 是 GLU（<span
+          class="term-tip"
+          data-term="门"
+          data-module="cs-fundamentals"
+          data-def="实现布尔运算的基本数字电路元件，包括与门、或门、非门等"
+          data-slug="cs-fundamentals/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">门</abbr></span
+        >控<span
+          class="term-tip"
+          data-term="线性"
+          data-module="github"
+          data-def="线性的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">线性</abbr></span
+        >单<span
+          class="term-tip"
+          data-term="元"
+          data-module="github"
+          data-def="元"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">元</abbr></span
+        >）和 Swish
+        <span
+          class="term-tip"
+          data-term="激活"
+          data-module="vue3"
+          data-def="组件或路由变为活跃状态"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">激活</abbr></span
+        >的<span
+          class="term-tip"
+          data-term="组合"
+          data-module="cpp"
+          data-def="组合多个值"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">组合</abbr></span
+        >：
+      </p>
+      <p>
+        <span class="katex"
+          ><span class="katex-html" aria-hidden="true"
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord text"><span class="mord">SwiGLU</span></span
+              ><span class="mopen">(</span><span class="mord mathnormal">x</span
+              ><span class="mclose">)</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span><span class="mrel">=</span
+              ><span class="mspace" style="margin-right: 0.2778em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1.0361em; vertical-align: -0.2861em"></span
+              ><span class="mopen">(</span
+              ><span class="mord text"><span class="mord">Swish</span></span
+              ><span class="mopen">(</span><span class="mord mathnormal">x</span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">W</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.1514em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mathnormal mtight" style="margin-right: 0.0359em"
+                              >g</span
+                            ></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.2861em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mclose">)</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span><span class="mbin">⊙</span
+              ><span class="mspace" style="margin-right: 0.2222em"></span></span
+            ><span class="base"
+              ><span class="strut" style="height: 1em; vertical-align: -0.25em"></span
+              ><span class="mord mathnormal">x</span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">W</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3011em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">1</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span
+              ><span class="mclose">)</span
+              ><span class="mord"
+                ><span class="mord mathnormal" style="margin-right: 0.1389em">W</span
+                ><span class="msupsub"
+                  ><span class="vlist-t vlist-t2"
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.3011em"
+                        ><span style="top: -2.55em; margin-left: -0.1389em; margin-right: 0.05em"
+                          ><span class="pstrut" style="height: 2.7em"></span
+                          ><span class="sizing reset-size6 size3 mtight"
+                            ><span class="mord mtight">2</span></span
+                          ></span
+                        ></span
+                      ><span class="vlist-s">​</span></span
+                    ><span class="vlist-r"
+                      ><span class="vlist" style="height: 0.15em"
+                        ><span></span></span></span></span></span></span></span></span
+        ></span>
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> SwiGLU</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">nn</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Module</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, d_model, d_ff</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">None</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        super</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">__init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        d_ff </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> d_ff </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">or</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> int</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">8</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> d_model </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)  </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># LLaMA 风格</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        d_ff </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ((d_ff </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 63</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">//</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 64</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 64</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">  # 对齐到 64</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.w1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(d_model, d_ff, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">bias</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">False</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.w2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(d_ff, d_model, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">bias</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">False</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.w3 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(d_model, d_ff, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">bias</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">False</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> forward</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, x):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.w2(F.silu(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.w1(x)) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.w3(x))</span></span></code></pre>
+      <h2 id="moe混合专家"><a href="#moe混合专家">MoE（混合专家）</a></h2>
+      <p>
+        Mixtral 使用<span
+          class="term-tip"
+          data-term="稀疏"
+          data-module="cpp"
+          data-def="稀疏的"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">稀疏</abbr></span
+        >
+        MoE：每个
+        <span
+          class="term-tip"
+          data-term="token"
+          data-module="python"
+          data-def="词法分析的最小语法单元"
+          data-slug="python/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">token</abbr></span
+        >
+        只<span
+          class="term-tip"
+          data-term="激活"
+          data-module="vue3"
+          data-def="组件或路由变为活跃状态"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">激活</abbr></span
+        >
+        8 个<span
+          class="term-tip"
+          data-term="专家"
+          data-module="github"
+          data-def="专家"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">专家</abbr></span
+        >中的 2 个。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> MoELayer</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">nn</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Module</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">    """简化的 MoE 层"""</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, d_model, d_ff, n_experts</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">8</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, top_k</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        super</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">__init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.n_experts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> n_experts</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.top_k </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> top_k</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 路由器</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.gate </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(d_model, n_experts, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">bias</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">False</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 专家（每个是一个 FFN）</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.experts </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.ModuleList([</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            nn.Sequential(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                nn.Linear(d_model, d_ff, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">bias</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">False</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                nn.SiLU(),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                nn.Linear(d_ff, d_model, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">bias</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">False</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            )</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(n_experts)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        ])</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> forward</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, x):</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 计算路由权重</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        gate_logits </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.gate(x)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        weights, indices </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.topk(gate_logits, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.top_k, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        weights </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> F.softmax(weights, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        # 稀疏计算</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        output </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.zeros_like(x)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> k </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.top_k):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            expert_idx </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> indices[:, :, k]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            expert_weight </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> weights[:, :, k:k</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> e </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> range</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.n_experts):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                mask </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (expert_idx </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">==</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> e)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">                if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mask.any():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    expert_input </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x[mask]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    expert_output </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.experts[e](expert_input)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">                    output[mask] </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> expert_output </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> expert_weight[mask]</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> output</span></span></code></pre>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>RoPE</td>
+            <td>
+              ”旋转<span
+                class="term-tip"
+                data-term="位置"
+                data-module="github"
+                data-def="位置"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位置</abbr></span
+              >编码”
+            </td>
+            <td>
+              Rotary Position Embedding，<span
+                class="term-tip"
+                data-term="通过"
+                data-module="github"
+                data-def="通过"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通过</abbr></span
+              >旋转矩阵<span
+                class="term-tip"
+                data-term="编码"
+                data-module="cpp"
+                data-def="编写代码"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">编码</abbr></span
+              >相<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >位置
+            </td>
+          </tr>
+          <tr>
+            <td>GQA</td>
+            <td>
+              ”分组<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力”
+            </td>
+            <td>
+              Grouped-Query Attention，<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >组 Q
+              <span
+                class="term-tip"
+                data-term="头"
+                data-module="github"
+                data-def="头"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">头</abbr></span
+              >共享 K/V
+              <span
+                class="term-tip"
+                data-term="头"
+                data-module="github"
+                data-def="头"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">头</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>SwiGLU</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="门"
+                data-module="cs-fundamentals"
+                data-def="实现布尔运算的基本数字电路元件，包括与门、或门、非门等"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">门</abbr></span
+              >控<span
+                class="term-tip"
+                data-term="激活"
+                data-module="vue3"
+                data-def="组件或路由变为活跃状态"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">激活</abbr></span
+              >”
+            </td>
+            <td>
+              Swish-Gated Linear Unit，LLaMA
+              <span
+                class="term-tip"
+                data-term="系列"
+                data-module="github"
+                data-def="系列"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">系列</abbr></span
+              >使用的<span
+                class="term-tip"
+                data-term="激活"
+                data-module="vue3"
+                data-def="组件或路由变为活跃状态"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">激活</abbr></span
+              >函数
+            </td>
+          </tr>
+          <tr>
+            <td>MoE</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="混合"
+                data-module="github"
+                data-def="混合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">混合</abbr></span
+              >专家”
+            </td>
+            <td>
+              Mixture of Experts，<span
+                class="term-tip"
+                data-term="稀疏"
+                data-module="cpp"
+                data-def="稀疏的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">稀疏</abbr></span
+              >激活的<span
+                class="term-tip"
+                data-term="专家"
+                data-module="github"
+                data-def="专家"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">专家</abbr></span
+              >路由<span
+                class="term-tip"
+                data-term="架构"
+                data-module="vue3"
+                data-def="代码和系统的组织结构"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">架构</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="滑动窗口"
+                data-module="cpp"
+                data-def="滑动窗口"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">滑动窗口</abbr></span
+              >注意力
+            </td>
+            <td>
+              ”局部<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力”
+            </td>
+            <td>
+              每个<span
+                class="term-tip"
+                data-term="位置"
+                data-module="github"
+                data-def="位置"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位置</abbr></span
+              >只<span
+                class="term-tip"
+                data-term="关注"
+                data-module="github"
+                data-def="关注"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">关注</abbr></span
+              >固定窗口内的<span
+                class="term-tip"
+                data-term="位置"
+                data-module="github"
+                data-def="位置"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位置</abbr></span
+              >，降低长<span
+                class="term-tip"
+                data-term="序列"
+                data-module="github"
+                data-def="序列"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">序列</abbr></span
+              >计算量
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2302.13971"
+            >Touvron et al., 2023 — “LLaMA: Open and Efficient Foundation Language Models”</a
+          >
+          — LLaMA 论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2310.06825">Jiang et al., 2023 — “Mistral 7B”</a> — Mistral
+          论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2401.04088">Jiang et al., 2024 — “Mixtral of Experts”</a> —
+          Mixtral MoE 论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2104.09864"
+            >Su et al., 2021 — “RoFormer: Enhanced Transformer with Rotary Position Embedding”</a
+          >
+          — RoPE
+          <span
+            class="term-tip"
+            data-term="原始"
+            data-module="vue3"
+            data-def="原始的、最初的"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">原始</abbr></span
+          >论文
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

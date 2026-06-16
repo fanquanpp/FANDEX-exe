@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>思维树与LATS</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">思维树与LATS</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            10 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          单条思维链轨迹没有回溯的空间。ToT（Yao等人，2023）将推理变成带有每个节点自评估的树。LATS（Zhou等人，2024）在蒙特卡洛树搜索下统一了ToT、ReAct和Reflexion。Game
+          of 24从4%（CoT）提升到74%（ToT）；LATS在HumanEval上达到92.7...
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="思维树与lats审慎搜索"><a href="#思维树与lats审慎搜索">思维树与LATS：审慎搜索</a></h1>
+      <blockquote>
+        <p>
+          单条思维链轨迹没有回溯的空间。ToT（Yao等人，2023）将推理变成带有每个节点自评估的树。LATS（Zhou等人，2024）在蒙特卡洛树搜索下统一了ToT、ReAct和Reflexion。Game
+          of 24从4%（CoT）提升到74%（ToT）；LATS在HumanEval上达到92.7% pass@1。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型：</strong> 构建 <strong>语言：</strong> Python (stdlib)
+        <strong>前置条件：</strong> Phase 14 · 01 (Agent循环), Phase 14 · 03 (Reflexion)
+        <strong>时间：</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>将推理框架为搜索：节点是”思维”，边是”扩展”，值是”有希望程度”。</li>
+        <li>实现一个stdlib ToT风格的BFS树搜索，带有自评估评分。</li>
+        <li>扩展到玩具LATS MCTS循环，包含select/expand/simulate/backpropagate。</li>
+        <li>
+          决定何时搜索值得token倍增器（Game of 24、代码生成），何时单条轨迹就够了（简单问答）。
+        </li>
+      </ul>
+      <h2 id="问题所在"><a href="#问题所在">问题所在</a></h2>
+      <p>
+        思维链是线性行走。如果第一步错了，每个后续步骤都在错误前提上工作。在Game of
+        24（用四个数字和+ − × ÷凑出24）上，GPT-4
+        CoT达到4%准确率。模型在早期选择了错误的子表达式，无法恢复。
+      </p>
+      <p>
+        推理需要的是提出多个候选、评估它们、选择有希望的、在死胡同时回溯的能力。这就是搜索。思维树和LATS是两个经典的表述。
+      </p>
+      <h2 id="核心概念"><a href="#核心概念">核心概念</a></h2>
+      <h3 id="思维树yao等人neurips-2023">
+        <a href="#思维树yao等人neurips-2023">思维树（Yao等人，NeurIPS 2023）</a>
+      </h3>
+      <p>
+        每个节点是一个连贯的中间步骤（“一个思维”）。每个节点可以扩展为K个子思维。LLM用评分提示自评估每个节点。搜索探索树——BFS、DFS或beam。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>                     (root: "find 24 from 4 6 4 1")</span></span>
+<span class="line"><span>                    /               |            \</span></span>
+<span class="line"><span>           ("6 - 4 = 2")    ("4 + 1 = 5")    ("4 * 6 = 24")  &#x3C;- Score: HIGH</span></span>
+<span class="line"><span>              /   \              |                  |</span></span>
+<span class="line"><span>          ...    ...          ...                finish</span></span></code></pre>
+      <p>
+        自评估是承重部分。论文展示了三种变体：<code>sure / likely / impossible</code
+        >分类、<code>1..10</code>数值评分和候选投票。三种都在Game of 24上大幅击败CoT（4% ->
+        74%，使用GPT-4）。
+      </p>
+      <h3 id="latszhou等人icml-2024">
+        <a href="#latszhou等人icml-2024">LATS（Zhou等人，ICML 2024）</a>
+      </h3>
+      <p>LATS在MCTS下统一了ToT、ReAct和Reflexion。LLM扮演三个角色：</p>
+      <ul>
+        <li><strong>策略</strong>：提出候选下一步行动（ReAct风格）。</li>
+        <li><strong>价值函数</strong>：评分部分轨迹（ToT风格的自评估）。</li>
+        <li>
+          <strong>自反思器</strong
+          >：失败时，写一段自然语言反思（Reflexion风格）并用它重新播种未来的rollout。
+        </li>
+      </ul>
+      <p>
+        环境反馈（观察）混入价值函数，使搜索由真实工具结果而非仅模型意见指导。论文时的结果：HumanEval
+        pass@1 92.7%（GPT-4，SOTA），WebShop平均75.9（GPT-3.5，接近基于梯度的微调）。
+      </p>
+      <h3 id="mcts最小版本"><a href="#mcts最小版本">MCTS，最小版本</a></h3>
+      <p>每次迭代四个阶段：</p>
+      <ol>
+        <li><strong>选择</strong> — 使用UCT（树的上置信界）从根走到叶。</li>
+        <li><strong>扩展</strong> — 通过策略生成K个子节点。</li>
+        <li>
+          <strong>模拟</strong> — 从子节点使用策略rollout，用价值函数（或环境奖励）评分叶节点。
+        </li>
+        <li><strong>回传</strong> — 沿路径向上更新访问计数和价值估计。</li>
+      </ol>
+      <p>
+        UCT公式：<code>Q(s, a) + c * sqrt(ln N(s) / N(s, a))</code
+        >。第一项是利用；第二项是探索。按任务调整<code>c</code>。
+      </p>
+      <h3 id="成本现实"><a href="#成本现实">成本现实</a></h3>
+      <p>
+        搜索爆炸token。ToT在Game of
+        24上使用CoT的100-1000倍token。LATS类似。这不是免费的；将搜索保留给：
+      </p>
+      <ul>
+        <li>单条轨迹明显不足的任务（Game of 24、复杂代码）。</li>
+        <li>正确性比挂钟时间更重要的任务。</li>
+        <li>有廉价可靠价值函数的任务（代码的单元测试、数学的显式目标）。</li>
+      </ul>
+      <p>
+        如果你的任务有单一正确答案和嘈杂的评估器，搜索往往使事情更糟——它找到一个”高分”的错误答案。
+      </p>
+      <h3 id="2026年定位"><a href="#2026年定位">2026年定位</a></h3>
+      <p>
+        大多数生产Agent不运行LATS。它们运行带工具接地验证的ReAct（CRITIC，第05课）。搜索出现在专门领域：
+      </p>
+      <ul>
+        <li>以测试作为价值函数的编码Agent（HumanEval风格）。</li>
+        <li>探索多个查询路径的深度研究Agent。</li>
+        <li>LangGraph子图内的重规划工作流。</li>
+      </ul>
+      <p>
+        AlphaEvolve（第11课）是2025年的极端：代码上的进化搜索、机器可检查的适应度、前沿突破（56年来首个4x4矩阵乘法改进）。
+      </p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <p><code>code/main.py</code>实现：</p>
+      <ul>
+        <li>一个微型ToT BFS在风格化的”选择算术运算”任务上。</li>
+        <li>
+          一个玩具LATS MCTS循环在相同任务上（Select/Expand/Simulate/Backpropagate），带UCT选择。
+        </li>
+        <li>一个组合符号分数加自评估分数的价值函数。</li>
+      </ul>
+      <p>运行：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>python3 code/main.py</span></span></code></pre>
+      <p>
+        跟踪显示ToT用BFS每节点扩展三个候选，与LATS通过MCTS收敛到最佳rollout的比较。两者都打印token计数。
+      </p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        LangGraph将ToT风格探索作为子图模式提供；LangChain团队关于LATS的博客（2024年5月）是参考教程。LlamaIndex提供<code
+          >TreeOfThoughts</code
+        >
+        Agent。对于大多数2026年生产Agent，此模式存在于<code
+          >if task_complexity > threshold: use_search()</code
+        >门后面——见第05课的评估器-优化器模式。
+      </p>
+      <h2 id="发布它"><a href="#发布它">发布它</a></h2>
+      <p>
+        <code>outputs/skill-search-policy.md</code
+        >根据任务形状、预算和评估器保真度，在线性ReAct、ToT、LATS和进化搜索之间选择。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>用UCT c=0.1 vs c=2.0运行玩具LATS。跟踪中有什么变化？</li>
+        <li>
+          将价<span
+            class="term-tip"
+            data-term="值"
+            data-module="cpp"
+            data-def="值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">值</abbr></span
+          >函数<span
+            class="term-tip"
+            data-term="替换"
+            data-module="github"
+            data-def="替换"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">替换</abbr></span
+          >为更嘈杂的<span
+            class="term-tip"
+            data-term="评分"
+            data-module="vue3"
+            data-def="计算分数"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">评分</abbr></span
+          >器（添加<span
+            class="term-tip"
+            data-term="随机"
+            data-module="github"
+            data-def="随机的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">随机</abbr></span
+          >抖动）。MCTS还能找到最佳叶<span
+            class="term-tip"
+            data-term="节点"
+            data-module="github"
+            data-def="节点"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">节点</abbr></span
+          >吗？它能容忍的<span
+            class="term-tip"
+            data-term="最小"
+            data-module="github"
+            data-def="最小的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">最小</abbr></span
+          >信噪比是多少？
+        </li>
+        <li>
+          实现beam搜索ToT（每层保留top-k）并与BFS比较。在紧凑的<span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >预算下哪个更好？
+        </li>
+        <li>
+          阅读LATS第5.1节。复现HumanEval轨迹计数：达到<span
+            class="term-tip"
+            data-term="报告"
+            data-module="github"
+            data-def="报告"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">报告</abbr></span
+          >的pass@1需要<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >少次rollout？
+        </li>
+        <li>
+          阅读LATS论文<span
+            class="term-tip"
+            data-term="关于"
+            data-module="github"
+            data-def="关于"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">关于</abbr></span
+          >”当LATS帮助较少时”的讨论。写一<span
+            class="term-tip"
+            data-term="段"
+            data-module="vue3"
+            data-def="URL 的一段"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">段</abbr></span
+          >决策<span
+            class="term-tip"
+            data-term="规则"
+            data-module="cpp"
+            data-def="规则"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">规则</abbr></span
+          >，将<span
+            class="term-tip"
+            data-term="任务"
+            data-module="cpp"
+            data-def="任务"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">任务</abbr></span
+          >形状<span
+            class="term-tip"
+            data-term="映射"
+            data-module="c"
+            data-def="类型到另一类型的对应关系"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">映射</abbr></span
+          >到<span
+            class="term-tip"
+            data-term="搜索"
+            data-module="cpp"
+            data-def="搜索"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">搜索</abbr></span
+          >策略。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >们常说的
+            </th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              思维<span
+                class="term-tip"
+                data-term="树"
+                data-module="algorithm"
+                data-def="n个节点的有限集合，连通无环图，n个节点有n-1条边"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">树</abbr></span
+              >
+            </td>
+            <td>”分支CoT”</td>
+            <td>
+              Yao等<span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >
+              — 带自<span
+                class="term-tip"
+                data-term="评估"
+                data-module="cpp"
+                data-def="求值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评估</abbr></span
+              >的思维<span
+                class="term-tip"
+                data-term="节点"
+                data-module="github"
+                data-def="节点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">节点</abbr></span
+              >树
+            </td>
+          </tr>
+          <tr>
+            <td>LATS</td>
+            <td>”LLM的MCTS”</td>
+            <td>
+              Zhou等<span
+                class="term-tip"
+                data-term="人"
+                data-module="github"
+                data-def="人"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">人</abbr></span
+              >
+              — 在MCTS下统一ToT +
+              <span
+                class="term-tip"
+                data-term="ReAct"
+                data-module="agent"
+                data-def="结合推理与行动的智能体框架，交替执行思考步骤和工具调用步骤"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ReAct</abbr></span
+              >
+              + Reflexion
+            </td>
+          </tr>
+          <tr>
+            <td>UCT</td>
+            <td>”上置信界”</td>
+            <td>
+              平衡利用(Q)和<span
+                class="term-tip"
+                data-term="探索"
+                data-module="github"
+                data-def="发现有趣项目"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">探索</abbr></span
+              >(ln N / n)的<span
+                class="term-tip"
+                data-term="选择"
+                data-module="cpp"
+                data-def="选择"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">选择</abbr></span
+              >公式
+            </td>
+          </tr>
+          <tr>
+            <td>
+              价<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >函数
+            </td>
+            <td>
+              ”这个<span
+                class="term-tip"
+                data-term="状态"
+                data-module="cpp"
+                data-def="状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">状态</abbr></span
+              >有<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >好”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="提示"
+                data-module="cpp"
+                data-def="提示"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">提示</abbr></span
+              >的LLM分数或<span
+                class="term-tip"
+                data-term="环境"
+                data-module="cpp"
+                data-def="运行环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">环境</abbr></span
+              >奖励；馈入回传
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >
+            </td>
+            <td>”动作提出器”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="ReAct"
+                data-module="agent"
+                data-def="结合推理与行动的智能体框架，交替执行思考步骤和工具调用步骤"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ReAct</abbr></span
+              >风<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >生成器；发出候选下一步思维/动作
+            </td>
+          </tr>
+          <tr>
+            <td>Rollout</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="模拟"
+                data-module="cpp"
+                data-def="模拟"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模拟</abbr></span
+              >轨迹”
+            </td>
+            <td>
+              从<span
+                class="term-tip"
+                data-term="节点"
+                data-module="github"
+                data-def="节点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">节点</abbr></span
+              >使用<span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >走到叶<span
+                class="term-tip"
+                data-term="节点"
+                data-module="github"
+                data-def="节点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">节点</abbr></span
+              >，用价<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >函数<span
+                class="term-tip"
+                data-term="评分"
+                data-module="vue3"
+                data-def="计算分数"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">评分</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>回传</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="更新"
+                data-module="c"
+                data-def="修改变量值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">更新</abbr></span
+              >祖先”
+            </td>
+            <td>
+              将叶<span
+                class="term-tip"
+                data-term="节点"
+                data-module="github"
+                data-def="节点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">节点</abbr></span
+              >的奖励沿<span
+                class="term-tip"
+                data-term="路径"
+                data-module="github"
+                data-def="路径"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">路径</abbr></span
+              >向上推，<span
+                class="term-tip"
+                data-term="更新"
+                data-module="c"
+                data-def="修改变量值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">更新</abbr></span
+              >访问计数和Q
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="搜索"
+                data-module="cpp"
+                data-def="搜索"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">搜索</abbr></span
+              >成本
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="Token"
+                data-module="agent"
+                data-def="大语言模型处理文本的最小单位，一个 token 约对应 0.75 个英文单词或 0.5-1 个中文字符"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Token</abbr></span
+              >爆炸”
+            </td>
+            <td>Game of 24上CoT的100-1000倍；采用前先预算</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2305.10601"
+            >Yao等人, Tree of Thoughts (arXiv:2305.10601)</a
+          >
+          — 经典论文
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2310.04406">Zhou等人, LATS (arXiv:2310.04406)</a> —
+          带Reflexion反馈的MCTS
+        </li>
+        <li>
+          <a href="https://docs.langchain.com/oss/python/langgraph/overview">LangGraph概述</a> —
+          <span
+            class="term-tip"
+            data-term="搜索"
+            data-module="cpp"
+            data-def="搜索"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">搜索</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="子"
+            data-module="cpp"
+            data-def="子"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">子</abbr></span
+          >图<span
+            class="term-tip"
+            data-term="模式"
+            data-module="github"
+            data-def="模式"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">模式</abbr></span
+          >
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2506.13131">AlphaEvolve (arXiv:2506.13131)</a> — 带<span
+            class="term-tip"
+            data-term="程序"
+            data-module="c"
+            data-def="完成特定功能的代码集合"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">程序</abbr></span
+          >化<span
+            class="term-tip"
+            data-term="评估"
+            data-module="cpp"
+            data-def="求值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">评估</abbr></span
+          >器的进化<span
+            class="term-tip"
+            data-term="搜索"
+            data-module="cpp"
+            data-def="搜索"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">搜索</abbr></span
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

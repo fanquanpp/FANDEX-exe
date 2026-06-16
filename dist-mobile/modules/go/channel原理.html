@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Channel原理</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Channel原理</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            1 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">Channel底层实现与调度</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-channel-结构"><a href="#1-channel-结构">1. Channel 结构</a></h2>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="go"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">type</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> hchan</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> struct</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> {</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  qcount   </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  dataqsiz </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  buf      </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">unsafe</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Pointer</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  sendx    </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  recvx    </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">uint</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  sendq    </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">waitq</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  recvq    </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">waitq</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  lock     </span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">mutex</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">}</span></span></code></pre>
+      <h2 id="2-发送与接收"><a href="#2-发送与接收">2. 发送与接收</a></h2>
+      <ul>
+        <li>
+          无缓冲：<span
+            class="term-tip"
+            data-term="发送"
+            data-module="cpp"
+            data-def="发送"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发送</abbr></span
+          >方阻塞直到<span
+            class="term-tip"
+            data-term="接收"
+            data-module="github"
+            data-def="接收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">接收</abbr></span
+          >方<span
+            class="term-tip"
+            data-term="就绪"
+            data-module="cpp"
+            data-def="就绪状态"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">就绪</abbr></span
+          >
+        </li>
+        <li>
+          有缓冲：<span
+            class="term-tip"
+            data-term="缓冲区"
+            data-module="c"
+            data-def="临时存储数据的内存区域"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">缓冲区</abbr></span
+          >满时<span
+            class="term-tip"
+            data-term="发送"
+            data-module="cpp"
+            data-def="发送"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">发送</abbr></span
+          >方阻塞
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="关闭"
+            data-module="github"
+            data-def="结束 Issue 或 PR"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">关闭</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="channel"
+            data-module="go"
+            data-def="goroutine 间通信的管道，通过 send/receive 操作实现同步与数据传递"
+            data-slug="go/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">channel</abbr></span
+          >：<span
+            class="term-tip"
+            data-term="接收"
+            data-module="github"
+            data-def="接收"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">接收</abbr></span
+          >方<span
+            class="term-tip"
+            data-term="获取"
+            data-module="github"
+            data-def="下载远程数据不合并"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">获取</abbr></span
+          >零<span
+            class="term-tip"
+            data-term="值"
+            data-module="cpp"
+            data-def="值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">值</abbr></span
+          >
+        </li>
+      </ul>
+      <h2 id="3-select-实现"><a href="#3-select-实现">3. select 实现</a></h2>
+      <p>
+        <span
+          class="term-tip"
+          data-term="随机"
+          data-module="github"
+          data-def="随机的"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">随机</abbr></span
+        >选择一个<span
+          class="term-tip"
+          data-term="就绪"
+          data-module="cpp"
+          data-def="就绪状态"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">就绪</abbr></span
+        >的 case
+        <span
+          class="term-tip"
+          data-term="执行"
+          data-module="github"
+          data-def="执行"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">执行</abbr></span
+        >。
+      </p>
+    </article>
+  </body>
+</html>

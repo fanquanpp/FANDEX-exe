@@ -1,0 +1,632 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LLM的FinOps — 单位经济学与多租户归属</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">LLM的FinOps — 单位经济学与多租户归属</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            6 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">FinOps</span><span class="doc-tag">单位经济学</span
+          ><span class="doc-tag">多租户</span><span class="doc-tag">成本归属</span
+          ><span class="doc-tag">kill switch</span><span class="doc-tag">token层</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解传统FinOps在LLM支出上的失效和2026年三维度归属方案</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="llm的finops--单位经济学与多租户归属">
+        <a href="#llm的finops--单位经济学与多租户归属">LLM的FinOps — 单位经济学与多租户归属</a>
+      </h1>
+      <blockquote>
+        <p>
+          传统FinOps在LLM支出上失效。成本是token交易，非资源运行时间。标签不映射——API调用是交易，非资产。工程决策(prompt设计、上下文窗口、输出长度)是财务决策。2026年手册有三个归属维度从第一天开始埋点：每用户(<code>user_id</code>)用于席位定价和扩展，每任务(<code
+            >task_id</code
+          >
+          +
+          <code>route</code
+          >)用于产品面成本和优先级，每租户(<code>tenant_id</code>)用于单位经济学和续约。四个token层——prompt、工具、记忆、响应——一个桶隐藏花费。多租户产品的执行阶梯：每租户速率限制(2-3x预期峰值，明确429+retry-after)；每日支出上限(1.5-3x合同上限；触发速率收紧+警报)；kill
+          switch在支出z-score >
+          4(自动暂停+页面on-call)。归属模式：标签聚合、遥测连接器(追踪ID→计费；最高准确度)、采样外推、模型分配、事件溯源、实时流。单位指标：每已解决查询成本、每生成制品成本——不是$/M
+          token。追溯标签总是遗漏；在请求创建时埋点。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib, toy成本归属模拟器带kill
+        switch) <strong>前置知识:</strong> Phase 17 · 13 (可观测性), Phase 17 · 14 (缓存)
+        <strong>时间:</strong> ~60分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>说出三个归属维度：每用户、每任务、每租户。</li>
+        <li>描述四个token层：prompt、工具、记忆、响应。</li>
+        <li>设计多租户执行阶梯：速率限制→每日上限→kill switch。</li>
+        <li>解释为什么单位指标(每已解决查询成本)优于$/M token。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        传统FinOps按资源运行时间归属成本。LLM成本是token交易——每次API调用是独立交易。标签不映射因为API调用不是资产。工程决策(prompt长度、输出长度)直接影响成本。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="三个归属维度"><a href="#三个归属维度">三个归属维度</a></h3>
+      <ol>
+        <li>每用户(<code>user_id</code>)：席位定价和扩展。</li>
+        <li>每任务(<code>task_id</code> + <code>route</code>)：产品面成本和优先级。</li>
+        <li>每租户(<code>tenant_id</code>)：单位经济学和续约。</li>
+      </ol>
+      <h3 id="四个token层"><a href="#四个token层">四个token层</a></h3>
+      <ul>
+        <li>Prompt token：输入prompt成本。</li>
+        <li>工具token：工具调用和响应成本。</li>
+        <li>记忆token：上下文/历史成本。</li>
+        <li>响应token：输出成本。</li>
+      </ul>
+      <p>一个桶隐藏花费。分开追踪。</p>
+      <h3 id="执行阶梯"><a href="#执行阶梯">执行阶梯</a></h3>
+      <ol>
+        <li>速率限制：每租户2-3x预期峰值。明确429+retry-after。</li>
+        <li>每日支出上限：1.5-3x合同上限。触发速率收紧+警报。</li>
+        <li>Kill switch：支出z-score > 4。自动暂停+页面on-call。</li>
+      </ol>
+      <h3 id="单位指标"><a href="#单位指标">单位指标</a></h3>
+      <ul>
+        <li>每已解决查询成本。</li>
+        <li>每生成制品成本。</li>
+        <li>不是$/M token(那是提供商指标，不是产品指标)。</li>
+      </ul>
+      <h3 id="归属模式"><a href="#归属模式">归属模式</a></h3>
+      <ul>
+        <li>标签聚合：最简单，最低准确度。</li>
+        <li>
+          遥测<span
+            class="term-tip"
+            data-term="连接器"
+            data-module="c"
+            data-def="合并目标文件生成可执行文件"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">连接器</abbr></span
+          >：追踪ID→计费。最<span
+            class="term-tip"
+            data-term="高"
+            data-module="github"
+            data-def="高的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">高</abbr></span
+          >准确<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >。
+        </li>
+        <li>
+          采样外推：<span
+            class="term-tip"
+            data-term="统计"
+            data-module="github"
+            data-def="统计"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">统计</abbr></span
+          >估算。
+        </li>
+        <li>
+          模型<span
+            class="term-tip"
+            data-term="分配"
+            data-module="github"
+            data-def="将 Issue 指派给某人"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分配</abbr></span
+          >：基于模型<span
+            class="term-tip"
+            data-term="参数"
+            data-module="c"
+            data-def="函数定义时的变量"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">参数</abbr></span
+          >分配。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="事件"
+            data-module="cpp"
+            data-def="事件对象"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">事件</abbr></span
+          >溯<span
+            class="term-tip"
+            data-term="源"
+            data-module="cpp"
+            data-def="源"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">源</abbr></span
+          >：<span
+            class="term-tip"
+            data-term="完整"
+            data-module="github"
+            data-def="完整"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">完整</abbr></span
+          >审计<span
+            class="term-tip"
+            data-term="追踪"
+            data-module="c"
+            data-def="记录程序执行"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">追踪</abbr></span
+          >。
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="实时"
+            data-module="cpp"
+            data-def="实时"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实时</abbr></span
+          >流：即时归属。
+        </li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code
+        ><span
+          class="term-tip"
+          data-term="模拟"
+          data-module="cpp"
+          data-def="模拟"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">模拟</abbr></span
+        >成本归属带kill
+        <span
+          class="term-tip"
+          data-term="switch"
+          data-module="cpp"
+          data-def="多分支选择语句"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">switch</abbr></span
+        >。
+      </p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-finops-attribution-plan.md</code>。给定<span
+          class="term-tip"
+          data-term="产品"
+          data-module="github"
+          data-def="产品"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">产品</abbr></span
+        >，<span
+          class="term-tip"
+          data-term="设计"
+          data-module="github"
+          data-def="设计"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">设计</abbr></span
+        >三<span
+          class="term-tip"
+          data-term="维度"
+          data-module="cpp"
+          data-def="维度数量"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">维度</abbr></span
+        >归属和<span
+          class="term-tip"
+          data-term="执行"
+          data-module="github"
+          data-def="执行"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">执行</abbr></span
+        >阶梯。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <span
+            class="term-tip"
+            data-term="设计"
+            data-module="github"
+            data-def="设计"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设计</abbr></span
+          >归属：SaaS产品，3个<span
+            class="term-tip"
+            data-term="租户"
+            data-module="github"
+            data-def="租户"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">租户</abbr></span
+          >，5个功能。每功能每<span
+            class="term-tip"
+            data-term="租户"
+            data-module="github"
+            data-def="租户"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">租户</abbr></span
+          >成本。
+        </li>
+        <li>
+          四个<span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >层如何<span
+            class="term-tip"
+            data-term="影响"
+            data-module="github"
+            data-def="影响"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">影响</abbr></span
+          >成本？哪个通常最贵？
+        </li>
+        <li>
+          设计kill
+          <span
+            class="term-tip"
+            data-term="switch"
+            data-module="cpp"
+            data-def="多分支选择语句"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">switch</abbr></span
+          >：z-score > 4触发什么？如何<span
+            class="term-tip"
+            data-term="恢复"
+            data-module="github"
+            data-def="恢复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">恢复</abbr></span
+          >？
+        </li>
+        <li>
+          为什么”$/M
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >”是<span
+            class="term-tip"
+            data-term="错误"
+            data-module="cpp"
+            data-def="错误情况"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">错误</abbr></span
+          >单<span
+            class="term-tip"
+            data-term="位"
+            data-module="c"
+            data-def="二进制数字，基本存储单位"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">位</abbr></span
+          >指标？提出更好的。
+        </li>
+        <li>
+          追溯<span
+            class="term-tip"
+            data-term="标签"
+            data-module="c"
+            data-def="标记代码位置的标识符"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">标签</abbr></span
+          >为什么总是遗漏？如何在<span
+            class="term-tip"
+            data-term="请求"
+            data-module="vue3"
+            data-def="HTTP 请求"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">请求</abbr></span
+          >创建时埋<span
+            class="term-tip"
+            data-term="点"
+            data-module="github"
+            data-def="点"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">点</abbr></span
+          >？
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="Token"
+                data-module="agent"
+                data-def="大语言模型处理文本的最小单位，一个 token 约对应 0.75 个英文单词或 0.5-1 个中文字符"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">Token</abbr></span
+              >层
+            </td>
+            <td>”四层成本”</td>
+            <td>
+              prompt/<span
+                class="term-tip"
+                data-term="工具"
+                data-module="cpp"
+                data-def="工具"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">工具</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="记忆"
+                data-module="github"
+                data-def="记忆"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">记忆</abbr></span
+              >/<span
+                class="term-tip"
+                data-term="响应"
+                data-module="vue3"
+                data-def="服务端响应"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">响应</abbr></span
+              >四层<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >成本
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="执行"
+                data-module="github"
+                data-def="执行"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">执行</abbr></span
+              >阶梯
+            </td>
+            <td>
+              ”三步<span
+                class="term-tip"
+                data-term="控制"
+                data-module="github"
+                data-def="控制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">控制</abbr></span
+              >”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="速率限制"
+                data-module="github"
+                data-def="速率限制"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">速率限制</abbr></span
+              >→每日上限→kill
+              <span
+                class="term-tip"
+                data-term="switch"
+                data-module="cpp"
+                data-def="多分支选择语句"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">switch</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Kill
+              <span
+                class="term-tip"
+                data-term="switch"
+                data-module="cpp"
+                data-def="多分支选择语句"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">switch</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="紧急停止"
+                data-module="cpp"
+                data-def="紧急停止"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">紧急停止</abbr></span
+              >”
+            </td>
+            <td>
+              支出<span
+                class="term-tip"
+                data-term="异常"
+                data-module="cpp"
+                data-def="程序执行中的错误情况"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">异常</abbr></span
+              >时自动暂停+页面on-call
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="单位"
+                data-module="cpp"
+                data-def="单位"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单位</abbr></span
+              >指标
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="产品"
+                data-module="github"
+                data-def="产品"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">产品</abbr></span
+              >成本”
+            </td>
+            <td>
+              每已<span
+                class="term-tip"
+                data-term="解决"
+                data-module="github"
+                data-def="解决"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">解决</abbr></span
+              >查询/每<span
+                class="term-tip"
+                data-term="生成"
+                data-module="vue3"
+                data-def="创建代码或数据"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">生成</abbr></span
+              >制品成本
+            </td>
+          </tr>
+          <tr>
+            <td>
+              遥测<span
+                class="term-tip"
+                data-term="连接器"
+                data-module="c"
+                data-def="合并目标文件生成可执行文件"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">连接器</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="追踪"
+                data-module="c"
+                data-def="记录程序执行"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">追踪</abbr></span
+              >到计费”
+            </td>
+            <td>
+              追踪ID映射到计费；最<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >准确<span
+                class="term-tip"
+                data-term="度"
+                data-module="algorithm"
+                data-def="与顶点关联的边数，有向图分为入度和出度"
+                data-slug="algorithm/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">度</abbr></span
+              >归属
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li><a href="https://www.finops.org/">FinOps Foundation</a></li>
+        <li>
+          <a href="https://docs.anthropic.com/en/docs/about-claude/pricing"
+            >LLM Cost Optimization Guide</a
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

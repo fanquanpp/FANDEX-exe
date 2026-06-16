@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>生产量化 — AWQ、GPTQ、GGUF K-quants、FP8、MXFP4/NVFP4</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row">
+        <h1 class="doc-title">生产量化 — AWQ、GPTQ、GGUF K-quants、FP8、MXFP4/NVFP4</h1>
+      </div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">量化</span><span class="doc-tag">AWQ</span
+          ><span class="doc-tag">GPTQ</span><span class="doc-tag">GGUF</span
+          ><span class="doc-tag">FP8</span><span class="doc-tag">NVFP4</span
+          ><span class="doc-tag">生产部署</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          理解量化格式选择是硬件、服务引擎和工作负载的函数，而非通用选择
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="生产量化--awqgptqgguf-k-quantsfp8mxfp4nvfp4">
+        <a href="#生产量化--awqgptqgguf-k-quantsfp8mxfp4nvfp4"
+          >生产量化 — AWQ、GPTQ、GGUF K-quants、FP8、MXFP4/NVFP4</a
+        >
+      </h1>
+      <blockquote>
+        <p>
+          量化格式不是通用选择——它是硬件、服务引擎和工作负载的函数。GGUF
+          Q4_K_M或Q5_K_M统治CPU和边缘，通过llama.cpp和Ollama交付。GPTQ在vLLM内需要在同一基座上多LoRA时获胜。AWQ配Marlin-AWQ核在7B类模型上以INT4交付约741
+          tok/s和最佳Pass@1——2026年数据中心生产默认。FP8在Hopper、Ada和Blackwell上保持中间立场——近无损且广泛支持。NVFP4和MXFP4(Blackwell微缩放)是激进的，需要逐块验证。两个陷阱咬团队：校准数据集必须匹配部署域，KV缓存与权重量化是分开的——AWQ教训”我的模型现在是4
+          GB”忘记了生产批次大小下10-30 GB的KV缓存。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 学习 <strong>语言:</strong> Python (stdlib, 跨格式内存和吞吐比较器)
+        <strong>前置知识:</strong> Phase 10 · 13 (量化基础), Phase 17 · 04 (vLLM服务内部)
+        <strong>时间:</strong> ~75分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>
+          将量化格式映射到硬件+服务引擎组合：GGUF→CPU/边缘，AWQ→数据中心GPU，FP8→Hopper/Blackwell，NVFP4→Blackwell激进。
+        </li>
+        <li>计算70B模型在BF16、FP8、INT4和NVFP4下的HBM占用，包括生产批次大小下的KV缓存。</li>
+        <li>解释为什么校准数据集必须匹配部署域以及KV缓存量化是独立于权重量化的决策。</li>
+        <li>说出两个量化陷阱：校准域不匹配和忘记KV缓存大小。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        量化不是”越小越好”。每个格式在精度、速度和硬件支持之间做不同权衡。选错格式意味着质量损失、服务引擎不兼容或KV缓存爆炸。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="格式矩阵"><a href="#格式矩阵">格式矩阵</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>格式</th>
+            <th>硬件</th>
+            <th>服务引擎</th>
+            <th>最佳场景</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GGUF Q4_K_M/Q5_K_M</td>
+            <td>CPU, 边缘</td>
+            <td>llama.cpp, Ollama</td>
+            <td>本地开发, 边缘部署</td>
+          </tr>
+          <tr>
+            <td>GPTQ INT4</td>
+            <td>NVIDIA GPU</td>
+            <td>vLLM (多LoRA)</td>
+            <td>同基座多LoRA服务</td>
+          </tr>
+          <tr>
+            <td>AWQ INT4 + Marlin</td>
+            <td>NVIDIA GPU</td>
+            <td>vLLM, SGLang</td>
+            <td>数据中心生产默认</td>
+          </tr>
+          <tr>
+            <td>FP8 (E4M3/E5M2)</td>
+            <td>Hopper, Ada, Blackwell</td>
+            <td>vLLM, SGLang, TRT-LLM</td>
+            <td>近无损, 广泛支持</td>
+          </tr>
+          <tr>
+            <td>NVFP4/MXFP4</td>
+            <td>Blackwell</td>
+            <td>TRT-LLM</td>
+            <td>激进压缩, 需验证</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="gguf--cpu和边缘之王"><a href="#gguf--cpu和边缘之王">GGUF — CPU和边缘之王</a></h3>
+      <p>
+        GGUF是llama.cpp的格式。K-quants(Q4_K_M,
+        Q5_K_M)在大小和质量间取得良好平衡。通过Ollama在笔记本电脑上广泛可用。不适合数据中心GPU服务。
+      </p>
+      <h3 id="gptq--多lora场景"><a href="#gptq--多lora场景">GPTQ — 多LoRA场景</a></h3>
+      <p>
+        GPTQ使用逐层校准量化。在vLLM中，GPTQ模型支持多LoRA适配器在同一基座上——AWQ目前不支持的用例。如果需要多LoRA，GPTQ是选择。
+      </p>
+      <h3 id="awq--marlin--数据中心默认">
+        <a href="#awq--marlin--数据中心默认">AWQ + Marlin — 数据中心默认</a>
+      </h3>
+      <p>
+        AWQ(Activation-aware Weight Quantization)保护显著权重通道。配Marlin-AWQ核，7B模型INT4约741
+        tok/s。2026年数据中心生产默认因为最佳质量-速度权衡。
+      </p>
+      <h3 id="fp8--近无损中间立场"><a href="#fp8--近无损中间立场">FP8 — 近无损中间立场</a></h3>
+      <p>
+        FP8(E4M3用于前向，E5M2用于梯度)在Hopper/Ada/Blackwell上近无损。广泛支持跨服务引擎。KV缓存使用FP8因为注意力键/值需要动态范围。
+      </p>
+      <h3 id="nvfp4mxfp4--blackwell激进">
+        <a href="#nvfp4mxfp4--blackwell激进">NVFP4/MXFP4 — Blackwell激进</a>
+      </h3>
+      <p>
+        4位微缩放格式。权重和激活2x节省vs FP8。需要逐块验证因为量化误差可能累积。KV缓存保持FP8。
+      </p>
+      <h3 id="陷阱1校准域不匹配"><a href="#陷阱1校准域不匹配">陷阱1：校准域不匹配</a></h3>
+      <p>
+        量化校准数据集必须<span
+          class="term-tip"
+          data-term="匹配"
+          data-module="discrete-math"
+          data-def="图中一组没有公共顶点的边集合，最大匹配是边数最多的匹配"
+          data-slug="discrete-math/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">匹配</abbr></span
+        >部署<span
+          class="term-tip"
+          data-term="域"
+          data-module="discrete-math"
+          data-def="同时满足加法和乘法群性质且满足分配律的代数结构，如有理数域、有限域"
+          data-slug="discrete-math/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">域</abbr></span
+        >。在<span
+          class="term-tip"
+          data-term="通用"
+          data-module="cpp"
+          data-def="通用"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">通用</abbr></span
+        >文本上校准的模型在代码或医学文本上部署时会有退化。始终在目标域数据上校准。
+      </p>
+      <h3 id="陷阱2kv缓存是独立的"><a href="#陷阱2kv缓存是独立的">陷阱2：KV缓存是独立的</a></h3>
+      <p>
+        “我的模型现在是4 GB”只<span
+          class="term-tip"
+          data-term="计算"
+          data-module="cpp"
+          data-def="计算过程"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">计算</abbr></span
+        >权重。在<span
+          class="term-tip"
+          data-term="生产"
+          data-module="github"
+          data-def="生产"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">生产</abbr></span
+        >批次<span
+          class="term-tip"
+          data-term="大小"
+          data-module="github"
+          data-def="大小"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">大小</abbr></span
+        >下，KV缓存可能是10-30 GB。KV缓存量化是独立<span
+          class="term-tip"
+          data-term="决策"
+          data-module="github"
+          data-def="决策"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">决策</abbr></span
+        >——FP8是<span
+          class="term-tip"
+          data-term="安全"
+          data-module="cpp"
+          data-def="安全性"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">安全</abbr></span
+        >的底线，INT4导致<span
+          class="term-tip"
+          data-term="注意"
+          data-module="github"
+          data-def="注意"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">注意</abbr></span
+        >力<span
+          class="term-tip"
+          data-term="质量"
+          data-module="github"
+          data-def="质量"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">质量</abbr></span
+        >灾难性损失。
+      </p>
+      <h3 id="内存数学"><a href="#内存数学">内存数学</a></h3>
+      <p>70B模型：</p>
+      <ul>
+        <li>BF16权重：140 GB</li>
+        <li>FP8权重：70 GB</li>
+        <li>INT4/AWQ权重：35 GB</li>
+        <li>NVFP4权重：约18 GB</li>
+        <li>
+          KV缓存(8192
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >, FP8, 128并发)：约160 GB
+        </li>
+      </ul>
+      <p>
+        KV缓存通常超过权重。量化权重只<span
+          class="term-tip"
+          data-term="解决"
+          data-module="github"
+          data-def="解决"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">解决</abbr></span
+        >一<span
+          class="term-tip"
+          data-term="半"
+          data-module="github"
+          data-def="半"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">半</abbr></span
+        >问题。
+      </p>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p>
+        <code>code/main.py</code
+        ><span
+          class="term-tip"
+          data-term="计算"
+          data-module="cpp"
+          data-def="计算过程"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">计算</abbr></span
+        >不同<span
+          class="term-tip"
+          data-term="格"
+          data-module="discrete-math"
+          data-def="任意两个元素都有上确界和下确界的偏序集"
+          data-slug="discrete-math/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">格</abbr></span
+        >式和批次<span
+          class="term-tip"
+          data-term="大小"
+          data-module="github"
+          data-def="大小"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">大小</abbr></span
+        >下的HBM占用，<span
+          class="term-tip"
+          data-term="包"
+          data-module="go"
+          data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+          data-slug="go/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">包</abbr></span
+        >括KV缓存。
+      </p>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-quant-format-picker.md</code>。给定<span
+          class="term-tip"
+          data-term="硬件"
+          data-module="github"
+          data-def="硬件设备"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">硬件</abbr></span
+        >、<span
+          class="term-tip"
+          data-term="服务"
+          data-module="cpp"
+          data-def="服务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">服务</abbr></span
+        >引擎和<span
+          class="term-tip"
+          data-term="工作"
+          data-module="cpp"
+          data-def="工作"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">工作</abbr></span
+        >负载，<span
+          class="term-tip"
+          data-term="选择"
+          data-module="cpp"
+          data-def="选择"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">选择</abbr></span
+        >量化<span
+          class="term-tip"
+          data-term="格"
+          data-module="discrete-math"
+          data-def="任意两个元素都有上确界和下确界的偏序集"
+          data-slug="discrete-math/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">格</abbr></span
+        >式并估算总HBM。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          计算8B模型在BF16、FP8和INT4下的权重<span
+            class="term-tip"
+            data-term="大小"
+            data-module="github"
+            data-def="大小"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">大小</abbr></span
+          >。在128并发、2048
+          <span
+            class="term-tip"
+            data-term="token"
+            data-module="python"
+            data-def="词法分析的最小语法单元"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">token</abbr></span
+          >
+          KV缓存(FP8)下，KV缓存<span
+            class="term-tip"
+            data-term="增加"
+            data-module="github"
+            data-def="增加"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">增加</abbr></span
+          >多少？
+        </li>
+        <li>
+          为什么KV缓存不能使用INT4？<span
+            class="term-tip"
+            data-term="注意"
+            data-module="github"
+            data-def="注意"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">注意</abbr></span
+          >力分数会怎样？
+        </li>
+        <li>
+          你的团队在<span
+            class="term-tip"
+            data-term="通用"
+            data-module="cpp"
+            data-def="通用"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">通用</abbr></span
+          >数据上校准AWQ但<span
+            class="term-tip"
+            data-term="部署"
+            data-module="cpp"
+            data-def="部署应用"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">部署</abbr></span
+          >在<span
+            class="term-tip"
+            data-term="代码生成"
+            data-module="c"
+            data-def="编译阶段生成目标代码"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">代码生成</abbr></span
+          >上。预期什么<span
+            class="term-tip"
+            data-term="退化"
+            data-module="c"
+            data-def="数组退化为指针"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">退化</abbr></span
+          >？如何<span
+            class="term-tip"
+            data-term="修复"
+            data-module="github"
+            data-def="修复"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">修复</abbr></span
+          >？
+        </li>
+        <li>
+          比较GGUF Q4_K_M和AWQ INT4在7B模型上的<span
+            class="term-tip"
+            data-term="质量"
+            data-module="github"
+            data-def="质量"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">质量</abbr></span
+          >。哪个在GPU上更好？哪个在CPU上？
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="设计"
+            data-module="github"
+            data-def="设计"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">设计</abbr></span
+          >量化<span
+            class="term-tip"
+            data-term="策略"
+            data-module="vue3"
+            data-def="解决问题的策略"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">策略</abbr></span
+          >：70B模型，H100，vLLM，128并发，混合<span
+            class="term-tip"
+            data-term="RAG"
+            data-module="agent"
+            data-def="检索增强生成，先从知识库检索相关文档再交由模型生成回答的技术架构"
+            data-slug="agent/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">RAG</abbr></span
+          >+聊天<span
+            class="term-tip"
+            data-term="工作"
+            data-module="cpp"
+            data-def="工作"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">工作</abbr></span
+          >负载。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GGUF K-quants</td>
+            <td>”CPU量化”</td>
+            <td>
+              llama.cpp格式，Q4_K_M/Q5_K_M平衡<span
+                class="term-tip"
+                data-term="质量"
+                data-module="github"
+                data-def="质量"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">质量</abbr></span
+              >和<span
+                class="term-tip"
+                data-term="大小"
+                data-module="github"
+                data-def="大小"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">大小</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>AWQ</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="激活"
+                data-module="vue3"
+                data-def="组件或路由变为活跃状态"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">激活</abbr></span
+              >感知量化”
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="保护"
+                data-module="github"
+                data-def="保护"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保护</abbr></span
+              >显著权重<span
+                class="term-tip"
+                data-term="通道"
+                data-module="github"
+                data-def="通道"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">通道</abbr></span
+              >的INT4量化
+            </td>
+          </tr>
+          <tr>
+            <td>Marlin核</td>
+            <td>”AWQ加速器”</td>
+            <td>AWQ INT4的优化GPU核，约741 tok/s在7B上</td>
+          </tr>
+          <tr>
+            <td>GPTQ</td>
+            <td>”逐层校准”</td>
+            <td>逐层校准量化；vLLM中多LoRA支持</td>
+          </tr>
+          <tr>
+            <td>FP8</td>
+            <td>
+              ”8位浮<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >”
+            </td>
+            <td>
+              近无损；KV缓存和<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力的<span
+                class="term-tip"
+                data-term="安全"
+                data-module="cpp"
+                data-def="安全性"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">安全</abbr></span
+              >底线
+            </td>
+          </tr>
+          <tr>
+            <td>NVFP4/MXFP4</td>
+            <td>”4位微缩放”</td>
+            <td>
+              Blackwell 4位<span
+                class="term-tip"
+                data-term="格"
+                data-module="discrete-math"
+                data-def="任意两个元素都有上确界和下确界的偏序集"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">格</abbr></span
+              >式；激进，需逐<span
+                class="term-tip"
+                data-term="块"
+                data-module="c"
+                data-def="用 &#x60;{}&#x60; 包裹的代码语句组"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">块</abbr></span
+              >验证
+            </td>
+          </tr>
+          <tr>
+            <td>
+              校准<span
+                class="term-tip"
+                data-term="域"
+                data-module="discrete-math"
+                data-def="同时满足加法和乘法群性质且满足分配律的代数结构，如有理数域、有限域"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">域</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="匹配"
+                data-module="discrete-math"
+                data-def="图中一组没有公共顶点的边集合，最大匹配是边数最多的匹配"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">匹配</abbr></span
+              >部署数据”
+            </td>
+            <td>
+              量化校准数据必须<span
+                class="term-tip"
+                data-term="匹配"
+                data-module="discrete-math"
+                data-def="图中一组没有公共顶点的边集合，最大匹配是边数最多的匹配"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">匹配</abbr></span
+              >部署<span
+                class="term-tip"
+                data-term="域"
+                data-module="discrete-math"
+                data-def="同时满足加法和乘法群性质且满足分配律的代数结构，如有理数域、有限域"
+                data-slug="discrete-math/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">域</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li><a href="https://arxiv.org/abs/2306.00978">AWQ paper (arXiv:2306.00978)</a></li>
+        <li><a href="https://arxiv.org/abs/2210.17323">GPTQ paper (arXiv:2210.17323)</a></li>
+        <li>
+          <a href="https://github.com/ggerganov/llama.cpp/blob/master/examples/quantize/README.md"
+            >llama.cpp quantization documentation</a
+          >
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

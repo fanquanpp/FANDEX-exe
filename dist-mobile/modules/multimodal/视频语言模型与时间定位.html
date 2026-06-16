@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>视频语言模型：时间Token与定位</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">视频语言模型：时间Token与定位</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            11 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">视频VLM</span><span class="doc-tag">时间定位</span
+          ><span class="doc-tag">TMRoPE</span><span class="doc-tag">帧采样</span
+          ><span class="doc-tag">Video-LLaMA</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解视频VLM的时间编码方案、帧采样策略和时间定位输出格式</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="视频语言模型时间token与定位">
+        <a href="#视频语言模型时间token与定位">视频语言模型：时间Token与定位</a>
+      </h1>
+      <blockquote>
+        <p>
+          视频不是一堆照片的堆叠。5秒片段有因果顺序、动作动词和图像模型无法表示的事件时间。Video-LLaMA
+          (Zhang等人,
+          2023年6月)发布了首个带音频-视觉接地的开放视频LLM。VideoChat和Video-LLaVA扩展了该模式。到2025年Qwen2.5-VL的TMRoPE弥合了与前沿专有模型的差距。每个系统以不同方式解决时间token——每片段Q-Former、每帧拼接池化、每token
+          TMRoPE。本课程阅读这些模式，构建均匀vs动态帧采样器，并在时间定位任务上评估。
+        </p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python (stdlib, 帧采样器 +
+        时间定位评估器) <strong>前置知识:</strong> Phase 12 · 08 (LLaVA-OneVision)
+        <strong>时间:</strong> ~180分钟
+      </p>
+      <h2 id="学习目标"><a href="#学习目标">学习目标</a></h2>
+      <ul>
+        <li>解释为什么时间位置编码独立于视觉编码器改变视频VLM性能。</li>
+        <li>比较均匀、动态FPS和事件驱动帧采样在每秒token数vs定位准确率上的差异。</li>
+        <li>
+          描述每片段Q-Former(Video-LLaMA) vs 每帧池化(Video-LLaVA) vs 每token
+          M-RoPE(Qwen2.5-VL)设计。
+        </li>
+        <li>说出四个视频基准：VideoMME、TempCompass、EgoSchema、Video-MMMU。</li>
+      </ul>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        1分钟30 FPS视频是1800帧。在每帧196个视觉token(ViT-B在224)下，那是352k
+        token——超过任何2024年LLM上下文。
+      </p>
+      <p>三种缩减策略：</p>
+      <ol>
+        <li>子采样帧(1-8 FPS取决于内容)。</li>
+        <li>激进池化每帧的patch token(3x3或4x4双线性池化)。</li>
+        <li>通过Q-Former压缩，取16帧片段输出64个token。</li>
+      </ol>
+      <p>每个权衡不同。子采样丢失时间细节。池化丢失空间细节。Q-Former两者都丢一点但节省token。</p>
+      <p>
+        时间位置编码是另一个轴：模型如何知道帧5在帧6之前？选项包括简单1D时间RoPE(Video-LLaMA)、学习时间嵌入(Video-LLaVA)和TMRoPE(Qwen2.5-VL，完整3D)。
+      </p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <h3 id="video-llama每片段q-former--音频分支">
+        <a href="#video-llama每片段q-former--音频分支">Video-LLaMA：每片段Q-Former + 音频分支</a>
+      </h3>
+      <p>Video-LLaMA (2023)是首个开放视频LLM。架构：</p>
+      <ul>
+        <li>2 FPS下16帧片段(8秒)。</li>
+        <li>每帧ViT特征 → 对所有16帧交叉关注的Video Q-Former → 32个学习查询 → LLM。</li>
+        <li>并行音频分支：波形 → ImageBind音频编码器 → Audio Q-Former → 32个查询 → LLM。</li>
+      </ul>
+      <p>优势：音频-视觉联合推理。劣势：固定片段长度，无任意时间定位。</p>
+      <h3 id="videochat和video-llava">
+        <a href="#videochat和video-llava">VideoChat和Video-LLaVA</a>
+      </h3>
+      <p>
+        VideoChat保留了Video-LLaMA的想法但去掉了音频并简化。Video-LLaVA (Lin等人,
+        2023)在图像和视频帧上训练单一视觉编码器(“投影前对齐”)，给出统一表示。两者都是冻结CLIP编码器
+        + MLP + LLM。
+      </p>
+      <p>两者都不处理长视频。都是8-16帧系统。</p>
+      <h3 id="qwen25-vl和tmrope"><a href="#qwen25-vl和tmrope">Qwen2.5-VL和TMRoPE</a></h3>
+      <p>
+        Qwen2.5-VL引入了TMRoPE——时间-模态旋转位置嵌入。每个patch token携带(t, h,
+        w)位置，其中t是实际时间戳(非帧索引)。
+      </p>
+      <p>与简单时间嵌入的关键区别：</p>
+      <ul>
+        <li>绝对时间，非索引。模型看到”在4.2秒”而非”在第15帧”。</li>
+        <li>每token旋转，非每片段。每个视觉token按其时间戳独立旋转。</li>
+        <li>兼容动态FPS。如果这里以2 FPS采样那里以4 FPS，TMRoPE原生处理不均匀间距。</li>
+      </ul>
+      <p>TMRoPE启用”猫在几秒跳？“查询。模型可以输出”在4.2秒”。Video-LLaMA只能说”片段早期”。</p>
+      <h3 id="帧采样策略"><a href="#帧采样策略">帧采样策略</a></h3>
+      <p>均匀：在时长内均匀采样N帧。简单，丢失运动峰值。</p>
+      <p>
+        动态FPS：基于运动强度自适应采样。光流或帧差分选择高运动段进行更密集采样。Qwen2.5-VL在此上训练。
+      </p>
+      <p>事件驱动：运行轻量检测器，在动作发生处采样更多。VideoAgent使用。</p>
+      <p>关键帧 + 上下文：在镜头边界 + 几个相邻帧采样。用于电影内容。</p>
+      <h3 id="每帧池化"><a href="#每帧池化">每帧池化</a></h3>
+      <p>
+        1 FPS和每帧576 token下，5分钟片段是172,800 token。Qwen2.5-VL-72B的128k上下文可以但昂贵。
+      </p>
+      <p>3x3双线性池化减少到每帧64 token → 5分钟19,200 token。大多数任务的甜蜜点。</p>
+      <p>更激进池化(6x6 → 每帧16 token)用于空间细节不太重要的agent工作流。</p>
+      <h3 id="四个视频基准"><a href="#四个视频基准">四个视频基准</a></h3>
+      <ul>
+        <li>VideoMME：综合视频理解，短+中+长。</li>
+        <li>TempCompass：细粒度时间推理，“之前”/“之后”问题。</li>
+        <li>EgoSchema：长时距第一人称视频。</li>
+        <li>Video-MMMU：多模态多学科视频问题。</li>
+      </ul>
+      <p>
+        完整视频VLM评估命中全部四个。它们压力测试不同轴——TempCompass全是关于排序，EgoSchema是3分钟以上推理，VideoMME跨越时长。
+      </p>
+      <h3 id="定位输出格式"><a href="#定位输出格式">定位输出格式</a></h3>
+      <p>时间定位的输出格式：</p>
+      <ul>
+        <li>自由文本：“猫在4秒左右跳了。“容易解析但不精确。</li>
+        <li>
+          结构化JSON：<code>{"event": "jump", "start": 4.1, "end": 4.3}</code
+          >。Qwen2.5-VL训练此格式。
+        </li>
+        <li>
+          基于Token：与答案交错的特殊<code>&#x3C;time>4.1&#x3C;/time></code>
+          token。Qwen2.5-VL的内部格式。
+        </li>
+      </ul>
+      <p>基于Token对下游使用最准确。Qwen2.5-VL的JSON输出格式直接解析。</p>
+      <h3 id="2026年最佳实践"><a href="#2026年最佳实践">2026年最佳实践</a></h3>
+      <p>2026年视频VLM：</p>
+      <ul>
+        <li>编码器：带M-RoPE或TMRoPE的SigLIP 2(Qwen2.5-VL)。</li>
+        <li>帧采样：动态FPS(1-4取决于运动)带最大帧上限。</li>
+        <li>每帧池化：3x3双线性。</li>
+        <li>输出：带时间+事件字段的结构化JSON。</li>
+        <li>基准：VideoMME + TempCompass用于通用；EgoSchema用于长时距。</li>
+      </ul>
+      <h2 id="实践"><a href="#实践">实践</a></h2>
+      <p><code>code/main.py</code>包括：</p>
+      <ul>
+        <li>均匀和动态FPS帧采样器。</li>
+        <li>toy时间定位评估器：给定时间T的”真实”事件和模型输出，在容差内评分准确率。</li>
+        <li>
+          Video-LLaMA(16帧，Q-Former)、Video-LLaVA(8帧，MLP)、Qwen2.5-VL(动态FPS + TMRoPE)的比较。
+        </li>
+      </ul>
+      <h2 id="输出"><a href="#输出">输出</a></h2>
+      <p>
+        本课程产生<code>outputs/skill-video-vlm-frame-planner.md</code>。给定视频<span
+          class="term-tip"
+          data-term="任务"
+          data-module="cpp"
+          data-def="任务"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">任务</abbr></span
+        >(<span
+          class="term-tip"
+          data-term="监控"
+          data-module="devops"
+          data-def="持续采集和展示系统指标（CPU、内存、延迟等）的过程，用于了解系统运行状态"
+          data-slug="devops/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">监控</abbr></span
+        >、动作识别、时间定位、摘要)，它选择帧采样器、池化因子、输出格式和预期准确率层级。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <p>
+            <span
+              class="term-tip"
+              data-term="对"
+              data-module="github"
+              data-def="对"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对</abbr></span
+            >于3分钟烹饪<span
+              class="term-tip"
+              data-term="演示"
+              data-module="github"
+              data-def="演示"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">演示</abbr></span
+            >，<span
+              class="term-tip"
+              data-term="选择"
+              data-module="cpp"
+              data-def="选择"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">选择</abbr></span
+            >均匀vs动态FPS。用<span
+              class="term-tip"
+              data-term="token"
+              data-module="python"
+              data-def="词法分析的最小语法单元"
+              data-slug="python/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">token</abbr></span
+            >数量论证。
+          </p>
+        </li>
+        <li>
+          <p>
+            TMRoPE具体添加了什么<span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >时间<span
+              class="term-tip"
+              data-term="嵌入"
+              data-module="agent"
+              data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">嵌入</abbr></span
+            >表做不到的？
+          </p>
+        </li>
+        <li>
+          <p>
+            为VLM可以学习发出的<span
+              class="term-tip"
+              data-term="时间"
+              data-module="cpp"
+              data-def="时间"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">时间</abbr></span
+            >定<span
+              class="term-tip"
+              data-term="位"
+              data-module="c"
+              data-def="二进制数字，基本存储单位"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">位</abbr></span
+            >写一个<span
+              class="term-tip"
+              data-term="JSON"
+              data-module="html5"
+              data-def="JavaScript 对象表示法，&#x60;JSON.parse()&#x60; 反序列化、&#x60;JSON.stringify()&#x60; 序列化"
+              data-slug="html5/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">JSON</abbr></span
+            >
+            schema。<span
+              class="term-tip"
+              data-term="包"
+              data-module="go"
+              data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+              data-slug="go/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">包</abbr></span
+            >括<span
+              class="term-tip"
+              data-term="错误"
+              data-module="cpp"
+              data-def="错误情况"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">错误</abbr></span
+            >情况。
+          </p>
+        </li>
+        <li>
+          <p>
+            阅读Video-LLaVA第3节<span
+              class="term-tip"
+              data-term="关于"
+              data-module="github"
+              data-def="关于"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">关于</abbr></span
+            >”<span
+              class="term-tip"
+              data-term="投影"
+              data-module="c"
+              data-def="提取类型的部分属性"
+              data-slug="c/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">投影</abbr></span
+            >前<span
+              class="term-tip"
+              data-term="对齐"
+              data-module="agent"
+              data-def="确保 AI 系统的行为与人类价值观和意图一致的技术和治理方法"
+              data-slug="agent/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">对齐</abbr></span
+            >”。为什么这比<span
+              class="term-tip"
+              data-term="训练"
+              data-module="github"
+              data-def="培训"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">训练</abbr></span
+            >独立<span
+              class="term-tip"
+              data-term="图像"
+              data-module="github"
+              data-def="图像"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">图像</abbr></span
+            >和视频<span
+              class="term-tip"
+              data-term="编码"
+              data-module="cpp"
+              data-def="编写代码"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">编码</abbr></span
+            >器更好？
+          </p>
+        </li>
+        <li>
+          <p>
+            给定VideoMME排<span
+              class="term-tip"
+              data-term="行"
+              data-module="vue3"
+              data-def="数据行"
+              data-slug="vue3/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">行</abbr></span
+            >榜，2026年顶级<span
+              class="term-tip"
+              data-term="开放"
+              data-module="github"
+              data-def="正在活跃的 Issue 或 PR"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">开放</abbr></span
+            >模型和顶级专有模型之间的差距是<span
+              class="term-tip"
+              data-term="多"
+              data-module="github"
+              data-def="多个的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">多</abbr></span
+            >少？该差距有<span
+              class="term-tip"
+              data-term="多"
+              data-module="github"
+              data-def="多个的"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">多</abbr></span
+            >少归因于<span
+              class="term-tip"
+              data-term="时间"
+              data-module="cpp"
+              data-def="时间"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">时间</abbr></span
+            >编码vs基座LLM规模？
+          </p>
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>常见说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >定<span
+                class="term-tip"
+                data-term="位"
+                data-module="c"
+                data-def="二进制数字，基本存储单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位</abbr></span
+              >
+            </td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >定<span
+                class="term-tip"
+                data-term="位"
+                data-module="c"
+                data-def="二进制数字，基本存储单位"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位</abbr></span
+              >答案”
+            </td>
+            <td>
+              VLM为<span
+                class="term-tip"
+                data-term="事件"
+                data-module="cpp"
+                data-def="事件对象"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">事件</abbr></span
+              >发生<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >输出特定<span
+                class="term-tip"
+                data-term="时间戳"
+                data-module="cpp"
+                data-def="时间戳"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间戳</abbr></span
+              >范围
+            </td>
+          </tr>
+          <tr>
+            <td>TMRoPE</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >-<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >模态RoPE”
+            </td>
+            <td>
+              带绝<span
+                class="term-tip"
+                data-term="对"
+                data-module="github"
+                data-def="对"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">对</abbr></span
+              >时间戳的3D旋转<span
+                class="term-tip"
+                data-term="位置"
+                data-module="github"
+                data-def="位置"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">位置</abbr></span
+              >，Qwen2.5-VL使用
+            </td>
+          </tr>
+          <tr>
+            <td>动态FPS</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="运动"
+                data-module="github"
+                data-def="运动"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">运动</abbr></span
+              >感知采样”
+            </td>
+            <td>
+              在<span
+                class="term-tip"
+                data-term="高"
+                data-module="github"
+                data-def="高的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">高</abbr></span
+              >运动<span
+                class="term-tip"
+                data-term="段"
+                data-module="vue3"
+                data-def="URL 的一段"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">段</abbr></span
+              >采样更<span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >帧，<span
+                class="term-tip"
+                data-term="静态"
+                data-module="cpp"
+                data-def="静态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">静态</abbr></span
+              >段更少
+            </td>
+          </tr>
+          <tr>
+            <td>
+              帧<span
+                class="term-tip"
+                data-term="池化"
+                data-module="python"
+                data-def="复用有限资源的技术，如连接池、线程池"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">池化</abbr></span
+              >
+            </td>
+            <td>
+              ”每帧<span
+                class="term-tip"
+                data-term="空间"
+                data-module="cpp"
+                data-def="空间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">空间</abbr></span
+              >压缩”
+            </td>
+            <td>
+              在LLM前用双<span
+                class="term-tip"
+                data-term="线性"
+                data-module="github"
+                data-def="线性的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">线性</abbr></span
+              >插<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >减少每帧patch
+            </td>
+          </tr>
+          <tr>
+            <td>Video Q-Former</td>
+            <td>
+              ”<span
+                class="term-tip"
+                data-term="片段"
+                data-module="c"
+                data-def="内存块的组成部分"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">片段</abbr></span
+              >压缩器”
+            </td>
+            <td>
+              将N帧<span
+                class="term-tip"
+                data-term="映射"
+                data-module="c"
+                data-def="类型到另一类型的对应关系"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">映射</abbr></span
+              >到K个学习<span
+                class="term-tip"
+                data-term="查询"
+                data-module="cpp"
+                data-def="查询操作"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">查询</abbr></span
+              >的交叉<span
+                class="term-tip"
+                data-term="注意"
+                data-module="github"
+                data-def="注意"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">注意</abbr></span
+              >力瓶颈
+            </td>
+          </tr>
+          <tr>
+            <td>VideoMME</td>
+            <td>”视频基准”</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="综合"
+                data-module="github"
+                data-def="综合"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">综合</abbr></span
+              >短/中/长视频基准，2500+<span
+                class="term-tip"
+                data-term="样本"
+                data-module="data-analysis"
+                data-def="从总体中抽取的子集，统计量是描述样本特征的数量"
+                data-slug="data-analysis/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">样本</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/2306.02858">Zhang等人 — Video-LLaMA (arXiv:2306.02858)</a>
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2305.06355">Li等人 — VideoChat (arXiv:2305.06355)</a>
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2311.10122">Lin等人 — Video-LLaVA (arXiv:2311.10122)</a>
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2502.13923">Qwen Team — Qwen2.5-VL (arXiv:2502.13923)</a>
+        </li>
+        <li>
+          <a href="https://arxiv.org/abs/2312.07533">Lin等人 — VILA-1.5 (arXiv:2312.07533)</a>
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

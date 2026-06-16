@@ -1,0 +1,1067 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>窗口函数框架</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">窗口函数框架</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            5 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-advanced"> Advanced </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">
+          SQL 窗口函数框架详解：ROWS BETWEEN 与 RANGE BETWEEN
+          窗口帧定义、滑动窗口计算、累计聚合与排名函数的底层机制。
+        </p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-窗口函数基础架构"><a href="#1-窗口函数基础架构">1. 窗口函数基础架构</a></h2>
+      <h3 id="11-窗口函数执行模型"><a href="#11-窗口函数执行模型">1.1 窗口函数执行模型</a></h3>
+      <p>
+        窗口函数（Window Function）在 SQL 标准中称为<strong>OLAP 函数</strong
+        >，其核心思想是在不改变结果集行数的前提下，为每一行计算一个基于”窗口”的聚合值。执行时机位于
+        <code>WHERE</code>、<code>GROUP BY</code>、<code>HAVING</code> 之后，<code>ORDER BY</code>
+        之前。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 窗口函数完整语法</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">function_name([expr]) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    [PARTITION BY partition_expr]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    [ORDER BY sort_expr [ASC|DESC] [NULLS {FIRST|LAST}]]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    [frame_clause]</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p><strong>逻辑执行顺序</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>FROM → WHERE → GROUP BY → HAVING → 窗口函数 → ORDER BY → LIMIT</span></span></code></pre>
+      <h3 id="12-窗口函数分类"><a href="#12-窗口函数分类">1.2 窗口函数分类</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>类别</th>
+            <th>函数</th>
+            <th>特点</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>排名函数</td>
+            <td>
+              <code>ROW_NUMBER</code>, <code>RANK</code>, <code>DENSE_RANK</code>,
+              <code>NTILE</code>
+            </td>
+            <td>需要 ORDER BY</td>
+          </tr>
+          <tr>
+            <td>偏移函数</td>
+            <td>
+              <code>LAG</code>, <code>LEAD</code>, <code>FIRST_VALUE</code>,
+              <code>LAST_VALUE</code>, <code>NTH_VALUE</code>
+            </td>
+            <td>访问同行/跨行数据</td>
+          </tr>
+          <tr>
+            <td>聚合函数</td>
+            <td>
+              <code>SUM</code>, <code>AVG</code>, <code>COUNT</code>, <code>MIN</code>,
+              <code>MAX</code>
+            </td>
+            <td>支持 frame_clause</td>
+          </tr>
+          <tr>
+            <td>分布函数</td>
+            <td>
+              <code>PERCENT_RANK</code>, <code>CUME_DIST</code>, <code>PERCENTILE_CONT</code>,
+              <code>PERCENTILE_DISC</code>
+            </td>
+            <td>统计分布</td>
+          </tr>
+          <tr>
+            <td>
+              取<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >函数
+            </td>
+            <td><code>FIRST_VALUE</code>, <code>LAST_VALUE</code>, <code>NTH_VALUE</code></td>
+            <td>
+              窗口帧内取<span
+                class="term-tip"
+                data-term="值"
+                data-module="cpp"
+                data-def="值"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">值</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <blockquote>
+        <p>
+          <strong>关键区别</strong>：<span
+            class="term-tip"
+            data-term="排名"
+            data-module="github"
+            data-def="排名"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">排名</abbr></span
+          >函数和偏移<span
+            class="term-tip"
+            data-term="函数"
+            data-module="c"
+            data-def="完成特定任务的代码块"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">函数</abbr></span
+          >的窗口帧默认为 <code>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code>，而<span
+            class="term-tip"
+            data-term="聚合函数"
+            data-module="mysql"
+            data-def="COUNT、SUM、AVG、MAX、MIN 等汇总数据函数"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">聚合函数</abbr></span
+          >的默认帧取决于是否指定
+          <span
+            class="term-tip"
+            data-term="ORDER BY"
+            data-module="mysql"
+            data-def="结果排序"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">ORDER BY</abbr></span
+          >。
+        </p>
+      </blockquote>
+      <h2 id="2-窗口帧frame详解"><a href="#2-窗口帧frame详解">2. 窗口帧（Frame）详解</a></h2>
+      <h3 id="21-frame-子句语法"><a href="#21-frame-子句语法">2.1 Frame 子句语法</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">{</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ROWS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> | </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">RANGE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> | GROUPS} </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BETWEEN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> frame_start </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> frame_end</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- frame_start / frame_end 可选值：</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- UNBOUNDED PRECEDING  | UNBOUNDED FOLLOWING</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- CURRENT ROW</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- &#x3C;expr> PRECEDING     | &#x3C;expr> FOLLOWING</span></span></code></pre>
+      <h3 id="22-rows-between物理行偏移">
+        <a href="#22-rows-between物理行偏移">2.2 ROWS BETWEEN：物理行偏移</a>
+      </h3>
+      <p>
+        <code>ROWS</code> 基于<strong
+          ><span
+            class="term-tip"
+            data-term="物理"
+            data-module="github"
+            data-def="物理的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">物理</abbr></span
+          >行号</strong
+        ><span
+          class="term-tip"
+          data-term="定义"
+          data-module="c"
+          data-def="创建变量或函数的实体"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">定义</abbr></span
+        >窗口帧，与<span
+          class="term-tip"
+          data-term="排序"
+          data-module="cpp"
+          data-def="排序"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">排序</abbr></span
+        >后的实际<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >位置<span
+          class="term-tip"
+          data-term="对应"
+          data-module="cpp"
+          data-def="对应关系"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对应</abbr></span
+        >。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 累计求和：从分区首行到当前行</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">SUM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(amount) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> order_date</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ROWS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BETWEEN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UNBOUNDED</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> PRECEDING</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> CURRENT </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ROW</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 滑动平均：当前行及前后各1行（3行窗口）</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">AVG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(price) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> trade_time</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ROWS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BETWEEN</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> PRECEDING</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FOLLOWING</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 近5行移动平均</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">AVG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(close_price) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> trade_date</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ROWS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BETWEEN</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 4</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> PRECEDING</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> CURRENT </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ROW</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>
+        <strong>ROWS 窗口帧示意</strong>（3
+        <span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >滑动窗口）：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>行号:  1    2    3    4    5    6    7</span></span>
+<span class="line"><span>值:   10   20   30   40   50   60   70</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>行3的窗口: [10, 20, 30] → AVG = 20</span></span>
+<span class="line"><span>行4的窗口: [20, 30, 40] → AVG = 30</span></span>
+<span class="line"><span>行5的窗口: [30, 40, 50] → AVG = 40</span></span></code></pre>
+      <h3 id="23-range-between逻辑值偏移">
+        <a href="#23-range-between逻辑值偏移">2.3 RANGE BETWEEN：逻辑值偏移</a>
+      </h3>
+      <p>
+        <code>RANGE</code> 基于<strong
+          ><span
+            class="term-tip"
+            data-term="ORDER BY"
+            data-module="mysql"
+            data-def="结果排序"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">ORDER BY</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="表达式"
+            data-module="c"
+            data-def="求值后产生结果的代码"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">表达式</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="逻辑值"
+            data-module="css"
+            data-def="不依赖书写方向的值，如 &#x60;start&#x60;/&#x60;end&#x60; 替代 &#x60;left&#x60;/&#x60;right&#x60;"
+            data-slug="css/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">逻辑值</abbr></span
+          ></strong
+        ><span
+          class="term-tip"
+          data-term="定义"
+          data-module="c"
+          data-def="创建变量或函数的实体"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">定义</abbr></span
+        >窗口帧，所有<span
+          class="term-tip"
+          data-term="排序"
+          data-module="cpp"
+          data-def="排序"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">排序</abbr></span
+        >值相同的<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >属于同一个帧。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 同一天的所有记录视为同一帧</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">SUM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(amount) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> order_date</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    RANGE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BETWEEN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UNBOUNDED</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> PRECEDING</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> CURRENT </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ROW</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 当前日期前后7天的范围</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">SUM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(daily_revenue) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> order_date</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    RANGE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BETWEEN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> INTERVAL </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">7</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DAY</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> PRECEDING</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> INTERVAL </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">7</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> DAY</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FOLLOWING</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 数值范围：当前值 ± 100</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">COUNT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> score</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    RANGE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BETWEEN</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> PRECEDING</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FOLLOWING</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>
+        <strong
+          >ROWS vs RANGE 的<span
+            class="term-tip"
+            data-term="核"
+            data-module="data-analysis"
+            data-def="KDE中用于平滑估计的窗口函数，常用高斯核"
+            data-slug="data-analysis/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">核</abbr></span
+          >心差异</strong
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>排序值:  100  100  200  300  300  300  400</span></span>
+<span class="line"><span>行号:     1    2    3    4    5    6    7</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW:</span></span>
+<span class="line"><span>  行1: [行1]           → SUM含1行</span></span>
+<span class="line"><span>  行2: [行1,行2]       → SUM含2行</span></span>
+<span class="line"><span>  行3: [行1,行2,行3]   → SUM含3行</span></span>
+<span class="line"><span></span></span>
+<span class="line"><span>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW:</span></span>
+<span class="line"><span>  行1: [行1,行2]       → 值100的行全部包含</span></span>
+<span class="line"><span>  行2: [行1,行2]       → 同上</span></span>
+<span class="line"><span>  行3: [行1,行2,行3]   → SUM含3行</span></span>
+<span class="line"><span>  行4: [行1..行6]      → 值300的行全部包含</span></span></code></pre>
+      <h3 id="24-groups-between组级偏移">
+        <a href="#24-groups-between组级偏移">2.4 GROUPS BETWEEN：组级偏移</a>
+      </h3>
+      <p>
+        <code>GROUPS</code> 是
+        <span
+          class="term-tip"
+          data-term="SQL"
+          data-module="mysql"
+          data-def="结构化查询语言"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">SQL</abbr></span
+        >:2011
+        <span
+          class="term-tip"
+          data-term="标准"
+          data-module="c"
+          data-def="语言规范文档"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">标准</abbr></span
+        >引入，以<strong
+          >相同<span
+            class="term-tip"
+            data-term="排序"
+            data-module="cpp"
+            data-def="排序"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">排序</abbr></span
+          >值的组</strong
+        >为<span
+          class="term-tip"
+          data-term="单位"
+          data-module="cpp"
+          data-def="单位"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">单位</abbr></span
+        >进<span
+          class="term-tip"
+          data-term="行"
+          data-module="vue3"
+          data-def="数据行"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">行</abbr></span
+        >偏移：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 当前组及前2组</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">SUM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(amount) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> order_date</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    GROUPS </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">BETWEEN</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> PRECEDING</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> CURRENT </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ROW</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <p>
+        当<span
+          class="term-tip"
+          data-term="排序"
+          data-module="cpp"
+          data-def="排序"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">排序</abbr></span
+        >值<span
+          class="term-tip"
+          data-term="存在"
+          data-module="github"
+          data-def="存在"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">存在</abbr></span
+        >大量<span
+          class="term-tip"
+          data-term="重复"
+          data-module="github"
+          data-def="重复"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">重复</abbr></span
+        >时，<code>GROUPS</code> 比 <code>ROWS</code> 更直观，比 <code>RANGE</code> 更灵活。
+      </p>
+      <h2 id="3-窗口帧默认行为与陷阱">
+        <a href="#3-窗口帧默认行为与陷阱">3. 窗口帧默认行为与陷阱</a>
+      </h2>
+      <h3 id="31-默认帧规则"><a href="#31-默认帧规则">3.1 默认帧规则</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>默认帧</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              有
+              <span
+                class="term-tip"
+                data-term="ORDER BY"
+                data-module="mysql"
+                data-def="结果排序"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ORDER BY</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="排名"
+                data-module="github"
+                data-def="排名"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">排名</abbr></span
+              >/偏移<span
+                class="term-tip"
+                data-term="函数"
+                data-module="c"
+                data-def="完成特定任务的代码块"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">函数</abbr></span
+              >
+            </td>
+            <td><code>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code></td>
+          </tr>
+          <tr>
+            <td>
+              有
+              <span
+                class="term-tip"
+                data-term="ORDER BY"
+                data-module="mysql"
+                data-def="结果排序"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ORDER BY</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="聚合函数"
+                data-module="mysql"
+                data-def="COUNT、SUM、AVG、MAX、MIN 等汇总数据函数"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">聚合函数</abbr></span
+              >
+            </td>
+            <td><code>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</code></td>
+          </tr>
+          <tr>
+            <td>
+              无
+              <span
+                class="term-tip"
+                data-term="ORDER BY"
+                data-module="mysql"
+                data-def="结果排序"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">ORDER BY</abbr></span
+              >，<span
+                class="term-tip"
+                data-term="聚合函数"
+                data-module="mysql"
+                data-def="COUNT、SUM、AVG、MAX、MIN 等汇总数据函数"
+                data-slug="mysql/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">聚合函数</abbr></span
+              >
+            </td>
+            <td><code>ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING</code></td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="32-last_value-的常见陷阱">
+        <a href="#32-last_value-的常见陷阱">3.2 LAST_VALUE 的常见陷阱</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 错误写法：LAST_VALUE 返回当前行而非窗口最后一行</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">LAST_VALUE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(score) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> class_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> score</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 默认帧: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 正确写法：</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">LAST_VALUE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(score) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> class_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> score</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    ROWS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BETWEEN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UNBOUNDED</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> PRECEDING</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UNBOUNDED</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FOLLOWING</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span></code></pre>
+      <h3 id="33-去重与排名的选择"><a href="#33-去重与排名的选择">3.3 去重与排名的选择</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 需求：每个部门薪水最高的员工</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案1：ROW_NUMBER（严格去重，只取1条）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">ROW_NUMBER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> salary </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rn</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) t </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rn </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案2：RANK（并列第一全部返回）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">RANK</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> salary </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rk</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) t </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rk </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 方案3：DENSE_RANK（并列第一，排名不跳号）</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- RANK:   1, 1, 3, 4</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- DENSE_RANK: 1, 1, 2, 3</span></span></code></pre>
+      <h2 id="4-高级应用模式"><a href="#4-高级应用模式">4. 高级应用模式</a></h2>
+      <h3 id="41-环比与同比计算"><a href="#41-环比与同比计算">4.1 环比与同比计算</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 环比增长率</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    month</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    revenue,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    LAG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(revenue, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> month</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> prev_month,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    ROUND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        (revenue </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> LAG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(revenue, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> month</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        /</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> LAG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(revenue, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> month</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> mom_growth_rate</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> monthly_sales;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 同比增长率（去年同期）</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    month</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    revenue,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    LAG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(revenue, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">12</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> month</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> prev_year_month,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    ROUND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        (revenue </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">-</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> LAG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(revenue, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">12</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> month</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        /</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> LAG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(revenue, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">12</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> month</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    ) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> yoy_growth_rate</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> monthly_sales;</span></span></code></pre>
+      <h3 id="42-连续登录天数"><a href="#42-连续登录天数">4.2 连续登录天数</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 经典问题：计算每个用户最大连续登录天数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WITH</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> daily_login </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    SELECT DISTINCT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_id, login_date</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_login_log</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">grouped </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    SELECT</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        user_id,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        login_date,</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">        -- 日期减去行号，连续日期会得到相同的分组值</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        DATE_SUB(login_date, INTERVAL </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">ROW_NUMBER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> login_date</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        ) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DAY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> grp</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> daily_login</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    user_id,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    COUNT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> max_streak</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> grouped</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">GROUP BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_id, grp</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> max_streak </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">DESC</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="43-会话分割"><a href="#43-会话分割">4.3 会话分割</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 将用户行为按30分钟间隔分割为不同会话</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WITH</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> events_with_prev </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    SELECT</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        user_id,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        event_time,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        LAG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(event_time) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> event_time) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> prev_time</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_events</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">session_marked </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    SELECT</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        user_id,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        event_time,</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        CASE</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            WHEN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> prev_time </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NULL</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> THEN</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            WHEN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> TIMESTAMPDIFF(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">MINUTE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, prev_time, event_time) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 30</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> THEN</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            ELSE</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 0</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        END</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> is_new_session</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> events_with_prev</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">),</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">session_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    SELECT</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        user_id,</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        event_time,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        SUM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(is_new_session) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> event_time</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            ROWS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BETWEEN</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UNBOUNDED</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> PRECEDING</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> CURRENT </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ROW</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        ) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> session_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> session_marked</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_id, session_id, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">MIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(event_time) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> session_start, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">MAX</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(event_time) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> session_end</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> session_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">GROUP BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_id, session_id;</span></span></code></pre>
+      <h3 id="44-中位数与百分位数"><a href="#44-中位数与百分位数">4.4 中位数与百分位数</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 使用 PERCENTILE_CONT 计算中位数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    department,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    PERCENTILE_CONT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">5</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WITHIN</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> GROUP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> salary) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> median_salary,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    PERCENTILE_CONT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">25</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WITHIN</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> GROUP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> salary) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p25_salary,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    PERCENTILE_CONT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">75</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WITHIN</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> GROUP</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> salary) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> p75_salary</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">GROUP BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> department;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 使用窗口函数手动计算中位数</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> AVG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(salary) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> median_salary</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    SELECT</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        salary,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        ROW_NUMBER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">() </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> salary) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rn,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        COUNT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> () </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> cnt</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) t</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> rn </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">IN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">FLOOR</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">((cnt </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">), CEIL((cnt </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">+</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">/</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">));</span></span></code></pre>
+      <h2 id="5-性能优化"><a href="#5-性能优化">5. 性能优化</a></h2>
+      <h3 id="51-窗口函数执行计划"><a href="#51-窗口函数执行计划">5.1 窗口函数执行计划</a></h3>
+      <p>
+        <span
+          class="term-tip"
+          data-term="窗口函数"
+          data-module="sql"
+          data-def="在与当前行相关的行集合上执行计算的函数，如 ROW_NUMBER、RANK、SUM OVER"
+          data-slug="sql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">窗口函数</abbr></span
+        >的<span
+          class="term-tip"
+          data-term="执行"
+          data-module="github"
+          data-def="执行"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">执行</abbr></span
+        >通常涉及<strong
+          ><span
+            class="term-tip"
+            data-term="排序"
+            data-module="cpp"
+            data-def="排序"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">排序</abbr></span
+          ></strong
+        ><span
+          class="term-tip"
+          data-term="操作"
+          data-module="github"
+          data-def="GitHub Actions 工作流"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">操作</abbr></span
+        >，当 <code>PARTITION BY</code> + <code>ORDER BY</code> 无法利用<span
+          class="term-tip"
+          data-term="索引"
+          data-module="c"
+          data-def="数组中元素的位置"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">索引</abbr></span
+        >时，<span
+          class="term-tip"
+          data-term="数据库"
+          data-module="github"
+          data-def="数据库"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">数据库</abbr></span
+        >需要全量<span
+          class="term-tip"
+          data-term="排序"
+          data-module="cpp"
+          data-def="排序"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">排序</abbr></span
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 查看执行计划</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">EXPLAIN ANALYZE</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    *</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    SUM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(amount) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> user_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> order_date)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 优化：创建覆盖索引</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_orders_user_date</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders(user_id, order_date, amount);</span></span></code></pre>
+      <h3 id="52-多窗口合并"><a href="#52-多窗口合并">5.2 多窗口合并</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 不推荐：多次 OVER 子句</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    SUM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(a) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> y) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s1,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    AVG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(b) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> y) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s2,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    MAX</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(c) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> y) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s3</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t;</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 推荐：命名窗口复用</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    SUM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(a) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> w </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s1,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    AVG</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(b) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> w </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s2,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">    MAX</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(c) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">OVER</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> w </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> s3</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> t</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WINDOW</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> w </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">PARTITION</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> y);</span></span></code></pre>
+      <h3 id="53-大数据量下的替代方案">
+        <a href="#53-大数据量下的替代方案">5.3 大数据量下的替代方案</a>
+      </h3>
+      <p>
+        当数据量极大时，<span
+          class="term-tip"
+          data-term="窗口函数"
+          data-module="sql"
+          data-def="在与当前行相关的行集合上执行计算的函数，如 ROW_NUMBER、RANK、SUM OVER"
+          data-slug="sql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">窗口函数</abbr></span
+        >的<span
+          class="term-tip"
+          data-term="排序"
+          data-module="cpp"
+          data-def="排序"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">排序</abbr></span
+        >开销可能不可接受，可考虑：
+      </p>
+      <ul>
+        <li>
+          <strong
+            >预<span
+              class="term-tip"
+              data-term="聚合"
+              data-module="cpp"
+              data-def="数组或无构造函数的结构体"
+              data-slug="cpp/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">聚合</abbr></span
+            >表</strong
+          >：将窗口<span
+            class="term-tip"
+            data-term="计算"
+            data-module="cpp"
+            data-def="计算过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">计算</abbr></span
+          >结果物化为<span
+            class="term-tip"
+            data-term="中间"
+            data-module="github"
+            data-def="中间的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">中间</abbr></span
+          >表
+        </li>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="增量"
+              data-module="github"
+              data-def="增量"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">增量</abbr></span
+            >计算</strong
+          >：利用 <code>LAG</code> 仅<span
+            class="term-tip"
+            data-term="计算"
+            data-module="cpp"
+            data-def="计算过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">计算</abbr></span
+          >增量<span
+            class="term-tip"
+            data-term="部分"
+            data-module="github"
+            data-def="部分的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">部分</abbr></span
+          >
+        </li>
+        <li>
+          <strong>近似算法</strong>：使用 <code>HyperLogLog</code> 等近似<span
+            class="term-tip"
+            data-term="去重"
+            data-module="data-analysis"
+            data-def="删除数据集中重复记录的操作，Pandas中用drop_duplicates()实现"
+            data-slug="data-analysis/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">去重</abbr></span
+          >替代精确 <code>COUNT(DISTINCT)</code>
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

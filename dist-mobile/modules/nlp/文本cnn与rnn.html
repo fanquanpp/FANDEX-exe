@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>文本CNN与RNN</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">文本CNN与RNN</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            9 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">TextCNN</span><span class="doc-tag">LSTM</span
+          ><span class="doc-tag">GRU</span><span class="doc-tag">RNN</span
+          ><span class="doc-tag">文本分类</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">理解TextCNN、LSTM、GRU和双向RNN在文本分类中的应用</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h1 id="文本cnn与rnn"><a href="#文本cnn与rnn">文本CNN与RNN</a></h1>
+      <blockquote>
+        <p>卷积学习n-gram。循环记忆。两者都被注意力取代。两者在受限硬件上仍然重要。</p>
+      </blockquote>
+      <p>
+        <strong>类型:</strong> 构建 <strong>语言:</strong> Python <strong>前置条件:</strong> Phase 3
+        · 11（PyTorch入门），Phase 5 · 03（词嵌入），Phase 4 · 02（从零构建卷积）
+        <strong>时间:</strong> ~75 分钟
+      </p>
+      <h2 id="问题"><a href="#问题">问题</a></h2>
+      <p>
+        TF-IDF和Word2Vec产生忽略词序的扁平向量。基于它们构建的分类器无法区分
+        <code>dog bites man</code> 和 <code>man bites dog</code>。词序有时携带信号。
+      </p>
+      <p>在Transformer到来之前，两个架构家族填补了这个空白。</p>
+      <p>
+        <strong>文本卷积网络 (TextCNN)。</strong>
+        在词嵌入序列上应用1D卷积。宽度3的滤波器是可学习的三元组检测器：它跨越三个词并输出分数。堆叠不同宽度（2、3、4、5）检测多尺度模式。最大池化到固定大小表示。扁平、并行、快速。
+      </p>
+      <p>
+        <strong>循环网络 (RNN、LSTM、GRU)。</strong>
+        逐个处理token，维护携带信息前进的隐藏状态。顺序、有记忆、灵活输入长度。2014到2017年主导序列建模，然后注意力出现了。
+      </p>
+      <p>本课程构建两者，然后命名促使注意力出现的失败。</p>
+      <h2 id="概念"><a href="#概念">概念</a></h2>
+      <p>
+        <strong>TextCNN</strong> (Kim, 2014)。Token被嵌入。宽度 <code>k</code> 的1D卷积在连续
+        <code>k</code>
+        个嵌入gram上滑动滤波器，产生特征图。全局最大池化选择最强激活。拼接多个滤波器宽度的最大池化输出。送入分类器头。
+      </p>
+      <p>
+        为什么有效。滤波器是可学习的n-gram。最大池化是位置不变的，所以”not
+        good”在评论开头或中间触发相同特征。三个滤波器宽度各100个滤波器给你300个学习到的n-gram检测器。训练并行；没有顺序依赖。
+      </p>
+      <p>
+        <strong>RNN。</strong> 在每个时间步 <code>t</code>，隐藏状态
+        <code>h_t = f(W * x_t + U * h_{t-1} + b)</code>。<code>W</code>、<code>U</code>、<code
+          >b</code
+        >
+        跨时间共享。时间 <code>T</code> 的隐藏状态是整个前缀的摘要。对于分类，在
+        <code>h_1 ... h_T</code> 上池化（最大、均值或最后）。
+      </p>
+      <p>
+        朴素RNN遭受梯度消失。<strong>LSTM</strong>
+        添加决定遗忘什么、存储什么和输出什么的门，稳定长序列的梯度。<strong>GRU</strong>
+        将LSTM简化为两个门；参数更少，性能相似。
+      </p>
+      <p>
+        <strong>双向RNN</strong>
+        运行一个RNN向前、另一个向后，拼接隐藏状态。每个token的表示看到左右上下文。标注任务必需。
+      </p>
+      <h2 id="构建它"><a href="#构建它">构建它</a></h2>
+      <h3 id="步骤-1pytorch中的textcnn">
+        <a href="#步骤-1pytorch中的textcnn">步骤 1：PyTorch中的TextCNN</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.nn </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.nn.functional </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">as</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> F</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> TextCNN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">nn</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Module</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, vocab_size, embed_dim, n_classes, filter_widths</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">), n_filters</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">64</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, dropout</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        super</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">__init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.embed </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Embedding(vocab_size, embed_dim, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">padding_idx</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.convs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.ModuleList([</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            nn.Conv1d(embed_dim, n_filters, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">kernel_size</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">k)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">            for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> k </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> filter_widths</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        ])</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.dropout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Dropout(dropout)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.fc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(n_filters </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(filter_widths), n_classes)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> forward</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, token_ids):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.embed(token_ids).transpose(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pooled </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> []</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> conv </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.convs:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> F.relu(conv(x))</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> F.max_pool1d(c, c.size(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)).squeeze(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            pooled.append(p)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        h </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.cat(pooled, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.fc(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.dropout(h))</span></span></code></pre>
+      <p>
+        <code>transpose(1, 2)</code> 将 <code>[batch, seq_len, embed_dim]</code> 重塑为
+        <code>[batch, embed_dim, seq_len]</code>，因为
+        <code>nn.Conv1d</code> 将中间轴视为通道。池化输出是固定大小，无论输入长度。
+      </p>
+      <h3 id="步骤-2lstm分类器"><a href="#步骤-2lstm分类器">步骤 2：LSTM分类器</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> LSTMClassifier</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">nn</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Module</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, vocab_size, embed_dim, hidden_dim, n_classes, bidirectional</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, dropout</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        super</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">__init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.embed </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Embedding(vocab_size, embed_dim, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">padding_idx</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.lstm </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.LSTM(embed_dim, hidden_dim, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">batch_first</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">True</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">bidirectional</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">bidirectional)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        factor </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 2</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> if</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> bidirectional </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">else</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.dropout </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Dropout(dropout)</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.fc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(hidden_dim </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> factor, n_classes)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> forward</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, token_ids):</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.embed(token_ids)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        out, _ </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.lstm(x)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pooled </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> out.max(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">).values</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.fc(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.dropout(pooled))</span></span></code></pre>
+      <p>
+        在序列上最大池化，不是最后状态池化。对于分类，最大池化通常优于取最后隐藏状态，因为长序列末尾的信息往往主导最后状态。
+      </p>
+      <h3 id="步骤-3梯度消失演示直觉">
+        <a href="#步骤-3梯度消失演示直觉">步骤 3：梯度消失演示（直觉）</a>
+      </h3>
+      <p>
+        没有门控的朴素RNN不能学习长程依赖。考虑一个玩具任务：预测token
+        <code>A</code> 是否出现在序列中任何位置。如果
+        <code>A</code>
+        在位置1而序列长100个token，损失梯度必须流回99个循环权重的乘法。如果权重小于1，梯度消失。如果大于1，梯度爆炸。
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> vanishing_gradient_sim</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(seq_len, recurrent_weight</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">0.9</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    return</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> math.pow(recurrent_weight, seq_len)</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 权重=0.9，100步后：</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">#   0.9 ^ 100 ≈ 2.7e-5</span></span>
+<span class="line"><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"># 从步骤100到步骤1的梯度实际上为零。</span></span></code></pre>
+      <p>
+        LSTM通过<strong>细胞状态</strong>修复了这个问题，细胞状态仅通过加性交互流过网络（遗忘门乘法缩放它，但梯度仍然沿”高速公路”流动）。GRU用更少参数做了类似的事。两者都给你100+步序列的稳定训练。
+      </p>
+      <h3 id="步骤-4为什么这仍然不够">
+        <a href="#步骤-4为什么这仍然不够">步骤 4：为什么这仍然不够</a>
+      </h3>
+      <p>即使有LSTM，三个问题持续存在。</p>
+      <ol>
+        <li>
+          <strong>顺序瓶颈。</strong>
+          在长度1000的序列上训练RNN需要1000个串行前向/反向步骤。不能跨时间并行。
+        </li>
+        <li>
+          <strong>编码器-解码器设置中的固定大小上下文向量。</strong>
+          解码器只看到编码器的最终隐藏状态，压缩了整个输入。长输入丢失细节。课程09直接覆盖这个。
+        </li>
+        <li>
+          <strong>远距离依赖准确率天花板。</strong> LSTM优于朴素RNN但仍然难以跨200+步传播特定信息。
+        </li>
+      </ol>
+      <p>注意力解决了所有三个。Transformer完全放弃了循环。课程10是转折点。</p>
+      <h2 id="使用它"><a href="#使用它">使用它</a></h2>
+      <p>
+        PyTorch的 <code>nn.LSTM</code>、<code>nn.GRU</code> 和
+        <code>nn.Conv1d</code> 是生产就绪的。训练代码是标准的。
+      </p>
+      <p>Hugging Face提供可插入输入层的预训练嵌入：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="python"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> transformers </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">import</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoModel</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">encoder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> AutoModel.from_pretrained(</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">"bert-base-uncased"</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> param </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> encoder.parameters():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    param.requires_grad </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> False</span></span>
+<span class="line"></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">class</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> BertCNN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">nn</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0">Module</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> __init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, n_classes, filter_widths</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">3</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">4</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">), n_filters</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">64</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">):</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        super</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">().</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">__init__</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">()</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.encoder </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> encoder</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.convs </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.ModuleList([nn.Conv1d(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">768</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, n_filters, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">kernel_size</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">k) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> k </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> filter_widths])</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">        self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.fc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> nn.Linear(n_filters </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">*</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> len</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(filter_widths), n_classes)</span></span>
+<span class="line"></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">    def</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> forward</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(self, input_ids, attention_mask):</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        with</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> torch.no_grad():</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">            out </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.encoder(</span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">input_ids</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">input_ids, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">attention_mask</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">attention_mask).last_hidden_state</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        x </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> out.transpose(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        pooled </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> [F.max_pool1d(F.relu(conv(x)), </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">kernel_size</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">conv(x).size(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">)).squeeze(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">for</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> conv </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">in</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.convs]</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">        return</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> self</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.fc(torch.cat(pooled, </span><span style="--shiki-light:#E36209;--shiki-dark:#FFAB70">dim</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">=</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">))</span></span></code></pre>
+      <p>适合约束时使用的检查清单：</p>
+      <ul>
+        <li>
+          <strong>边缘/设备端推理。</strong>
+          带GloVe嵌入的TextCNN比Transformer小10-100倍。如果部署目标是手机，这是你的技术栈。
+        </li>
+        <li>
+          <strong>流式/在线分类。</strong>
+          RNN一次处理一个token；Transformer需要完整序列。对于实时传入文本，LSTM仍然赢。
+        </li>
+        <li><strong>基线微型模型。</strong> 新任务上快速迭代。CPU上5分钟训练TextCNN。</li>
+        <li>
+          <strong
+            >有限数据的<span
+              class="term-tip"
+              data-term="序列"
+              data-module="github"
+              data-def="序列"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">序列</abbr></span
+            >标注。</strong
+          >
+          BiLSTM-CRF（课程06）<span
+            class="term-tip"
+            data-term="对"
+            data-module="github"
+            data-def="对"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">对</abbr></span
+          >于1k-10k标注<span
+            class="term-tip"
+            data-term="句子"
+            data-module="github"
+            data-def="句子"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">句子</abbr></span
+          >仍然是<span
+            class="term-tip"
+            data-term="生产"
+            data-module="github"
+            data-def="生产"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">生产</abbr></span
+          >级NER架构。
+        </li>
+      </ul>
+      <p>
+        <span
+          class="term-tip"
+          data-term="其他"
+          data-module="github"
+          data-def="其他"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">其他</abbr></span
+        >一切用Transformer。
+      </p>
+      <h2 id="交付它"><a href="#交付它">交付它</a></h2>
+      <p>
+        将<span
+          class="term-tip"
+          data-term="结果"
+          data-module="c"
+          data-def="函数返回的值"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">结果</abbr></span
+        >保存为 <code>outputs/prompt-text-encoder-picker.md</code>。
+      </p>
+      <h2 id="练习"><a href="#练习">练习</a></h2>
+      <ol>
+        <li>
+          <strong
+            ><span
+              class="term-tip"
+              data-term="简单"
+              data-module="github"
+              data-def="简单"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">简单</abbr></span
+            >。</strong
+          >
+          在3类玩具数据集（你发明数据）上训练TextCNN。<span
+            class="term-tip"
+            data-term="验证"
+            data-module="cpp"
+            data-def="验证"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">验证</abbr></span
+          >滤波器<span
+            class="term-tip"
+            data-term="宽度"
+            data-module="c"
+            data-def="类型的位数"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">宽度</abbr></span
+          >(2, 3, 4)平均F1优于<span
+            class="term-tip"
+            data-term="单一"
+            data-module="cpp"
+            data-def="单一的"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">单一</abbr></span
+          >宽<span
+            class="term-tip"
+            data-term="度"
+            data-module="algorithm"
+            data-def="与顶点关联的边数，有向图分为入度和出度"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">度</abbr></span
+          >(3)。
+        </li>
+        <li>
+          <strong>中等。</strong> 为LSTM分<span
+            class="term-tip"
+            data-term="类"
+            data-module="cpp"
+            data-def="定义对象的结构和行为"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">类</abbr></span
+          >器<span
+            class="term-tip"
+            data-term="实现"
+            data-module="github"
+            data-def="实现"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">实现</abbr></span
+          >最大<span
+            class="term-tip"
+            data-term="池化"
+            data-module="python"
+            data-def="复用有限资源的技术，如连接池、线程池"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">池化</abbr></span
+          >、均<span
+            class="term-tip"
+            data-term="值"
+            data-module="cpp"
+            data-def="值"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">值</abbr></span
+          >池化和最后<span
+            class="term-tip"
+            data-term="状态"
+            data-module="cpp"
+            data-def="状态"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">状态</abbr></span
+          >池化。在小型数据集上<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >；<span
+            class="term-tip"
+            data-term="记录"
+            data-module="github"
+            data-def="记录"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">记录</abbr></span
+          >哪个<span
+            class="term-tip"
+            data-term="池化"
+            data-module="python"
+            data-def="复用有限资源的技术，如连接池、线程池"
+            data-slug="python/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">池化</abbr></span
+          >赢并假设原因。
+        </li>
+        <li>
+          <strong>困难。</strong> 构建BiLSTM-CRF
+          NER标注器（结合课程06和本课程）。在CoNLL-2003上<span
+            class="term-tip"
+            data-term="训练"
+            data-module="github"
+            data-def="培训"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">训练</abbr></span
+          >。与课程06的纯CRF基线和BERT微调<span
+            class="term-tip"
+            data-term="比较"
+            data-module="github"
+            data-def="比较两个分支或提交"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">比较</abbr></span
+          >。<span
+            class="term-tip"
+            data-term="报告"
+            data-module="github"
+            data-def="报告"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">报告</abbr></span
+          >训练<span
+            class="term-tip"
+            data-term="时间"
+            data-module="cpp"
+            data-def="时间"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">时间</abbr></span
+          >、内存和F1。
+        </li>
+      </ol>
+      <h2 id="关键术语"><a href="#关键术语">关键术语</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>术语</th>
+            <th>通俗说法</th>
+            <th>实际含义</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>TextCNN</td>
+            <td>文本CNN</td>
+            <td>
+              词<span
+                class="term-tip"
+                data-term="嵌入"
+                data-module="agent"
+                data-def="将高维离散数据映射为低维稠密向量的技术，使语义相近的数据在向量空间中距离更近"
+                data-slug="agent/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">嵌入</abbr></span
+              >上带全局最大<span
+                class="term-tip"
+                data-term="池化"
+                data-module="python"
+                data-def="复用有限资源的技术，如连接池、线程池"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">池化</abbr></span
+              >的1D卷积<span
+                class="term-tip"
+                data-term="堆叠"
+                data-module="html5"
+                data-def="z-index 层叠顺序"
+                data-slug="html5/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">堆叠</abbr></span
+              >。Kim (2014)。
+            </td>
+          </tr>
+          <tr>
+            <td>RNN</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="循环"
+                data-module="c"
+                data-def="重复执行的代码"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">循环</abbr></span
+              >网络
+            </td>
+            <td>
+              每个<span
+                class="term-tip"
+                data-term="时间"
+                data-module="cpp"
+                data-def="时间"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">时间</abbr></span
+              >步<span
+                class="term-tip"
+                data-term="更新"
+                data-module="c"
+                data-def="修改变量值"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">更新</abbr></span
+              >隐藏<span
+                class="term-tip"
+                data-term="状态"
+                data-module="cpp"
+                data-def="状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">状态</abbr></span
+              >：<code>h_t = f(W x_t + U h_{t-1})</code>。
+            </td>
+          </tr>
+          <tr>
+            <td>LSTM</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="门"
+                data-module="cs-fundamentals"
+                data-def="实现布尔运算的基本数字电路元件，包括与门、或门、非门等"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">门</abbr></span
+              >控RNN
+            </td>
+            <td>
+              添加<span
+                class="term-tip"
+                data-term="输入"
+                data-module="c"
+                data-def="从外部获取数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输入</abbr></span
+              >/遗忘/<span
+                class="term-tip"
+                data-term="输出"
+                data-module="c"
+                data-def="向外部发送数据"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">输出</abbr></span
+              >门+细胞<span
+                class="term-tip"
+                data-term="状态"
+                data-module="cpp"
+                data-def="状态"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">状态</abbr></span
+              >。长<span
+                class="term-tip"
+                data-term="序列"
+                data-module="github"
+                data-def="序列"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">序列</abbr></span
+              >稳定<span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>GRU</td>
+            <td>
+              更<span
+                class="term-tip"
+                data-term="简单"
+                data-module="github"
+                data-def="简单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">简单</abbr></span
+              >的LSTM
+            </td>
+            <td>
+              两个<span
+                class="term-tip"
+                data-term="门"
+                data-module="cs-fundamentals"
+                data-def="实现布尔运算的基本数字电路元件，包括与门、或门、非门等"
+                data-slug="cs-fundamentals/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">门</abbr></span
+              >而非三个。<span
+                class="term-tip"
+                data-term="类似"
+                data-module="cpp"
+                data-def="相似的"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">类似</abbr></span
+              >准确<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >，更少<span
+                class="term-tip"
+                data-term="参数"
+                data-module="c"
+                data-def="函数定义时的变量"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">参数</abbr></span
+              >。
+            </td>
+          </tr>
+          <tr>
+            <td>双向</td>
+            <td>两个方向</td>
+            <td>
+              前向+后向RNN拼接。每个<span
+                class="term-tip"
+                data-term="token"
+                data-module="python"
+                data-def="词法分析的最小语法单元"
+                data-slug="python/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">token</abbr></span
+              >看到<span
+                class="term-tip"
+                data-term="上下文"
+                data-module="cpp"
+                data-def="使用环境"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">上下文</abbr></span
+              >两侧。
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="梯度"
+                data-module="calculus"
+                data-def="多元函数各偏导数构成的向量 ∇f，指向函数值增长最快的方向"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">梯度</abbr></span
+              >消失
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="训练"
+                data-module="github"
+                data-def="培训"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">训练</abbr></span
+              >信号死亡
+            </td>
+            <td>
+              朴素RNN中<span
+                class="term-tip"
+                data-term="重复"
+                data-module="github"
+                data-def="重复"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">重复</abbr></span
+              >乘以&#x3C;1权重使<span
+                class="term-tip"
+                data-term="早期"
+                data-module="github"
+                data-def="早期的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">早期</abbr></span
+              >步骤<span
+                class="term-tip"
+                data-term="梯度"
+                data-module="calculus"
+                data-def="多元函数各偏导数构成的向量 ∇f，指向函数值增长最快的方向"
+                data-slug="calculus/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">梯度</abbr></span
+              >实际为零。
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="延伸阅读"><a href="#延伸阅读">延伸阅读</a></h2>
+      <ul>
+        <li>
+          <a href="https://arxiv.org/abs/1408.5882"
+            >Kim, Y. (2014). Convolutional Neural Networks for Sentence Classification</a
+          >
+          — TextCNN论文。八页。可读。
+        </li>
+        <li>
+          <a href="https://www.bioinf.jku.at/publications/older/2604.pdf"
+            >Hochreiter, S. and Schmidhuber, J. (1997). Long Short-Term Memory</a
+          >
+          — LSTM论文。出奇地清晰。
+        </li>
+        <li>
+          <a href="https://colah.github.io/posts/2015-08-Understanding-LSTMs/"
+            >Olah, C. (2015). Understanding LSTM Networks</a
+          >
+          — 让LSTM对所有<span
+            class="term-tip"
+            data-term="人"
+            data-module="github"
+            data-def="人"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">人</abbr></span
+          >可理解的<span
+            class="term-tip"
+            data-term="图"
+            data-module="algorithm"
+            data-def="由顶点集V和边集E组成的数据结构，分为有向图、无向图、加权图等"
+            data-slug="algorithm/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">图</abbr></span
+          >解。
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

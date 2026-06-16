@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kubernetes存储</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">Kubernetes存储</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            3 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+          <span class="doc-meta-item doc-updated">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <rect x="3" y="4" width="18" height="18" rx="2"></rect>
+              <line x1="16" y1="2" x2="16" y2="6"></line>
+              <line x1="8" y1="2" x2="8" y2="6"></line>
+              <line x1="3" y1="10" x2="21" y2="10"></line>
+            </svg>
+            2026/6/14
+          </span>
+        </div>
+        <!-- 标签列表 -->
+        <!-- 文档描述 -->
+        <p class="doc-description">Kubernetes存储：PV、PVC、StorageClass、CSI 与数据持久化详解。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-存储概述"><a href="#1-存储概述">1. 存储概述</a></h2>
+      <h3 id="11-存储分层"><a href="#11-存储分层">1.1 存储分层</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>┌──────────────────────────┐</span></span>
+<span class="line"><span>│     应用 (Pod)            │</span></span>
+<span class="line"><span>├──────────────────────────┤</span></span>
+<span class="line"><span>│     PVC (声明)            │</span></span>
+<span class="line"><span>├──────────────────────────┤</span></span>
+<span class="line"><span>│     PV (卷)               │</span></span>
+<span class="line"><span>├──────────────────────────┤</span></span>
+<span class="line"><span>│     StorageClass (类)     │</span></span>
+<span class="line"><span>├──────────────────────────┤</span></span>
+<span class="line"><span>│     CSI (驱动)            │</span></span>
+<span class="line"><span>├──────────────────────────┤</span></span>
+<span class="line"><span>│     后端存储              │</span></span>
+<span class="line"><span>└──────────────────────────┘</span></span></code></pre>
+      <h3 id="12-存储类型"><a href="#12-存储类型">1.2 存储类型</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>类型</th>
+            <th>描述</th>
+            <th>生命周期</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>emptyDir</td>
+            <td>临时目录</td>
+            <td>随 Pod</td>
+          </tr>
+          <tr>
+            <td>hostPath</td>
+            <td>节点路径</td>
+            <td>独立</td>
+          </tr>
+          <tr>
+            <td>PV/PVC</td>
+            <td>持久卷</td>
+            <td>独立</td>
+          </tr>
+          <tr>
+            <td>ConfigMap</td>
+            <td>配置</td>
+            <td>独立</td>
+          </tr>
+          <tr>
+            <td>Secret</td>
+            <td>敏感数据</td>
+            <td>独立</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="2-pv-与-pvc"><a href="#2-pv-与-pvc">2. PV 与 PVC</a></h2>
+      <h3 id="21-persistentvolume-pv">
+        <a href="#21-persistentvolume-pv">2.1 PersistentVolume (PV)</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="yaml"
+      ><code><span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">apiVersion</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">v1</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">kind</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">PersistentVolume</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">metadata</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">pv-nfs</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">spec</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  capacity</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">    storage</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">50Gi</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  accessModes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">ReadWriteMany</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  persistentVolumeReclaimPolicy</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Retain</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  storageClassName</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">nfs</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  nfs</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">    server</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">10.0.0.100</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">    path</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">/data/share</span></span></code></pre>
+      <h3 id="22-persistentvolumeclaim-pvc">
+        <a href="#22-persistentvolumeclaim-pvc">2.2 PersistentVolumeClaim (PVC)</a>
+      </h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="yaml"
+      ><code><span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">apiVersion</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">v1</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">kind</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">PersistentVolumeClaim</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">metadata</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">app-data</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">spec</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  accessModes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">ReadWriteOnce</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  resources</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">    requests</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      storage</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">10Gi</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  storageClassName</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">fast-ssd</span></span></code></pre>
+      <h3 id="23-访问模式"><a href="#23-访问模式">2.3 访问模式</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>模式</th>
+            <th>缩写</th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="描述"
+                data-module="github"
+                data-def="描述"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">描述</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>ReadWriteOnce</td>
+            <td>RWO</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >节<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >读写
+            </td>
+          </tr>
+          <tr>
+            <td>ReadOnlyMany</td>
+            <td>ROX</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >节<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >只读
+            </td>
+          </tr>
+          <tr>
+            <td>ReadWriteMany</td>
+            <td>RWX</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="多"
+                data-module="github"
+                data-def="多个的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">多</abbr></span
+              >节<span
+                class="term-tip"
+                data-term="点"
+                data-module="github"
+                data-def="点"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">点</abbr></span
+              >读写
+            </td>
+          </tr>
+          <tr>
+            <td>ReadWriteOncePod</td>
+            <td>RWOP</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="单"
+                data-module="github"
+                data-def="单"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">单</abbr></span
+              >
+              Pod 读写（1.27+）
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="24-回收策略"><a href="#24-回收策略">2.4 回收策略</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="描述"
+                data-module="github"
+                data-def="描述"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">描述</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Retain</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="保留"
+                data-module="github"
+                data-def="保留"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">保留</abbr></span
+              >数据，需手动<span
+                class="term-tip"
+                data-term="清理"
+                data-module="vue3"
+                data-def="释放资源和移除监听"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">清理</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Delete</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="删除"
+                data-module="github"
+                data-def="删除"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">删除</abbr></span
+              >
+              PV 和后端<span
+                class="term-tip"
+                data-term="存储"
+                data-module="cpp"
+                data-def="存储"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存储</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>Recycle</td>
+            <td>已废弃</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="25-绑定流程"><a href="#25-绑定流程">2.5 绑定流程</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>PVC 创建 → 控制器匹配 PV → 绑定 → Pod 使用 PVC</span></span></code></pre>
+      <h2 id="3-storageclass"><a href="#3-storageclass">3. StorageClass</a></h2>
+      <h3 id="31-概念"><a href="#31-概念">3.1 概念</a></h3>
+      <p>
+        StorageClass
+        <span
+          class="term-tip"
+          data-term="定义"
+          data-module="c"
+          data-def="创建变量或函数的实体"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">定义</abbr></span
+        >存储”<span
+          class="term-tip"
+          data-term="类"
+          data-module="cpp"
+          data-def="定义对象的结构和行为"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">类</abbr></span
+        >”，<span
+          class="term-tip"
+          data-term="支持"
+          data-module="cpp"
+          data-def="支持"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">支持</abbr></span
+        >动态供给。
+      </p>
+      <h3 id="32-配置示例"><a href="#32-配置示例">3.2 配置示例</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="yaml"
+      ><code><span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">apiVersion</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">storage.k8s.io/v1</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">kind</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">StorageClass</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">metadata</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">fast-ssd</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">provisioner</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">ebs.csi.aws.com</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">parameters</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  type</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">gp3</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  iopsPerGB</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'50'</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  throughput</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'250'</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">reclaimPolicy</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Delete</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">volumeBindingMode</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">WaitForFirstConsumer</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">allowVolumeExpansion</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">true</span></span></code></pre>
+      <h3 id="33-动态供给流程"><a href="#33-动态供给流程">3.3 动态供给流程</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>PVC 创建（指定 StorageClass）→</span></span>
+<span class="line"><span>  Provisioner 检测 →</span></span>
+<span class="line"><span>    自动创建 PV →</span></span>
+<span class="line"><span>      PVC 绑定 PV →</span></span>
+<span class="line"><span>        Pod 使用</span></span></code></pre>
+      <h3 id="34-卷绑定模式"><a href="#34-卷绑定模式">3.4 卷绑定模式</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="模式"
+                data-module="github"
+                data-def="模式"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">模式</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="描述"
+                data-module="github"
+                data-def="描述"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">描述</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Immediate</td>
+            <td>
+              立即<span
+                class="term-tip"
+                data-term="绑定"
+                data-module="c"
+                data-def="将标识符关联到实体"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">绑定</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>WaitForFirstConsumer</td>
+            <td>
+              等 Pod
+              <span
+                class="term-tip"
+                data-term="调度"
+                data-module="c"
+                data-def="分配 CPU 时间给线程"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">调度</abbr></span
+              >后<span
+                class="term-tip"
+                data-term="绑定"
+                data-module="c"
+                data-def="将标识符关联到实体"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">绑定</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="4-csi容器存储接口"><a href="#4-csi容器存储接口">4. CSI（容器存储接口）</a></h2>
+      <h3 id="41-概念"><a href="#41-概念">4.1 概念</a></h3>
+      <p>
+        CSI 是
+        <span
+          class="term-tip"
+          data-term="Kubernetes"
+          data-module="github"
+          data-def="容器编排平台"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Kubernetes</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="存储"
+          data-module="cpp"
+          data-def="存储"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">存储</abbr></span
+        >插件的<span
+          class="term-tip"
+          data-term="标准"
+          data-module="c"
+          data-def="语言规范文档"
+          data-slug="c/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">标准</abbr></span
+        >接口，使<span
+          class="term-tip"
+          data-term="存储"
+          data-module="cpp"
+          data-def="存储"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">存储</abbr></span
+        >供应商无需修改
+        <span
+          class="term-tip"
+          data-term="Kubernetes"
+          data-module="github"
+          data-def="容器编排平台"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">Kubernetes</abbr></span
+        >
+        代码。
+      </p>
+      <h3 id="42-csi-架构"><a href="#42-csi-架构">4.2 CSI 架构</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span>Kubernetes → CSI Sidecar → CSI Driver → 存储后端</span></span></code></pre>
+      <h3 id="43-常见-csi-驱动"><a href="#43-常见-csi-驱动">4.3 常见 CSI 驱动</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>驱动</th>
+            <th>
+              后端<span
+                class="term-tip"
+                data-term="存储"
+                data-module="cpp"
+                data-def="存储"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存储</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>ebs.csi.aws.com</td>
+            <td>AWS EBS</td>
+          </tr>
+          <tr>
+            <td>disk.csi.azure.com</td>
+            <td>Azure Disk</td>
+          </tr>
+          <tr>
+            <td>pd.csi.storage.gke.io</td>
+            <td>GCP Persistent Disk</td>
+          </tr>
+          <tr>
+            <td>disk.csi.alibabacloud.com</td>
+            <td>阿里云云盘</td>
+          </tr>
+          <tr>
+            <td>csi-hostpath</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="本地存储"
+                data-module="javascript"
+                data-def="浏览器中持久存储数据的机制"
+                data-slug="javascript/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">本地存储</abbr></span
+              >（<span
+                class="term-tip"
+                data-term="测试"
+                data-module="cpp"
+                data-def="测试"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">测试</abbr></span
+              >）
+            </td>
+          </tr>
+          <tr>
+            <td>ceph-csi</td>
+            <td>Ceph RBD/CephFS</td>
+          </tr>
+          <tr>
+            <td>nfs.csi.k8s.io</td>
+            <td>NFS</td>
+          </tr>
+        </tbody>
+      </table>
+      <h2 id="5-临时存储"><a href="#5-临时存储">5. 临时存储</a></h2>
+      <h3 id="51-emptydir"><a href="#51-emptydir">5.1 emptyDir</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="yaml"
+      ><code><span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">apiVersion</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">v1</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">kind</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Pod</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">metadata</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">cache-pod</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">spec</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  containers</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">app</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      image</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">nginx</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      volumeMounts</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">        - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">cache</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">          mountPath</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">/cache</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">  volumes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">    - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">cache</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      emptyDir</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">        medium</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">Memory</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> # 可选：使用内存</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">        sizeLimit</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">256Mi</span></span></code></pre>
+      <h3 id="52-hostpath"><a href="#52-hostpath">5.2 hostPath</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="yaml"
+      ><code><span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">volumes</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">  - </span><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">data</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">    hostPath</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">:</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      path</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">/data/app</span></span>
+<span class="line"><span style="--shiki-light:#22863A;--shiki-dark:#85E89D">      type</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">: </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">DirectoryOrCreate</span></span></code></pre>
+      <blockquote>
+        <p>
+          <span
+            class="term-tip"
+            data-term="注意"
+            data-module="github"
+            data-def="注意"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">注意</abbr></span
+          >：hostPath 不<span
+            class="term-tip"
+            data-term="推荐"
+            data-module="github"
+            data-def="推荐"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">推荐</abbr></span
+          >生产使用，<span
+            class="term-tip"
+            data-term="存在"
+            data-module="github"
+            data-def="存在"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">存在</abbr></span
+          >安全和<span
+            class="term-tip"
+            data-term="调度"
+            data-module="c"
+            data-def="分配 CPU 时间给线程"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">调度</abbr></span
+          >问题。
+        </p>
+      </blockquote>
+      <h2 id="6-存储最佳实践"><a href="#6-存储最佳实践">6. 存储最佳实践</a></h2>
+
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <span
+                class="term-tip"
+                data-term="实践"
+                data-module="github"
+                data-def="实践"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">实践</abbr></span
+              >
+            </th>
+            <th>
+              <span
+                class="term-tip"
+                data-term="描述"
+                data-module="github"
+                data-def="描述"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">描述</abbr></span
+              >
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              使用 PVC 而非<span
+                class="term-tip"
+                data-term="直接"
+                data-module="github"
+                data-def="直接的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">直接</abbr></span
+              >
+              PV
+            </td>
+            <td>
+              解耦<span
+                class="term-tip"
+                data-term="应用"
+                data-module="github"
+                data-def="GitHub 应用程序"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">应用</abbr></span
+              >与<span
+                class="term-tip"
+                data-term="存储"
+                data-module="cpp"
+                data-def="存储"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">存储</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>使用 StorageClass</td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="动态"
+                data-module="github"
+                data-def="动态的"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">动态</abbr></span
+              >供给
+            </td>
+          </tr>
+          <tr>
+            <td>WaitForFirstConsumer</td>
+            <td>
+              避免跨区<span
+                class="term-tip"
+                data-term="绑定"
+                data-module="c"
+                data-def="将标识符关联到实体"
+                data-slug="c/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">绑定</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>数据备份</td>
+            <td>
+              定期<span
+                class="term-tip"
+                data-term="快照"
+                data-module="github"
+                data-def="快照"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">快照</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="加密"
+                data-module="github"
+                data-def="加密"
+                data-slug="github/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">加密</abbr></span
+              >存储
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="启用"
+                data-module="cpp"
+                data-def="启用功能"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">启用</abbr></span
+              >加密
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="监控"
+                data-module="devops"
+                data-def="持续采集和展示系统指标（CPU、内存、延迟等）的过程，用于了解系统运行状态"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">监控</abbr></span
+              >
+            </td>
+            <td>
+              <span
+                class="term-tip"
+                data-term="监控"
+                data-module="devops"
+                data-def="持续采集和展示系统指标（CPU、内存、延迟等）的过程，用于了解系统运行状态"
+                data-slug="devops/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">监控</abbr></span
+              >存储使用<span
+                class="term-tip"
+                data-term="率"
+                data-module="cpp"
+                data-def="速率"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">率</abbr></span
+              >
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <span
+                class="term-tip"
+                data-term="清理"
+                data-module="vue3"
+                data-def="释放资源和移除监听"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">清理</abbr></span
+              >策略
+            </td>
+            <td>
+              合理<span
+                class="term-tip"
+                data-term="设置"
+                data-module="cpp"
+                data-def="设置"
+                data-slug="cpp/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">设置</abbr></span
+              >回收<span
+                class="term-tip"
+                data-term="策略"
+                data-module="vue3"
+                data-def="解决问题的策略"
+                data-slug="vue3/glossary"
+                tabindex="0"
+                ><abbr class="term-abbr">策略</abbr></span
+              >
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </article>
+  </body>
+</html>

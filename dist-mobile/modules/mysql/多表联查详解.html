@@ -1,0 +1,1440 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>多表联查详解</title>
+    <link rel="stylesheet" href="../css/article.css" />
+    <link rel="stylesheet" href="../css/theme-light.css" data-theme-stylesheet />
+  </head>
+  <body>
+    <article class="prose">
+      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
+      <div class="doc-title-row"><h1 class="doc-title">多表联查详解</h1></div>
+      <!-- 文档元信息：阅读时间、难度、更新日期 -->
+      <header class="doc-header">
+        <div class="doc-meta">
+          <span class="doc-meta-item doc-reading-time">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            6 min
+          </span>
+          <span class="doc-meta-item doc-difficulty diff-intermediate"> Intermediate </span>
+        </div>
+        <!-- 标签列表 -->
+        <div class="doc-tags">
+          <span class="doc-tag">mysql</span><span class="doc-tag">database</span>
+        </div>
+        <!-- 文档描述 -->
+        <p class="doc-description">内连接、外连接、交叉连接与自连接。</p>
+      </header>
+      <!-- 文档正文内容 -->
+      <h2 id="1-联查基础概念"><a href="#1-联查基础概念">1. 联查基础概念</a></h2>
+      <h3 id="11-什么是多表联查"><a href="#11-什么是多表联查">1.1 什么是多表联查</a></h3>
+      <p>多表联查是指通过一定的条件将两个或多个表的数据关联在一起，从而获取更丰富的信息。</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 列列表</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 表1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 表2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 连接条件</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 表3 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 连接条件</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 过滤条件;</span></span></code></pre>
+      <h3 id="12-联查的必要性"><a href="#12-联查的必要性">1.2 联查的必要性</a></h3>
+
+      <table>
+        <thead>
+          <tr>
+            <th>场景</th>
+            <th>单表查询</th>
+            <th>多表联查</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>获取单一实体信息</td>
+            <td>[x] 适用</td>
+            <td>[ ] 冗余</td>
+          </tr>
+          <tr>
+            <td>获取关联实体信息</td>
+            <td>[ ] 无法完成</td>
+            <td>[x] 适用</td>
+          </tr>
+          <tr>
+            <td>数据完整性</td>
+            <td>有限</td>
+            <td>完整</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3 id="13-关系数据库中的表关系">
+        <a href="#13-关系数据库中的表关系">1.3 关系数据库中的表关系</a>
+      </h3>
+      <ul>
+        <li><strong>一对一关系</strong>：如用户表和用户详情表</li>
+        <li><strong>一对多关系</strong>：如部门表和员工表</li>
+        <li><strong>多对多关系</strong>：如学生表和课程表（需中间表）</li>
+      </ul>
+      <hr />
+      <h2 id="2-联查类型详解"><a href="#2-联查类型详解">2. 联查类型详解</a></h2>
+      <h3 id="21-inner-join内连接"><a href="#21-inner-join内连接">2.1 INNER JOIN（内连接）</a></h3>
+      <p>
+        <strong>定义</strong>：只返回两个表中匹配连接条件的行。
+        <strong>Venn 图表示</strong>：两个集合的交集
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span> 表A 表B INNER JOIN</span></span>
+<span class="line"><span> ┌</span></span>
+<span class="line"><span> │ 1 │ │ A │ │ 1, A │</span></span>
+<span class="line"><span> │ 2 │────│ B │ │ 2, B │</span></span>
+<span class="line"><span> │ 3 │────│ C │ │ 3, C │</span></span>
+<span class="line"><span> │ 4 │ │ │ └───────┘</span></span>
+<span class="line"><span> └───────┘ └───────┘</span></span></code></pre>
+      <p><strong>语法</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> inNER JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <p><strong>示例</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> inNER JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="22-left-join左外连接">
+        <a href="#22-left-join左外连接">2.2 LEFT JOIN（左外连接）</a>
+      </h3>
+      <p>
+        <strong>定义</strong>：返回左表的所有行，以及右表中匹配的行；右表不匹配的部分用 NULL 填充。
+        <strong>Venn 图表示</strong>：左集合全部 + 交集部分
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span> 表A 表B LEFT JOIN</span></span>
+<span class="line"><span> ┌</span></span>
+<span class="line"><span> │ 1 │────│ A │ │ 1 │ A │</span></span>
+<span class="line"><span> │ 2 │────│ B │ │ 2 │ B │</span></span>
+<span class="line"><span> │ 3 │────│ C │ │ 3 │ C │</span></span>
+<span class="line"><span> │ 4 │ │ │ │ 4 │NULL │</span></span>
+<span class="line"><span> └───────┘ └───────┘ └───────┴─────┘</span></span></code></pre>
+      <p><strong>语法</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEFT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <p><strong>示例</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEFT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="23-right-join右外连接">
+        <a href="#23-right-join右外连接">2.3 RIGHT JOIN（右外连接）</a>
+      </h3>
+      <p>
+        <strong>定义</strong>：返回右表的所有行，以及左表中匹配的行；左表不匹配的部分用 NULL 填充。
+        <strong>Venn 图表示</strong>：右集合全部 + 交集部分
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span> 表A 表B RIGHT JOIN</span></span>
+<span class="line"><span> ┌</span></span>
+<span class="line"><span> │ 1 │────│ A │ │ 1 │ A │</span></span>
+<span class="line"><span> │ 2 │────│ B │ │ 2 │ B │</span></span>
+<span class="line"><span> │ │ │ C │ │NULL │ C │</span></span>
+<span class="line"><span> │ │ │ D │ │NULL │ D │</span></span>
+<span class="line"><span> └───────┘ └───────┘ └─────┴───────┘</span></span></code></pre>
+      <p><strong>语法</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> RIGHT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <p><strong>示例</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">u</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">username</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users u</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> RIGHT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders o </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> u</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">user_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="24-full-join全外连接">
+        <a href="#24-full-join全外连接">2.4 FULL JOIN（全外连接）</a>
+      </h3>
+      <p>
+        <strong>定义</strong>：返回两个表的所有行，不匹配的部分用 NULL 填充。
+        <strong>注意</strong>：MySQL 不直接支持 FULL JOIN，需要通过 <code>UNION</code> 模拟。
+        <strong>Venn 图表示</strong>：两个集合的并集
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="plaintext"
+      ><code><span class="line"><span> 表A 表B FULL JOIN</span></span>
+<span class="line"><span> ┌</span></span>
+<span class="line"><span> │ 1 │────│ A │ │ 1 │ A │</span></span>
+<span class="line"><span> │ 2 │────│ B │ │ 2 │ B │</span></span>
+<span class="line"><span> │ 3 │ │ C │ │ 3 │NULL │</span></span>
+<span class="line"><span> │ │ │ D │ │NULL │ C │</span></span>
+<span class="line"><span> └───────┘ └───────┘ │NULL │ D │</span></span>
+<span class="line"><span>  └─────┴─────┘</span></span></code></pre>
+      <p><strong>语法</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEFT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UNION</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> RIGHT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table1</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> table2</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="25-cross-join交叉连接">
+        <a href="#25-cross-join交叉连接">2.5 CROSS JOIN（交叉连接）</a>
+      </h3>
+      <p>
+        <strong>定义</strong>：返回两个表的笛卡尔积，即左表的每一行与右表的每一行组合。
+        <strong>注意</strong>：结果行数 = 左表行数 × 右表行数，通常需要配合 WHERE 条件过滤。
+        <strong>语法</strong>：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CROSS JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table2;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table1, table2;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table1 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">CROSS JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> table2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> condition;</span></span></code></pre>
+      <p><strong>示例</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> CROSS JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e;</span></span></code></pre>
+      <h3 id="26-natural-join自然连接">
+        <a href="#26-natural-join自然连接">2.6 NATURAL JOIN（自然连接）</a>
+      </h3>
+      <p>
+        <strong>定义</strong>：自动根据相同列名进行连接，不需要指定连接条件。
+        <strong>注意</strong>：使用时要谨慎，确保列名相同且语义一致。 <strong>语法</strong>：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">NATURAL JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">NATURAL LEFT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">NATURAL RIGHT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments;</span></span></code></pre>
+      <h3 id="27-using-子句"><a href="#27-using-子句">2.7 USING 子句</a></h3>
+      <p>
+        <strong>定义</strong>：当两个表有相同列名时，可以使用 USING 简化连接语法。
+        <strong>语法</strong>：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">USING</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (dept_id);</span></span></code></pre>
+      <p><strong>等价于</strong>：</p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <hr />
+      <h2 id="3-联查执行原理"><a href="#3-联查执行原理">3. 联查执行原理</a></h2>
+      <h3 id="31-联查执行顺序"><a href="#31-联查执行顺序">3.1 联查执行顺序</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 列列表 </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 5. 选择列</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 表1 </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 1. 加载表1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 表2 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 条件 </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 2. 联查表2</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 表3 </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 条件 </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 3. 联查表3</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 过滤条件 </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 4. 过滤行</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GROUP BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 分组列 </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 6. 分组</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> HAVING</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 分组过滤 </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 7. 分组过滤</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ORDER BY</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 排序列 </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 8. 排序</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LIMIT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 限制行数; </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 9. 限制结果</span></span></code></pre>
+      <h3 id="32-联查算法"><a href="#32-联查算法">3.2 联查算法</a></h3>
+      <h4 id="321-nested-loop-join嵌套循环连接">
+        <a href="#321-nested-loop-join嵌套循环连接">3.2.1 Nested Loop Join（嵌套循环连接）</a>
+      </h4>
+      <p>
+        <strong>原理</strong>：外层循环遍历驱动表，内层循环遍历被驱动表。
+        <strong>适用场景</strong>：小表驱动大表
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EXPLAIN</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <p><strong>执行过程</strong>：</p>
+      <ol>
+        <li>遍历 employees 表（驱动表）</li>
+        <li>对于每个员工，查找对应的部门（被驱动表）</li>
+        <li>如果 departments.dept_id 有索引，效率很高</li>
+      </ol>
+      <h4 id="322-hash-join哈希连接">
+        <a href="#322-hash-join哈希连接">3.2.2 Hash Join（哈希连接）</a>
+      </h4>
+      <p>
+        <strong>原理</strong>：先将小表构建成哈希表，然后扫描大表进行哈希匹配。
+        <strong>适用场景</strong>：大表之间的连接，MySQL 8.0+ 支持
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> /*+ HASH_JOIN(d) */</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <p><strong>执行过程</strong>：</p>
+      <ol>
+        <li>将 departments 表构建成哈希表（key: dept_id, value: dept_name）</li>
+        <li>扫描 employees 表，对每个 dept_id 进行哈希查找</li>
+        <li>返回匹配的结果</li>
+      </ol>
+      <h4 id="323-merge-join合并连接">
+        <a href="#323-merge-join合并连接">3.2.3 Merge Join（合并连接）</a>
+      </h4>
+      <p>
+        <strong>原理</strong>：先对两个表按连接列排序，然后并行扫描合并。
+        <strong>适用场景</strong>：连接列已排序或有索引 <strong>执行过程</strong>：
+      </p>
+      <ol>
+        <li>对 employees 按 dept_id 排序</li>
+        <li>对 departments 按 dept_id 排序</li>
+        <li>并行扫描两个有序表，合并匹配行</li>
+      </ol>
+      <h3 id="33-驱动表选择"><a href="#33-驱动表选择">3.3 驱动表选择</a></h3>
+      <p><strong>规则</strong>：</p>
+      <ol>
+        <li>小表作为驱动表，减少外层循环次数</li>
+        <li>如果有 WHERE 条件过滤，优先选择过滤后结果集小的表</li>
+        <li>查看执行计划中的 <code>type</code> 和 <code>rows</code> 字段判断</li>
+      </ol>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EXPLAIN ANALYZE</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <hr />
+      <h2 id="4-联查实战场景"><a href="#4-联查实战场景">4. 联查实战场景</a></h2>
+      <h3 id="41-一对多关系联查"><a href="#41-一对多关系联查">4.1 一对多关系联查</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_date</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  oi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">product_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  oi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">quantity</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  oi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">price</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders o</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> order_items oi </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> oi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_date</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> >=</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2024-01-01'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="42-多对多关系联查"><a href="#42-多对多关系联查">4.2 多对多关系联查</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  s</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">student_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  c</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">course_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> students s</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> student_course sc </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> s</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">student_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">student_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> courses c </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> sc</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">course_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> c</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">course_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> c</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">course_name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '数学'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="43-自连接"><a href="#43-自连接">4.3 自连接</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 员工,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  m</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> 上级</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEFT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees m </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">manager_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> m</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> with</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> RECURSIVE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> emp_hierarchy </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> emp_id, emp_name, manager_id, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">1</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> level</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> manager_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">IS</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> NULL</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  UNION ALL</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">manager_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">eh</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">level</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> +</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> emp_hierarchy eh </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">manager_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> eh</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> )</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> emp_hierarchy </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ORDER BY</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> level</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, emp_id;</span></span></code></pre>
+      <h3 id="44-三表及以上联查"><a href="#44-三表及以上联查">4.4 三表及以上联查</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  u</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">username</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_date</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  p</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">product_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  oi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">quantity</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  oi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">price</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users u</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders o </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> u</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">user_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> order_items oi </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> oi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> products p </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> oi</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">product_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> p</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">product_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_date</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> BETWEEN</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2024-01-01'</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> AND</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2024-01-31'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="45-条件联查"><a href="#45-条件联查">4.5 条件联查</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  COUNT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> order_count</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEFT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders o </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '技术部'</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  AND</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">hire_date</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> &#x3C;</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '2020-01-01'</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GROUP BY</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> HAVING</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> COUNT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">></span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 10</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <hr />
+      <h2 id="5-联查性能优化"><a href="#5-联查性能优化">5. 联查性能优化</a></h2>
+      <h3 id="51-索引优化"><a href="#51-索引优化">5.1 索引优化</a></h3>
+      <p>
+        <strong>原则</strong>：确保<span
+          class="term-tip"
+          data-term="连接"
+          data-module="cpp"
+          data-def="连接关系"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">连接</abbr></span
+        >列和
+        <span
+          class="term-tip"
+          data-term="WHERE"
+          data-module="mysql"
+          data-def="过滤结果的条件子句"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">WHERE</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="条件"
+          data-module="github"
+          data-def="条件"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">条件</abbr></span
+        >列有索引
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_employees_dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees(dept_id);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_orders_user_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders(user_id);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_orders_user_date</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders(user_id, order_date);</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> CREATE</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> UNIQUE INDEX</span><span style="--shiki-light:#6F42C1;--shiki-dark:#B392F0"> idx_users_email</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> users(email);</span></span></code></pre>
+      <h3 id="52-减少数据量"><a href="#52-减少数据量">5.2 减少数据量</a></h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="策略"
+            data-module="vue3"
+            data-def="解决问题的策略"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">策略</abbr></span
+          ></strong
+        >：
+      </p>
+      <ol>
+        <li>
+          使用
+          <span
+            class="term-tip"
+            data-term="WHERE"
+            data-module="mysql"
+            data-def="过滤结果的条件子句"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">WHERE</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="条件"
+            data-module="github"
+            data-def="条件"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">条件</abbr></span
+          >提前<span
+            class="term-tip"
+            data-term="过滤"
+            data-module="vue3"
+            data-def="筛选列表或数据的操作"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">过滤</abbr></span
+          >数据
+        </li>
+        <li>
+          只<span
+            class="term-tip"
+            data-term="选择"
+            data-module="cpp"
+            data-def="选择"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">选择</abbr></span
+          >需要的列，避免
+          <span
+            class="term-tip"
+            data-term="SELECT"
+            data-module="mysql"
+            data-def="查询数据的 SQL 语句"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">SELECT</abbr></span
+          >
+          *
+        </li>
+        <li>
+          使用
+          <span
+            class="term-tip"
+            data-term="LIMIT"
+            data-module="mysql"
+            data-def="限制返回行数"
+            data-slug="mysql/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">LIMIT</abbr></span
+          >
+          <span
+            class="term-tip"
+            data-term="限制"
+            data-module="github"
+            data-def="限制"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">限制</abbr></span
+          >结果集
+        </li>
+      </ol>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ...;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">status</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 1</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LIMIT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> 100</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="53-优化连接顺序"><a href="#53-优化连接顺序">5.3 优化连接顺序</a></h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="原则"
+            data-module="github"
+            data-def="原则"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">原则</abbr></span
+          ></strong
+        >：小<span
+          class="term-tip"
+          data-term="表"
+          data-module="cpp"
+          data-def="表"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">表</abbr></span
+        >驱动大<span
+          class="term-tip"
+          data-term="表"
+          data-module="cpp"
+          data-def="表"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">表</abbr></span
+        >
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EXPLAIN</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">order_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders o </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="54-使用提示优化器"><a href="#54-使用提示优化器">5.4 使用提示优化器</a></h3>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> /*+ INDEX(e idx_employees_dept_id) */</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> /*+ HASH_JOIN(d) */</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D"> /*+ MERGE_JOIN(d) */</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="55-避免复杂子查询"><a href="#55-避免复杂子查询">5.5 避免复杂子查询</a></h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="优化"
+            data-module="cs-fundamentals"
+            data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">优化</abbr></span
+          >前</strong
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> emp_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">IN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> (</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_id </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">WHERE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_name </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">LIKE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '%技术%'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">);</span></span></code></pre>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="优化"
+            data-module="cs-fundamentals"
+            data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">优化</abbr></span
+          >后</strong
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> WHERE</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LIKE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> '%技术%'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <hr />
+      <h2 id="6-常见问题与解决方案"><a href="#6-常见问题与解决方案">6. 常见问题与解决方案</a></h2>
+      <h3 id="61-重复数据问题"><a href="#61-重复数据问题">6.1 重复数据问题</a></h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="问题"
+            data-module="github"
+            data-def="跟踪任务、缺陷、想法"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">问题</abbr></span
+          ></strong
+        >：联查后出现<span
+          class="term-tip"
+          data-term="重复"
+          data-module="github"
+          data-def="重复"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">重复</abbr></span
+        >行 <strong>原因</strong>：一<span
+          class="term-tip"
+          data-term="对"
+          data-module="github"
+          data-def="对"
+          data-slug="github/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">对</abbr></span
+        >多<span
+          class="term-tip"
+          data-term="关系"
+          data-module="cpp"
+          data-def="关系"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">关系</abbr></span
+        >导致的笛卡尔积
+        <strong
+          ><span
+            class="term-tip"
+            data-term="解决方案"
+            data-module="github"
+            data-def="解决方案"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解决方案</abbr></span
+          ></strong
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT DISTINCT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders o </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> orders o </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> o</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> GROUP BY</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="62-null-值处理"><a href="#62-null-值处理">6.2 NULL 值处理</a></h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="问题"
+            data-module="github"
+            data-def="跟踪任务、缺陷、想法"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">问题</abbr></span
+          ></strong
+        >：外<span
+          class="term-tip"
+          data-term="连接"
+          data-module="cpp"
+          data-def="连接关系"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">连接</abbr></span
+        >后出现
+        <span
+          class="term-tip"
+          data-term="NULL"
+          data-module="mysql"
+          data-def="空值"
+          data-slug="mysql/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">NULL</abbr></span
+        >
+        <span
+          class="term-tip"
+          data-term="值"
+          data-module="cpp"
+          data-def="值"
+          data-slug="cpp/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">值</abbr></span
+        >
+        <strong
+          ><span
+            class="term-tip"
+            data-term="解决方案"
+            data-module="github"
+            data-def="解决方案"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解决方案</abbr></span
+          ></strong
+        >：
+      </p>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  COALESCE</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'无部门'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEFT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span></span>
+<span class="line"><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">  e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">,</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">  IFNULL</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">(</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_name</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">, </span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF">'无部门'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">) </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">AS</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> dept_name</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> from</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> LEFT JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="63-性能问题"><a href="#63-性能问题">6.3 性能问题</a></h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="问题"
+            data-module="github"
+            data-def="跟踪任务、缺陷、想法"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">问题</abbr></span
+          ></strong
+        >：联查慢
+        <strong
+          ><span
+            class="term-tip"
+            data-term="解决方案"
+            data-module="github"
+            data-def="解决方案"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">解决方案</abbr></span
+          ></strong
+        >：
+      </p>
+      <ol>
+        <li>
+          <span
+            class="term-tip"
+            data-term="检查"
+            data-module="cpp"
+            data-def="验证条件"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">检查</abbr></span
+          >索引是否<span
+            class="term-tip"
+            data-term="存在"
+            data-module="github"
+            data-def="存在"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">存在</abbr></span
+          >
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="分析"
+            data-module="cpp"
+            data-def="分析过程"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">分析</abbr></span
+          >执<span
+            class="term-tip"
+            data-term="行"
+            data-module="vue3"
+            data-def="数据行"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">行</abbr></span
+          >计划
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="优化"
+            data-module="cs-fundamentals"
+            data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">优化</abbr></span
+          >连接顺序
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="减少"
+            data-module="github"
+            data-def="减少"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">减少</abbr></span
+          >返回数据量
+        </li>
+      </ol>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> EXPLAIN ANALYZE</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> ...</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> SHOW </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">INDEX</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> SHOW VARIABLES </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">LIKE</span><span style="--shiki-light:#032F62;--shiki-dark:#9ECBFF"> 'slow_query_log'</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <h3 id="64-连接条件错误"><a href="#64-连接条件错误">6.4 连接条件错误</a></h3>
+      <p>
+        <strong
+          ><span
+            class="term-tip"
+            data-term="问题"
+            data-module="github"
+            data-def="跟踪任务、缺陷、想法"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">问题</abbr></span
+          ></strong
+        >：<span
+          class="term-tip"
+          data-term="返回"
+          data-module="vue3"
+          data-def="返回值"
+          data-slug="vue3/glossary"
+          tabindex="0"
+          ><abbr class="term-abbr">返回</abbr></span
+        >结果不符合预期
+        <strong
+          >常见<span
+            class="term-tip"
+            data-term="错误"
+            data-module="cpp"
+            data-def="错误情况"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">错误</abbr></span
+          ></strong
+        >：
+      </p>
+      <ul>
+        <li>
+          忘记写<span
+            class="term-tip"
+            data-term="连接"
+            data-module="cpp"
+            data-def="连接关系"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">连接</abbr></span
+          >条件（导致笛卡尔积）
+        </li>
+        <li>
+          <span
+            class="term-tip"
+            data-term="连接"
+            data-module="cpp"
+            data-def="连接关系"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">连接</abbr></span
+          >条件<span
+            class="term-tip"
+            data-term="错误"
+            data-module="cpp"
+            data-def="错误情况"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">错误</abbr></span
+          >（导致<span
+            class="term-tip"
+            data-term="错误"
+            data-module="cpp"
+            data-def="错误情况"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">错误</abbr></span
+          >匹配）
+        </li>
+        <li>
+          使用<span
+            class="term-tip"
+            data-term="错误"
+            data-module="cpp"
+            data-def="错误情况"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">错误</abbr></span
+          >的<span
+            class="term-tip"
+            data-term="连接"
+            data-module="cpp"
+            data-def="连接关系"
+            data-slug="cpp/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">连接</abbr></span
+          >类型
+          <strong
+            ><span
+              class="term-tip"
+              data-term="解决方案"
+              data-module="github"
+              data-def="解决方案"
+              data-slug="github/glossary"
+              tabindex="0"
+              ><abbr class="term-abbr">解决方案</abbr></span
+            ></strong
+          >：
+        </li>
+      </ul>
+      <pre
+        class="astro-code astro-code-themes github-light github-dark"
+        style="
+          --shiki-light: #24292e;
+          --shiki-dark: #e1e4e8;
+          --shiki-light-bg: #fff;
+          --shiki-dark-bg: #24292e;
+          overflow-x: auto;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+        "
+        tabindex="0"
+        data-language="sql"
+      ><code><span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees, departments; </span><span style="--shiki-light:#6A737D;--shiki-dark:#6A737D">-- 笛卡尔积</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">emp_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> -</span></span>
+<span class="line"><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> SELECT</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> *</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> FROM</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> employees e </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">JOIN</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8"> departments d </span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583">ON</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> e</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#D73A49;--shiki-dark:#F97583"> =</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF"> d</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">.</span><span style="--shiki-light:#005CC5;--shiki-dark:#79B8FF">dept_id</span><span style="--shiki-light:#24292E;--shiki-dark:#E1E4E8">;</span></span></code></pre>
+      <hr />
+      <h3 id="更新日志-changelog"><a href="#更新日志-changelog">更新日志 (Changelog)</a></h3>
+      <ul>
+        <li>
+          2026-04-30: 创建<span
+            class="term-tip"
+            data-term="多"
+            data-module="github"
+            data-def="多个的"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">多</abbr></span
+          >表联查详解<span
+            class="term-tip"
+            data-term="文档"
+            data-module="vue3"
+            data-def="代码说明文档"
+            data-slug="vue3/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">文档</abbr></span
+          >，<span
+            class="term-tip"
+            data-term="包"
+            data-module="go"
+            data-def="Go 代码组织的基本单元，同一目录下的所有文件必须属于同一个包"
+            data-slug="go/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">包</abbr></span
+          >含联查<span
+            class="term-tip"
+            data-term="类型"
+            data-module="c"
+            data-def="数据的分类"
+            data-slug="c/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">类型</abbr></span
+          >、<span
+            class="term-tip"
+            data-term="执行"
+            data-module="github"
+            data-def="执行"
+            data-slug="github/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">执行</abbr></span
+          >原理、实战场景和<span
+            class="term-tip"
+            data-term="优化"
+            data-module="cs-fundamentals"
+            data-def="编译器后端对中间代码进行等价变换以提高执行效率的过程"
+            data-slug="cs-fundamentals/glossary"
+            tabindex="0"
+            ><abbr class="term-abbr">优化</abbr></span
+          >策略
+        </li>
+      </ul>
+    </article>
+  </body>
+</html>

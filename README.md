@@ -1,16 +1,17 @@
 <div align="center">
 
-# FANDEX
+# FANDEX-Web
 
-**循序渐进的自学之旅** · fanquanpp + memex
+**AI 驱动的知识学习平台** · fanquanpp + memex
 
-从第一行代码到理解整个世界，一段无需前置门槛的渐进式学习路径。覆盖工具链、开发语言、数据库、计算机科学、工程基础设施与数据技术六大领域，以结构化的文档体系陪伴每一位自学者走完从入门到精通的完整旅程。
+基于 Astro 5 SSG 构建的四层分离架构知识平台，集成语义搜索、智能测验、学习推荐、路线规划与知识图谱增强等 AI 能力。覆盖 8 大领域 51 个模块 1993+ 篇文档，提供三种阅读模式、离线缓存与移动端导出，为自学者打造从入门到精通的全链路学习体验。
 
-[![在线阅读](https://img.shields.io/badge/在线阅读-fanquanpp.github.io%2FFANDEX-2563eb?style=for-the-badge&logo=github&logoColor=white)](https://fanquanpp.github.io/FANDEX/)
+[![在线阅读](https://img.shields.io/badge/在线阅读-fanquanpp.github.io%2FFANDEX-Web-2563eb?style=for-the-badge&logo=github&logoColor=white)](https://fanquanpp.github.io/FANDEX-Web/)
 [![Astro 5](https://img.shields.io/badge/Astro-5-ff5d01?style=flat-square&logo=astro&logoColor=white)](https://astro.build)
 [![Vue 3](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org)
-[![文档数](https://img.shields.io/badge/文档-1993+-0ea5e9?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
-[![模块数](https://img.shields.io/badge/模块-51-8b5cf6?style=flat-square)](https://fanquanpp.github.io/FANDEX/)
+[![文档数](https://img.shields.io/badge/文档-1993+-0ea5e9?style=flat-square)](https://fanquanpp.github.io/FANDEX-Web/)
+[![模块数](https://img.shields.io/badge/模块-51-8b5cf6?style=flat-square)](https://fanquanpp.github.io/FANDEX-Web/)
+[![AI](https://img.shields.io/badge/AI-5能力-f59e0b?style=flat-square)](https://fanquanpp.github.io/FANDEX-Web/)
 
 </div>
 
@@ -18,130 +19,155 @@
 
 > 桌面端浏览器可获得最佳阅读体验，移动端亦可正常访问，部分交互细节仍在持续打磨中。
 
+## 关联项目
+
+FANDEX 系列由三个仓库组成，各司其职、互相配合：
+
+| 仓库           | 定位                                                                                       | 地址                                                            |
+| :------------- | :----------------------------------------------------------------------------------------- | :-------------------------------------------------------------- |
+| **FANDEX**     | 基于 GitHub Pages 构建的云端在线查阅平台，为最早建立的内容仓库，文档体系最为完善           | [fanquanpp/FANDEX](https://github.com/fanquanpp/FANDEX)         |
+| **FANDEX-Web** | Astro 5 SSG 知识学习平台，四层分离架构，具备 AI 能力、三种阅读模式、知识图谱与复习卡片系统 | [fanquanpp/FANDEX-Web](https://github.com/fanquanpp/FANDEX-Web) |
+| **FANDEX-App** | Android 平台完全离线查阅应用，内容来源于 FANDEX-Web 的 dist-mobile.zip                     | [fanquanpp/FANDEX-App](https://github.com/fanquanpp/FANDEX-App) |
+
+## 内容源约束
+
+[FANDEX](https://github.com/fanquanpp/FANDEX.git) 仓库为全部项目的根本内容源，FANDEX-Web 仅允许只读引用。如需变更内容，须从 FANDEX 仓库复制后在本仓库内进行适配与优化，不得直接修改上游内容源。
+
 ## 关于
 
-FANDEX 是一份面向零基础学习者的计算机自学教程，力求以系统化的知识组织方式，帮助自学者逐步建立从编程入门到计算机专业毕业生水平的完整知识体系。每一篇文档都经过结构化编排，包含概念讲解、代码示例与实践要点，无需任何先修课程即可开始学习。
+FANDEX-Web 在 FANDEX 基础上构建了四层分离架构（内容层 / 知识工程层 / 能力层 / 应用层），将知识从静态文档升级为可交互、可推理、可追踪的学习系统。通过 AI 能力（语义搜索、智能测验、学习推荐、路线规划、GraphRAG）与知识工程（知识图谱、术语预编译、复习卡片、标签索引），为自学者提供从"读文档"到"学知识"的完整闭环。
 
-六大领域环环相扣：工具链奠定操作基础，开发语言打开编程世界，数据库承载持久化能力，计算机科学构建理论根基，工程与基础设施连接理论与实践，数据技术与AI延伸至前沿应用。各模块之间通过前置知识关系自然衔接，学习者可按需跳转，亦可循序渐进。
-
-## 内容说明
-
-本仓库所有内容均由人工与人工智能（AI）共同编写、搜集、整理与编排。受限于编撰方式与知识更新速度，内容可能存在遗漏、过时或错误之处，使用者应结合官方文档与权威资料进行独立验证。
-
-本仓库鼓励学习者在学习过程中培养自主运用 AI 工具进行自学与信息辨别的能力。在人工智能时代，学会高效检索、交叉验证与批判性思考，是每一位自学者应当重视和提升的核心素养。本仓库力求为零基础学习者提供可用的入门资料，同时希望学习者逐步建立独立判断与自我完善的能力。
+八大领域环环相扣：工具链奠定操作基础，前端与后端技术打开编程世界，数据库承载持久化能力，计算机科学构建理论根基，数学提供形式化工具，云与基础设施连接理论与实践，人工智能延伸至前沿应用。各模块之间通过前置知识关系自然衔接，学习者可按需跳转，亦可循序渐进。
 
 ## 模块总览
 
-| 类别           | 模块                                                                                                                           |
-| :------------- | :----------------------------------------------------------------------------------------------------------------------------- |
-| 工具链         | 入门指南 · Markdown · Git · GitHub                                                                                             |
-| 开发语言       | HTML5 · CSS · JavaScript · TypeScript · Vue 3 · React · C · C++ · Java · Kotlin · C# · Python · Go · Lua · HarmonyOS           |
-| 数据库         | SQL · MySQL · PostgreSQL · Redis                                                                                               |
-| 计算机科学     | 算法与数据结构 · 计算机基础 · 高等数学 · 离散数学 · 线性代数 · 概率论与数理统计 · 英语                                         |
-| 工程与基础设施 | 运维 · 网络技术 · 网络安全 · 云计算 · 物联网 · 软件测试 · AI Agent · 软件工程 · 软件架构 · 工程实践                            |
-| 数据技术       | 数据分析 · 大数据 · 机器学习 · 深度学习 · AI工程 · 计算机视觉 · 自然语言处理 · 大语言模型 · 生成式AI · 多模态AI · AI伦理与安全 |
+| 类别         | 模块                                                                                                               |
+| :----------- | :----------------------------------------------------------------------------------------------------------------- |
+| 工具链       | 入门指南 · Markdown · Git · GitHub                                                                                 |
+| 前端技术     | HTML5 · CSS · JavaScript · TypeScript · Vue 3 · React                                                              |
+| 后端技术     | Go · Java · Kotlin · C# · Lua                                                                                      |
+| 数据库       | SQL · MySQL · PostgreSQL · Redis                                                                                   |
+| 计算机科学   | C · C++ · 算法与数据结构 · 计算机基础 · 高等数学 · 离散数学 · 线性代数 · 概率论与数理统计 · 英语                   |
+| 数学         | 微积分 · 线性代数 · 概率论 · 离散数学 · 数据分析                                                                   |
+| 云与基础设施 | 云计算 · IoT · 鸿蒙开发 · 运维 · 网络技术 · 网络安全 · 软件测试 · 软件工程 · 软件架构 · 工程实践                   |
+| 人工智能     | AI Agent · LLM · NLP · 深度学习 · 机器学习 · 生成式 AI · 多模态 AI · AI 伦理与安全 · 计算机视觉 · 大数据 · AI 工程 |
 
-> 1993 篇文档 · 51 个模块 · 27 篇术语表 · 交互式测验 · 知识地图
+> 1993+ 篇文档 · 51 个模块 · 8 大分类 · 27 篇术语表 · 交互式测验 · 知识地图 · AI 能力
 
 ## 功能特性
 
-| 特性     | 说明                                                              |
-| :------- | :---------------------------------------------------------------- |
-| 进度追踪 | localStorage + IndexedDB 双存储备份，支持导出/导入 JSON           |
-| 术语悬浮 | 自动匹配文档中的专业术语并弹出解释，桌面端 tooltip / 移动端 modal |
-| 交互测验 | 填空 / 选择 / 代码修正三种题型，即时反馈                          |
-| 知识地图 | Mermaid 可视化概念关联                                            |
-| 前置知识 | 模块间依赖关系展示，自动渲染前置模块链接                          |
-| 全文搜索 | Pagefind 客户端搜索索引 + Fuse.js Web Worker，支持按模块/难度筛选 |
-| 标签索引 | 跨模块知识检索，按模块/难度/相关度筛选                            |
-| 学习路线 | 10 条职业方向路径可视化（11 阶段递进）                            |
-| 离线可用 | Service Worker 缓存（Cache First + Network First + SWR）          |
-| 暗色模式 | Dark / Light 主题切换，localStorage 持久化 + 闪烁防护             |
-| 响应式   | 桌面端侧边栏 + 移动端抽屉导航 + 底部导航栏                        |
-| 代码运行 | JS/TS 代码块 Web Worker 沙箱执行，5 秒超时保护                    |
+### 核心功能
+
+| 特性       | 说明                                                            |
+| :--------- | :-------------------------------------------------------------- |
+| 进度追踪   | localStorage + IndexedDB 双存储备份，支持导出/导入 JSON         |
+| 术语预编译 | remark-term-link 构建时标记，运行时仅绑定事件，零客户端 JS 开销 |
+| 交互测验   | 填空 / 选择 / 代码修正三种题型，即时反馈                        |
+| 知识地图   | Mermaid 构建时预渲染为 SVG，零客户端 JS                         |
+| 前置知识   | 模块间依赖关系展示，自动渲染前置模块链接                        |
+| 全文搜索   | Pagefind + Fuse.js + 语义搜索双模，支持按模块/难度筛选          |
+| 标签索引   | 1648 个标签，跨模块知识检索                                     |
+| 学习路线   | 10 条职业方向路径可视化（11 阶段递进）                          |
+| 离线可用   | Service Worker 缓存（Cache First + Network First + SWR）        |
+| 暗色模式   | Dark / Light / Sepia 三主题切换，localStorage 持久化 + 闪烁防护 |
+| 响应式     | 桌面端侧边栏 + 移动端抽屉导航 + 底部导航栏                      |
+
+### 阅读模式
+
+| 模式     | 说明                           | 切换方式        |
+| :------- | :----------------------------- | :-------------- |
+| 标准模式 | 完整功能，所有交互元素可见     | 默认            |
+| 专注模式 | 隐藏干扰元素，聚焦内容         | 快捷键 F        |
+| 学习模式 | 高亮学习辅助信息，强化知识吸收 | 快捷键 Esc 退出 |
+
+### AI 能力
+
+| 能力       | 说明                                               |
+| :--------- | :------------------------------------------------- |
+| AI Search  | 语义搜索 + TF-IDF 降级，自然语言查询知识库         |
+| AI Quiz    | 自动生成填空/选择/代码修复题，针对性检测知识盲区   |
+| AI Tutor   | 学习推荐 + 进度分析，个性化学习路径建议            |
+| AI Roadmap | 个性化学习路线规划，基于当前进度动态调整           |
+| GraphRAG   | 知识图谱增强问答，8800 节点 + 18183 边的结构化推理 |
+
+### 知识工程
+
+| 能力       | 说明                                                          |
+| :--------- | :------------------------------------------------------------ |
+| 知识图谱   | 8800 节点 + 18183 边，模块间概念关联可视化                    |
+| 复习卡片   | 自动从 frontmatter 生成，间隔重复算法                         |
+| 移动端导出 | dist-mobile.zip（1991 篇 HTML + CSS），供 FANDEX-App 离线使用 |
+
+### 性能优化
+
+| 优化项         | 说明                                                   |
+| :------------- | :----------------------------------------------------- |
+| Mermaid 静态化 | 构建时预渲染为 SVG，消除 200KB+ 客户端 JS              |
+| 术语预编译     | remark-term-link 构建时嵌入术语 HTML，运行时零解析开销 |
+| Sidebar 懒加载 | 模块视图动态加载，减少首屏体积                         |
+| 图片优化       | rehype-image-optimize，lazy/async/防 CLS/响应式        |
+| KaTeX 优化     | output:html + font-display:swap，构建时渲染数学公式    |
 
 ## 技术栈
 
-| 层级  | 技术                           | 说明                                                            |
-| :---- | :----------------------------- | :-------------------------------------------------------------- |
-| 框架  | Astro 5                        | 静态站点生成 (SSG)，岛屿架构                                    |
-| 交互  | Vue 3                          | `client:load` / `client:visible` 按需水合                       |
-| 高亮  | Shiki                          | 双主题代码高亮 (github-light / github-dark)，构建时零 JS        |
-| 搜索  | Pagefind + Fuse.js             | 构建后索引 + Web Worker 模糊搜索                                |
-| 图表  | Mermaid 11                     | 知识地图渲染，CDN 按需加载                                      |
-| SEO   | JSON-LD + Sitemap              | 结构化数据 + Open Graph + Twitter Card                          |
-| 离线  | Service Worker                 | Cache First (哈希资源) + Network First (HTML/数据) + SWR (图片) |
-| 测试  | Vitest                         | 单元测试                                                        |
-| 质量  | Husky + lint-staged + Prettier | Pre-commit 自动格式化                                           |
-| CI/CD | GitHub Actions                 | 三阶段流水线 (setup → build → deploy)                           |
+| 层级  | 技术                           | 说明                                      |
+| :---- | :----------------------------- | :---------------------------------------- |
+| 框架  | Astro 5                        | SSG，岛屿架构                             |
+| 交互  | Vue 3                          | `client:load` / `client:visible` 按需水合 |
+| 高亮  | Shiki                          | 双主题代码高亮，构建时零 JS               |
+| 数学  | KaTeX + remark-math            | 构建时渲染，font-display:swap             |
+| 图表  | Mermaid 11                     | 构建时预渲染为 SVG                        |
+| 搜索  | Pagefind + Fuse.js             | 构建后索引 + Web Worker                   |
+| AI    | OpenAI 兼容 API                | 语义搜索/Quiz/Tutor/Roadmap/GraphRAG      |
+| 离线  | Service Worker                 | Cache First + Network First + SWR         |
+| 质量  | Husky + lint-staged + Prettier | Pre-commit 自动格式化                     |
+| CI/CD | GitHub Actions                 | 三阶段流水线                              |
 
-## 仅获取文档内容
+## 架构
 
-如果你只需要文档 Markdown 源文件（`src/content/docs/`），无需克隆整个项目，可以使用 Git sparse-checkout：
-
-```bash
-# 初始化空仓库
-git clone --no-checkout --filter=blob:none https://github.com/fanquanpp/FANDEX.git
-cd FANDEX
-
-# 启用 sparse-checkout 并指定路径
-git sparse-checkout set src/content/docs
-
-# 拉取内容
-git checkout
-```
-
-文档目录结构：
+### 四层分离
 
 ```
-src/content/docs/
-├── agent/                  # AI Agent
-├── algorithm/              # 算法与数据结构
-├── big-data/               # 大数据
-├── c/                      # C 语言
-├── calculus/               # 高等数学
-├── cloud-computing/        # 云计算
-├── cpp/                    # C++
-├── csharp/                 # C#
-├── cs-fundamentals/        # 计算机基础
-├── css/                    # CSS
-├── cybersecurity/          # 网络安全
-├── data-analysis/          # 数据分析
-├── deep-learning/          # 深度学习
-├── devops/                 # 运维
-├── discrete-math/          # 离散数学
-├── engineering-practices/  # 工程实践
-├── english/                # 英语
-├── getting-started/        # 入门指南
-├── git/                    # Git
-├── github/                 # GitHub
-├── go/                     # Go
-├── harmonyos/              # 鸿蒙开发
-├── html5/                  # HTML5
-├── iot/                    # 物联网
-├── java/                   # Java
-├── javascript/             # JavaScript
-├── kotlin/                 # Kotlin
-├── linear-algebra/         # 线性代数
-├── lua/                    # Lua
-├── machine-learning/       # 机器学习
-├── markdown/               # Markdown
-├── mysql/                  # MySQL
-├── networking/             # 网络技术
-├── postgresql/             # PostgreSQL
-├── probability-statistics/ # 概率论与数理统计
-├── python/                 # Python
-├── react/                  # React
-├── redis/                  # Redis
-├── software-architecture/  # 软件架构
-├── software-engineering/   # 软件工程
-├── software-testing/       # 软件测试
-├── sql/                    # SQL
-├── typescript/             # TypeScript
-└── vue3/                   # Vue 3
+FANDEX-Web/
+  content/               # 内容层（52 模块，8 分类：tools/frontend/backend/database/cs/math/cloud/ai）
+  metadata/              # 知识工程层
+    modules.json         #   模块注册表
+    glossary/            #   术语 JSON
+    roadmap/             #   路线图数据
+    tags/                #   标签索引
+    review/              #   复习卡片 YAML
+  packages/              # 能力层
+    markdown/            #   Remark/Rehype 插件（admonition/mermaid/term-link/image-optimize）
+    shared/              #   共享数据（constants/modules）
+    search/              #   术语搜索/提示
+  apps/web/              # 应用层（Astro 5 SSG 项目）
+    src/                 #   页面、组件、布局、服务层
+    astro.config.ts
+    tsconfig.json
+    package.json
+    public/
+  generated/             # 生成物（.gitignore）
+    cards/               #   复习卡片 JSON
+    graph/               #   知识图谱 JSON
+  scripts/               # 构建脚本
+  dist-mobile/           # 移动端产物（.gitignore）
+  package.json           # monorepo 入口（npm workspaces）
 ```
 
-> 每篇文档均为独立 Markdown 文件，包含 frontmatter 元数据（标题、模块、难度、标签等）和正文内容，可直接在任何 Markdown 阅读器中使用。
+### 服务层架构
+
+```
+apps/web/src/services/
+  ai/                    # AI 适配器（OpenAI 兼容，环境变量配置）
+  search/                # 搜索服务（语义 + 关键词双模）
+  quiz/                  # Quiz 生成服务
+  tutor/                 # 学习推荐服务
+  roadmap/               # 路线规划服务
+  graphrag/              # 知识图谱增强生成服务
+  index.ts               # 统一导出（UI 层唯一入口）
+```
+
+> UI 层禁止直接调用 API，所有业务逻辑必须通过服务层实现，服务层为 UI 层唯一入口。
 
 ## 快速开始
 
@@ -157,122 +183,38 @@ npm run build
 
 # 预览构建结果
 npm run preview
-
-# 运行测试
-npm run test
-
-# 预发布质量检查（需先构建）
-npm run qa
-
-# 内容质量审计（源码级）
-node scripts/content-audit.mjs
 ```
 
-> **注意：** 开发模式下 Pagefind 搜索索引未生成，搜索功能不可用。需 `npm run build` 后 `npm run preview` 才能使用搜索。
-
-## 项目结构
-
-<details>
-<summary>点击展开</summary>
-
-```
-FANDEX/
-├── .github/workflows/     # GitHub Actions (部署 / CodeQL / 内容审计)
-├── .husky/                # Git pre-commit 钩子
-├── public/
-│   ├── data/              # 搜索索引 + 术语索引 (构建生成)
-│   ├── fonts/             # JetBrains Mono 字体
-│   ├── sw.js              # Service Worker
-│   └── robots.txt         # SEO
-├── scripts/               # 工具脚本
-│   ├── build-glossary-index.mjs   # 术语索引构建
-│   ├── build-search-index.mjs     # 搜索索引构建
-│   ├── generate-cheatsheet-highlights.js  # 速查表高亮生成
-│   ├── add-doc-relations.mjs              # 文档关联生成
-│   ├── content-audit.mjs          # 内容质量审计
-│   └── qa-check.mjs               # 预发布质量检查
-├── src/
-│   ├── components/        # Astro 组件
-│   │   ├── Layout.astro            # 文档页布局（导航+侧边栏+主内容）
-│   │   ├── HomeLayout.astro        # 首页布局
-│   │   ├── Sidebar.astro           # 侧边栏（章节/大纲/模块切换）
-│   │   ├── SEO.astro               # SEO 元数据 + JSON-LD
-│   │   ├── Breadcrumb.astro        # 面包屑导航
-│   │   ├── ModuleCard.astro        # 模块卡片
-│   │   └── DocNav.astro            # 上下篇导航
-│   ├── content/
-│   │   ├── docs/{51 模块}/ # 文档内容 (1993 篇)
-│   │   ├── glossary/      # 术语表 (27 篇)
-│   │   └── config.ts      # Zod Schema 定义
-│   ├── islands/           # Vue 岛屿组件
-│   │   ├── ThemeToggle.vue         # 暗色模式切换
-│   │   ├── ProgressToggle.vue      # 阅读进度追踪
-│   │   ├── QuizBlock.vue           # 交互测验
-│   │   └── CheatSheet.vue          # 语法速查组件
-│   ├── lib/               # 工具函数
-│   │   ├── constants.ts            # 站点常量
-│   │   ├── modules.ts              # 模块定义与前置关系
-│   │   ├── progress.ts             # 进度追踪 (localStorage + IndexedDB)
-│   │   ├── store.ts                # Vue 全局状态 + BroadcastChannel
-│   │   ├── term-tooltip.ts         # 术语悬浮提示
-│   │   ├── code-runner.ts          # 代码运行器 (Web Worker)
-│   │   ├── animations.ts           # 微交互动画
-│   │   ├── remark-admonition.ts    # Remark 提示框插件
-│   │   └── rehype-lazy-images.ts   # Rehype 图片懒加载插件
-│   ├── pages/             # 路由页面
-│   │   ├── index.astro             # 首页
-│   │   ├── [module]/               # 动态模块路由
-│   │   ├── search.astro            # 搜索页
-│   │   ├── roadmap.astro           # 学习路线图
-│   │   ├── tags/                   # 标签路由
-│   │   ├── 404.astro              # 404 页面
-│   │   └── rss.xml.js             # RSS 订阅
-│   ├── styles/            # 全局样式
-│   │   ├── variables.css           # CSS 变量/设计令牌
-│   │   ├── global.css              # 全局重置
-│   │   ├── typography.css          # 排版
-│   │   ├── code.css                # 代码块
-│   │   └── components.css          # 组件
-│   └── workers/
-│       └── search-worker.ts        # Fuse.js 搜索 Web Worker
-├── astro.config.ts        # Astro 配置
-├── package.json            # 项目配置
-├── tsconfig.json           # TypeScript 配置
-└── vitest.config.ts        # 测试配置
-```
-
-</details>
-
-## 构建流程
-
-构建过程依次执行四个步骤：首先由 `build-glossary-index.mjs` 生成术语索引至 `public/data/glossary-index.json`，随后 `build-search-index.mjs` 生成搜索索引至 `public/data/search-index.json`，然后 Astro 执行静态站点构建输出至 `dist/` 目录，最后 Pagefind 基于构建产物生成客户端搜索索引至 `dist/pagefind/`。
+> **注意：** 开发模式下 Pagefind 搜索索引未生成，搜索功能不可用。需 `npm run build` 后 `npm run preview` 才能使用搜索。AI 功能需配置环境变量后方可使用。
 
 ## 部署
 
-仓库已配置 GitHub Actions 自动部署 (`.github/workflows/deploy.yml`)，push 到 `main` 分支即自动构建发布。
+仓库已配置 GitHub Actions 自动部署（`.github/workflows/deploy.yml`），push 到 `main` 分支即自动构建发布。
 
 **流水线三阶段：**
 
-1. **setup** — 安装依赖，缓存 `node_modules`
-2. **build** — 构建站点，运行 QA 检查，上传产物
-3. **deploy** — 部署到 GitHub Pages
+1. **setup** -- 安装依赖，缓存 `node_modules`
+2. **build** -- 构建站点，运行 QA 检查，上传产物
+3. **deploy** -- 部署到 GitHub Pages
 
-Settings → Pages → Source 选择 **GitHub Actions** 即可。
+Settings -> Pages -> Source 选择 **GitHub Actions** 即可。
 
-## 文档
+## 更新日志
 
-- **[CODE_WIKI.md](./CODE_WIKI.md)** — 完整的代码维基文档，包含项目架构、模块职责、关键函数说明、依赖关系等
-- **[CONTRIBUTING.md](./CONTRIBUTING.md)** — 贡献指南与内容规范
+本仓库记录每一次更新日志，须附带详细日期与内容，无论版本大小，保持完整的版本迭代历史可追溯性。更新日志遵循以下规则：
+
+- 每次有效变更必须记录，不得遗漏
+- 须附带精确日期与变更内容摘要
+- 版本号遵循语义化版本规范（SemVer）
+- 变更类型分为：新增（feat）、修复（fix）、重构（refactor）、文档（docs）、性能（perf）
+
+## 内容说明
+
+本仓库所有内容均由人工与人工智能（AI）共同编写、搜集、整理与编排。受限于编撰方式与知识更新速度，内容可能存在遗漏、过时或错误之处，使用者应结合官方文档与权威资料进行独立验证。
+
+本仓库鼓励学习者在学习过程中培养自主运用 AI 工具进行自学与信息辨别的能力。在人工智能时代，学会高效检索、交叉验证与批判性思考，是每一位自学者应当重视和提升的核心素养。本仓库力求为零基础学习者提供可用的入门资料，同时希望学习者逐步建立独立判断与自我完善的能力。
 
 ## 免责声明
-
-本仓库所有内容均以开放共享为宗旨，不主张知识产权保护。任何个人或机构均可自由获取、使用、修改和分发本仓库内容，对本仓库内容的使用不设任何限制，包括但不限于学习、研究、修改、分发及商业用途。因使用本仓库内容所产生的一切后果，均由使用者自行承担，本仓库及其作者、维护者不对使用后果承担任何形式的责任。详见 [免责声明](https://fanquanpp.github.io/FANDEX/getting-started/%E5%85%8D%E8%B4%A3%E5%A3%B0%E6%98%8E/)。
-
-本仓库所有内容均由人工与 AI 共同编写、搜集、整理与编排，可能存在遗漏、过时或错误之处，使用者应结合官方文档与权威资料进行独立验证。
-
-本仓库内容更新后，需经 GitHub Actions 自动构建方可生效，构建过程约需 12 分钟。构建完成后，已访问过的页面需手动刷新浏览器方可显示最新版本。
-
-## 许可证
 
 本仓库所有内容以开放共享为目的，不主张知识产权保护。任何个人或机构均可自由获取、使用、修改和分发，包括但不限于商业用途。因使用本仓库内容所产生的一切后果，由使用者自行承担，与本仓库及其作者、维护者无关。
 

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -72,7 +72,7 @@ jobs:
         run: npm run lint:docs
         working-directory: apps/web
 
-      - name: Build
+      - name: Build (GitHub Pages)
         run: npm run build
         working-directory: apps/web
         env:
@@ -111,8 +111,154 @@ jobs:
         with:
           path: apps/web/dist
 
+  build-offline:
+    runs-on: ubuntu-22.04
+    needs: setup
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Restore node_modules cache
+        uses: actions/cache@v4
+        with:
+          path: apps/web/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('apps/web/package-lock.json') }}
+
+      - name: Cache Astro build cache
+        uses: actions/cache@v4
+        with:
+          path: apps/web/.astro
+          key: ${{ runner.os }}-astro-offline-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-astro-
+
+      - name: Build offline package
+        run: npm run build:offline
+        working-directory: apps/web
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Pack offline zip
+        run: npm run pack:offline
+        working-directory: apps/web
+
+      - name: Upload offline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fandex-offline-zip
+          path: apps/web/fandex-offline-*.zip
+          retention-days: 90
+
+  build-electron:
+    runs-on: windows-2022
+    needs: setup
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Restore node_modules cache
+        uses: actions/cache@v4
+        with:
+          path: apps/web/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('apps/web/package-lock.json') }}
+
+      - name: Cache Astro build cache
+        uses: actions/cache@v4
+        with:
+          path: apps/web/.astro
+          key: ${{ runner.os }}-astro-electron-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-astro-
+
+      - name: Build offline dist
+        run: npm run build:offline
+        working-directory: apps/web
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Build Electron exe
+        run: npx electron-builder --config electron-builder.config.cjs
+        working-directory: apps/web
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Upload exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: fandex-electron-exe
+          path: apps/web/release/*.exe
+          retention-days: 90
+
+  release:
+    runs-on: ubuntu-22.04
+    needs: [build, build-offline, build-electron]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "version=$(node -p "require('./apps/web/package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Download offline zip
+        uses: actions/download-artifact@v4
+        with:
+          name: fandex-offline-zip
+          path: ./release-assets
+
+      - name: Download Electron exe
+        uses: actions/download-artifact@v4
+        with:
+          name: fandex-electron-exe
+          path: ./release-assets
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: FANDEX v${{ steps.version.outputs.version }}
+          body: |
+            ## FANDEX 知识学习平台 v${{ steps.version.outputs.version }}
+
+            ### 在线版本
+            访问 GitHub Pages 站点：https://fanquanpp.github.io/FANDEX/
+
+            ### Windows 桌面应用（推荐）
+            下载 `FANDEX-Setup-${{ steps.version.outputs.version }}.exe`，双击安装后即可使用。
+            无需浏览器，无需 Node.js，安装后桌面自动创建快捷方式。
+
+            ### 离线 zip 包
+            下载 `fandex-offline-v${{ steps.version.outputs.version }}.zip`，解压后双击 start.bat 启动。
+            需要 Node.js 22 或更高版本。
+
+            ### 环境要求
+            - 桌面应用：Windows 10 或更高版本
+            - 离线 zip：Node.js 22+，现代浏览器
+            - 在线版：现代浏览器（Chrome / Edge / Firefox / Safari）
+
+            ### 更新方式
+            - 桌面应用/离线版：下载最新版本覆盖安装
+            - 在线版：自动更新（Service Worker 后台同步）
+          files: ./release-assets/*
+          draft: false
+          prerelease: false
+
   deploy:
-    needs: build
+    needs: [build, build-offline, build-electron]
     runs-on: ubuntu-22.04
     environment:
       name: github-pages

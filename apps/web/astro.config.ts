@@ -7,10 +7,13 @@
  * 行为均受此文件控制。
  *
  * 关键配置说明：
- * - 部署目标：GitHub Pages（项目站点，基础路径 /FANDEX/）
+ * - 部署目标：GitHub Pages（项目站点，基础路径 /FANDEX/）或离线包（相对路径 ./）
  * - Markdown 插件：GFM 语法、Emoji、数学公式（KaTeX）、自定义提示块、图片懒加载
  * - 代码高亮：Shiki 双主题（github-light / github-dark），通过 CSS 变量切换
  * - 集成：MDX 支持、站点地图生成、Vue 组件支持
+ *
+ * 环境变量：
+ * - BASE_PATH：构建基础路径，默认 /FANDEX/（GitHub Pages），离线包构建时设为 ./
  */
 
 import { defineConfig } from 'astro/config';
@@ -35,6 +38,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '../..');
 
 /**
+ * 构建基础路径
+ *
+ * 通过环境变量 BASE_PATH 控制：
+ * - 默认 /FANDEX/：GitHub Pages 项目站点部署
+ * - ./ ：离线包构建，支持本地静态服务器运行
+ */
+const basePath = process.env.BASE_PATH || '/FANDEX/';
+
+/**
  * PostCSS 插件：KaTeX 字体显示策略优化
  *
  * 功能：将 KaTeX CSS 中的 font-display:block 替换为 font-display:swap，
@@ -49,15 +61,10 @@ const postcssKatexFontDisplaySwap = {
   AtRule(rule: { name: string; params: string }) {
     /* 仅处理 @font-face 规则 */
     if (rule.name === 'font-face') {
-      rule.params = rule.params; /* 触发解析 */
       /* 在规则内容中替换 font-display:block 为 font-display:swap */
       if (typeof rule.nodes !== 'undefined') {
         for (const node of rule.nodes) {
-          if (
-            node.type === 'decl' &&
-            node.prop === 'font-display' &&
-            node.value === 'block'
-          ) {
+          if (node.type === 'decl' && node.prop === 'font-display' && node.value === 'block') {
             node.value = 'swap';
           }
         }
@@ -69,8 +76,8 @@ const postcssKatexFontDisplaySwap = {
 export default defineConfig({
   // 站点地址，用于生成 sitemap 和规范链接
   site: 'https://fanquanpp.github.io',
-  // 部署基础路径（GitHub Pages 项目站点）
-  base: '/FANDEX/',
+  // 部署基础路径（GitHub Pages 项目站点或离线包相对路径）
+  base: basePath,
   build: {
     // 样式内联策略：auto 由 Astro 自动决定（小文件内联，大文件外部引用）
     inlineStylesheets: 'auto',

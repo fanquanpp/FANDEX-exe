@@ -19,6 +19,14 @@ const UNSAFE_PATTERNS = [
   'sessionStorage',
   'indexedDB',
   'navigator.serviceWorker',
+  'Function(',
+  'globalThis',
+  'window.',
+  'self.',
+  'top.',
+  'parent.',
+  'location.',
+  'cookie',
 ];
 
 function resetButton(btn: HTMLButtonElement) {

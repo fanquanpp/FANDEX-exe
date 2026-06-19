@@ -4,7 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/content/**'
+      - 'content/**'
+      - 'metadata/**'
       - 'scripts/**'
   workflow_dispatch:
 
@@ -19,9 +20,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/web/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+        working-directory: apps/web
 
       - name: Run content audit
         run: node scripts/content-audit.mjs
@@ -32,13 +35,36 @@ jobs:
       - name: Build glossary index
         run: node scripts/build-glossary-index.mjs
 
-      - name: Commit and push updated indexes
+      - name: Build module docs index
+        run: node scripts/build-module-docs-index.mjs
+
+      - name: Build tag index
+        run: node scripts/build-tag-index.mjs
+
+      - name: Generate knowledge graph
+        run: node scripts/generate-knowledge-graph.mjs
+
+      - name: Generate embedding index
+        run: node scripts/generate-embedding-index.mjs
+        continue-on-error: true
+
+      - name: Verify generated data
         run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@users.noreply.github.com"
-          git add public/data/search-index.json
-          git add public/data/glossary-index.json
-          git diff --cached --quiet || git commit -m "chore: update search and glossary indexes [skip ci]"
-          git push origin main || echo "Push failed, likely no changes"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "Checking generated data files..."
+          for f in public/data/search-index.json public/data/glossary-index.json public/data/module-docs-index.json public/data/tag-index.json public/data/knowledge-graph.json; do
+            if [ -f "apps/web/$f" ]; then
+              echo "OK: $f"
+            else
+              echo "::warning::Missing $f"
+            fi
+          done
+
+      - name: Lint check
+        run: npm run lint
+        working-directory: apps/web
+        continue-on-error: true
+
+      - name: Type check
+        run: npm run typecheck
+        working-directory: apps/web
+        continue-on-error: true

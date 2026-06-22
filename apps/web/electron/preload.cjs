@@ -11,7 +11,7 @@ const { contextBridge } = require('electron');
 /** 通过 contextBridge 暴露安全 API */
 contextBridge.exposeInMainWorld('electronAPI', {
   /** 应用版本号 */
-  version: process.env.npm_package_version || '4.0.0',
+  version: process.env.npm_package_version || '1.0.0',
   /** 是否为 Electron 环境 */
   isElectron: true,
   /** 平台信息 */

@@ -1,19 +1,21 @@
 # FANDEX-exe Code Wiki
 
-> AI 驱动的知识学习平台技术文档
-> 基于 Astro 5 SSG 构建的四层分离架构，集成语义搜索、智能测验、学习推荐、路线规划与知识图谱增强等 AI 能力。
+> Windows 桌面端离线学习平台技术文档
+> 基于 Astro 5 SSG 构建的四层分离架构，集成静态搜索、交互测验、进度追踪、知识地图与路线规划等学习辅助能力。
 
 ## 项目定位
 
-FANDEX-exe 是 FANDEX 系列三个仓库之一，定位为 Astro 5 SSG 知识学习平台。其核心目标是将静态文档升级为可交互、可推理、可追踪的学习系统，为自学者提供从"读文档"到"学知识"的完整闭环。
+FANDEX-exe 是 FANDEX 系列三个仓库之一，定位为 Windows 桌面端离线学习平台。其核心目标是将完整的知识体系封装为独立桌面程序，为自学者提供无需浏览器、无需网络、双击即可使用的离线学习体验。
 
-| 仓库       | 定位                                                                   |
-| :--------- | :--------------------------------------------------------------------- |
-| FANDEX     | 内容源仓库，全部项目的根本内容来源                                     |
-| FANDEX-exe | Astro 5 SSG 知识学习平台，四层分离架构，具备 AI 能力                   |
-| FANDEX-App | Android 平台完全离线查阅应用，内容来源于 FANDEX-exe 的 dist-mobile.zip |
+本项目**不内置任何 AI 功能**。项目的核心理念是：在 AI 时代，学习者应当学会运用外部 AI 工具进行自主学习。
 
-内容源约束：FANDEX-exe 仅允许只读引用 FANDEX 仓库内容，不得直接修改上游内容源。
+| 仓库       | 定位                                                         |
+| :--------- | :----------------------------------------------------------- |
+| FANDEX-web | 线上学习平台，内容基准仓库，面向零基础学习者的完整自学教程   |
+| FANDEX-exe | Windows 桌面端离线学习平台，四层分离架构，完全离线访问       |
+| FANDEX-App | 离线移动速查应用，Android 原生应用，聚焦编程语言语法格式查阅 |
+
+内容源约束：FANDEX-exe 内容来源于 FANDEX-web 仓库，仅允许只读引用，不得直接修改上游内容源。
 
 ## 技术栈
 
@@ -25,7 +27,6 @@ FANDEX-exe 是 FANDEX 系列三个仓库之一，定位为 Astro 5 SSG 知识学
 | 数学  | KaTeX + remark-math            | 构建时渲染，font-display:swap             |
 | 图表  | Mermaid 11                     | 构建时预渲染为 SVG                        |
 | 搜索  | Pagefind + Fuse.js             | 构建后索引 + Web Worker                   |
-| AI    | OpenAI 兼容 API                | 语义搜索/Quiz/Tutor/Roadmap/GraphRAG      |
 | 离线  | Service Worker                 | Cache First + Network First + SWR         |
 | 质量  | Husky + lint-staged + Prettier | Pre-commit 自动格式化                     |
 | CI/CD | GitHub Actions                 | 三阶段流水线                              |
@@ -171,7 +172,7 @@ Data 层（fetch JSON / AI API）
 
 ### AI 适配器（services/ai/）
 
-AI 能力的基础设施层，封装 OpenAI 兼容 API 调用，支持 OpenAI / DeepSeek / 自定义端点。
+可选 AI 能力的基础设施层，封装 OpenAI 兼容 API 调用，支持 OpenAI / DeepSeek / 自定义端点。AI 功能默认关闭，需用户自行配置环境变量后方可启用。
 
 | 文件                                                                                                               | 职责                                                                                                         |
 | :----------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------- |
@@ -189,7 +190,7 @@ AI 能力的基础设施层，封装 OpenAI 兼容 API 调用，支持 OpenAI / 
 
 ### 搜索服务（services/search/）
 
-提供语义搜索和关键词搜索双模式，AI 不可用时自动降级。
+提供语义搜索和关键词搜索双模式，AI 未配置时自动降级为关键词搜索。
 
 | 文件                                                                                                                   | 职责                                                                                                                          |
 | :--------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------- |
@@ -200,11 +201,11 @@ AI 能力的基础设施层，封装 OpenAI 兼容 API 调用，支持 OpenAI / 
 
 1. 语义搜索：查询 -> 生成嵌入 -> 加载 embedding-index.json -> 计算余弦相似度 -> 排序返回
 2. 关键词搜索：查询 -> fetch search-index.json -> 分词匹配 -> 加权评分 -> 排序返回
-3. 降级策略：API 不可用时自动从语义搜索降级到关键词搜索
+3. 降级策略：API 未配置或不可用时自动从语义搜索降级到关键词搜索
 
 ### Quiz 服务（services/quiz/）
 
-基于 AI 能力生成知识测验题目，支持三种题型。
+基于可选 AI 能力生成知识测验题目，支持三种题型。AI 未配置时使用 frontmatter 中的 fallbackQuiz。
 
 文件：[quiz-service.ts](file:///c:/Atian/Project/Trae/FANDEX-pj/FANDEX-exe/apps/web/src/services/quiz/quiz-service.ts)
 
@@ -216,31 +217,31 @@ AI 能力的基础设施层，封装 OpenAI 兼容 API 调用，支持 OpenAI / 
 
 核心方法：
 
-- `generateQuiz(request: QuizRequest): Promise<Quiz[]>` -- 生成题目，AI 不可用时返回 frontmatter 中的 fallbackQuiz
+- `generateQuiz(request: QuizRequest): Promise<Quiz[]>` -- 生成题目，AI 未配置时返回 frontmatter 中的 fallbackQuiz
 - `buildPrompt()` -- 根据题型构建 system/user 消息
 - `parseQuizResponse()` -- 提取 JSON 并校验字段完整性
 
 ### 学习推荐服务（services/tutor/）
 
-基于用户学习进度和 AI 能力，提供个性化学习推荐。
+基于用户学习进度和可选 AI 能力，提供个性化学习推荐。AI 未配置时降级为规则推荐。
 
 文件：[tutor-service.ts](file:///c:/Atian/Project/Trae/FANDEX-pj/FANDEX-exe/apps/web/src/services/tutor/tutor-service.ts)
 
 核心方法：
 
-- `getRecommendations(request: TutorRequest): Promise<TutorRecommendation[]>` -- 获取推荐，AI 不可用时调用 fallbackRecommendations()
+- `getRecommendations(request: TutorRequest): Promise<TutorRecommendation[]>` -- 获取推荐，AI 未配置时调用 fallbackRecommendations()
 - `analyzeLearningStatus()` -- 分析学习状态，计算完成率和覆盖率
 - `fallbackRecommendations()` -- 基于模块前置关系的规则推荐降级方案
 
 ### 路线规划服务（services/roadmap/）
 
-基于 AI 能力生成个性化学习路线图，支持路线持久化。
+基于可选 AI 能力生成个性化学习路线图，支持路线持久化。AI 未配置时降级为规则规划。
 
 文件：[roadmap-service.ts](file:///c:/Atian/Project/Trae/FANDEX-pj/FANDEX-exe/apps/web/src/services/roadmap/roadmap-service.ts)
 
 核心方法：
 
-- `generateRoadmap(request: RoadmapRequest): Promise<PersonalizedRoadmap>` -- 生成路线，AI 不可用时降级为规则规划
+- `generateRoadmap(request: RoadmapRequest): Promise<PersonalizedRoadmap>` -- 生成路线，AI 未配置时降级为规则规划
 - `aiGenerateRoadmap()` -- AI 规划，构建提示词并解析分阶段路线
 - `ruleBasedRoadmap()` -- 规则规划降级，基于 career-paths.json 匹配最接近的职业路径
 - `topologicalSort()` -- Kahn 算法拓扑排序，按前置依赖排序模块
@@ -249,7 +250,7 @@ AI 能力的基础设施层，封装 OpenAI 兼容 API 调用，支持 OpenAI / 
 
 ### GraphRAG 服务（services/graphrag/）
 
-知识图谱增强生成服务，结合知识图谱和 RAG 技术提供增强问答。
+知识图谱增强生成服务，结合知识图谱和 RAG 技术提供增强问答。AI 未配置时降级为节点列表返回。
 
 文件：[graphrag-service.ts](file:///c:/Atian/Project/Trae/FANDEX-pj/FANDEX-exe/apps/web/src/services/graphrag/graphrag-service.ts)
 
@@ -260,7 +261,7 @@ AI 能力的基础设施层，封装 OpenAI 兼容 API 调用，支持 OpenAI / 
 - `retrieveRelatedNodes()` -- 检索相关节点：关键词提取 -> 匹配评分 -> Top-K -> 1 跳扩展
 - `queryGraph(query: GraphQuery): Promise<SubGraph>` -- 图谱查询，按模块/术语/关系类型过滤
 - `buildContext()` -- 构建知识图谱上下文文本
-- `fallbackAnswer()` -- AI 不可用时的降级回答（仅返回节点列表）
+- `fallbackAnswer()` -- AI 未配置时的降级回答（仅返回节点列表）
 
 性能策略：知识图谱数据量大（8800 节点 + 18183 边），采用分片加载，首次仅加载节点索引。
 
@@ -460,7 +461,7 @@ Vue 3 组件，按需水合（client:load / client:visible）。
 
 ## 环境变量
 
-AI 功能需配置以下环境变量（禁止硬编码）：
+AI 功能为可选能力，需用户自行配置以下环境变量后方可启用（禁止硬编码）：
 
 | 变量名             | 说明                                    | 默认值                 |
 | :----------------- | :-------------------------------------- | :--------------------- |
@@ -498,7 +499,7 @@ npm run preview
 注意事项：
 
 - 开发模式下 Pagefind 搜索索引未生成，搜索功能不可用。需 `npm run build` 后 `npm run preview` 才能使用搜索
-- AI 功能需配置环境变量后方可使用
+- AI 功能为可选能力，需配置环境变量后方可使用
 - 构建时 Mermaid 渲染需要 jsdom + svgdom 双 DOM 环境
 
 ### 脚本命令
@@ -549,7 +550,7 @@ Settings -> Pages -> Source 选择 GitHub Actions 即可。
 
 ## AI 能力降级策略
 
-所有 AI 服务均实现降级机制，确保 AI 不可用时功能仍可使用。
+所有 AI 服务均为可选能力，默认关闭。AI 未配置时功能自动降级，确保基础功能仍可正常使用。
 
 | 服务     | AI 模式                              | 降级模式                                       |
 | :------- | :----------------------------------- | :--------------------------------------------- |

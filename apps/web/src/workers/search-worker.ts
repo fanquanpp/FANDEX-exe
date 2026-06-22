@@ -1,8 +1,23 @@
-import Fuse from 'fuse.js';
+import Fuse, { type IFuseOptions } from 'fuse.js';
 
-let fuse: Fuse<any> | null = null;
+/** 搜索索引条目类型定义 */
+interface SearchIndexItem {
+  title: string;
+  tags: string[];
+  slug: string;
+  description: string;
+  module: string;
+  updated?: string;
+}
 
-const FUSE_OPTIONS: Fuse.IFuseOptions<any> = {
+/** 搜索结果条目（含计算得分） */
+interface ScoredItem extends SearchIndexItem {
+  score: number;
+}
+
+let fuse: Fuse<SearchIndexItem> | null = null;
+
+const FUSE_OPTIONS: IFuseOptions<SearchIndexItem> = {
   keys: [
     { name: 'title', weight: 0.4 },
     { name: 'tags', weight: 0.25 },
@@ -37,7 +52,7 @@ self.onmessage = async (e: MessageEvent) => {
       results = results.filter((r) => r.item.module === payload.moduleFilter);
     }
 
-    const items = results.map((r) => ({
+    const items: ScoredItem[] = results.map((r) => ({
       ...r.item,
       score: r.score ? 1 - r.score : 1,
     }));

@@ -58,7 +58,11 @@ const basePath = process.env.BASE_PATH || '/FANDEX-exe/';
  */
 const postcssKatexFontDisplaySwap = {
   postcssPlugin: 'postcss-katex-font-display-swap',
-  AtRule(rule: { name: string; params: string }) {
+  AtRule(rule: {
+    name: string;
+    params: string;
+    nodes?: Array<{ type: string; prop?: string; value?: string }>;
+  }) {
     /* 仅处理 @font-face 规则 */
     if (rule.name === 'font-face') {
       /* 在规则内容中替换 font-display:block 为 font-display:swap */
@@ -81,14 +85,6 @@ export default defineConfig({
   build: {
     // 样式内联策略：auto 由 Astro 自动决定（小文件内联，大文件外部引用）
     inlineStylesheets: 'auto',
-    rollupOptions: {
-      output: {
-        // 静态资源文件名格式：包含 hash 以实现长期缓存
-        assetFileNames: 'assets/[name].[hash][extname]',
-        chunkFileNames: 'assets/[name].[hash].js',
-        entryFileNames: 'assets/[name].[hash].js',
-      },
-    },
   },
   // 预取配置：悬停时预加载页面，提升页面切换速度
   prefetch: {
@@ -103,7 +99,7 @@ export default defineConfig({
       remarkGfm, // GFM 语法：表格、任务列表、删除线等
       remarkEmoji, // Emoji 短代码转换
       remarkMath, // 数学公式语法解析（$...$ 和 $$...$$）
-      remarkMermaid, // Mermaid 图表构建时预渲染为 SVG（消除客户端 JS 依赖）
+      remarkMermaid as never, // Mermaid 图表构建时预渲染为 SVG（消除客户端 JS 依赖）
       remarkAdmonition, // 自定义提示块（:::note、:::tip 等）
       [remarkTermLink, projectRoot], // 术语预编译标记（构建时嵌入术语 HTML）
     ],
@@ -143,6 +139,16 @@ export default defineConfig({
         plugins: [
           postcssKatexFontDisplaySwap, // KaTeX 字体显示策略优化（font-display: swap）
         ],
+      },
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          // 静态资源文件名格式：包含 hash 以实现长期缓存
+          assetFileNames: 'assets/[name].[hash][extname]',
+          chunkFileNames: 'assets/[name].[hash].js',
+          entryFileNames: 'assets/[name].[hash].js',
+        },
       },
     },
   },

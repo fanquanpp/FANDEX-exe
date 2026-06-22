@@ -15,8 +15,8 @@ module.exports = {
   appId: 'com.fandex.web',
   /** 应用名称 */
   productName: 'FANDEX',
-  /** 应用版本 */
-  version: '4.0.0',
+  /** Electron 版本（固定版本号，避免 electron-builder 无法检测） */
+  electronVersion: '33.4.11',
   /** 应用目录 */
   directories: {
     output: 'release',
@@ -24,8 +24,8 @@ module.exports = {
   },
   /** 源代码目录 */
   files: [
-    'electron/main.js',
-    'electron/preload.js',
+    'electron/main.cjs',
+    'electron/preload.cjs',
     'electron/build/**/*',
   ],
   /** 额外资源：dist 目录打包到 resources/dist */
@@ -46,7 +46,7 @@ module.exports = {
       },
     ],
     /** 应用图标 */
-    icon: 'electron/build/icon.png',
+    icon: 'electron/build/icon.ico',
     /** 请求执行级别（不需要管理员权限） */
     requestedExecutionLevel: 'asInvoker',
   },
@@ -67,16 +67,14 @@ module.exports = {
     /** 卸载时删除应用数据 */
     deleteAppDataOnUninstall: false,
     /** 安装程序图标 */
-    installerIcon: 'electron/build/icon.png',
+    installerIcon: 'electron/build/icon.ico',
     /** 卸载程序图标 */
-    uninstallerIcon: 'electron/build/icon.png',
+    uninstallerIcon: 'electron/build/icon.ico',
     /** 快捷方式名称 */
     shortcutName: 'FANDEX',
   },
   /** 压缩配置 */
   compression: 'maximum',
-  /** 删除已打包的目录 */
-  removePackageFields: true,
   /** 不包含在 asar 包中的文件 */
   asarUnpack: [],
 };

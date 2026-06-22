@@ -6,7 +6,7 @@
  * 构建产物用于打包为离线 zip 包，用户解压后通过 start.bat/start.sh 启动。
  *
  * 与 npm run build 的区别：
- * - build：使用默认 BASE_PATH=/FANDEX/，部署到 GitHub Pages
+ * - build：使用默认 BASE_PATH=/FANDEX-exe/，部署到 GitHub Pages
  * - build:offline：使用 BASE_PATH=./，用于离线包分发
  *
  * 输入：无

@@ -24,7 +24,7 @@ const DIST = 'apps/web/dist';
 /** 源代码目录 */
 const SRC = 'apps/web/src';
 /** GitHub Pages 部署基础路径 */
-const BASE = '/FANDEX/';
+const BASE = '/FANDEX-exe/';
 /** 失败计数器 */
 let errors = 0;
 /** 警告计数器 */
@@ -145,7 +145,7 @@ async function checkPagefindIndex() {
  */
 async function checkBaseHref() {
   const indexHtml = await readFile(join(DIST, 'index.html'), 'utf-8');
-  const hasBase = indexHtml.includes(BASE) || indexHtml.includes('href="/FANDEX/"');
+  const hasBase = indexHtml.includes(BASE) || indexHtml.includes('href="/FANDEX-exe/"');
   if (hasBase) pass(`Base URL ${BASE} found in index.html`);
   else fail(`Base URL ${BASE} not found - links may be broken on GitHub Pages`);
 }
@@ -158,8 +158,8 @@ async function checkNoAbsoluteRootLinks() {
   let brokenCount = 0;
   await walkDir(DIST, '.html', async (full) => {
     const content = await readFile(full, 'utf-8');
-    // 匹配 href="/" 开头但不以 /FANDEX/ 开头的链接
-    const broken = content.match(/href="\/(?!FANDEX)[^"]+"/g);
+    // 匹配 href="/" 开头但不以 /FANDEX-exe/ 开头的链接
+    const broken = content.match(/href="\/(?!FANDEX-exe)[^"]+"/g);
     if (broken) brokenCount += broken.length;
   });
   if (brokenCount === 0) pass('No absolute root links found');

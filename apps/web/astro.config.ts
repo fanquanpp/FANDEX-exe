@@ -7,13 +7,13 @@
  * 行为均受此文件控制。
  *
  * 关键配置说明：
- * - 部署目标：GitHub Pages（项目站点，基础路径 /FANDEX/）或离线包（相对路径 ./）
+ * - 部署目标：GitHub Pages（项目站点，基础路径 /FANDEX-exe/）或离线包（相对路径 ./）
  * - Markdown 插件：GFM 语法、Emoji、数学公式（KaTeX）、自定义提示块、图片懒加载
  * - 代码高亮：Shiki 双主题（github-light / github-dark），通过 CSS 变量切换
  * - 集成：MDX 支持、站点地图生成、Vue 组件支持
  *
  * 环境变量：
- * - BASE_PATH：构建基础路径，默认 /FANDEX/（GitHub Pages），离线包构建时设为 ./
+ * - BASE_PATH：构建基础路径，默认 /FANDEX-exe/（GitHub Pages），离线包构建时设为 ./
  */
 
 import { defineConfig } from 'astro/config';
@@ -41,10 +41,10 @@ const projectRoot = resolve(__dirname, '../..');
  * 构建基础路径
  *
  * 通过环境变量 BASE_PATH 控制：
- * - 默认 /FANDEX/：GitHub Pages 项目站点部署
+ * - 默认 /FANDEX-exe/：GitHub Pages 项目站点部署
  * - ./ ：离线包构建，支持本地静态服务器运行
  */
-const basePath = process.env.BASE_PATH || '/FANDEX/';
+const basePath = process.env.BASE_PATH || '/FANDEX-exe/';
 
 /**
  * PostCSS 插件：KaTeX 字体显示策略优化

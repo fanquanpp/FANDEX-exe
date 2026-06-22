@@ -36,7 +36,7 @@ export default tseslint.config(
       '.astro/**',
       'node_modules/**',
       'public/pagefind/**',
-      'public/FANDEX/data/**',
+      'public/data/**',
       '../../content/**',
     ],
   },

@@ -85,12 +85,21 @@ function extractArticleContent(html) {
   content = content.replace(/<astro-island[\s\S]*?<\/astro-island>/g, '');
 
   // 移除阅读模式切换按钮
-  content = content.replace(/<div[^>]*class="[^"]*reading-mode-btns[^"]*"[^>]*>[\s\S]*?<\/div>/g, '');
-  content = content.replace(/<button[^>]*class="[^"]*reading-mode-exit[^"]*"[^>]*>[\s\S]*?<\/button>/g, '');
+  content = content.replace(
+    /<div[^>]*class="[^"]*reading-mode-btns[^"]*"[^>]*>[\s\S]*?<\/div>/g,
+    ''
+  );
+  content = content.replace(
+    /<button[^>]*class="[^"]*reading-mode-exit[^"]*"[^>]*>[\s\S]*?<\/button>/g,
+    ''
+  );
   content = content.replace(/<div[^>]*class="[^"]*study-timer[^"]*"[^>]*>[\s\S]*?<\/div>/g, '');
 
   // 移除进度追踪按钮区域（doc-title-actions）
-  content = content.replace(/<div[^>]*class="[^"]*doc-title-actions[^"]*"[^>]*>[\s\S]*?<\/div>/g, '');
+  content = content.replace(
+    /<div[^>]*class="[^"]*doc-title-actions[^"]*"[^>]*>[\s\S]*?<\/div>/g,
+    ''
+  );
 
   // 移除前置知识提示（prereq-notice）- 移动端不需要
   content = content.replace(/<div[^>]*class="[^"]*prereq-notice[^"]*"[^>]*>[\s\S]*?<\/div>/g, '');
@@ -115,8 +124,8 @@ function extractArticleContent(html) {
   content = content.replace(/\s+data-outline-slug="[^"]*"/g, '');
 
   // 移除内部导航链接的 href（移动端离线不可用）
-  // 将 /FANDEX/ 开头的链接改为 javascript:void(0)
-  content = content.replace(/href="\/FANDEX\/[^"]*"/g, 'href="#"');
+  // 将 /FANDEX-exe/ 开头的链接改为 javascript:void(0)
+  content = content.replace(/href="\/FANDEX-exe\/[^"]*"/g, 'href="#"');
 
   // 清理多余空行
   content = content.replace(/\n\s*\n\s*\n/g, '\n\n');

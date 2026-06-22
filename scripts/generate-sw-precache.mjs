@@ -15,7 +15,7 @@
  *
  * 路径处理：
  * 扫描到的文件路径相对于 dist 目录，加上 base path 前缀。
- * 例如 dist/search/index.html -> /FANDEX/search/index.html
+ * 例如 dist/search/index.html -> /FANDEX-exe/search/index.html
  */
 
 import { readdir, readFile, writeFile, stat } from 'node:fs/promises';
@@ -31,7 +31,7 @@ const DIST_DIR = join(__dirname, '..', 'apps', 'web', 'dist');
 const SW_FILE = join(DIST_DIR, 'sw.js');
 
 /** GitHub Pages 基础路径 */
-const DEFAULT_BASE_PATH = '/FANDEX/';
+const DEFAULT_BASE_PATH = '/FANDEX-exe/';
 /** 离线包基础路径（相对路径） */
 const OFFLINE_BASE_PATH = './';
 
@@ -52,7 +52,7 @@ async function detectBasePath() {
     if (startUrl === './' || startUrl === '.') {
       return OFFLINE_BASE_PATH;
     }
-    /** 从 start_url 提取 base path，如 "/FANDEX/" */
+    /** 从 start_url 提取 base path，如 "/FANDEX-exe/" */
     const match = startUrl.match(/^(\/[^/]+\/)/);
     return match ? match[1] : DEFAULT_BASE_PATH;
   } catch {

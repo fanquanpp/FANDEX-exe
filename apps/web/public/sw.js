@@ -18,7 +18,7 @@
 /** @type {string} 缓存版本号（由 generate-sw-precache.mjs 注入） */
 const CACHE_NAME = 'fandex-v6';
 /** @type {string} 站点基础路径（由 generate-sw-precache.mjs 注入，支持 GitHub Pages 和离线包） */
-const BASE = '/FANDEX/';
+const BASE = '/FANDEX-exe/';
 
 /** @type {string[]} 预缓存资源列表（由 generate-sw-precache.mjs 注入） */
 const PRECACHE_URLS = [BASE + 'data/glossary-index.json'];

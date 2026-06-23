@@ -142,12 +142,9 @@ export class TutorService {
       }
     }
 
-    const completionRate = totalModuleCount > 0
-      ? Math.round((completedModules / totalModuleCount) * 100)
-      : 0;
-    const coverageRate = totalDocs > 0
-      ? Math.round((completedDocs / totalDocs) * 100)
-      : 0;
+    const completionRate =
+      totalModuleCount > 0 ? Math.round((completedModules / totalModuleCount) * 100) : 0;
+    const coverageRate = totalDocs > 0 ? Math.round((completedDocs / totalDocs) * 100) : 0;
 
     return {
       completedModules,
@@ -167,9 +164,7 @@ export class TutorService {
    * 流程：组装系统提示和用户上下文 -> 返回消息数组
    */
   private buildPrompt(request: TutorRequest): ChatMessage[] {
-    const goalContext = request.learningGoal
-      ? `\n学习目标：${request.learningGoal}`
-      : '';
+    const goalContext = request.learningGoal ? `\n学习目标：${request.learningGoal}` : '';
 
     return [
       {
@@ -215,9 +210,7 @@ export class TutorService {
           moduleId: String(item.moduleId),
           slug: String(item.slug),
           reason: String(item.reason),
-          priority: typeof item.priority === 'number'
-            ? Math.min(5, Math.max(1, item.priority))
-            : 3,
+          priority: typeof item.priority === 'number' ? Math.min(5, Math.max(1, item.priority)) : 3,
         }))
         .slice(0, 5) as TutorRecommendation[];
     } catch {
@@ -241,8 +234,8 @@ export class TutorService {
 
     /* 推荐当前模块下未完成的文档 */
     const currentModulePrefix = request.currentModule + '/';
-    const hasCurrentModuleProgress = request.completedSlugs.some(
-      (slug) => slug.startsWith(currentModulePrefix)
+    const hasCurrentModuleProgress = request.completedSlugs.some((slug) =>
+      slug.startsWith(currentModulePrefix)
     );
 
     if (hasCurrentModuleProgress) {
@@ -258,9 +251,7 @@ export class TutorService {
     for (const modId of request.availableModules) {
       if (modId === request.currentModule) continue;
       const modPrefix = modId + '/';
-      const hasProgress = request.completedSlugs.some(
-        (slug) => slug.startsWith(modPrefix)
-      );
+      const hasProgress = request.completedSlugs.some((slug) => slug.startsWith(modPrefix));
       if (!hasProgress) {
         recommendations.push({
           moduleId: modId,
@@ -272,9 +263,7 @@ export class TutorService {
     }
 
     /* 按优先级降序排序，最多返回 5 条 */
-    return recommendations
-      .sort((a, b) => b.priority - a.priority)
-      .slice(0, 5);
+    return recommendations.sort((a, b) => b.priority - a.priority).slice(0, 5);
   }
 }
 

@@ -232,17 +232,14 @@ export class GraphRAGService {
         /** 精确匹配标签（最高分） */
         if (nodeLabelLower === kwLower) {
           score += 10;
-        }
-        /** 标签包含关键词 */
-        else if (nodeLabelLower.includes(kwLower)) {
+        } else if (nodeLabelLower.includes(kwLower)) {
+          /** 标签包含关键词 */
           score += 5;
-        }
-        /** ID 包含关键词 */
-        else if (nodeIdLower.includes(kwLower)) {
+        } else if (nodeIdLower.includes(kwLower)) {
+          /** ID 包含关键词 */
           score += 3;
-        }
-        /** 关键词包含标签（反向包含） */
-        else if (kwLower.includes(nodeLabelLower) && nodeLabelLower.length >= 2) {
+        } else if (kwLower.includes(nodeLabelLower) && nodeLabelLower.length >= 2) {
+          /** 关键词包含标签（反向包含） */
           score += 2;
         }
       }
@@ -322,12 +319,62 @@ export class GraphRAGService {
   private extractKeywords(question: string): string[] {
     /** 中文停用词列表 */
     const stopWords = new Set([
-      '的', '了', '在', '是', '我', '有', '和', '就', '不', '人',
-      '都', '一', '一个', '上', '也', '很', '到', '说', '要', '去',
-      '你', '会', '着', '没有', '看', '好', '自己', '这', '他', '她',
-      '什么', '怎么', '如何', '为什么', '哪', '哪些', '吗', '呢', '啊',
-      '吧', '嗯', '那', '那么', '可以', '能', '应该', '需要', '请',
-      '告诉', '解释', '说明', '介绍', '了解', '知道', '学习', '掌握',
+      '的',
+      '了',
+      '在',
+      '是',
+      '我',
+      '有',
+      '和',
+      '就',
+      '不',
+      '人',
+      '都',
+      '一',
+      '一个',
+      '上',
+      '也',
+      '很',
+      '到',
+      '说',
+      '要',
+      '去',
+      '你',
+      '会',
+      '着',
+      '没有',
+      '看',
+      '好',
+      '自己',
+      '这',
+      '他',
+      '她',
+      '什么',
+      '怎么',
+      '如何',
+      '为什么',
+      '哪',
+      '哪些',
+      '吗',
+      '呢',
+      '啊',
+      '吧',
+      '嗯',
+      '那',
+      '那么',
+      '可以',
+      '能',
+      '应该',
+      '需要',
+      '请',
+      '告诉',
+      '解释',
+      '说明',
+      '介绍',
+      '了解',
+      '知道',
+      '学习',
+      '掌握',
     ]);
 
     /** 按空格和标点分词 */
@@ -405,9 +452,13 @@ ${context}
     /** 添加节点信息 */
     for (const node of relatedNodes) {
       const typeLabel =
-        node.type === 'module' ? '模块' :
-        node.type === 'doc' ? '文档' :
-        node.type === 'term' ? '术语' : node.type;
+        node.type === 'module'
+          ? '模块'
+          : node.type === 'doc'
+            ? '文档'
+            : node.type === 'term'
+              ? '术语'
+              : node.type;
       lines.push(`[${typeLabel}] ${node.label} (${node.id})`);
     }
 
@@ -424,9 +475,13 @@ ${context}
         const targetNode = relatedNodes.find((n) => n.id === edge.target);
         if (sourceNode && targetNode) {
           const relationLabel =
-            edge.relation === 'prerequisite' ? '前置知识' :
-            edge.relation === 'related' ? '关联' :
-            edge.relation === 'contains' ? '包含' : edge.relation;
+            edge.relation === 'prerequisite'
+              ? '前置知识'
+              : edge.relation === 'related'
+                ? '关联'
+                : edge.relation === 'contains'
+                  ? '包含'
+                  : edge.relation;
           lines.push(`- ${sourceNode.label} --[${relationLabel}]--> ${targetNode.label}`);
         }
       }
@@ -472,9 +527,13 @@ ${context}
     const lines: string[] = ['以下是与您问题相关的知识节点：'];
     for (const node of relatedNodes.slice(0, 15)) {
       const typeLabel =
-        node.type === 'module' ? '模块' :
-        node.type === 'doc' ? '文档' :
-        node.type === 'term' ? '术语' : node.type;
+        node.type === 'module'
+          ? '模块'
+          : node.type === 'doc'
+            ? '文档'
+            : node.type === 'term'
+              ? '术语'
+              : node.type;
       lines.push(`- [${typeLabel}] ${node.label}`);
     }
 
@@ -505,8 +564,7 @@ ${context}
         const moduleIdLower = query.moduleId.toLowerCase();
         filteredNodes = filteredNodes.filter(
           (n) =>
-            n.id.toLowerCase().startsWith(moduleIdLower) ||
-            n.id.toLowerCase() === moduleIdLower
+            n.id.toLowerCase().startsWith(moduleIdLower) || n.id.toLowerCase() === moduleIdLower
         );
       }
 
@@ -514,18 +572,14 @@ ${context}
       if (query.term) {
         const termLower = query.term.toLowerCase();
         filteredNodes = filteredNodes.filter(
-          (n) =>
-            n.label.toLowerCase().includes(termLower) ||
-            n.id.toLowerCase().includes(termLower)
+          (n) => n.label.toLowerCase().includes(termLower) || n.id.toLowerCase().includes(termLower)
         );
       }
 
       /** 按节点类型过滤 */
       if (query.relationType) {
         /** 查找与指定关系类型相关的节点 */
-        const relevantEdges = this.graphEdges.filter(
-          (e) => e.relation === query.relationType
-        );
+        const relevantEdges = this.graphEdges.filter((e) => e.relation === query.relationType);
         const relevantNodeIds = new Set<string>();
         for (const edge of relevantEdges) {
           relevantNodeIds.add(edge.source);

@@ -53,9 +53,7 @@ export function setReadingMode(mode: ReadingMode): void {
   }
   document.documentElement.setAttribute('data-reading-mode', mode);
   applyModeStyles(mode);
-  document.dispatchEvent(
-    new CustomEvent(MODE_CHANGE_EVENT, { detail: { mode } })
-  );
+  document.dispatchEvent(new CustomEvent(MODE_CHANGE_EVENT, { detail: { mode } }));
 }
 
 /**
@@ -124,9 +122,7 @@ export function exitToStandardMode(): void {
  * @param callback - 模式变更回调，接收新模式作为参数
  * @returns 取消监听的函数
  */
-export function onReadingModeChange(
-  callback: (mode: ReadingMode) => void
-): () => void {
+export function onReadingModeChange(callback: (mode: ReadingMode) => void): () => void {
   const handler = (e: Event) => {
     const customEvent = e as CustomEvent<{ mode: ReadingMode }>;
     callback(customEvent.detail.mode);

@@ -23,11 +23,7 @@ module.exports = {
     buildResources: 'electron/build',
   },
   /** 源代码目录 */
-  files: [
-    'electron/main.cjs',
-    'electron/preload.cjs',
-    'electron/build/**/*',
-  ],
+  files: ['electron/main.cjs', 'electron/preload.cjs', 'electron/build/**/*'],
   /** 额外资源：dist 目录打包到 resources/dist */
   extraResources: [
     {

@@ -201,10 +201,7 @@ export class RoadmapService {
    * 输入：请求参数、可用模块列表
    * 输出：ChatMessage 数组
    */
-  private buildAIPrompt(
-    request: RoadmapRequest,
-    availableModules: ModuleInfo[]
-  ): ChatMessage[] {
+  private buildAIPrompt(request: RoadmapRequest, availableModules: ModuleInfo[]): ChatMessage[] {
     /** 构建模块列表（含前置依赖） */
     const moduleList = availableModules
       .map((m) => {
@@ -264,10 +261,7 @@ ${moduleList}`,
    * 输出：RoadmapPhase 数组
    * 流程：提取 JSON -> 校验结构 -> 过滤无效步骤
    */
-  private parseAIRoadmap(
-    content: string,
-    availableModules: ModuleInfo[]
-  ): RoadmapPhase[] {
+  private parseAIRoadmap(content: string, availableModules: ModuleInfo[]): RoadmapPhase[] {
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return [];
@@ -295,14 +289,11 @@ ${moduleList}`,
             .map((step: Record<string, unknown>, stepIndex: number) => ({
               order: typeof step.order === 'number' ? step.order : stepIndex + 1,
               moduleId: step.moduleId as string,
-              title: typeof step.title === 'string' ? step.title : step.moduleId as string,
-              description:
-                typeof step.description === 'string' ? step.description : '',
-              estimatedDays:
-                typeof step.estimatedDays === 'number' ? step.estimatedDays : 7,
+              title: typeof step.title === 'string' ? step.title : (step.moduleId as string),
+              description: typeof step.description === 'string' ? step.description : '',
+              estimatedDays: typeof step.estimatedDays === 'number' ? step.estimatedDays : 7,
             })),
-          checkpoint:
-            typeof phase.checkpoint === 'string' ? phase.checkpoint : '',
+          checkpoint: typeof phase.checkpoint === 'string' ? phase.checkpoint : '',
         }))
         .filter((phase: RoadmapPhase) => phase.steps.length > 0);
     } catch {
@@ -341,18 +332,18 @@ ${moduleList}`,
 
     /** 目标关键词映射表 */
     const goalKeywords: Record<string, string[]> = {
-      '全栈': ['全栈入门'],
-      '前端': ['前端工程师'],
-      '后端': ['后端工程师'],
-      '系统': ['系统开发者'],
-      '数据': ['数据工程师'],
-      '运维': ['DevOps 工程师'],
-      '安全': ['安全工程师'],
-      'AI': ['AI 工程师'],
-      '人工智能': ['AI 工程师'],
-      '移动': ['移动开发'],
-      '理论': ['CS 理论'],
-      '算法': ['CS 理论'],
+      全栈: ['全栈入门'],
+      前端: ['前端工程师'],
+      后端: ['后端工程师'],
+      系统: ['系统开发者'],
+      数据: ['数据工程师'],
+      运维: ['DevOps 工程师'],
+      安全: ['安全工程师'],
+      AI: ['AI 工程师'],
+      人工智能: ['AI 工程师'],
+      移动: ['移动开发'],
+      理论: ['CS 理论'],
+      算法: ['CS 理论'],
     };
 
     const lowerGoal = goal.toLowerCase();
@@ -500,7 +491,10 @@ ${moduleList}`,
     if (steps.length === 0) return [];
 
     /** 每阶段模块数 */
-    const stepsPerPhase = Math.max(2, Math.min(3, Math.ceil(steps.length / Math.max(1, Math.ceil(weeksAvailable / 2)))));
+    const stepsPerPhase = Math.max(
+      2,
+      Math.min(3, Math.ceil(steps.length / Math.max(1, Math.ceil(weeksAvailable / 2))))
+    );
     const phases: RoadmapPhase[] = [];
     const totalDays = weeksAvailable * 7;
     const daysPerStep = Math.max(3, Math.ceil(totalDays / steps.length));
@@ -555,10 +549,7 @@ ${moduleList}`,
     if (relevantModules.length < 3) {
       const basics = ['getting-started', 'markdown', 'git', 'html5', 'css', 'javascript'];
       for (const id of basics) {
-        if (
-          !learnedSet.has(id) &&
-          !relevantModules.some((m) => m.id === id)
-        ) {
+        if (!learnedSet.has(id) && !relevantModules.some((m) => m.id === id)) {
           const mod = this.modulesInfo.find((m) => m.id === id);
           if (mod) relevantModules.push(mod);
         }
@@ -625,10 +616,7 @@ ${moduleList}`,
 
     /** 计算剩余步骤的预计时间 */
     const remainingSteps = allSteps.filter((s) => !learnedSet.has(s.moduleId));
-    const estimatedDaysRemaining = remainingSteps.reduce(
-      (sum, s) => sum + s.estimatedDays,
-      0
-    );
+    const estimatedDaysRemaining = remainingSteps.reduce((sum, s) => sum + s.estimatedDays, 0);
 
     /** 下一步建议：取前 3 个未完成步骤 */
     const nextSteps = remainingSteps.slice(0, 3);

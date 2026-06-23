@@ -13,7 +13,18 @@
 /* AI 服务 */
 export { createAIAdapter, resetAIAdapter } from './ai/adapter';
 export { getAIConfig, isAIAvailable } from './ai/config';
-export type { AIProvider, ChatRole, ChatMessage, ChatCompletionRequest, ChatCompletionResponse, EmbeddingRequest, EmbeddingResponse, AIAdapter, TokenUsage, EmbeddingUsage } from './ai/types';
+export type {
+  AIProvider,
+  ChatRole,
+  ChatMessage,
+  ChatCompletionRequest,
+  ChatCompletionResponse,
+  EmbeddingRequest,
+  EmbeddingResponse,
+  AIAdapter,
+  TokenUsage,
+  EmbeddingUsage,
+} from './ai/types';
 
 /* 搜索服务 */
 export { getSearchService } from './search/search-service';
@@ -23,16 +34,41 @@ export type { EmbeddingResult } from './search/embedding';
 
 /* Quiz 服务 */
 export { getQuizService } from './quiz/quiz-service';
-export type { QuizType, FillQuiz, ChoiceQuiz, FixQuiz, Quiz, QuizRequest } from './quiz/quiz-service';
+export type {
+  QuizType,
+  FillQuiz,
+  ChoiceQuiz,
+  FixQuiz,
+  Quiz,
+  QuizRequest,
+} from './quiz/quiz-service';
 
 /* 学习推荐服务 */
 export { getTutorService } from './tutor/tutor-service';
-export type { TutorRecommendation, TutorRequest, LearningStats, ModulePrerequisiteMap } from './tutor/tutor-service';
+export type {
+  TutorRecommendation,
+  TutorRequest,
+  LearningStats,
+  ModulePrerequisiteMap,
+} from './tutor/tutor-service';
 
 /* 路线规划服务 */
 export { getRoadmapService } from './roadmap/roadmap-service';
-export type { RoadmapStep, RoadmapPhase, RoadmapRequest, RoadmapEvaluation, PersonalizedRoadmap } from './roadmap/roadmap-service';
+export type {
+  RoadmapStep,
+  RoadmapPhase,
+  RoadmapRequest,
+  RoadmapEvaluation,
+  PersonalizedRoadmap,
+} from './roadmap/roadmap-service';
 
 /* GraphRAG 服务 */
 export { getGraphRAGService } from './graphrag/graphrag-service';
-export type { GraphNode, GraphEdge, GraphRAGAnswer, GraphRAGRequest, GraphQuery, SubGraph } from './graphrag/graphrag-service';
+export type {
+  GraphNode,
+  GraphEdge,
+  GraphRAGAnswer,
+  GraphRAGRequest,
+  GraphQuery,
+  SubGraph,
+} from './graphrag/graphrag-service';

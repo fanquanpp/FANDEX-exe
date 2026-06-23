@@ -2,7 +2,23 @@ import { defineCollection, z } from 'astro:content';
 import { glob } from 'astro/loaders';
 
 const docs = defineCollection({
-  loader: glob({ pattern: '**/*.{md,mdx}', base: '../../content' }),
+  loader: glob({
+    pattern: '**/*.{md,mdx}',
+    base: '../../content',
+    /**
+     * 自定义 ID 生成函数
+     *
+     * 问题：部分文件名包含 '#' 字符（如 C#12与C#13新特性.md），
+     * 在 Linux 上 '#' 会被 URL 解析器误认为片段标识符，
+     * 导致 glob-loader 生成的 ID 在路由匹配时被截断。
+     *
+     * 解决：将文件路径中的 '#' 替换为 '-'，生成安全的 content collection ID。
+     * 文件本身不重命名，仅影响内部 ID 和 URL slug。
+     *
+     * 参数类型由 Astro 的 GenerateIdOptions 自动推断（entry: string, base: URL, data: Record<string, unknown>）。
+     */
+    generateId: ({ entry }) => entry.replace(/#/g, '-'),
+  }),
   schema: z.object({
     title: z.string(),
     module: z.string(),

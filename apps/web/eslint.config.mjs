@@ -33,10 +33,12 @@ export default tseslint.config(
   {
     ignores: [
       'dist/**',
+      'release/**',
       '.astro/**',
       'node_modules/**',
       'public/pagefind/**',
       'public/data/**',
+      'src/content/docs/**',
       '../../content/**',
     ],
   },

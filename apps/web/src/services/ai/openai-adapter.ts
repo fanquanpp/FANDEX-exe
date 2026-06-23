@@ -56,7 +56,7 @@ export class OpenAIAdapter implements AIAdapter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify({
           model: request.model || this.config.chatModel,
@@ -83,9 +83,9 @@ export class OpenAIAdapter implements AIAdapter {
           : undefined,
       };
     } catch (error) {
-      throw new Error(
-        `聊天完成失败: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw new Error(`聊天完成失败: ${error instanceof Error ? error.message : String(error)}`, {
+        cause: error,
+      });
     }
   }
 
@@ -103,7 +103,7 @@ export class OpenAIAdapter implements AIAdapter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify({
           model: request.model || this.config.embeddingModel,
@@ -127,9 +127,9 @@ export class OpenAIAdapter implements AIAdapter {
           : undefined,
       };
     } catch (error) {
-      throw new Error(
-        `嵌入生成失败: ${error instanceof Error ? error.message : String(error)}`
-      );
+      throw new Error(`嵌入生成失败: ${error instanceof Error ? error.message : String(error)}`, {
+        cause: error,
+      });
     }
   }
 }

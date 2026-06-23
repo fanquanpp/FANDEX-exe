@@ -126,6 +126,14 @@ export default tseslint.config(
     },
   },
 
+  /* 类型声明文件覆盖规则（允许 triple-slash reference，Astro 标准做法） */
+  {
+    files: ['**/*.d.ts'],
+    rules: {
+      '@typescript-eslint/triple-slash-reference': 'off',
+    },
+  },
+
   /* Prettier 兼容：关闭与 Prettier 冲突的格式化规则（必须放在最后） */
   prettierConfig
 );

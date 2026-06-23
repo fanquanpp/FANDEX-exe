@@ -17,12 +17,16 @@
  */
 
 import { readdir, stat, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-/** 构建产物目录 */
-const DIST = 'apps/web/dist';
+/** 脚本所在目录（用于将相对路径解析为绝对路径，避免工作目录差异） */
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/** 构建产物目录（基于脚本位置解析，兼容 npm -w 工作目录切换） */
+const DIST = resolve(__dirname, '..', 'apps', 'web', 'dist');
 /** 源代码目录 */
-const SRC = 'apps/web/src';
+const SRC = resolve(__dirname, '..', 'apps', 'web', 'src');
 /** GitHub Pages 部署基础路径 */
 const BASE = '/FANDEX-exe/';
 /** 失败计数器 */

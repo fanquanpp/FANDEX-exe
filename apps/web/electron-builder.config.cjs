@@ -17,6 +17,8 @@ module.exports = {
   productName: 'FANDEX',
   /** Electron 版本（固定版本号，避免 electron-builder 无法检测） */
   electronVersion: '33.4.11',
+  /** 禁用自动发布（由 CI 工作流的 release 作业统一处理 GitHub Release） */
+  publish: null,
   /** 应用目录 */
   directories: {
     output: 'release',

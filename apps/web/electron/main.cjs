@@ -212,7 +212,7 @@ function createMenu() {
               detail:
                 '版本: ' +
                 app.getVersion() +
-                '\n零基础到本科毕业的完整学习平台\n51 模块 · 2031 篇文档',
+                '\n零基础到本科毕业的完整学习平台\n51 模块 · 1996 篇文档',
               buttons: ['确定'],
             });
           },

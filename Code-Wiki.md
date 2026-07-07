@@ -91,7 +91,7 @@ FANDEX-exe/
 | glossary/\*.json          | 27 个模块的术语表 JSON，每模块含 moduleId 和 terms 数组                  |
 | roadmap/career-paths.json | 10 条职业方向路径数据                                                    |
 | roadmap/phases.json       | 路线图阶段数据                                                           |
-| tags/tag-index.json       | 1648 个标签的跨模块索引                                                  |
+| tags/tag-index.json       | 1643 个标签的跨模块索引                                                  |
 | review/\*.yaml            | 复习卡片 YAML 源数据                                                     |
 
 ### 能力层（packages/）
@@ -263,7 +263,7 @@ Data 层（fetch JSON / AI API）
 - `buildContext()` -- 构建知识图谱上下文文本
 - `fallbackAnswer()` -- AI 未配置时的降级回答（仅返回节点列表）
 
-性能策略：知识图谱数据量大（8800 节点 + 18183 边），采用分片加载，首次仅加载节点索引。
+性能策略：知识图谱数据量大（6804 节点 + 6788 边），采用分片加载，首次仅加载节点索引。
 
 ## 工具库（lib/）
 
@@ -380,7 +380,7 @@ Vue 3 组件，按需水合（client:load / client:visible）。
 4. `build-module-docs-index.mjs` -- 模块文档索引
 5. `build-tag-index.mjs` -- 标签索引
 6. `build-search-index.mjs` -- 搜索索引（超 100KB 自动压缩字段名）
-7. `generate-knowledge-graph.mjs` -- 知识图谱（8800 节点 + 18183 边）
+7. `generate-knowledge-graph.mjs` -- 知识图谱（6804 节点 + 6788 边）
 8. `generate-embedding-index.mjs` -- 嵌入向量索引
 9. `astro build` -- Astro SSG 构建（含 Markdown 渲染管线）
 10. `pagefind --site dist` -- Pagefind 搜索索引

@@ -1,6 +1,6 @@
 import rss from '@astrojs/rss';
 import { getCollection } from 'astro:content';
-import { SITE } from '@packages/shared/constants';
+import { SITE } from '@fandex/shared';
 
 export async function GET(context) {
   const docs = await getCollection('docs');

@@ -29,7 +29,7 @@ vi.stubGlobal('window', { dispatchEvent: vi.fn() });
 vi.stubGlobal(
   'BroadcastChannel',
   class {
-    onmessage: ((e: any) => void) | null = null;
+    onmessage: ((e: MessageEvent) => void) | null = null;
     postMessage() {}
     close() {}
   }

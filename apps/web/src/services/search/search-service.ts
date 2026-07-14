@@ -35,8 +35,8 @@ interface DocEmbedding {
   embedding: number[];
 }
 
-/** search-index.json 中的文档条目结构 */
-interface SearchIndexEntry {
+/** search-index.json 中的文档条目结构（标签搜索与客户端搜索的基础数据） */
+export interface SearchEntry {
   slug: string;
   title: string;
   description: string;
@@ -47,11 +47,22 @@ interface SearchIndexEntry {
   updated: string;
 }
 
+/** 模块文档索引条目（data/module-docs.json 中的单条文档记录） */
+export interface ModuleDocEntry {
+  slug: string;
+  title: string;
+  order: number;
+}
+
 /** 搜索服务类 */
 export class SearchService {
   private adapter = createAIAdapter();
   private embeddingIndex: DocEmbedding[] = [];
   private indexLoaded = false;
+  /** 搜索索引缓存（search-index.json，标签搜索与关键词搜索共用） */
+  private searchIndexCache: SearchEntry[] | null = null;
+  /** 模块文档索引缓存（module-docs.json，侧边栏懒加载共用） */
+  private moduleDocsCache: Record<string, ModuleDocEntry[]> | null = null;
 
   /**
    * 执行搜索
@@ -116,13 +127,7 @@ export class SearchService {
    */
   private async keywordSearch(query: string, maxResults: number): Promise<SearchResult[]> {
     try {
-      const base = import.meta.env.BASE_URL || '/';
-      const response = await fetch(`${base}data/search-index.json`);
-      if (!response.ok) {
-        throw new Error(`搜索索引请求失败: ${response.status}`);
-      }
-
-      const index: SearchIndexEntry[] = await response.json();
+      const index = await this.loadSearchIndex();
       const terms = query
         .toLowerCase()
         .split(/\s+/)
@@ -152,6 +157,90 @@ export class SearchService {
       console.error('关键词搜索失败:', error);
       return [];
     }
+  }
+
+  /**
+   * 获取指定模块的文档列表
+   *
+   * 封装对 data/module-docs.json 的加载逻辑，避免 UI 层直接 fetch。
+   * 首次调用加载完整索引并缓存，后续直接从缓存按模块取值。
+   *
+   * 输入：moduleId - 模块标识
+   * 输出：该模块下的文档列表
+   * 流程：加载模块文档索引 -> 按 moduleId 取值 -> 返回文档数组
+   */
+  async getModuleDocs(moduleId: string): Promise<ModuleDocEntry[]> {
+    try {
+      const docs = await this.loadModuleDocs();
+      return docs[moduleId] ?? [];
+    } catch (error) {
+      console.error('加载模块文档索引失败:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 按标签检索文档
+   *
+   * 封装对 data/search-index.json 的加载与 tag 维度检索逻辑，避免 UI 层直接 fetch。
+   * 支持可选的关键词二次过滤。当 tag 为空字符串时返回完整索引，供客户端 Fuse.js 等模糊搜索使用。
+   *
+   * 输入：tag - 标签名（空字符串表示不限标签）、query - 可选关键词
+   * 输出：匹配的文档条目数组
+   * 流程：加载搜索索引 -> 按 tag 过滤 -> 按 query 过滤 -> 返回结果
+   */
+  async searchByTag(tag: string, query?: string): Promise<SearchEntry[]> {
+    try {
+      const index = await this.loadSearchIndex();
+      let results = tag ? index.filter((entry) => entry.tags.includes(tag)) : index;
+      if (query) {
+        const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+        results = results.filter((entry) => {
+          const text = `${entry.title} ${entry.description} ${entry.tags.join(' ')}`.toLowerCase();
+          return terms.some((term) => text.includes(term));
+        });
+      }
+      return results;
+    } catch (error) {
+      console.error('标签搜索失败:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 加载搜索索引（带内存缓存）
+   *
+   * 输入：无
+   * 输出：SearchEntry[] 搜索索引数组
+   * 流程：检查缓存 -> fetch search-index.json -> 解析 -> 缓存并返回
+   */
+  private async loadSearchIndex(): Promise<SearchEntry[]> {
+    if (this.searchIndexCache) return this.searchIndexCache;
+    const base = import.meta.env.BASE_URL || '/';
+    const response = await fetch(`${base}data/search-index.json`);
+    if (!response.ok) {
+      throw new Error(`搜索索引请求失败: ${response.status}`);
+    }
+    this.searchIndexCache = (await response.json()) as SearchEntry[];
+    return this.searchIndexCache;
+  }
+
+  /**
+   * 加载模块文档索引（带内存缓存）
+   *
+   * 输入：无
+   * 输出：Record<string, ModuleDocEntry[]> 模块文档索引对象
+   * 流程：检查缓存 -> fetch module-docs.json -> 解析 -> 缓存并返回
+   */
+  private async loadModuleDocs(): Promise<Record<string, ModuleDocEntry[]>> {
+    if (this.moduleDocsCache) return this.moduleDocsCache;
+    const base = import.meta.env.BASE_URL || '/';
+    const response = await fetch(`${base}data/module-docs.json`);
+    if (!response.ok) {
+      throw new Error(`模块文档索引请求失败: ${response.status}`);
+    }
+    this.moduleDocsCache = (await response.json()) as Record<string, ModuleDocEntry[]>;
+    return this.moduleDocsCache;
   }
 
   /**

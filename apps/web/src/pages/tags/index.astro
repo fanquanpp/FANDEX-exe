@@ -2,7 +2,7 @@
 import Layout from '@/components/Layout.astro';
 import SEO from '@/components/SEO.astro';
 import { getCollection } from 'astro:content';
-import { modules, categoryColors, getPrimaryCategory } from '@packages/shared/modules';
+import { modules, categoryColors, getPrimaryCategory } from '@fandex/shared';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -558,9 +558,11 @@ const moduleMapJson = JSON.stringify(
 </style>
 
 <script>
-  /* eslint-disable @typescript-eslint/no-explicit-any */
+  import { getSearchService } from '@/services/search/search-service';
+  import type Fuse from 'fuse.js';
+  import type { SearchEntry } from '@/services/search/search-service';
   // Load DOMPurify for safe innerHTML
-  if (!(window as any).DOMPurify) {
+  if (!window.DOMPurify) {
     const s = document.createElement('script');
     s.src = 'https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js';
     s.async = true;
@@ -572,10 +574,10 @@ const moduleMapJson = JSON.stringify(
   );
 
   (() => {
-    let index: any[] | null = null;
+    let index: SearchEntry[] | null = null;
     let worker: Worker | null = null;
     let useWorker = false;
-    let fuse: any = null;
+    let fuse: Fuse<SearchEntry> | null = null;
 
     const input = document.getElementById('search-input') as HTMLInputElement;
     const moduleSelect = document.getElementById('filter-module') as HTMLSelectElement;
@@ -602,8 +604,8 @@ const moduleMapJson = JSON.stringify(
     async function loadIndex() {
       if (index) return;
       try {
-        const res = await fetch(`${base}data/search-index.json`);
-        index = await res.json();
+        const searchService = getSearchService();
+        index = await searchService.searchByTag('');
       } catch {
         statusEl.textContent = '搜索索引加载失败，请先运行 npm run build';
         index = [];
@@ -616,7 +618,7 @@ const moduleMapJson = JSON.stringify(
       if (!index) return;
       try {
         const FuseModule = await import('fuse.js');
-        const FuseClass = FuseModule.default || FuseModule;
+        const FuseClass = FuseModule.default;
 
         try {
           worker = new Worker(new URL('@/workers/search-worker.ts', import.meta.url), {
@@ -650,7 +652,8 @@ const moduleMapJson = JSON.stringify(
       }
     }
 
-    function fallbackToFuse(FuseClass: any) {
+    function fallbackToFuse(FuseClass: typeof import('fuse.js').default) {
+      if (!index) return;
       fuse = new FuseClass(index, {
         keys: [
           { name: 'title', weight: 0.4 },
@@ -689,9 +692,9 @@ const moduleMapJson = JSON.stringify(
       if (fuse && query) {
         let results = fuse.search(query);
         if (moduleFilter) {
-          results = results.filter((r: any) => r.item.module === moduleFilter);
+          results = results.filter((r) => r.item.module === moduleFilter);
         }
-        const items = results.map((r: any) => ({
+        const items = results.map((r) => ({
           ...r.item,
           score: r.score ? 1 - r.score : 1,
         }));
@@ -704,32 +707,32 @@ const moduleMapJson = JSON.stringify(
 
     function performBasicSearch(query: string, moduleFilter: string) {
       if (!index) return;
-      let results = index;
+      let results: SearchEntry[] = index;
 
       if (moduleFilter) {
-        results = results.filter((d: any) => d.module === moduleFilter);
+        results = results.filter((d) => d.module === moduleFilter);
       }
 
       if (query) {
         const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
         const scored = results
-          .map((d: any) => {
+          .map((d) => {
             let score = 0;
             const titleLower = d.title.toLowerCase();
             const descLower = (d.description || '').toLowerCase();
-            const tagsLower = (d.tags || []).map((t: string) => t.toLowerCase());
+            const tagsLower = (d.tags || []).map((t) => t.toLowerCase());
 
             for (const term of terms) {
               if (titleLower.includes(term)) score += 10;
-              if (tagsLower.some((t: string) => t.includes(term))) score += 5;
+              if (tagsLower.some((t) => t.includes(term))) score += 5;
               if (descLower.includes(term)) score += 2;
               if (d.slug.toLowerCase().includes(term)) score += 3;
             }
             return { ...d, score };
           })
-          .filter((d: any) => d.score > 0);
+          .filter((d) => d.score > 0);
 
-        scored.sort((a: any, b: any) => b.score - a.score);
+        scored.sort((a, b) => b.score - a.score);
         results = scored;
       }
 
@@ -744,7 +747,7 @@ const moduleMapJson = JSON.stringify(
         .replace(/"/g, '&quot;');
     }
 
-    function renderResults(docs: any[], query: string) {
+    function renderResults(docs: SearchEntry[], query: string) {
       const hasActiveSearch = query || moduleSelect.value;
 
       tagGroups.forEach((g) => {
@@ -773,12 +776,12 @@ const moduleMapJson = JSON.stringify(
 
       const html = docs
         .slice(0, 50)
-        .map((d: any) => {
+        .map((d) => {
           const mod = MODULE_MAP[d.module] || { title: d.module, color: '#4f5bd5' };
           const diff = d.difficulty || '';
           const diffLabel = DIFFICULTY_LABELS[diff] || diff;
-          const tags = (d.tags || [])
-            .map((t: string) => `<span class="result-tag-chip">${escapeHtml(t)}</span>`)
+          const tags = d.tags
+            .map((t) => `<span class="result-tag-chip">${escapeHtml(t)}</span>`)
             .join('');
 
           return `<a href="${base}${escapeHtml(d.slug)}/" class="result-card">
@@ -794,7 +797,7 @@ const moduleMapJson = JSON.stringify(
         })
         .join('');
 
-      const purify = (window as any).DOMPurify;
+      const purify = window.DOMPurify;
       resultsEl.innerHTML = purify ? purify.sanitize(html) : html;
     }
   })();

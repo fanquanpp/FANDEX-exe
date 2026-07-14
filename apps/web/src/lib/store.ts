@@ -32,7 +32,13 @@ export function updateProgress(slug: string, status: DocStatus, scrollPos = 0) {
 }
 
 export async function initGlobalState() {
-  globalState.progress = getAllProgress();
+  // 读取学习进度，异常时回退为空进度对象，避免阻断全局状态初始化
+  try {
+    globalState.progress = getAllProgress();
+  } catch (e) {
+    console.error('[FANDEX] 进度加载失败，回退为空进度对象', e);
+    globalState.progress = {};
+  }
 
   const checkMobile = () => {
     globalState.isMobile = window.innerWidth <= 768;

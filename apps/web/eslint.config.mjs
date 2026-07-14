@@ -34,6 +34,7 @@ export default tseslint.config(
     ignores: [
       'dist/**',
       'release/**',
+      'release-*/**',
       '.astro/**',
       'node_modules/**',
       'public/pagefind/**',
@@ -82,8 +83,8 @@ export default tseslint.config(
       'getter-return': 'warn',
       /* 原型链内置方法检查（渐进式收紧，先设为 warn） */
       'no-prototype-builtins': 'warn',
-      /* TypeScript：禁止 any 类型（渐进式收紧，先设为 warn） */
-      '@typescript-eslint/no-explicit-any': 'warn',
+      /* TypeScript：禁止 any 类型（tags/index.astro 已完成类型化，启用为 error） */
+      '@typescript-eslint/no-explicit-any': 'error',
       /* TypeScript：禁止未使用的变量（允许 _ 前缀占位符，渐进式收紧先设为 warn） */
       '@typescript-eslint/no-unused-vars': [
         'warn',

@@ -446,13 +446,13 @@ Vue 3 组件，按需水合（client:load / client:visible）。
 
 ### 内部包依赖
 
-应用层通过 `@packages/*` 路径别名引用能力层：
+应用层通过 `@fandex/*` 包名引用能力层（npm workspaces 真包化）：
 
 ```json
 {
   "paths": {
     "@/*": ["src/*"],
-    "@packages/*": ["../../packages/*"]
+    "@fandex/*": ["../../packages/*"]
   }
 }
 ```

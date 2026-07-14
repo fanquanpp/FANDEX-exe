@@ -22,10 +22,10 @@ import { dirname, resolve } from 'node:path';
 import mdx from '@astrojs/mdx'; // MDX 支持：在 Markdown 中使用 JSX 组件
 import sitemap from '@astrojs/sitemap'; // 站点地图：自动生成 sitemap.xml
 import vue from '@astrojs/vue'; // Vue 集成：在 Astro 中使用 Vue 组件
-import { remarkAdmonition } from '../../packages/markdown/remark-admonition'; // 自定义提示块解析器
-import { remarkMermaid } from '../../packages/markdown/remark-mermaid'; // Mermaid 图表构建时预渲染为 SVG
-import { rehypeImageOptimize } from '../../packages/markdown/rehype-image-optimize'; // 图片优化处理器（懒加载、防CLS、响应式）
-import { remarkTermLink } from '../../packages/markdown/remark-term-link'; // 术语预编译标记插件
+import { remarkAdmonition } from '@fandex/markdown'; // 自定义提示块解析器
+import { remarkMermaid } from '@fandex/markdown'; // Mermaid 图表构建时预渲染为 SVG
+import { rehypeImageOptimize } from '@fandex/markdown'; // 图片优化处理器（懒加载、防CLS、响应式）
+import { remarkTermLink } from '@fandex/markdown'; // 术语预编译标记插件
 import remarkMath from 'remark-math'; // 数学公式语法解析（LaTeX 语法）
 import rehypeKatex from 'rehype-katex'; // KaTeX 数学公式渲染
 import remarkGfm from 'remark-gfm'; // GitHub Flavored Markdown 支持（表格、删除线等）

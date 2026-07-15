@@ -1,5 +1,18 @@
 # 更新日志
 
+## v2.0.0（2026-07-16）小更新
+
+### 文本勘误与完善
+
+- 确认 LICENSE 版权年份为 2026（仓库新建于 2026 年）
+- 校对 README.md，确认文档数（1996 篇）、Electron 版本（33）、GitHub Pages 与 Releases 链接、关联项目描述、AI 辅助学习说明、参赛信息、创意展示 HTML 引用等关键内容准确无误
+- 校对 DISCLAIMER.md，确认桌面应用安装风险条款（Windows 10+ 要求、.exe 与 .zip 分发形式、官方 Releases 下载提示）与 AI 功能说明（AI_API_KEY 环境变量、默认关闭、降级模式）完整，所有 GitHub 链接指向 fanquanpp/FANDEX-exe 仓库
+- 校对 CODE_OF_CONDUCT.md，确认 GitHub Issues 链接指向 fanquanpp/FANDEX-exe，最后更新日期为 2026-07-16
+- 完善 CONTRIBUTING.md，补充 GitHub Issues 与 Pull Requests 链接指向 fanquanpp/FANDEX-exe 仓库，补充最后更新日期为 2026-07-16
+- 校对 SECURITY.md，确认 GitHub Security Advisory 链接指向 fanquanpp/FANDEX-exe，最后更新日期为 2026-07-16
+
+---
+
 ## v2.0.0（2026-07-14）
 
 ### 跨项目统一重构：packages 真包化、UI 越层修复、类型安全强化、测试基线建立

@@ -108,8 +108,12 @@
 
 如发现内容错误或有改进建议，欢迎通过以下方式反馈：
 
-- 提交 GitHub Issue
-- 提交 Pull Request
+- 提交 [GitHub Issue](https://github.com/fanquanpp/FANDEX-exe/issues)
+- 提交 [Pull Request](https://github.com/fanquanpp/FANDEX-exe/pulls)
 - 在相关文档页面留言
 
 感谢你的贡献。
+
+---
+
+最后更新日期：2026-07-16

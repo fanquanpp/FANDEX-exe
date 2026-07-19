@@ -2,197 +2,275 @@
 
 # FANDEX-exe
 
-**Windows 桌面端离线学习平台** · Electron 33
+**FANDEX 知识体系的 Windows 离线桌面学习应用** · Electron 33
 
-为 Windows 系统打造的完全离线桌面学习应用。将 FANDEX-web 的全部学习内容封装为独立桌面程序，无需浏览器、无需网络、无需 Node.js 运行时，安装后双击图标即可使用。在离线访问基础上，提供网页端不具备的桌面级特殊功能。
+将 FANDEX-web 的完整学习内容封装为独立 Windows 桌面程序。无需浏览器、无需 Node.js 运行时、无需网络，安装后双击图标即可使用。基于 Electron 33 内置静态文件服务器，提供独立窗口、系统菜单、多窗口、原生对话框等浏览器沙箱无法实现的桌面级能力。
 
-[![下载](https://img.shields.io/badge/下载-GitHub%20Releases-2563eb?style=for-the-badge&logo=electron&logoColor=white)](https://github.com/fanquanpp/FANDEX-exe/releases)
-[![在线访问](https://img.shields.io/badge/在线访问-GitHub%20Pages-22c55e?style=for-the-badge&logo=github&logoColor=white)](https://fanquanpp.github.io/FANDEX-exe/)
+[![下载](https://img.shields.io/badge/下载-GitHub%20Releases-2563eb?style=flat-square&logo=electron&logoColor=white)](https://github.com/fanquanpp/FANDEX-exe/releases)
+[![在线访问](https://img.shields.io/badge/在线访问-GitHub%20Pages-22c55e?style=flat-square&logo=github&logoColor=white)](https://fanquanpp.github.io/FANDEX-exe/)
+[![Electron](https://img.shields.io/badge/Electron-33.4.11-47848f?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org)
 [![Astro 5](https://img.shields.io/badge/Astro-5-ff5d01?style=flat-square&logo=astro&logoColor=white)](https://astro.build)
 [![Vue 3](https://img.shields.io/badge/Vue-3-42b883?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org)
-[![Electron](https://img.shields.io/badge/Electron-33-47848f?style=flat-square&logo=electron&logoColor=white)](https://www.electronjs.org)
-[![文档数](https://img.shields.io/badge/文档-1996-0ea5e9?style=flat-square)](https://github.com/fanquanpp/FANDEX-exe)
-[![完全开源](https://img.shields.io/badge/开源-完全共享-22c55e?style=flat-square)](https://github.com/fanquanpp/FANDEX-exe)
+[![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](./LICENSE)
 
 </div>
 
 ---
 
-## 项目背景
+## 下载与安装
 
-FANDEX 项目的创立初衷在于：**协助零基础学习者迈出计算机科学学习的第一步**。
+### 获取安装包
 
-众多零基础学习者在无网络环境下亦需学习，或更倾向于使用桌面应用而非浏览器。FANDEX-exe 将完整的知识体系封装为 Windows 桌面应用，确保学习者在任何环境下均可离线访问全部学习内容。
+前往 [GitHub Releases](https://github.com/fanquanpp/FANDEX-exe/releases) 下载最新版 `FANDEX-Setup-x.y.z.exe`（NSIS 安装程序，仅支持 Windows x64）。
 
-**核心理念：**
+### 安装步骤
 
-- 完全离线：安装后无需网络，所有功能本地运行
-- 桌面级体验：独立窗口、系统菜单、本地文件访问
-- 桌面级能力：提供网页端不具备的桌面级功能
-- AI 辅助学习：鼓励学习者使用外部 AI 工具辅助学习
+1. 双击 `FANDEX-Setup-x.y.z.exe` 启动安装向导（`oneClick: false`，非一键安装）
+2. 选择安装目录（默认 `%LOCALAPPDATA%\FANDEX`，`allowToChangeInstallationDirectory: true` 支持自定义）
+3. 安装向导自动创建桌面快捷方式与开始菜单快捷方式（`shortcutName: FANDEX`）
+4. 安装完成后可选择立即运行（`runAfterFinish: true`）
 
-## 项目概述
+### 卸载
 
-FANDEX-exe 是 FANDEX 知识体系的 **Windows 桌面端离线学习平台**。其基于 FANDEX-web 的内容，通过 Electron 封装为独立桌面程序，内置静态文件服务器，提供完全离线的学习体验。
+通过 Windows「设置 → 应用 → FANDEX」卸载，或在安装目录运行 `Uninstall FANDEX.exe`。卸载默认保留用户学习进度数据（`deleteAppDataOnUninstall: false`）。
 
-与网页版相比，桌面端具备以下差异：
+### 运行要求
 
-| 维度     | FANDEX-web（网页版）       | FANDEX-exe（桌面端）                  |
-| :------- | :------------------------- | :------------------------------------ |
-| 访问方式 | 浏览器访问，需网络或部署   | 双击图标启动，完全离线                |
-| 运行环境 | 浏览器                     | 独立桌面进程，内置 Node.js 静态服务器 |
-| 系统集成 | 浏览器沙箱限制             | 系统菜单、多窗口、本地文件访问        |
-| 特殊功能 | 无                         | 桌面级通知、系统托盘、本地文件操作    |
-| 更新方式 | 自动部署，浏览器刷新即最新 | 需下载新版本安装包                    |
+- 操作系统：Windows 10/11（x64）
+- 磁盘空间：约 500 MB（含 Chromium 运行时与全部学习内容）
+- 无需预装 Node.js、浏览器或任何运行时依赖
+- 无需管理员权限（`requestedExecutionLevel: asInvoker`）
 
-## 仓库特色
+---
 
-| 特色维度   | 说明                                                             |
-| :--------- | :--------------------------------------------------------------- |
-| 完全离线   | 内置静态服务器，安装后无需网络，所有文档和功能本地可用           |
-| 桌面级体验 | 独立窗口、系统菜单栏、多窗口支持、自动隐藏菜单                   |
-| 安全隔离   | contextIsolation 启用、nodeIntegration 禁用、sandbox 启用        |
-| 四层分离   | monorepo 架构（内容层/知识工程层/能力层/应用层），关注点分离     |
-| 多形态交付 | Web 在线版 + Electron 桌面应用 + 离线 ZIP 包 + 移动端导出产物    |
-| 知识图谱   | 6804 节点 + 6788 边的知识图谱，可视化概念间的深层关联            |
-| 完全开源   | 所有内容完全开源，允许任何用途（含商业用途），作者不承担任何责任 |
+## 桌面级能力
 
-## 关于 AI 学习
+FANDEX-exe 与 FANDEX-web 共享同一套学习内容与前端代码，差异在于「桌面进程封装」带来的运行环境与系统集成能力。
 
-本项目提供**可选的 AI 辅助学习能力**，与"在 AI 时代学会运用 AI 工具进行自主学习"的核心理念一致。AI 能力默认关闭，需用户通过环境变量自行启用；未启用或服务不可用时，相关功能自动降级为关键词搜索或规则驱动模式，不影响基础学习流程。
+### 与 FANDEX-web 的差异对比
 
-### 启用 AI 能力
+| 维度       | FANDEX-web（网页版）                | FANDEX-exe（桌面端）                          |
+| :--------- | :---------------------------------- | :-------------------------------------------- |
+| 访问方式   | 浏览器访问 GitHub Pages，需网络     | 双击桌面/开始菜单图标启动，完全离线           |
+| 运行环境   | 浏览器进程，受浏览器沙箱限制        | 独立桌面进程，内置 Node.js 静态文件服务器     |
+| 站点托管   | GitHub Pages CDN                    | 本地 `127.0.0.1:4321` 内置静态服务器          |
+| 系统集成   | 浏览器沙箱，无原生菜单与窗口控制    | 原生系统菜单、独立窗口、多窗口、原生对话框    |
+| 外部链接   | 浏览器标签页内打开                  | 自动在系统默认浏览器中打开                    |
+| 学习进度   | 浏览器 localStorage / IndexedDB    | 同上，但数据持久化在用户目录，不受浏览器清理影响 |
+| 更新方式   | 部署后浏览器刷新即最新              | 需下载新版本安装包覆盖安装                    |
+| 安装形态   | 无需安装                            | NSIS 安装程序，含桌面/开始菜单快捷方式        |
 
-通过以下环境变量启用 AI 辅助学习功能：
+### 已实现的桌面级能力清单
 
-- `AI_API_KEY`：AI 服务密钥，配置后激活 AI 问答、知识图谱生成、测验生成、学习路径规划等能力
+| 能力             | 实现位置                          | 说明                                                         |
+| :--------------- | :-------------------------------- | :----------------------------------------------------------- |
+| 独立窗口         | `electron/main.cjs` createWindow  | 默认 1400×900，最小 1024×600，独立任务栏图标                 |
+| 多窗口支持       | 「文件 → 新建窗口」(Ctrl+N)       | 可同时打开多个学习窗口，互不影响                             |
+| 原生应用菜单     | `electron/main.cjs` createMenu    | 文件/视图/帮助三栏菜单，`autoHideMenuBar` 自动隐藏（Alt 显示）|
+| 原生关于对话框   | 「帮助 → 关于 FANDEX」            | 调用系统 `dialog.showMessageBox`，显示版本与文档统计         |
+| 外部链接拦截     | `setWindowOpenHandler`            | 非 localhost 链接转交 `shell.openExternal` 在系统浏览器打开  |
+| 系统快捷方式     | `electron-builder.config.cjs`     | 安装时自动创建桌面快捷方式与开始菜单快捷方式                 |
+| 应用图标         | `electron/build/icon.ico`         | 独立应用图标，区别于浏览器标签                              |
+| 单实例运行       | NSIS 安装向导                     | `requestedExecutionLevel: asInvoker`，无需管理员权限         |
 
-启用后，学习者可在以下场景获得 AI 增强体验：
+> 注：本仓库当前未实现系统托盘（Tray）与桌面通知（Notification）能力。`electron/main.cjs` 仅导入 `app, BrowserWindow, Menu, shell` 四个模块。如需扩展这些功能，可在主进程入口中追加 `Tray` / `Notification` 模块。
 
-- AI 知识图谱（AIGraphRAG）：基于检索增强生成构建概念关联
-- AI 测验生成（AIQuiz）：根据当前学习内容动态生成练习题
-- AI 学习路径（AIRoadmap）：个性化推荐学习路线
-- AI 辅导助手（AITutor）：问答式知识辅导与代码解读
-- AI 助手页面：集成式 AI 问答交互入口
+---
 
-### 降级模式
+## 离线运行机制
 
-未配置 `AI_API_KEY` 或 AI 服务不可用时，上述功能自动降级，确保学习流程不中断：
+### 架构概览
 
-- AI 问答降级为关键词搜索
-- AI 测验降级为规则驱动题库
-- AI 路径推荐降级为预设学习路线
-
-### 外部 AI 工具
-
-桌面端离线环境下，学习者亦可使用外部 AI 工具辅助学习：
-
-- 阅读文档后，使用外部 AI 工具（如 ChatGPT、Claude 等）解答疑惑
-- 将代码示例粘贴到 AI 工具中，请求更详细的执行流程解释
-- 让 AI 工具根据当前学习模块生成练习题
-
-## 关联项目
-
-FANDEX 生态包含以下关联仓库，各仓库代码互相独立、内容互相关联：
-
-| 仓库                                                  | 定位             | 用处                                                           | 特色                                                                                          |
-| :---------------------------------------------------- | :--------------- | :------------------------------------------------------------- | :-------------------------------------------------------------------------------------------- |
-| [FANDEX-web](https://github.com/fanquanpp/FANDEX-web) | 线上学习平台     | 零基础到本科毕业的完整在线自学，概念讲解与代码示例的系统化学习 | 内容基准仓库，51 模块 1995 篇文档，浏览器直接访问，交互测验与知识地图                         |
-| [FANDEX-App](https://github.com/fanquanpp/FANDEX-App) | 离线移动速查应用 | 移动场景下的编程语法即时查阅，实践中的语法签名与代码示例速查   | Android 原生应用，完全离线，Kotlin + Jetpack Compose 原生渲染，中英日三语界面，公式化语法速查 |
-
-## 功能特性
-
-| 特性       | 说明                                                      |
-| :--------- | :-------------------------------------------------------- |
-| 完全离线   | 内置静态服务器，所有文档和功能本地运行，无需网络          |
-| 桌面窗口   | 独立窗口（1400x900），最小尺寸 1024x600，支持多窗口       |
-| 系统菜单   | 文件/视图/帮助菜单，自动隐藏菜单栏                        |
-| 外部链接   | 外部链接在系统默认浏览器中打开，保证安全                  |
-| 进度追踪   | localStorage + IndexedDB 双存储备份，支持导出/导入 JSON   |
-| 术语悬浮   | 构建时预编译术语标记，桌面端 tooltip                      |
-| 交互测验   | 填空 / 选择 / 代码修正三种题型，即时反馈                  |
-| 知识地图   | Mermaid 构建时预渲染为 SVG，零运行时 JS                   |
-| 全文搜索   | Pagefind 构建后索引 + Fuse.js Web Worker                  |
-| 暗色模式   | Dark / Light 主题切换，localStorage 持久化 + 闪烁防护     |
-| 代码运行   | JS/TS 代码块 Web Worker 沙箱执行，5 秒超时保护            |
-| 移动端导出 | build:mobile 脚本生成 dist-mobile.zip，供 FANDEX-App 使用 |
-
-## 技术栈
-
-| 层级  | 技术                           | 说明                                                      |
-| :---- | :----------------------------- | :-------------------------------------------------------- |
-| 框架  | Astro 5                        | SSG 静态站点生成，岛屿架构                                |
-| 交互  | Vue 3                          | `client:load` / `client:visible` 按需水合                 |
-| 桌面  | Electron 33                    | 内置静态服务器，独立桌面应用                              |
-| 高亮  | Shiki                          | 双主题代码高亮（github-light / github-dark），构建时零 JS |
-| 数学  | KaTeX + remark-math            | 构建时渲染，font-display:swap                             |
-| 图表  | Mermaid 11                     | 构建时预渲染为 SVG                                        |
-| 搜索  | Pagefind + Fuse.js             | 构建后索引 + Web Worker 模糊搜索                          |
-| 质量  | Husky + lint-staged + Prettier | Pre-commit 自动格式化                                     |
-| CI/CD | GitHub Actions                 | 三阶段流水线（codeql + build + deploy）                   |
-
-## 快速开始
-
-```bash
-# 安装依赖
-npm install
-
-# 本地开发（端口 3000）
-npm run dev
-
-# 构建生产版本
-npm run build
-
-# Electron 开发模式
-npm run electron:dev
-
-# 打包 Windows 桌面应用
-npm run electron:build
-
-# 质量检查
-npm run lint
-npm run typecheck
-npm run test
+```
+┌────────────────────────────────────────────────────────────────┐
+│  FANDEX.exe（Electron 主进程）                                │
+│                                                                │
+│  ┌──────────────────┐    ┌──────────────────────────────────┐ │
+│  │  Node.js 静态    │    │  BrowserWindow（渲染进程）       │ │
+│  │  文件服务器      │───>│  加载 http://127.0.0.1:4321/     │ │
+│  │  127.0.0.1:4321  │    │  contextIsolation: true          │ │
+│  └──────────────────┘    │  nodeIntegration: false          │ │
+│         ▲                │  sandbox: true                   │ │
+│         │                └──────────────────────────────────┘ │
+│         │  读取                                              │
+│         ▼                                                      │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  resources/dist/（Astro SSG 构建产物，HTML/CSS/JS/JSON）  │ │
+│  └──────────────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-## 构建命令
+### 工作流程
 
-```bash
-# 标准 Web 构建
-npm run build
+1. 用户双击 FANDEX 图标启动 Electron 主进程
+2. 主进程在 `app.whenReady()` 中启动内置 Node.js HTTP 服务器，监听 `127.0.0.1:4321`
+3. 服务器从 `resources/dist/` 目录（打包后）或 `apps/web/dist/`（开发时）读取静态文件
+4. 主进程创建 `BrowserWindow`，加载 `http://127.0.0.1:4321/`
+5. 渲染进程通过 contextBridge 暴露的 `window.electronAPI` 检测运行环境
+6. 应用退出时主进程关闭静态服务器（`before-quit` / `window-all-closed` 事件）
 
-# 构建移动端产物（生成 dist-mobile.zip）
-npm run build:mobile
+### 静态服务器安全防护
 
-# 构建离线包
-npm run build:offline
-npm run pack:offline
+内置静态服务器实现了路径遍历攻击防护：
 
-# Electron 桌面应用
-npm run electron:dev       # 开发模式
-npm run electron:build     # 打包 exe
+```javascript
+const resolvedPath = path.resolve(filePath);
+const resolvedRoot = path.resolve(rootDir);
+if (!resolvedPath.startsWith(resolvedRoot + path.sep) && resolvedPath !== resolvedRoot) {
+  res.writeHead(403);
+  res.end('Forbidden');
+  return;
+}
 ```
 
-## 四层分离架构
+- 仅监听 `127.0.0.1` 回环地址，不对外网暴露
+- 所有响应附带 `Cache-Control: no-cache`，确保内容更新即时生效
+- 完整 MIME 类型映射覆盖 `.html/.css/.js/.mjs/.json/.svg/.woff2/.wasm` 等 19 种扩展名
+
+### 与 Web 版的构建差异
+
+Web 版构建后部署到 GitHub Pages，基础路径为 `/FANDEX-exe/`；桌面端构建使用 `BASE_PATH=./`（相对路径），确保从本地 `127.0.0.1` 加载时资源路径正确解析。
+
+桌面端构建命令链（`apps/web/package.json`）：
+
+```bash
+set BASE_PATH=./ && node ../../scripts/build-offline.mjs && electron-builder --config electron-builder.config.cjs
+```
+
+`build-offline.mjs` 先将 Astro 构建产物处理为离线包格式，`electron-builder` 再将 `dist/` 作为 `extraResources` 打包进 NSIS 安装程序，最终在 `apps/web/release/` 目录输出 `FANDEX-Setup-x.y.z.exe`。
+
+---
+
+## 安全隔离
+
+Electron 应用默认面临「渲染进程逃逸」风险，本仓库采用三要素安全配置：
+
+| 配置项              | 值      | 作用                                                  |
+| :------------------ | :------ | :---------------------------------------------------- |
+| `contextIsolation`  | `true`  | 隔离 preload 脚本与渲染进程的 JavaScript 上下文       |
+| `nodeIntegration`   | `false` | 禁止渲染进程直接访问 Node.js API（`require`/`process`）|
+| `sandbox`           | `true`  | 启用 Chromium 沙箱，限制渲染进程的系统调用范围        |
+
+### 预加载脚本的最小化暴露
+
+`electron/preload.cjs` 仅通过 `contextBridge.exposeInMainWorld` 暴露三个只读属性：
+
+```javascript
+contextBridge.exposeInMainWorld('electronAPI', {
+  version: process.env.npm_package_version || '1.0.0',
+  isElectron: true,
+  platform: process.platform,
+});
+```
+
+前端通过 `window.electronAPI?.isElectron` 检测是否运行在桌面环境，不暴露任何文件系统、网络或进程控制能力。
+
+### 外部链接安全
+
+`setWindowOpenHandler` 拦截所有 `window.open` 调用：
+
+- `http://127.0.0.1` / `http://localhost` 开头的链接在应用内打开
+- 其他所有外部链接通过 `shell.openExternal` 转交系统默认浏览器处理
+- 防止外部站点在桌面应用上下文中执行，避免钓鱼与凭证泄露风险
+
+---
+
+## Monorepo 架构
+
+采用 npm workspaces 管理的多包仓库结构，关注点分离，依赖方向单向向下。
 
 ```
 FANDEX-exe/
-  content/               内容层 — Markdown 文档源（51 模块）
-  metadata/              知识工程层 — 术语/路线图/标签/复习卡片
-  packages/              能力层 — Remark/Rehype 插件 + 共享数据 + 术语搜索
-  apps/web/              应用层 — Astro 5 SSG 项目
-    src/                   页面、组件、布局、服务层
-    electron/              Electron 桌面应用（main.js / preload.js）
-  scripts/               构建脚本（22 个）
+├── apps/
+│   └── web/                          应用层 — Astro 5 SSG 项目 + Electron 桌面封装
+│       ├── src/
+│       │   ├── components/           Astro 组件（Layout/Sidebar/ModuleCard/AI 系列）
+│       │   ├── content/              内容集合定义与术语词典（glossary）
+│       │   ├── islands/              Vue 3 交互组件（按需水合：Quiz/Theme/CheatSheet）
+│       │   ├── lib/                  前端工具库（进度/代码运行/动画/阅读模式）
+│       │   ├── pages/                路由页面（含 [module]/[slug] 动态路由与 map/glossary）
+│       │   ├── services/             AI 服务层（ai/graphrag/quiz/roadmap/search/tutor）
+│       │   ├── styles/               全局样式与主题变量
+│       │   ├── workers/              Web Worker（搜索索引）
+│       │   └── data/                 速查表数据（cheatsheets/*.json）
+│       ├── electron/                 Electron 主进程与预加载脚本
+│       │   ├── main.cjs              主进程入口（静态服务器 + 窗口管理 + 菜单）
+│       │   ├── preload.cjs           预加载脚本（contextBridge 安全暴露）
+│       │   └── build/                应用图标资源（icon.ico / icon.png）
+│       ├── electron-builder.config.cjs  NSIS 打包配置（Windows x64）
+│       ├── astro.config.ts           Astro 构建配置（Markdown 管线 / Shiki / KaTeX）
+│       └── package.json              应用层依赖与脚本
+├── packages/                         能力层 — 可复用 NPM 包
+│   ├── markdown/                     Remark/Rehype 插件（mermaid/admonition/term-link/image-optimize）
+│   ├── search/                       术语搜索与 tooltip
+│   └── shared/                       共享常量与模块定义
+├── content/                          内容基准源 — Markdown 文档（51 模块 1996 篇）
+│   ├── ai/                           AI 类（agent/llm/nlp/deep-learning/ai-engineering/...）
+│   ├── backend/                      后端类（java/go/python/csharp/kotlin/lua）
+│   ├── cloud/                        云与运维（devops/iot/networking）
+│   └── cs/                           计算机科学基础（algorithm/c）
+├── metadata/                         知识工程层 — 术语/路线图/标签/复习卡片
+├── scripts/                          构建脚本（22 个，含 build-offline/build-mobile 等）
+└── .github/workflows/                CI/CD（ci.yml / codeql.yml / deploy.yml）
 ```
 
-依赖方向单向向下：应用层引用能力层和知识工程层，能力层引用内容层，禁止反向依赖。
+### 内容基准说明
 
-## 部署
+本仓库 `content/` 目录是 FANDEX 知识体系的本地内容基准源，包含全部 51 模块、1996 篇 Markdown 文档。FANDEX-web 仓库为同一内容体系的网页版部署仓库，二者内容保持同步。本仓库在内容基础上额外提供 Electron 桌面封装能力，`content/` 目录本身不依赖桌面运行时，可被任意 Astro 构建流程消费。
 
-仓库已配置 GitHub Actions 自动部署（`.github/workflows/deploy.yml`），push 到 `main` 分支即自动构建发布。
+### 依赖方向
 
-**流水线阶段：**
+```
+应用层（apps/web） ──引用──> 能力层（packages/*） ──引用──> 内容层（content/、metadata/）
+                                    │
+                                    └── 禁止反向依赖
+```
+
+应用层通过 `@fandex/markdown`、`@fandex/search`、`@fandex/shared` 引用能力层；能力层的 Remark/Rehype 插件在 Astro 构建时消费 `content/` 与 `metadata/`，将术语标记、Mermaid 图表、数学公式等在构建时预编译为静态 HTML，运行时零 JS 依赖。
+
+---
+
+## 本地开发
+
+### 环境要求
+
+- Node.js 20+
+- npm 10+
+- Windows 10/11（仅桌面打包需要 Windows 环境与 Electron 二进制）
+
+### 常用命令
+
+```bash
+# 安装依赖（在仓库根目录，自动安装 apps/* 与 packages/* 全部 workspace）
+npm install
+
+# Web 开发模式（端口 3000）
+npm run dev
+
+# Electron 桌面开发模式（先构建离线包，再启动 Electron）
+npm run electron:dev -w apps/web
+
+# 打包 Windows 桌面应用（生成 apps/web/release/FANDEX-Setup-x.y.z.exe）
+npm run electron:build -w apps/web
+
+# 质量检查
+npm run lint -w apps/web
+npm run typecheck -w apps/web
+npm run test -w apps/web
+```
+
+### 构建产物对照
+
+| 命令                     | 产物                                  | 用途                         |
+| :----------------------- | :------------------------------------ | :--------------------------- |
+| `npm run build`          | `apps/web/dist/`                      | 标准 Web 静态站点            |
+| `npm run build:offline`  | 离线包目录                            | 本地静态服务器运行的离线包   |
+| `npm run build:mobile`   | `dist-mobile.zip`                     | 供 FANDEX-App 移动端消费     |
+| `npm run electron:build` | `apps/web/release/FANDEX-Setup-*.exe` | Windows NSIS 安装程序        |
+
+### CI/CD 流水线
+
+仓库配置 GitHub Actions 自动部署（`.github/workflows/deploy.yml`），push 到 `main` 分支触发：
 
 1. **setup** — 安装依赖，缓存 node_modules
 2. **build** — 构建站点，运行 QA 检查，上传产物
@@ -201,7 +279,42 @@ FANDEX-exe/
 5. **release** — 创建 GitHub Release（含离线包 + 桌面应用）
 6. **deploy** — 部署到 GitHub Pages
 
-## 更新日志规则
+---
+
+## 关联项目
+
+FANDEX 生态包含以下关联仓库，各仓库代码互相独立、内容互相关联：
+
+| 仓库                                                  | 定位               | 与本仓库的关系                                |
+| :---------------------------------------------------- | :----------------- | :-------------------------------------------- |
+| [FANDEX-web](https://github.com/fanquanpp/FANDEX-web) | 线上学习平台       | 内容基准仓库，本仓库 `content/` 与其保持同步  |
+| [FANDEX-App](https://github.com/fanquanpp/FANDEX-App) | 离线移动速查应用   | 消费本仓库 `build:mobile` 产出的 dist-mobile.zip |
+
+---
+
+## 贡献与协议
+
+### 贡献指南
+
+欢迎通过 Issue 报告问题或通过 Pull Request 贡献代码。提交前请阅读：
+
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — 贡献指南
+- [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) — 贡献者行为准则
+- [SECURITY.md](./SECURITY.md) — 安全政策与漏洞报告指南
+- [DISCLAIMER.md](./DISCLAIMER.md) — 免责声明
+- [Code-Wiki.md](./Code-Wiki.md) — 代码维基
+
+### 开源协议
+
+本仓库基于 [MIT 许可证](./LICENSE) 完全开源（Copyright (c) 2026 FANDEX Project）。任何个人或机构均可自由获取、使用、修改和分发本仓库全部内容，包括学习、研究、修改、分发及商业用途，无需获得作者授权，但须保留原始版权声明与许可声明。
+
+### 免责声明
+
+- 本仓库所有内容均由人工与人工智能技术协同编撰。受限于编撰方式及知识更新周期，内容可能存在遗漏、过时或错误之处，使用者应结合官方文档与权威资料进行独立验证
+- 因使用或引用本仓库内容所产生的一切直接或间接后果，均由使用者自行承担
+- 本仓库不保证内容的准确性、完整性、时效性或适用性
+
+### 更新日志规则
 
 | 级别       | 版本号变化         | 说明                                            | 日志书写方式                         |
 | :--------- | :----------------- | :---------------------------------------------- | :----------------------------------- |
@@ -209,41 +322,4 @@ FANDEX-exe/
 | 小更新     | `1.0.x` -> `1.1.x` | 小 BUG 修复（文档纠错、按钮位置调整、颜色优化） | 写在大版本更新日志内，简要书写       |
 | 补丁修复   | `1.x.0` -> `1.x.1` | 同一问题或其所属范围内的多次修复                | 写在小更新日志内，写"修复了一些 BUG" |
 
-> 仓库记录每一次更新日志，须附带详细日期与内容，无论版本大小。
-
-## 参赛信息
-
-FANDEX 项目参加 **TRAE Work 创作大赛**，以三端协同的完整生态、系统化的知识体系、与 AI 共学的理念，为计算机科学自学提供一条人人可走、循序渐进的路径。完全开源，降低教育门槛，让学习不再受网络、平台、地域限制。
-
-| 项目     | 内容                                                                                               |
-| :------- | :------------------------------------------------------------------------------------------------- |
-| 报名赛道 | 学习工作（主赛道）· 社会公益（附加赛题）                                                           |
-| 创意名称 | FANDEX — 从零基础到本科毕业的计算机科学自学平台                                                    |
-| 创意展示 | [FANDEX-creative-showcase.html](./FANDEX-creative-showcase.html)（单文件离线自包含，下载双击即用） |
-| 项目构成 | FANDEX-Web（线上平台）· FANDEX-exe（桌面端）· FANDEX-App（移动端）                                 |
-
-> 三个仓库构成一个完整的整体项目，创意展示 HTML 完整呈现 FANDEX 的痛点剖析、三端协同、知识体系、AI 共学理念、社会公益价值、技术架构与学习路径。
-
----
-
-## 开源共享与免责声明
-
-### 开源共享
-
-本仓库所有内容基于 [MIT 许可证](./LICENSE) 完全开源。任何个人或机构均可自由获取、使用、修改和分发本仓库的全部内容，包括但不限于学习、研究、修改、分发及商业用途，无需获得作者授权，但须保留原始版权声明与许可声明。
-
-### 免责声明
-
-- 本仓库所有内容均由人工与人工智能技术协同编撰、搜集、整理与编排。受限于编撰方式及知识更新周期，内容可能存在遗漏、过时或错误之处。使用者应结合官方文档与权威资料进行独立验证与核实，切勿将本仓库内容作为唯一依据
-- 因使用或引用本仓库内容所产生的一切直接或间接后果，均由使用者自行承担。本仓库作者及维护者不对使用后果承担任何形式的法律责任或连带责任
-- 本仓库不保证内容的准确性、完整性、时效性或适用性。在任何情况下，本仓库作者及维护者均不对因使用本仓库内容而导致的任何损失或损害承担责任
-
-### 协议与规范
-
-| 文件 | 说明 |
-| :--- | :--- |
-| [LICENSE](./LICENSE) | MIT 开源许可证 |
-| [DISCLAIMER.md](./DISCLAIMER.md) | 独立免责声明 |
-| [SECURITY.md](./SECURITY.md) | 安全政策与漏洞报告指南 |
-| [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) | 贡献者行为准则 |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | 贡献指南 |
+> 仓库记录每一次更新日志，须附带详细日期与内容，无论版本大小。详见 [CHANGELOG.md](./CHANGELOG.md)。

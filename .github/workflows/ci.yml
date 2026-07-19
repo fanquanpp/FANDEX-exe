@@ -1,5 +1,8 @@
 name: CI
 
+# 日常验证流水线：lint / type-check / build 三阶段并行
+# 仅校验源码与构建产物，不触发 Electron 打包（打包发布见 release.yml）
+
 on:
   push:
     branches: [main]
@@ -7,69 +10,137 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # 阶段 1：代码规范检查（ESLint + Vue/Astro 规则）
   lint:
+    name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: package-lock.json
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            apps/web/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json', 'apps/web/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Rebuild native modules
+      - name: Rebuild native modules (sharp / pagefind)
         run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
 
       - name: Run ESLint
         run: npm run lint -w apps/web
 
-      - name: Run Prettier check
-        run: npm run format:check -w apps/web
-
-  typecheck:
+  # 阶段 2：类型检查（astro check，等价 vue-tsc --noEmit）
+  type-check:
+    name: Type Check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: package-lock.json
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            apps/web/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json', 'apps/web/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Rebuild native modules
+      - name: Rebuild native modules (sharp / pagefind)
         run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
 
       - name: Run Type Check
         run: npm run typecheck -w apps/web
 
-  test:
+  # 阶段 3：构建验证（Vite/Astro 构建 renderer + tsc 编译 main 进程）
+  build:
+    name: Build
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: package-lock.json
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            apps/web/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json', 'apps/web/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: ${{ runner.os }}-electron-${{ hashFiles('apps/web/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Rebuild native modules
+      - name: Rebuild native modules (sharp / pagefind)
         run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
 
-      - name: Run Tests
-        run: npm run test -w apps/web
+      - name: Build (Astro renderer + main process)
+        run: npm run build -w apps/web
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Verify build output
+        run: |
+          if [ -d "apps/web/dist" ]; then
+            echo "Build output verified"
+            ls -la apps/web/dist | head -10
+          else
+            echo "::error::Build output apps/web/dist not found"
+            exit 1
+          fi

@@ -1,0 +1,101 @@
+name: Release
+
+# Release 流水线：tag (v*) 触发，跨平台 electron-builder 打包并发布到 GitHub Releases
+# 适配 Electron 跨平台部署形态，与日常验证流水线 (ci.yml) 分离
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # 跨平台 matrix：Windows / macOS / Linux 并行打包
+  release:
+    name: Release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            apps/web/node_modules
+          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json', 'apps/web/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-modules-
+
+      - name: Cache Electron binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/.electron
+          key: ${{ runner.os }}-electron-${{ hashFiles('apps/web/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-electron-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild native modules (Linux)
+        if: runner.os == 'Linux'
+        run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
+
+      - name: Rebuild native modules (macOS)
+        if: runner.os == 'macOS'
+        run: npm install --no-save @rollup/rollup-darwin-x64 sharp @pagefind/darwin-x64
+
+      - name: Rebuild native modules (Windows)
+        if: runner.os == 'Windows'
+        run: npm install --no-save @rollup/rollup-win32-x64-msvc sharp @pagefind/win32-x64
+
+      - name: Build (Astro renderer + main process)
+        run: npm run build -w apps/web
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Package & Publish with electron-builder
+        run: npx electron-builder --config electron-builder.config.cjs --publish always
+        working-directory: apps/web
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fandex-release-${{ runner.os }}
+          path: |
+            apps/web/release/*.exe
+            apps/web/release/*.dmg
+            apps/web/release/*.AppImage
+            apps/web/release/*.snap
+            apps/web/release/*.deb
+            apps/web/release/latest*.yml
+          if-no-files-found: ignore
+          retention-days: 30

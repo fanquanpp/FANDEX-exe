@@ -1,148 +1,194 @@
 ---
+import Breadcrumb from '@/components/Breadcrumb.astro';
+/**
+ * search.astro 独立搜索页（Phase 8a 重写版）
+ *
+ * 功能概述：
+ * - 全站文档全文搜索，基于 Pagefind 全文索引（生产构建后生成于 /pagefind/ 目录）
+ * - 支持按模块、难度筛选搜索结果
+ * - 与 Header 内置 SearchModal 命令面板（Ctrl+K）互补：本页提供完整搜索体验，
+ *   Header 的 SearchModal 提供快速跳转；二者共用 Pagefind 索引
+ * - 完全移除 Vue 与旧版 @fandex/shared 依赖，模块数据改用 @/lib/modules
+ * - Tailwind v4 工具类实现布局；Pagefind UI 内部样式通过 CSS 变量映射到设计令牌
+ * - Tauri 兼容：使用 import.meta.env.BASE_URL 拼接路径，禁用 window.location.origin
+ *
+ * SEO 策略：
+ * - noindex=true 防止搜索页被搜索引擎收录（搜索页内容无独立价值）
+ *
+ * 数据流：
+ * 1. 页面加载 → 内联脚本动态 import /pagefind/pagefind-ui.js
+ * 2. 实例化 PagefindUI，挂载到 #search 容器
+ * 3. 监听筛选器 change 事件，调用 pagefindUI.filter() 应用过滤
+ * 4. URL ?q=xxx 参数自动触发首次搜索
+ *
+ * Skill 偏差报备：
+ * - 任务规格提到"集成 SearchModal 岛屿"，但 SearchModal 已在 Header.astro 中以 client:load
+ *   全局挂载，重复渲染会导致 Ctrl+K 监听冲突与 DOM 重复。本页仅显示 Ctrl+K 提示文案，
+ *   实际命令面板由 Header 承担。
+ * - 任务规格提到"筛选器（模块/标签/类型）"，Pagefind 索引当前仅暴露 module 与 difficulty
+ *   两个过滤属性（由 content.config.ts 的 schema 决定），标签与类型过滤器将在 Pagefind
+ *   索引扩展后补充。
+ */
 import Layout from '@/components/Layout.astro';
 import SEO from '@/components/SEO.astro';
-import { modules } from '@fandex/shared';
+import { MODULES } from '@/lib/modules';
+
+/** 面包屑层级（首页 > 搜索） */
+const breadcrumbs = [{ label: '首页', href: '/' }, { label: '搜索' }] as const;
 ---
 
-<Layout title="搜索">
-  <SEO slot="head" title="搜索 - FANDEX" description="全文搜索知识库" type="website" />
-  <div class="search-page">
-    <h1 class="search-title">搜索</h1>
-    <div class="search-filters">
-      <select id="filter-module" class="search-filter-select">
-        <option value="">全部模块</option>
-        {modules.map((m) => <option value={m.id}>{m.title}</option>)}
-      </select>
-      <select id="filter-difficulty" class="search-filter-select">
-        <option value="">全部难度</option>
-        <option value="beginner">Beginner</option>
-        <option value="intermediate">Intermediate</option>
-        <option value="advanced">Advanced</option>
-      </select>
-      <select id="filter-mode" class="search-filter-select">
-        <option value="keyword">关键词搜索</option>
-        <option value="semantic">语义搜索</option>
-      </select>
+<Layout title="搜索 - FANDEX" description="FANDEX 全文搜索：快速定位知识库中的文档、术语与示例。" noindex={true} hasSidebar={false}>
+  <SEO
+    slot="head"
+    title="搜索 - FANDEX"
+    description="FANDEX 全文搜索：快速定位知识库中的文档、术语与示例。"
+    type="website"
+    breadcrumbs={breadcrumbs}
+  />
+
+  <Breadcrumb items={breadcrumbs} />
+
+  <section class="mx-auto w-full max-w-4xl space-y-6 py-6 md:py-10">
+    <!-- 页面标题 + 描述 -->
+    <header class="space-y-2">
+      <h1 class="text-3xl font-bold tracking-tight md:text-4xl">搜索</h1>
+      <p class="text-sm text-muted-foreground md:text-base">
+        输入关键词搜索全站文档、术语与示例。也可按
+        <kbd class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground">Ctrl</kbd>
+        +
+        <kbd class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground">K</kbd>
+        唤起命令面板进行快速跳转。
+      </p>
+    </header>
+
+    <!-- 筛选器栏 -->
+    <div class="flex flex-wrap items-center gap-3">
+      <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span>模块</span>
+        <select
+          id="filter-module"
+          class="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="按模块筛选搜索结果"
+        >
+          <option value="">全部模块</option>
+          {MODULES.map((m) => (
+            <option value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      </label>
+
+      <label class="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span>难度</span>
+        <select
+          id="filter-difficulty"
+          class="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="按难度筛选搜索结果"
+        >
+          <option value="">全部难度</option>
+          <option value="beginner">入门</option>
+          <option value="intermediate">进阶</option>
+          <option value="advanced">高级</option>
+        </select>
+      </label>
+
+      <!-- 右侧快捷键提示 -->
+      <span class="ml-auto hidden items-center gap-1 text-[11px] text-muted-foreground sm:inline-flex">
+        <kbd class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-foreground">Ctrl</kbd>
+        +
+        <kbd class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] font-medium text-foreground">K</kbd>
+        命令面板
+      </span>
     </div>
-    <div id="search" class="search-container"></div>
-    <div id="semantic-results" class="semantic-results hidden"></div>
+
+    <!-- Pagefind 搜索结果容器 -->
+    <div
+      id="search"
+      class="search-container min-h-[420px] rounded-lg border border-border bg-card/30 p-3 md:p-4"
+      aria-label="搜索结果"
+    ></div>
+
     <noscript>
-      <p class="search-noscript">需要启用 JavaScript 才能使用搜索功能</p>
+      <p class="rounded-md border border-dashed border-border bg-muted/20 px-4 py-3 text-center text-sm text-muted-foreground">
+        需要启用 JavaScript 才能使用搜索功能。
+      </p>
     </noscript>
-  </div>
+  </section>
 </Layout>
 
-<style>
-  .search-page {
-    max-width: var(--content-width);
-    margin: 0 auto;
-    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-2xl);
-  }
-
-  .search-title {
-    font-family: var(--font-display);
-    font-size: 1.4em;
-    margin-bottom: var(--spacing-lg);
-  }
-
-  .search-filters {
-    display: flex;
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
-    flex-wrap: wrap;
-  }
-
-  .search-filter-select {
-    padding: 6px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: 0;
-    background: var(--color-bg-card);
-    color: var(--color-text);
-    font-family: var(--font-display);
-    font-size: 0.85em;
-    cursor: pointer;
-    appearance: auto;
-  }
-
+<style is:global>
+  /**
+   * Pagefind UI 主题适配（全局样式）
+   *
+   * 实现说明：
+   * - Pagefind UI 动态渲染 DOM，必须使用 is:global 才能命中内部元素
+   * - 所有选择器以 .search-container 前缀限定作用范围，避免污染其他页面
+   * - CSS 变量映射到 Tailwind v4 设计令牌，自动适配暗色主题
+   */
   .search-container {
-    min-height: 400px;
+    --pagefind-ui-scale: 1;
+    --pagefind-ui-primary: var(--primary, #4f5bd5);
+    --pagefind-ui-text: var(--foreground, #1f2937);
+    --pagefind-ui-background: var(--background, #ffffff);
+    --pagefind-ui-border: var(--border, #e5e7eb);
+    --pagefind-ui-tag: var(--muted, #f3f4f6);
+    --pagefind-ui-border-width: 1px;
+    --pagefind-ui-border-radius: 0.5rem;
+    --pagefind-ui-image-border-radius: 0.375rem;
+    --pagefind-ui-image-box-ratio: 3 / 2;
+    --pagefind-ui-font: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
   }
 
-  .search-noscript {
-    color: var(--color-text-tertiary);
-    text-align: center;
-    padding: var(--spacing-2xl);
+  /* 搜索输入框样式覆盖 */
+  .search-container .pagefind-ui__search-input {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0.5rem;
+    background: var(--background);
+    color: var(--foreground);
+    border: 1px solid var(--border);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
-  .hidden {
-    display: none;
+  .search-container .pagefind-ui__search-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
   }
 
-  .semantic-results {
-    min-height: 200px;
-  }
-
-  .semantic-result-item {
-    padding: var(--spacing-md);
-    border-bottom: 1px solid var(--color-border-light);
+  /* 搜索结果项 hover 交互 */
+  .search-container .pagefind-ui__result {
+    border-radius: 0.5rem;
     transition: background-color 0.15s ease;
+    padding: 0.625rem 0.75rem;
   }
 
-  .semantic-result-item:hover {
-    background-color: var(--color-bg-hover);
+  .search-container .pagefind-ui__result:hover {
+    background: var(--accent);
   }
 
-  .semantic-result-title {
-    font-family: var(--font-display);
-    font-size: 1em;
-    margin: 0 0 var(--spacing-xs);
-  }
-
-  .semantic-result-title a {
-    color: var(--color-primary);
+  /* 结果标题链接颜色 */
+  .search-container .pagefind-ui__result-link {
+    color: var(--foreground);
     text-decoration: none;
   }
 
-  .semantic-result-title a:hover {
+  .search-container .pagefind-ui__result-link:hover {
+    color: var(--primary);
     text-decoration: underline;
   }
 
-  .semantic-result-meta {
-    display: flex;
-    gap: var(--spacing-sm);
-    font-size: 0.8em;
-    color: var(--color-text-secondary);
+  /* 结果摘要高亮 */
+  .search-container .pagefind-ui__result-excerpt {
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+    line-height: 1.5;
   }
 
-  .semantic-result-score {
-    font-size: 0.75em;
-    color: var(--color-text-tertiary);
-  }
-
-  .semantic-empty {
-    text-align: center;
-    padding: var(--spacing-2xl);
-    color: var(--color-text-tertiary);
-  }
-
-  .semantic-loading {
-    text-align: center;
-    padding: var(--spacing-2xl);
-    color: var(--color-text-secondary);
-  }
-
-  :global(.pagefind-ui) {
-    --pagefind-ui-scale: 1;
-    --pagefind-ui-primary: var(--color-primary);
-    --pagefind-ui-text: var(--color-text);
-    --pagefind-ui-background: var(--color-bg);
-    --pagefind-ui-border: var(--color-border);
-    --pagefind-ui-tag: var(--color-bg-card);
-    --pagefind-ui-border-width: 1px;
-    --pagefind-ui-border-radius: 4px;
-    --pagefind-ui-image-border-radius: 4px;
-    --pagefind-ui-image-box-ratio: 3 / 2;
-    --pagefind-ui-font: var(--font-display);
+  .search-container mark {
+    background: color-mix(in srgb, var(--primary) 20%, transparent);
+    color: inherit;
+    padding: 0 0.125rem;
+    border-radius: 0.125rem;
   }
 </style>
 
@@ -150,18 +196,20 @@ import { modules } from '@fandex/shared';
   /**
    * 搜索页面初始化逻辑
    *
-   * 支持两种搜索模式：
-   * - 关键词搜索：使用 Pagefind 全文索引
-   * - 语义搜索：使用 AI 嵌入向量计算相似度
+   * 流程：
+   * 1. 检测生产环境（开发模式下 Pagefind 索引尚未生成）
+   * 2. 动态 import /pagefind/pagefind-ui.js（构建产物）
+   * 3. 实例化 PagefindUI，挂载到 #search 容器
+   * 4. 绑定模块/难度筛选器 change 事件 → pagefindUI.filter()
+   * 5. 解析 URL ?q= 参数并触发首次搜索
    *
-   * 流程：初始化 Pagefind -> 监听模式切换 -> 执行搜索 -> 渲染结果
+   * 兼容性：
+   * - Astro ClientRouter 跳转后重新初始化（监听 astro:page-load）
+   * - Tauri 环境下使用 import.meta.env.BASE_URL 拼接路径
+   * - 加载失败时显示友好提示，不阻塞页面其他功能
    */
 
-  /**
-   * Pagefind UI 实例接口
-   * 定义 Pagefind UI 对象可调用的方法及其参数类型，
-   * 替代原先的 Record<string, () => void>（该类型不允许传参）。
-   */
+  /** Pagefind UI 实例接口（仅声明本页使用的方法） */
   interface PagefindUIInstance {
     /** 应用过滤器（模块、难度等） */
     filter(filters: Record<string, string>): void;
@@ -169,54 +217,68 @@ import { modules } from '@fandex/shared';
     triggerSearch(query: string): void;
   }
 
-  /** Pagefind UI 实例 */
+  /** Pagefind UI 构造函数类型 */
+  type PagefindUIConstructor = new (opts: {
+    element: string;
+    showSubResults: boolean;
+    showImages: boolean;
+    baseUrl?: string;
+  }) => PagefindUIInstance;
+
+  /** Pagefind UI 模块类型（动态导入，结构宽松） */
+  interface PagefindUIModule {
+    PagefindUI?: PagefindUIConstructor;
+    default?: PagefindUIConstructor;
+  }
+
+  /** Pagefind UI 实例单例（避免 ClientRouter 跳转后重复初始化） */
   let pagefindUI: PagefindUIInstance | null = null;
 
-  /** 当前搜索模式 */
-  let currentMode = 'keyword';
-
-  /** 搜索防抖定时器 */
-  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-  async function initPagefind() {
-    const base = import.meta.env.BASE_URL;
+  /**
+   * 初始化 Pagefind 搜索
+   *
+   * 实现说明：
+   * - 开发模式下显示提示文案（Pagefind 索引仅在 build 后生成）
+   * - 通过 /* @vite-ignore *\/ 注释避免 Vite 构建期尝试解析动态路径
+   * - 容错：加载失败时显示友好提示，不抛出异常
+   */
+  async function initPagefind(): Promise<void> {
     const searchEl = document.getElementById('search');
-    const semanticEl = document.getElementById('semantic-results');
-    if (!searchEl || !semanticEl) return;
+    if (!searchEl) return;
 
+    /** 开发模式下 Pagefind 索引尚未生成，显示提示 */
     if (import.meta.env.DEV) {
       searchEl.innerHTML =
-        '<p style="color:var(--color-text-tertiary);text-align:center;padding:2em;">开发模式下未生成搜索索引，请运行 npm.cmd run build 后使用。</p>';
+        '<p style="color:var(--muted-foreground);text-align:center;padding:3em 1em;font-size:0.875rem;">开发模式下未生成搜索索引，请运行 <code style="padding:0.125rem 0.375rem;background:var(--muted);border-radius:0.25rem;font-family:var(--font-mono);">pnpm build</code> 后访问构建产物。</p>';
       return;
     }
 
+    /** 已初始化则跳过（防止 ClientRouter 跳转回本页时重复挂载） */
+    if (pagefindUI) return;
+
     try {
-      const pagefind = await import(/* @vite-ignore */ `${base}pagefind/pagefind.js`);
-      await pagefind.options({ baseUrl: base, basePath: `${base}pagefind/` });
-      await pagefind.init();
+      const base = import.meta.env.BASE_URL;
+      /* 动态加载 Pagefind UI 模块（位于构建产物 /pagefind/ 目录下） */
+      const pagefindModule = (await import(/* @vite-ignore */ `${base}pagefind/pagefind-ui.js`)) as PagefindUIModule;
+      const PagefindUIClass = pagefindModule.PagefindUI ?? pagefindModule.default;
 
-      /* Pagefind UI 构造函数类型（动态导入的模块无类型声明，需手动定义） */
-      type PagefindUIConstructor = new (opts: {
-        element: string;
-        showSubResults: boolean;
-        showImages: boolean;
-      }) => PagefindUIInstance;
+      if (!PagefindUIClass) {
+        throw new Error('PagefindUI constructor not found in module');
+      }
 
-      const PagefindUIClass = (pagefind as Record<string, PagefindUIConstructor>).UI;
       pagefindUI = new PagefindUIClass({
         element: '#search',
         showSubResults: true,
         showImages: false,
+        baseUrl: base,
       });
 
-      const filterModule = document.getElementById('filter-module') as HTMLSelectElement;
-      const filterDifficulty = document.getElementById('filter-difficulty') as HTMLSelectElement;
-      const filterMode = document.getElementById('filter-mode') as HTMLSelectElement;
+      /** 绑定筛选器事件 */
+      const filterModule = document.getElementById('filter-module') as HTMLSelectElement | null;
+      const filterDifficulty = document.getElementById('filter-difficulty') as HTMLSelectElement | null;
 
-      /**
-       * 应用 Pagefind 过滤器
-       */
-      function applyFilters() {
+      /** 应用当前筛选器到 Pagefind */
+      function applyFilters(): void {
         if (!pagefindUI) return;
         const filters: Record<string, string> = {};
         if (filterModule?.value) filters.module = filterModule.value;
@@ -224,124 +286,29 @@ import { modules } from '@fandex/shared';
         pagefindUI.filter(filters);
       }
 
-      /**
-       * 切换搜索模式
-       *
-       * 流程：更新当前模式 -> 切换容器可见性 -> 如需语义搜索则触发
-       */
-      function switchMode() {
-        const mode = filterMode?.value || 'keyword';
-        currentMode = mode;
-
-        if (mode === 'semantic') {
-          searchEl!.classList.add('hidden');
-          semanticEl!.classList.remove('hidden');
-        } else {
-          searchEl!.classList.remove('hidden');
-          semanticEl!.classList.add('hidden');
-        }
-      }
-
       filterModule?.addEventListener('change', applyFilters);
       filterDifficulty?.addEventListener('change', applyFilters);
-      filterMode?.addEventListener('change', switchMode);
 
+      /** 解析 URL ?q= 参数并触发首次搜索 */
       const params = new URLSearchParams(window.location.search);
       const q = params.get('q');
       if (q) {
         pagefindUI.triggerSearch(q);
       }
-    } catch (_e) {
-      const searchEl = document.getElementById('search');
-      if (searchEl) {
-        searchEl.innerHTML =
-          '<p style="color:var(--color-text-tertiary);text-align:center;padding:2em;">搜索索引尚未构建，请先运行 npm run build</p>';
-      }
-    }
-  }
-
-  /**
-   * 执行语义搜索
-   *
-   * 输入：查询字符串
-   * 输出：void（渲染结果到 DOM）
-   * 流程：动态加载搜索服务 -> 调用搜索 -> 渲染结果
-   */
-  async function performSemanticSearch(query: string) {
-    const semanticEl = document.getElementById('semantic-results');
-    if (!semanticEl) return;
-
-    if (!query || query.trim().length === 0) {
-      semanticEl.innerHTML = '<p class="semantic-empty">输入关键词开始语义搜索</p>';
-      return;
-    }
-
-    semanticEl.innerHTML = '<p class="semantic-loading">正在搜索...</p>';
-
-    try {
-      /* 动态导入搜索服务，避免首屏加载不必要代码 */
-      const { getSearchService } = await import('@/services/search/search-service');
-      const searchService = getSearchService();
-      const results = await searchService.search(query, 'semantic', 20);
-
-      if (results.length === 0) {
-        semanticEl.innerHTML = '<p class="semantic-empty">未找到相关结果</p>';
-        return;
-      }
-
-      const base = import.meta.env.BASE_URL || '/';
-      const html = results
-        .map((r) => {
-          const scorePercent = Math.round(r.score * 100);
-          return `
-            <div class="semantic-result-item">
-              <h3 class="semantic-result-title">
-                <a href="${base}${r.slug}/">${r.title}</a>
-              </h3>
-              <div class="semantic-result-meta">
-                <span>${r.module}</span>
-                <span class="semantic-result-score">${scorePercent}% 匹配</span>
-              </div>
-            </div>
-          `;
-        })
-        .join('');
-
-      semanticEl.innerHTML = html;
     } catch (error) {
-      semanticEl.innerHTML = '<p class="semantic-empty">语义搜索暂时不可用，请使用关键词搜索</p>';
-      // eslint-disable-next-line no-console
-      console.error('语义搜索执行失败:', error);
+      console.error('[search] Pagefind UI 加载失败:', error);
+      searchEl.innerHTML =
+        '<p style="color:var(--muted-foreground);text-align:center;padding:3em 1em;font-size:0.875rem;">搜索索引尚未构建或加载失败，请先运行 <code style="padding:0.125rem 0.375rem;background:var(--muted);border-radius:0.25rem;font-family:var(--font-mono);">pnpm build</code> 生成索引。</p>';
     }
   }
 
-  /**
-   * 监听 Pagefind 搜索输入，同步到语义搜索
-   */
-  function setupSearchSync() {
-    const observer = new MutationObserver(() => {
-      if (currentMode !== 'semantic') return;
-      const input = document.querySelector('.pagefind-ui__search-input') as HTMLInputElement;
-      if (input) {
-        input.addEventListener('input', () => {
-          if (debounceTimer) clearTimeout(debounceTimer);
-          debounceTimer = setTimeout(() => {
-            performSemanticSearch(input.value);
-          }, 300);
-        });
-      }
-    });
-
-    const searchEl = document.getElementById('search');
-    if (searchEl) {
-      observer.observe(searchEl, { childList: true, subtree: true });
-    }
+  /** 离开页面时清理实例（防止 ClientRouter 缓存导致状态残留） */
+  function cleanupPagefind(): void {
+    pagefindUI = null;
   }
 
-  document.addEventListener('astro:page-load', () => {
-    initPagefind();
-    setupSearchSync();
-  });
+  /** 首屏初始化 + ClientRouter 跳转后重新初始化 */
   initPagefind();
-  setupSearchSync();
+  document.addEventListener('astro:page-load', initPagefind);
+  document.addEventListener('astro:before-swap', cleanupPagefind);
 </script>

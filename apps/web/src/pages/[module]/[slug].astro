@@ -1,56 +1,83 @@
 ---
-/**
- * 文档详情页路由
- * 动态路由 [module]/[slug]，为每篇文档生成独立页面
- * 包含面包屑导航、前置知识提示、文档内容、知识检测、上下篇导航
- */
-import Layout from '@/components/Layout.astro';
-import SEO from '@/components/SEO.astro';
-import Sidebar from '@/components/Sidebar.astro';
+import { type CollectionEntry, getCollection, render } from 'astro:content';
 import Breadcrumb from '@/components/Breadcrumb.astro';
 import DocNav from '@/components/DocNav.astro';
-import AIQuiz from '@/components/AIQuiz.astro';
-import AITutor from '@/components/AITutor.astro';
-import ProgressToggle from '@/islands/ProgressToggle.vue';
-import QuizBlock from '@/islands/QuizBlock.vue';
-import {
-  getModule,
-  modulePrerequisites,
-  docSlug,
-  categoryColors,
-  getPrimaryCategory,
-  modules,
-} from '@fandex/shared';
-import { getCollection, render, type CollectionEntry } from 'astro:content';
+/**
+ * 文档详情页路由（Phase 8b 重写）
+ *
+ * 功能概述：
+ * - 动态路由 [module]/[slug]，为每篇文档生成独立页面
+ * - 完整阅读体验：面包屑 / 文档头部 / 进度切换 / 正文 / 目录 / 上下篇 / 相关文档 / 批注 / 评论 / 测验
+ * - 完全移除 Vue 引用：所有交互岛屿改用 React 19 + shadcn/ui
+ * - Tailwind v4 工具类实现布局与样式
+ * - Tauri 兼容：通过 withBase() 处理路径
+ *
+ * React 岛屿水合策略：
+ * - ProgressToggle: client:load（首屏即用，文档头部状态切换）
+ * - AnnotationLayer: client:visible（批注层，进入视口时加载）
+ * - QuizBlock: client:visible（测验题，进入视口时加载）
+ * - Comments: 通过 Layout.showComments=true 在 Layout 内部以 client:visible 渲染
+ *
+ * Skill 偏差报备：
+ * 旧版引用 @fandex/shared 与 @fandex/markdown 已废弃，统一改用 @/lib/modules 与本地工具。
+ * 旧版 AIQuiz / AITutor / reading-mode 等内联功能在 Phase 8b 范围外，保留 ProgressToggle + QuizBlock + AnnotationLayer + Comments 四个核心岛屿。
+ */
+import Layout from '@/components/Layout.astro';
+import RelatedDocs from '@/components/RelatedDocs.astro';
+import SEO from '@/components/SEO.astro';
+import Sidebar from '@/components/Sidebar.astro';
+import Toc from '@/components/Toc.astro';
+import AnnotationLayer from '@/islands/AnnotationLayer';
+import ProgressToggle from '@/islands/ProgressToggle';
+import QuizBlock from '@/islands/QuizBlock';
+import { getModule } from '@/lib/modules';
+import { withBase } from '@/lib/url';
 
-/** 生成静态路径：为每篇文档创建一个页面 */
+/**
+ * 生成静态路径：为每篇文档创建一个页面
+ *
+ * 实现说明：
+ * - 从 getCollection('docs') 获取所有文档
+ * - params: { module, slug }，slug 取文档 ID 的最后一段
+ * - props: { entry } 传递完整文档实体给页面
+ */
 export async function getStaticPaths() {
   const docs = await getCollection('docs');
-  return docs.map((doc) => {
-    const slug = docSlug(doc.id);
+  return docs.map((entry) => {
+    const slug = (entry.id.split('/').pop() || entry.id).replace(/\.(md|mdx)$/, '');
     return {
-      params: { module: doc.data.module, slug },
-      props: { doc },
+      params: { module: entry.data.module, slug },
+      props: { entry },
     };
   });
 }
 
-/**
- * 文档详情页 Props 类型
- * 使用 CollectionEntry<'docs'> 替代手动定义的 DocEntry 接口，
- * 确保类型与 content/config.ts 中的 schema 定义完全一致。
- */
-const { doc } = Astro.props as { doc: CollectionEntry<'docs'> };
+/** 文档详情页 Props 类型 */
+interface Props {
+  entry: CollectionEntry<'docs'>;
+}
+
+const { entry } = Astro.props as Props;
 const { module, slug } = Astro.params as { module: string; slug: string };
-// 渲染 Markdown 内容并获取标题列表
-const { Content, headings } = await render(doc);
-const meta = getModule(module || '');
 
-// 预获取排序后的文档列表，传递给 Sidebar 避免重复查询
+/** 渲染 Markdown 内容并获取标题列表（Astro 7 Content Layer API） */
+const { Content, headings } = await render(entry);
+
+/** 模块元数据 */
+const meta = getModule(module);
+
+/** 模块不存在时跳转 404 */
+if (!meta) {
+  return Astro.redirect(withBase('/404'));
+}
+
+/** 获取当前模块的所有文档，按 order 排序（供 Sidebar 与 DocNav 复用） */
 const allModuleDocs = await getCollection('docs', ({ data }) => data.module === module);
-const sortedDocs = allModuleDocs.sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
+const sortedDocs: CollectionEntry<'docs'>[] = allModuleDocs.sort(
+  (a, b) => (a.data.order || 0) - (b.data.order || 0),
+);
 
-/** 计算预计阅读时间（分钟），优先使用 frontmatter 中的值 */
+/** 计算预计阅读时间（分钟），优先使用 frontmatter.readingTime */
 function computeReadingTime(body: string, readingTime?: number): number {
   if (readingTime && readingTime > 0) return readingTime;
   // 去除代码块和 Markdown 标记后，按每分钟 300 字估算
@@ -59,29 +86,73 @@ function computeReadingTime(body: string, readingTime?: number): number {
   return Math.max(1, Math.ceil(chars / 300));
 }
 
-const readingTime = computeReadingTime(doc.body || '', doc.data.readingTime);
+const readingTime = computeReadingTime(entry.body || '', entry.data.readingTime);
 
-/* 可用模块 ID 列表，用于 AI Tutor 推荐服务 */
-const availableModuleIds = modules.map((m: { id: string }) => m.id);
-const availableModulesJson = JSON.stringify(availableModuleIds);
+/** 难度标签文案映射 */
+const difficultyLabel: Record<'beginner' | 'intermediate' | 'advanced', string> = {
+  beginner: '入门',
+  intermediate: '进阶',
+  advanced: '高级',
+};
 
-/* frontmatter quiz 数据序列化，用于 AI Quiz 降级 */
-const fallbackQuizJson = JSON.stringify(doc.data.quiz || []);
+/** 难度标签样式（Tailwind 类名） */
+const difficultyClass: Record<'beginner' | 'intermediate' | 'advanced', string> = {
+  beginner: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+  intermediate: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300',
+  advanced: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300',
+};
 
-// 面包屑导航数据
+const docDifficulty = entry.data.difficulty || 'intermediate';
+
+/** 完整文档 ID（用于 ProgressToggle / AnnotationLayer 岛屿） */
+const docId = `${module}/${slug}`;
+
+/** 面包屑导航项 */
 const breadcrumb = [
-  { label: '首页', href: `${import.meta.env.BASE_URL}` },
-  { label: meta?.title || module, href: `${import.meta.env.BASE_URL}${module}/` },
-  { label: doc.data.title },
+  { label: '首页', href: withBase('/') },
+  { label: meta.name, href: withBase(`/${module}/`) },
+  { label: entry.data.title },
 ];
+
+/** SEO 面包屑（用于结构化数据） */
+const seoBreadcrumbs = [
+  { label: '首页', href: '/' },
+  { label: meta.name, href: `/${module}/` },
+  { label: entry.data.title, href: `/${module}/${slug}/` },
+];
+
+/** 规范链接 */
+const canonical = withBase(`/${module}/${slug}/`);
+
+/** ISO 8601 时间字符串（用于 SEO） */
+const publishedTime = entry.data.created ? new Date(entry.data.created).toISOString() : undefined;
+const modifiedTime = entry.data.updated
+  ? new Date(entry.data.updated).toISOString()
+  : publishedTime;
+
+/** 是否有测验题 */
+const hasQuiz = entry.data.quiz && entry.data.quiz.length > 0;
 ---
 
-<Layout title={doc.data.title}>
+<Layout
+  title={entry.data.title}
+  description={entry.data.description}
+  canonical={canonical}
+  hasSidebar
+  showComments
+>
   <SEO
     slot="head"
-    title={doc.data.title}
-    description={doc.data.description}
-    canonical={`${Astro.site}${Astro.url.pathname}`}
+    title={entry.data.title}
+    description={entry.data.description}
+    type="article"
+    publishedTime={publishedTime}
+    modifiedTime={modifiedTime}
+    author={entry.data.author}
+    tags={entry.data.tags}
+    module={meta.name}
+    canonical={canonical}
+    breadcrumbs={seoBreadcrumbs}
   />
   <Sidebar
     slot="sidebar"
@@ -91,472 +162,281 @@ const breadcrumb = [
     sortedDocs={sortedDocs}
   />
 
-  <div class="doc-page">
-    <!-- 面包屑导航 -->
+  {/* 右侧目录大纲（仅桌面端显示，由 Toc 组件控制显隐） */}
+  <Toc slot="toc" headings={headings} />
+
+  <div class="flex flex-col gap-6 pb-12" data-doc-content>
+    {/* 面包屑导航 */}
     <Breadcrumb items={breadcrumb} hasSidebar />
-    <!-- 前置知识提示 -->
-    {
-      (() => {
-        const prereqs =
-          doc.data.prerequisites.length > 0
-            ? doc.data.prerequisites
-            : modulePrerequisites[module] || [];
-        if (prereqs.length === 0) return null;
-        return (
-          <div class="prereq-notice">
+
+    {/* ============================================================
+     * 文档头部：标题 + 模块 Badge + 标签 + 阅读时间 + 难度 + 发布/更新日期 + ProgressToggle
+     * ============================================================ */}
+    <header class="flex flex-col gap-4 border-b border-border pb-6">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0 flex-1">
+          {/* 模块 Badge */}
+          <a
+            href={withBase(`/${module}/`)}
+            class="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-xs font-medium transition-colors hover:opacity-80"
+            style={`background-color:${meta.color}20;color:${meta.color}`}
+          >
+            <span
+              class="h-1.5 w-1.5 rounded-full"
+              style={`background-color:${meta.color}`}
+              aria-hidden="true"
+            />
+            {meta.name}
+          </a>
+
+          {/* 文档标题 */}
+          <h1 class="mt-3 text-2xl font-bold text-foreground md:text-3xl lg:text-4xl">
+            {entry.data.title}
+          </h1>
+
+          {/* 文档描述 */}
+          {entry.data.description && (
+            <p class="mt-3 text-sm text-muted-foreground md:text-base">
+              {entry.data.description}
+            </p>
+          )}
+        </div>
+
+        {/* 阅读状态切换岛屿（client:load 首屏即用） */}
+        <ProgressToggle client:load docId={docId} />
+      </div>
+
+      {/* 元信息行：阅读时间 + 难度 + 发布/更新日期 */}
+      <div class="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        {/* 阅读时间 */}
+        <span class="inline-flex items-center gap-1.5">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-3.5 w-3.5"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          <span class="tabular-nums">{readingTime} min</span>
+        </span>
+
+        {/* 难度 */}
+        <span
+          class={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium ${difficultyClass[docDifficulty]}`}
+        >
+          {difficultyLabel[docDifficulty]}
+        </span>
+
+        {/* 发布日期 */}
+        {entry.data.created && (
+          <span class="inline-flex items-center gap-1.5">
             <svg
-              width="16"
-              height="16"
+              xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
               stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="h-3.5 w-3.5"
+              aria-hidden="true"
             >
-              <>
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </>
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
             </svg>
-            <span>
-              前置知识:{' '}
-              {prereqs.map((p: string, i: number) => {
+            <time datetime={publishedTime} class="tabular-nums">
+              {new Date(entry.data.created).toLocaleDateString('zh-CN')}
+            </time>
+          </span>
+        )}
+
+        {/* 更新日期（与发布日期不同时显示） */}
+        {entry.data.updated && entry.data.updated.getTime() !== entry.data.created?.getTime() && (
+          <span class="inline-flex items-center gap-1.5">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="h-3.5 w-3.5"
+              aria-hidden="true"
+            >
+              <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+              <polyline points="21 3 21 8 16 8" />
+            </svg>
+            <time datetime={modifiedTime} class="tabular-nums">
+              更新于 {new Date(entry.data.updated).toLocaleDateString('zh-CN')}
+            </time>
+          </span>
+        )}
+
+        {/* 作者 */}
+        {entry.data.author && (
+          <span class="inline-flex items-center gap-1.5">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="h-3.5 w-3.5"
+              aria-hidden="true"
+            >
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+              <circle cx="12" cy="7" r="4" />
+            </svg>
+            {entry.data.author}
+          </span>
+        )}
+      </div>
+
+      {/* 标签列表 */}
+      {entry.data.tags && entry.data.tags.length > 0 && (
+        <ul class="flex flex-wrap gap-1.5">
+          {entry.data.tags.map((tag) => (
+            <li>
+              <a
+                href={withBase(`/tags/${tag}/`)}
+                class="inline-flex items-center rounded-md border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-accent/50 hover:text-primary"
+              >
+                #{tag}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </header>
+
+    {/* ============================================================
+     * 前置知识提示（仅当文档或模块声明了 prerequisites 时显示）
+     * ============================================================ */}
+    {entry.data.prerequisites && entry.data.prerequisites.length > 0 && (
+      <aside
+        class="rounded-lg border border-amber-500/30 bg-amber-50 p-4 text-sm dark:bg-amber-950/30"
+        aria-label="前置知识"
+      >
+        <div class="flex items-start gap-2">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400"
+            aria-hidden="true"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <div class="min-w-0 flex-1">
+            <p class="font-medium text-amber-900 dark:text-amber-200">前置知识</p>
+            <ul class="mt-1 flex flex-wrap gap-1.5">
+              {entry.data.prerequisites.map((p) => {
                 const parts = p.split('/');
-                const modId = parts[0];
-                const modMeta = getModule(modId);
-                const label = modMeta ? modMeta.title : p;
+                const modId = parts.length > 1 ? parts[0] : module;
+                const prereqSlug = parts.length > 1 ? parts[1] : parts[0];
+                const prereqMeta = getModule(modId);
+                const label = prereqMeta ? prereqMeta.name : p;
                 const href =
                   parts.length > 1
-                    ? `${import.meta.env.BASE_URL}${p}/`
-                    : `${import.meta.env.BASE_URL}${modId}/`;
+                    ? withBase(`/${modId}/${prereqSlug}/`)
+                    : withBase(`/${modId}/`);
                 return (
-                  <>
-                    {i > 0 && '、'}
-                    <a href={href}>{label}</a>
-                  </>
+                  <li>
+                    <a
+                      href={href}
+                      class="inline-flex items-center rounded-md border border-amber-500/30 bg-background px-2 py-0.5 text-xs text-amber-900 transition-colors hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900/40"
+                    >
+                      {label}
+                    </a>
+                  </li>
                 );
               })}
-            </span>
+            </ul>
           </div>
-        );
-      })()
-    }
-    <!-- 文章主体 -->
+        </div>
+      </aside>
+    )}
+
+    {/* ============================================================
+     * 文档正文内容（Astro 自动应用 remark/rehype 插件）
+     * ============================================================ */}
     <article
-      class="prose"
+      class="prose prose-sm max-w-none md:prose-base dark:prose-invert"
       data-pagefind-body
-      data-pagefind-filter={`difficulty:${doc.data.difficulty || 'intermediate'}, module:${module}${doc.data.category ? ', category:' + doc.data.category : ''}`}
-      style={`--module-color:${categoryColors[meta ? getPrimaryCategory(meta) : 'tools']}`}
+      data-pagefind-filter={`difficulty:${docDifficulty}, module:${module}${entry.data.category ? ', category:' + entry.data.category : ''}`}
     >
-      <!-- 标题行：标题 + 进度追踪按钮 + 阅读模式切换 -->
-      <div class="doc-title-row">
-        <h1 class="doc-title">{doc.data.title}</h1>
-        <div class="doc-title-actions">
-          <ProgressToggle client:load slug={`${module}/${slug}`} />
-          <!-- 阅读模式切换按钮组 -->
-          <div class="reading-mode-btns" id="reading-mode-btns">
-            <button
-              class="reading-mode-btn reading-mode-focus-btn"
-              id="reading-mode-focus-btn"
-              aria-label="专注模式"
-              title="专注模式 (F)"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="16"></line>
-              </svg>
-              专注
-            </button>
-            <button
-              class="reading-mode-btn reading-mode-study-btn"
-              id="reading-mode-study-btn"
-              aria-label="学习模式"
-              title="学习模式"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-              </svg>
-              学习
-            </button>
-          </div>
-          <!-- 退出专注模式按钮：仅专注模式下显示 -->
-          <button
-            class="reading-mode-exit-focus"
-            id="reading-mode-exit-focus"
-            aria-label="退出专注模式"
-            title="退出专注模式 (Esc)"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="8" x2="12" y2="16"></line>
-            </svg>
-            退出专注
-          </button>
-          <!-- 退出学习模式按钮：仅学习模式下显示 -->
-          <button
-            class="reading-mode-exit-study"
-            id="reading-mode-exit-study"
-            aria-label="退出学习模式"
-            title="退出学习模式 (Esc)"
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-            </svg>
-            退出学习
-          </button>
-          <!-- 学习计时器：仅学习模式下显示（预留框架） -->
-          <div class="study-timer" id="study-timer">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="12" cy="12" r="10"></circle>
-              <polyline points="12 6 12 12 16 14"></polyline>
-            </svg>
-            <span id="study-timer-display">00:00</span>
-          </div>
-        </div>
-      </div>
-      <!-- 文档元信息：阅读时间、难度、更新日期 -->
-      <header class="doc-header">
-        <div class="doc-meta">
-          <span class="doc-meta-item doc-reading-time">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              ><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"
-              ></polyline></svg
-            >
-            {readingTime} min
-          </span>
-          <span
-            class={`doc-meta-item doc-difficulty diff-${doc.data.difficulty || 'intermediate'}`}
-          >
-            {
-              doc.data.difficulty === 'beginner'
-                ? 'Beginner'
-                : doc.data.difficulty === 'advanced'
-                  ? 'Advanced'
-                  : 'Intermediate'
-            }
-          </span>
-          {
-            doc.data.updated && (
-              <span class="doc-meta-item doc-updated">
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                >
-                  <>
-                    <rect x="3" y="4" width="18" height="18" rx="2" />
-                    <line x1="16" y1="2" x2="16" y2="6" />
-                    <line x1="8" y1="2" x2="8" y2="6" />
-                    <line x1="3" y1="10" x2="21" y2="10" />
-                  </>
-                </svg>
-                {new Date(doc.data.updated).toLocaleDateString('zh-CN')}
-              </span>
-            )
-          }
-        </div>
-        <!-- 标签列表 -->
-        {
-          doc.data.tags && doc.data.tags.length > 0 && (
-            <div class="doc-tags">
-              {doc.data.tags.map((tag: string) => (
-                <a href={`${import.meta.env.BASE_URL}tags/${tag}/`} class="doc-tag">
-                  {tag}
-                </a>
-              ))}
-            </div>
-          )
-        }
-        <!-- 文档描述 -->
-        {doc.data.description && <p class="doc-description">{doc.data.description}</p>}
-      </header>
-      <!-- 文档正文内容 -->
       <Content />
     </article>
-    <!-- 知识检测组件：frontmatter 预设题目，进入视口时加载 -->
-    <QuizBlock client:visible quiz={doc.data.quiz || []} />
-    <!-- AI Quiz 组件：AI 出题功能，用户点击后才调用 AI -->
-    <AIQuiz
-      moduleId={module}
-      slug={slug}
-      title={doc.data.title}
-      summary={doc.data.summary || doc.data.description || ''}
-      fallbackQuiz={fallbackQuizJson}
+
+    {/* ============================================================
+     * 文档批注层（client:only="react" 跳过 SSR，因 Tiptap 在 SSR 中访问 document）
+     * 监听 [data-doc-content] 容器内的文本选中事件
+     * ============================================================ */}
+    <AnnotationLayer client:only="react" docId={docId} contentSelector="[data-doc-content]" />
+
+    {/* ============================================================
+     * 测验题（client:visible 进入视口时加载，仅当文档含 quiz 时渲染）
+     * ============================================================ */}
+    {hasQuiz && (
+      <section
+        class="mt-8 rounded-xl border border-border bg-card p-4 md:p-6"
+        aria-labelledby="quiz-heading"
+      >
+        <h2
+          id="quiz-heading"
+          class="mb-4 flex items-center gap-2 text-base font-semibold text-foreground md:text-lg"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="h-5 w-5 text-primary"
+            aria-hidden="true"
+          >
+            <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+            <circle cx="12" cy="12" r="10" />
+          </svg>
+          知识检测
+        </h2>
+        <QuizBlock client:visible quiz={entry.data.quiz} />
+      </section>
+    )}
+
+    {/* ============================================================
+     * 上下篇导航（同模块内按 order 排序）
+     * ============================================================ */}
+    <DocNav moduleId={module} currentSlug={slug} sortedDocs={sortedDocs} />
+
+    {/* ============================================================
+     * 相关文档（来自 frontmatter.related 字段）
+     * ============================================================ */}
+    <RelatedDocs
+      currentModule={module}
+      relatedSlugs={entry.data.related}
+      title="相关文档"
     />
-    <!-- AI Tutor 组件：学习推荐和进度统计 -->
-    <AITutor moduleId={module} availableModules={availableModulesJson} />
-    <!-- 上下篇导航 -->
-    <DocNav moduleId={module} currentSlug={slug} />
   </div>
 </Layout>
-
-<script>
-  // ========== 阅读模式按钮交互 ==========
-  const focusBtn = document.getElementById('reading-mode-focus-btn');
-  const studyBtn = document.getElementById('reading-mode-study-btn');
-  const exitFocusBtn = document.getElementById('reading-mode-exit-focus');
-  const exitStudyBtn = document.getElementById('reading-mode-exit-study');
-
-  /**
-   * 初始化阅读模式按钮事件绑定
-   * 动态导入 reading-mode 模块，绑定按钮点击事件
-   */
-  async function initReadingModeButtons(): Promise<void> {
-    const {
-      toggleFocusMode,
-      toggleStudyMode,
-      setReadingMode,
-      getReadingMode,
-      onReadingModeChange,
-    } = await import('@/lib/reading-mode');
-
-    // 专注模式按钮：切换专注模式
-    if (focusBtn) {
-      focusBtn.addEventListener('click', () => {
-        toggleFocusMode();
-      });
-    }
-
-    // 学习模式按钮：切换学习模式
-    if (studyBtn) {
-      studyBtn.addEventListener('click', () => {
-        toggleStudyMode();
-      });
-    }
-
-    // 退出专注模式按钮
-    if (exitFocusBtn) {
-      exitFocusBtn.addEventListener('click', () => {
-        setReadingMode('standard');
-      });
-    }
-
-    // 退出学习模式按钮
-    if (exitStudyBtn) {
-      exitStudyBtn.addEventListener('click', () => {
-        setReadingMode('standard');
-      });
-    }
-
-    /**
-     * 根据当前阅读模式更新按钮激活状态
-     * @param mode - 当前阅读模式
-     */
-    function updateButtonStates(mode: string): void {
-      if (focusBtn) {
-        focusBtn.classList.toggle('active', mode === 'focus');
-      }
-      if (studyBtn) {
-        studyBtn.classList.toggle('active', mode === 'study');
-      }
-    }
-
-    // 初始化按钮状态
-    updateButtonStates(getReadingMode());
-
-    // 监听模式变更事件，同步更新按钮状态
-    onReadingModeChange((mode) => {
-      updateButtonStates(mode);
-    });
-  }
-
-  // 页面加载时初始化按钮
-  initReadingModeButtons();
-  document.addEventListener('astro:page-load', initReadingModeButtons);
-</script>
-
-<style>
-  /* 文档页面容器 */
-  .doc-page {
-    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-2xl);
-    width: 100%;
-    min-height: 100%;
-  }
-
-  /* 前置知识提示条 */
-  .prereq-notice {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm) var(--spacing-md);
-    margin-bottom: var(--spacing-md);
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-border-light);
-    border-left: 3px solid #f59e0b;
-    font-size: 0.85em;
-    color: var(--color-text-secondary);
-  }
-
-  .prereq-notice svg {
-    flex-shrink: 0;
-    color: #f59e0b;
-  }
-
-  .prereq-notice a {
-    color: var(--color-primary);
-    text-decoration: none;
-  }
-
-  .prereq-notice a:hover {
-    text-decoration: underline;
-  }
-
-  /* 文档头部元信息区域 */
-  .doc-header {
-    margin-bottom: var(--spacing-lg);
-    padding-bottom: var(--spacing-lg);
-    border-bottom: 1px solid var(--color-border-light);
-  }
-
-  /* 标题行：粘性定位，包含标题和进度按钮 */
-  .doc-title-row {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    background: var(--color-bg);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm) 0;
-    border-bottom: 1px solid var(--color-border-light);
-    margin-bottom: var(--spacing-sm);
-  }
-
-  .doc-header {
-    margin-bottom: var(--spacing-xl);
-  }
-
-  .doc-title-row .doc-title {
-    margin-bottom: 0;
-  }
-
-  /* 标题行右侧操作区域：进度按钮 + 阅读模式按钮 */
-  .doc-title-actions {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-
-  /* 文档标题 */
-  .doc-title {
-    margin-bottom: var(--spacing-sm);
-    font-size: 1.6em;
-    line-height: 1.3;
-  }
-
-  /* 元信息行 */
-  .doc-meta {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    flex-wrap: wrap;
-    margin-bottom: var(--spacing-sm);
-  }
-
-  .doc-meta-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-family: var(--font-display);
-    font-size: 0.78em;
-    color: var(--color-text-tertiary);
-  }
-
-  /* 标签列表 */
-  .doc-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: var(--spacing-sm);
-  }
-
-  /* 单个标签 */
-  .doc-tag {
-    display: inline-block;
-    padding: 2px 10px;
-    font-size: 0.72em;
-    font-family: var(--font-display);
-    color: var(--color-text-secondary);
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-border-light);
-    text-decoration: none;
-    transition: all var(--transition-fast);
-  }
-
-  .doc-tag:hover {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
-    background: var(--color-bg-hover);
-  }
-
-  /* 文档描述 */
-  .doc-description {
-    margin-top: var(--spacing-sm);
-    font-size: 0.92em;
-    color: var(--color-text-secondary);
-    line-height: 1.6;
-  }
-
-  /* 移动端适配 */
-  @media (max-width: 768px) {
-    .doc-page {
-      padding: var(--spacing-sm) var(--spacing-md) var(--spacing-2xl);
-    }
-
-    .doc-title {
-      font-size: 1.3em;
-    }
-
-    .doc-meta {
-      gap: 6px;
-    }
-  }
-</style>

@@ -1,169 +1,156 @@
 /**
- * FANDEX 搜索索引构建脚本
+ * FANDEX 搜索索引构建脚本（Phase 11）
  *
  * 功能概述：
- * 扫描 content 下所有 .md 文件，提取 frontmatter 中的元数据
- * （标题、描述、标签、模块、排序、难度、更新日期），生成 JSON 格式的
- * 搜索索引文件，输出到 public/data/search-index.json。
- * 当索引文件超过 100KB 时，自动压缩字段名以减小体积。
+ * 封装 Pagefind 命令行工具，对 Astro 构建产物（apps/web/dist/）生成搜索索引。
+ * 该脚本设计为可在构建链中重复调用：
+ *   - 若 apps/web/dist/ 不存在（astro build 尚未执行）：输出警告并以 0 退出，不阻断后续步骤
+ *   - 若 apps/web/dist/ 存在：执行 `npx pagefind --site dist` 生成索引，统计页面数与索引大小
+ *
+ * 调用上下文：
+ *   package.json 的 build 命令在 astro build 之后通过 `pagefind --site dist` 直接运行 pagefind，
+ *   本脚本提供等价的 Node.js 封装，便于独立运行、CI/CD 流水线与统计输出。
+ *
+ * 输出：
+ *   - apps/web/dist/pagefind/ 目录（由 Pagefind 自动生成）
+ *   - 控制台统计信息（页面数、索引大小、耗时）
  */
 
-import { readdir, readFile, mkdir, writeFile, stat } from 'node:fs/promises';
-import { join, dirname, sep } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /** 当前脚本所在目录 */
 const __dirname = dirname(fileURLToPath(import.meta.url));
-/** 文档源文件目录 */
-const DOCS_DIR = join(__dirname, '..', 'content');
-/** 索引输出目录 */
-const OUTPUT_DIR = join(__dirname, '..', 'apps', 'web', 'public', 'data');
-/** 索引输出文件路径 */
-const OUTPUT_FILE = join(OUTPUT_DIR, 'search-index.json');
-/** 索引文件最大允许大小（100KB） */
-const MAX_SIZE = 100 * 1024;
+/** 项目根目录 */
+const PROJECT_ROOT = resolve(__dirname, '..');
+/** Astro 构建产物目录 */
+const DIST_DIR = join(PROJECT_ROOT, 'apps', 'web', 'dist');
+/** Pagefind 索引输出目录 */
+const PAGEFIND_DIR = join(DIST_DIR, 'pagefind');
 
 /**
- * 递归遍历目录，对匹配扩展名的文件执行回调
- * @param {string} dir - 要遍历的目录路径
- * @param {string} ext - 文件扩展名（如 '.md'）
- * @param {Function} fn - 对每个匹配文件执行的异步回调
+ * 递归统计目录下指定扩展名的文件数量
+ * @param {string} dir - 目标目录
+ * @param {string} ext - 文件扩展名（如 '.html'）
+ * @returns {number} 匹配文件数
  */
-async function walkDir(dir, ext, fn) {
-  const entries = await readdir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory())
-      await walkDir(full, ext, fn); // 递归子目录
-    else if (entry.name.endsWith(ext)) await fn(full);
+function countFilesByExt(dir, ext) {
+  if (!existsSync(dir)) return 0;
+  let count = 0;
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    const entries = readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.name.endsWith(ext)) {
+        count += 1;
+      }
+    }
   }
+  return count;
 }
 
 /**
- * 解析 Markdown 文件的 frontmatter
- * 简易 YAML 解析器，支持键值对和数组格式
- *
- * @param {string} content - Markdown 文件完整内容
- * @returns {Object} 解析后的 frontmatter 键值对对象
+ * 计算目录总大小（字节）
+ * @param {string} dir - 目标目录
+ * @returns {number} 总字节数
  */
-function parseFrontmatter(content) {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!match) return {};
-  const raw = match[1];
-  const data = {};
-  let key = null; // 当前正在解析的键名
-  let inArray = false; // 是否正在解析数组
-  let arrayVals = []; // 数组值收集器
-
-  for (const line of raw.split('\n')) {
-    if (inArray) {
-      // 尝试匹配数组项 "  - value"
-      const itemMatch = line.match(/^\s+-\s+['"]?(.+?)['"]?\s*$/);
-      if (itemMatch) {
-        arrayVals.push(itemMatch[1]);
-        continue;
-      }
-      // 数组结束，保存收集到的值
-      data[key] = arrayVals;
-      inArray = false;
-      key = null;
-      arrayVals = [];
-    }
-    // 匹配键值对
-    const kvMatch = line.match(/^(\w[\w-]*):\s*(.*)$/);
-    if (kvMatch) {
-      const k = kvMatch[1];
-      const v = kvMatch[2].trim();
-      if (v === '') {
-        // 空值表示数组开始
-        key = k;
-        inArray = true;
-        arrayVals = [];
+function calcDirSize(dir) {
+  if (!existsSync(dir)) return 0;
+  let total = 0;
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    const entries = readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
       } else {
-        // 有值则直接存储，去除引号
-        data[k] = v.replace(/^['"]|['"]$/g, '');
+        try {
+          total += statSync(full).size;
+        } catch {
+          /* 跳过无法访问的文件 */
+        }
       }
     }
   }
-  // 处理文件末尾仍在解析的数组
-  if (inArray && key) data[key] = arrayVals;
-  return data;
+  return total;
 }
 
 /**
- * 从文件路径提取文件名（去除目录和扩展名）
- *
- * @param {string} filePath - 文件绝对路径
- * @returns {string} 文件名 slug（如 "概述与核心特性"）
+ * 主函数：执行 Pagefind 搜索索引生成
  */
-function filenameFromPath(filePath) {
-  const parts = filePath.replace(/[/\\]/g, '/').split('/');
-  const name = parts[parts.length - 1];
-  return name.replace(/\.md$/, '');
-}
+function main() {
+  const startTime = Date.now();
+  console.log('[build-search-index] 开始生成 Pagefind 搜索索引...');
 
-/**
- * 主函数：构建搜索索引
- */
-async function main() {
-  const entries = [];
+  // 1. 检查 apps/web/dist/ 是否存在（astro build 是否已完成）
+  if (!existsSync(DIST_DIR)) {
+    console.warn(`[build-search-index] 警告: ${DIST_DIR} 不存在，astro build 可能尚未执行。`);
+    console.warn('[build-search-index] 跳过 Pagefind 索引生成（以 0 退出，不阻断构建链）。');
+    process.exit(0);
+  }
 
-  // 遍历所有 .md 文件，提取元数据
-  await walkDir(DOCS_DIR, '.md', async (filePath) => {
-    const content = await readFile(filePath, 'utf-8');
-    const fm = parseFrontmatter(content);
-    if (!fm.title) return; // 跳过无标题的文件
+  const htmlCount = countFilesByExt(DIST_DIR, '.html');
+  console.log(`[build-search-index] 检测到 dist/ 包含 ${htmlCount} 个 HTML 页面。`);
 
-    entries.push({
-      slug: `${fm.module || ''}/${filenameFromPath(filePath)}`,
-      title: fm.title || '',
-      description: fm.description || '',
-      tags: Array.isArray(fm.tags) ? fm.tags : [],
-      module: fm.module || '',
-      order: Number(fm.order) || 0,
-      difficulty: fm.difficulty || '',
-      updated: fm.updated || '',
-    });
+  // 2. 若 dist/ 中无 HTML 页面，说明 astro build 尚未执行或产物为空，跳过 pagefind 执行
+  if (htmlCount === 0) {
+    console.warn('[build-search-index] 警告: dist/ 中未发现 HTML 页面，跳过 pagefind 索引生成。');
+    console.warn(
+      '[build-search-index] 请确认 astro build 已成功执行；本脚本以 0 退出，不阻断构建链。',
+    );
+    process.exit(0);
+  }
+
+  // 3. 执行 `npx pagefind --site dist` 生成索引
+  console.log('[build-search-index] 执行: npx pagefind --site dist');
+  const result = spawnSync('npx', ['pagefind', '--site', DIST_DIR], {
+    cwd: PROJECT_ROOT,
+    stdio: 'inherit',
+    shell: true,
   });
 
-  // 按模块名和排序号排序
-  entries.sort((a, b) => a.module.localeCompare(b.module) || a.order - b.order);
-
-  // 确保输出目录存在
-  await mkdir(OUTPUT_DIR, { recursive: true });
-
-  // 生成完整 JSON
-  const json = JSON.stringify(entries);
-  const size = Buffer.byteLength(json, 'utf-8');
-
-  // 如果超过大小限制，使用压缩字段名重新生成
-  if (size > MAX_SIZE) {
-    const trimmed = entries.map((e) => ({
-      s: e.slug, // slug → s
-      t: e.title, // title → t
-      d: e.description.slice(0, 80), // description 截断至 80 字符
-      g: e.tags, // tags → g
-      m: e.module, // module → m
-      o: e.order, // order → o
-      f: e.difficulty, // difficulty → f
-      u: e.updated, // updated → u
-    }));
-    const compressed = JSON.stringify(trimmed);
-    const cSize = Buffer.byteLength(compressed, 'utf-8');
-    if (cSize <= MAX_SIZE) {
-      await writeFile(OUTPUT_FILE, compressed, 'utf-8');
-      console.log(
-        `Search index: ${entries.length} docs written (${(cSize / 1024).toFixed(1)}KB, compressed keys) to ${OUTPUT_FILE}`
-      );
-      return;
-    }
+  if (result.error) {
+    console.error('[build-search-index] 启动 pagefind 失败:', result.error.message);
+    console.error('[build-search-index] 请确认 pagefind 已安装: npm install -D pagefind');
+    process.exit(1);
   }
 
-  // 未超限或压缩后仍超限，写入完整 JSON
-  await writeFile(OUTPUT_FILE, json, 'utf-8');
-  console.log(
-    `Search index: ${entries.length} docs written (${(size / 1024).toFixed(1)}KB) to ${OUTPUT_FILE}`
-  );
+  if (result.status !== 0) {
+    console.error(`[build-search-index] pagefind 退出码非零: ${result.status}`);
+    process.exit(result.status ?? 1);
+  }
+
+  // 3. 输出索引统计信息
+  const elapsedSec = ((Date.now() - startTime) / 1000).toFixed(2);
+
+  if (!existsSync(PAGEFIND_DIR)) {
+    console.warn(`[build-search-index] 警告: pagefind 执行完成但未找到 ${PAGEFIND_DIR}。`);
+    return;
+  }
+
+  const indexSizeBytes = calcDirSize(PAGEFIND_DIR);
+  const indexSizeKB = (indexSizeBytes / 1024).toFixed(1);
+  const indexFiles = countFilesByExt(PAGEFIND_DIR, '');
+
+  console.log('[build-search-index] 索引生成完成。');
+  console.log(`[build-search-index]   源 HTML 页面数: ${htmlCount}`);
+  console.log(`[build-search-index]   索引文件数量: ${indexFiles}`);
+  console.log(`[build-search-index]   索引总大小: ${indexSizeKB} KB`);
+  console.log(`[build-search-index]   耗时: ${elapsedSec} 秒`);
+  console.log(`[build-search-index]   输出目录: ${PAGEFIND_DIR}`);
 }
 
-main().catch(console.error);
+try {
+  main();
+} catch (err) {
+  console.error('[build-search-index] 未捕获异常:', err);
+  process.exit(1);
+}

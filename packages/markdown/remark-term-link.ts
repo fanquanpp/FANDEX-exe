@@ -15,9 +15,9 @@
  * 6. 限制每篇文档最多标记 50 个术语
  */
 
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Root, Text, HTML, Parent, Node } from 'mdast';
+import type { HTML, Node, Parent, Root, Text } from 'mdast';
 
 /** 术语数据接口 */
 interface TermData {
@@ -107,9 +107,7 @@ function buildTermRegex(terms: string[]): RegExp {
   }
 
   const sorted = [...terms].sort((a, b) => b.length - a.length);
-  const pattern = sorted
-    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-    .join('|');
+  const pattern = sorted.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
   return new RegExp(`(?:^|\\W)(${pattern})(?:$|\\W)`, 'g');
 }
 
@@ -123,10 +121,7 @@ function buildTermRegex(terms: string[]): RegExp {
  * @returns 转义后的字符串
  */
 function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /**
@@ -139,9 +134,7 @@ function escapeHtml(str: string): string {
  * @returns 转义后的字符串
  */
 function escapeAttr(str: string): string {
-  return escapeHtml(str)
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+  return escapeHtml(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /** 递归遍历上下文：跟踪当前是否在链接/标题/段落内 */
@@ -174,7 +167,7 @@ function processTextMatch(
   textNode: Text,
   glossaryMap: Map<string, TermData>,
   regex: RegExp,
-  matchCount: { value: number }
+  matchCount: { value: number },
 ): Array<Text | HTML> | null {
   const text = textNode.value;
   if (!text || text.trim().length < 2) return null;
@@ -194,8 +187,8 @@ function processTextMatch(
     data: TermData;
   }> = [];
 
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
+  let match: RegExpExecArray | null = regex.exec(text);
+  while (match !== null) {
     if (matchCount.value + matches.length >= MAX_MATCHES) break;
 
     const term = match[1];
@@ -204,15 +197,22 @@ function processTextMatch(
     const end = start + term.length;
 
     const data = glossaryMap.get(term);
-    if (!data) continue;
+    if (!data) {
+      match = regex.exec(text);
+      continue;
+    }
 
     /* 跳过重叠匹配（与前一个匹配的结束位置重叠） */
-    if (matches.length > 0 && start < matches[matches.length - 1].end) continue;
+    if (matches.length > 0 && start < matches[matches.length - 1].end) {
+      match = regex.exec(text);
+      continue;
+    }
 
     matches.push({ term, start, end, data });
 
     /* 调整 lastIndex 到术语结束位置，避免吞没后续可匹配的字符 */
     regex.lastIndex = end;
+    match = regex.exec(text);
   }
 
   if (matches.length === 0) return null;
@@ -274,7 +274,7 @@ function walkAndMark(
   ctx: WalkContext,
   glossaryMap: Map<string, TermData>,
   regex: RegExp,
-  matchCount: { value: number }
+  matchCount: { value: number },
 ): void {
   /* 反向遍历，避免 splice 导致索引偏移 */
   for (let i = children.length - 1; i >= 0; i--) {
@@ -287,12 +287,7 @@ function walkAndMark(
       if (ctx.inLink || ctx.inHeading || !ctx.inParagraph) continue;
 
       const textNode = node as Text;
-      const replacements = processTextMatch(
-        textNode,
-        glossaryMap,
-        regex,
-        matchCount
-      );
+      const replacements = processTextMatch(textNode, glossaryMap, regex, matchCount);
       if (replacements && replacements.length > 0) {
         children.splice(i, 1, ...replacements);
       }
@@ -301,8 +296,7 @@ function walkAndMark(
       const childCtx: WalkContext = {
         inLink: ctx.inLink || parent.type === 'link',
         inHeading: ctx.inHeading || parent.type === 'heading',
-        inParagraph:
-          ctx.inParagraph || PHRASING_CONTAINER_TYPES.has(parent.type),
+        inParagraph: ctx.inParagraph || PHRASING_CONTAINER_TYPES.has(parent.type),
       };
       walkAndMark(parent.children, childCtx, glossaryMap, regex, matchCount);
     }

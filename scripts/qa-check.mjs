@@ -1,34 +1,50 @@
 /**
- * FANDEX 发布前质量检查脚本
+ * FANDEX QA 检查脚本（Phase 11）
  *
  * 功能概述：
- * 对构建产物（dist 目录）和源代码执行多维度质量检查，涵盖文件审计、
- * Web 架构、内容处理、阅读体验、CI/CD 和质量控制六大维度。
- * 检查结果分为 PASS（通过）、FAIL（失败，阻断发布）和 WARN（警告）。
- * 存在 FAIL 项时以非零退出码退出。
+ * 对项目结构、内容完整性、构建产物、配置文件、Vue 残留等进行多维质量检查。
+ * 可在构建前（pre-build）或构建后（post-build）运行，每项检查输出 PASS/FAIL/WARN。
+ * 存在 FAIL 项时以非零退出码退出，阻断流水线。
  *
- * 检查维度：
- * 1. 文件审计：.nojekyll、robots.txt、大文件检测
- * 2. Web 架构：index.html、404.html、base href、绝对根链接、视口、暗色模式、预连接、懒加载
- * 3. 内容处理：页面数量、Pagefind 搜索索引
- * 4. 阅读体验：Shiki 代码高亮、JSON-LD 结构化数据
- * 5. CI/CD：sitemap-index.xml
- * 6. 质量控制：100vh 使用检查、console.log 残留检查
+ * 检查项：
+ *   1. 内容完整性：content/ 下文档数 > 1900
+ *   2. 术语表完整性：glossary/ 下 27 个 glossary.md 文件
+ *   3. 速查表完整性：cheatsheets/ 下 9 个 JSON 文件
+ *   4. 模块定义：metadata/modules.json 含 51 个模块
+ *   5. 索引文件存在：glossary-index.json、module-docs-index.json、tag-index.json、knowledge-graph.json
+ *   6. 构建产物：apps/web/dist/ 目录存在且含 index.html（仅 post-build 检查）
+ *   7. 无 Vue 残留：grep "from 'vue'" 或 ".vue" 在 src/ 下返回 0 结果
+ *   8. Tauri 配置：src-tauri/tauri.conf.json 存在
+ *   9. PWA 资源：manifest.json、sw.js、icons/ 存在
  */
 
-import { readdir, stat, readFile } from 'node:fs/promises';
-import { join, dirname, resolve } from 'node:path';
+import { access, readdir, readFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** 脚本所在目录（用于将相对路径解析为绝对路径，避免工作目录差异） */
+/** 当前脚本所在目录 */
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-/** 构建产物目录（基于脚本位置解析，兼容 npm -w 工作目录切换） */
-const DIST = resolve(__dirname, '..', 'apps', 'web', 'dist');
+/** 项目根目录 */
+const PROJECT_ROOT = resolve(__dirname, '..');
+/** 文档源目录 */
+const CONTENT_DIR = join(PROJECT_ROOT, 'content');
+/** 术语表目录 */
+const GLOSSARY_DIR = join(PROJECT_ROOT, 'apps', 'web', 'src', 'content', 'glossary');
+/** 速查表目录 */
+const CHEATSHEETS_DIR = join(PROJECT_ROOT, 'apps', 'web', 'src', 'data', 'cheatsheets');
+/** 模块定义文件 */
+const MODULES_FILE = join(PROJECT_ROOT, 'metadata', 'modules.json');
+/** 索引输出目录 */
+const DATA_DIR = join(PROJECT_ROOT, 'apps', 'web', 'public', 'data');
+/** 构建产物目录 */
+const DIST_DIR = join(PROJECT_ROOT, 'apps', 'web', 'dist');
 /** 源代码目录 */
-const SRC = resolve(__dirname, '..', 'apps', 'web', 'src');
-/** GitHub Pages 部署基础路径 */
-const BASE = '/FANDEX-exe/';
+const SRC_DIR = join(PROJECT_ROOT, 'apps', 'web', 'src');
+/** Tauri 配置目录 */
+const TAURI_DIR = join(PROJECT_ROOT, 'src-tauri');
+/** PWA 资源目录 */
+const PUBLIC_DIR = join(PROJECT_ROOT, 'apps', 'web', 'public');
+
 /** 失败计数器 */
 let errors = 0;
 /** 警告计数器 */
@@ -47,7 +63,7 @@ function pass(msg) {
  * @param {string} msg - 失败信息
  */
 function fail(msg) {
-  errors++;
+  errors += 1;
   console.error(`  [FAIL] ${msg}`);
 }
 
@@ -56,18 +72,18 @@ function fail(msg) {
  * @param {string} msg - 警告信息
  */
 function warn(msg) {
-  warnings++;
+  warnings += 1;
   console.warn(`  [WARN] ${msg}`);
 }
 
 /**
- * 检查文件是否存在
- * @param {string} path - 文件路径
- * @returns {Promise<boolean>} 文件是否存在
+ * 检查路径是否存在
+ * @param {string} path - 文件/目录路径
+ * @returns {Promise<boolean>}
  */
 async function fileExists(path) {
   try {
-    await stat(path);
+    await access(path);
     return true;
   } catch {
     return false;
@@ -76,325 +92,318 @@ async function fileExists(path) {
 
 /**
  * 递归遍历目录，对匹配扩展名的文件执行回调
- * @param {string} dir - 要遍历的目录路径
- * @param {string} ext - 文件扩展名（空字符串表示所有文件）
- * @param {Function} fn - 对每个匹配文件执行的异步回调
+ * @param {string} dir - 目录路径
+ * @param {string[]} exts - 扩展名数组
+ * @param {Function} fn - 异步回调
  */
-async function walkDir(dir, ext, fn) {
+async function walkDir(dir, exts, fn) {
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
     const full = join(dir, entry.name);
-    if (entry.isDirectory()) await walkDir(full, ext, fn);
-    else if (ext === '' || entry.name.endsWith(ext)) await fn(full);
-  }
-}
-
-/**
- * 检查 .nojekyll 文件是否存在
- * GitHub Pages 需要 .nojekyll 来避免忽略下划线开头的文件
- */
-async function checkNojekyll() {
-  if (await fileExists(join(DIST, '.nojekyll'))) pass('.nojekyll exists');
-  else fail('.nojekyll missing - GitHub Pages may ignore underscore-prefixed files');
-}
-
-/**
- * 检查 index.html 是否存在
- * 确保首页可正常访问
- */
-async function checkIndexHtml() {
-  if (await fileExists(join(DIST, 'index.html'))) pass('index.html exists');
-  else fail('index.html missing - homepage will 404');
-}
-
-/**
- * 检查 404.html 是否存在
- * 确保自定义 404 页面可用
- */
-async function check404Html() {
-  if (await fileExists(join(DIST, '404.html'))) pass('404.html exists');
-  else fail('404.html missing - custom 404 page unavailable');
-}
-
-/**
- * 检查 HTML 页面数量
- * 确保构建产物包含足够的页面（预期 200+）
- */
-async function checkPageCount() {
-  const htmlFiles = [];
-  await walkDir(DIST, '.html', (f) => htmlFiles.push(f));
-  if (htmlFiles.length >= 200) pass(`Page count: ${htmlFiles.length}`);
-  else warn(`Page count low: ${htmlFiles.length} (expected 200+)`);
-}
-
-/**
- * 检查 Pagefind 搜索索引是否存在
- * 确保站内搜索功能可用
- */
-async function checkPagefindIndex() {
-  const pagefindDir = join(DIST, 'pagefind');
-  if (await fileExists(pagefindDir)) {
-    const files = await readdir(pagefindDir);
-    const hasIndex = files.some((f) => f.startsWith('pagefind.') && f.endsWith('.js'));
-    if (hasIndex) pass('Pagefind search index exists');
-    else warn('Pagefind directory exists but no index JS found');
-  } else {
-    warn('Pagefind index not found - search will not work');
-  }
-}
-
-/**
- * 检查 index.html 中是否包含正确的 base href
- * 确保 GitHub Pages 上的链接路径正确
- */
-async function checkBaseHref() {
-  const indexHtml = await readFile(join(DIST, 'index.html'), 'utf-8');
-  const hasBase = indexHtml.includes(BASE) || indexHtml.includes('href="/FANDEX-exe/"');
-  if (hasBase) pass(`Base URL ${BASE} found in index.html`);
-  else fail(`Base URL ${BASE} not found - links may be broken on GitHub Pages`);
-}
-
-/**
- * 检查是否存在绝对根路径链接
- * 在 GitHub Pages 项目站点中，绝对根路径链接会导致 404
- */
-async function checkNoAbsoluteRootLinks() {
-  let brokenCount = 0;
-  await walkDir(DIST, '.html', async (full) => {
-    const content = await readFile(full, 'utf-8');
-    // 匹配 href="/" 开头但不以 /FANDEX-exe/ 开头的链接
-    const broken = content.match(/href="\/(?!FANDEX-exe)[^"]+"/g);
-    if (broken) brokenCount += broken.length;
-  });
-  if (brokenCount === 0) pass('No absolute root links found');
-  else warn(`Found ${brokenCount} potential absolute root links (may 404 on GitHub Pages)`);
-}
-
-/**
- * 检查 sitemap-index.xml 是否存在
- * 确保 SEO 站点地图可用
- */
-async function checkSitemap() {
-  if (await fileExists(join(DIST, 'sitemap-index.xml'))) pass('sitemap-index.xml exists');
-  else warn('sitemap-index.xml missing - SEO may be affected');
-}
-
-/**
- * 检查 robots.txt 是否存在
- * 确保搜索引擎爬虫配置可用
- */
-async function checkRobotsTxt() {
-  if (await fileExists(join(DIST, 'robots.txt'))) pass('robots.txt exists');
-  else warn('robots.txt missing');
-}
-
-/**
- * 检查是否存在超过 500KB 的大文件
- * 大文件会影响加载性能
- */
-async function checkLargeFiles() {
-  const LARGE_THRESHOLD = 500 * 1024; // 500KB
-  const largeFiles = [];
-  await walkDir(DIST, '', async (full) => {
-    const s = await stat(full);
-    if (s.size > LARGE_THRESHOLD) largeFiles.push({ path: full, size: s.size });
-  });
-  if (largeFiles.length === 0) pass('No files over 500KB');
-  else {
-    for (const f of largeFiles) {
-      warn(`Large file: ${f.path} (${(f.size / 1024).toFixed(0)}KB)`);
+    if (entry.isDirectory()) {
+      await walkDir(full, exts, fn);
+    } else if (exts.some((ext) => entry.name.endsWith(ext))) {
+      await fn(full);
     }
   }
 }
 
 /**
- * 检查暗色模式支持
- * 确保包含主题切换开关和防闪烁脚本
+ * 统计目录下指定扩展名文件数
+ * @param {string} dir - 目录路径
+ * @param {string[]} exts - 扩展名数组
+ * @returns {Promise<number>}
  */
-async function checkDarkModeSupport() {
-  let hasDarkToggle = false;
-  let hasFlashPrevention = false;
-  await walkDir(DIST, '.html', async (full) => {
-    const content = await readFile(full, 'utf-8');
-    if (content.includes('data-theme')) hasDarkToggle = true;
-    if (content.includes('fandex-theme')) hasFlashPrevention = true;
+async function countFiles(dir, exts) {
+  let count = 0;
+  await walkDir(dir, exts, () => {
+    count += 1;
   });
-  if (hasDarkToggle) pass('Dark mode toggle present');
-  else fail('Dark mode toggle missing');
-  if (hasFlashPrevention) pass('Dark mode flash prevention present');
-  else warn('Dark mode flash prevention may be missing');
+  return count;
 }
 
 /**
- * 检查视口 meta 标签
- * 确保移动端布局正常
+ * 检查 1：内容完整性（content/ 下文档数 > 1900）
  */
-async function checkResponsiveMeta() {
-  const indexHtml = await readFile(join(DIST, 'index.html'), 'utf-8');
-  if (indexHtml.includes('viewport')) pass('Viewport meta tag present');
-  else fail('Viewport meta tag missing - mobile layout broken');
+async function checkContentCompleteness() {
+  console.log('[Dimension 1: Content Completeness]');
+  try {
+    if (!(await fileExists(CONTENT_DIR))) {
+      fail(`content/ 目录不存在: ${CONTENT_DIR}`);
+      return;
+    }
+    const docCount = await countFiles(CONTENT_DIR, ['.md', '.mdx']);
+    if (docCount > 1900) {
+      pass(`content/ 下文档数: ${docCount}（> 1900）`);
+    } else {
+      warn(`content/ 下文档数: ${docCount}（预期 > 1900，可能正在扩充中）`);
+    }
+  } catch (err) {
+    fail(`扫描 content/ 失败: ${err.message}`);
+  }
 }
 
 /**
- * 检查 Shiki 代码语法高亮
- * 确保代码块正确渲染
+ * 检查 2：术语表完整性（glossary/ 下 27 个 glossary.md）
  */
-async function checkShikiHighlighting() {
-  let hasShiki = false;
-  await walkDir(DIST, '.html', async (full) => {
-    const content = await readFile(full, 'utf-8');
-    if (content.includes('shiki') || content.includes('--shiki')) hasShiki = true;
-  });
-  if (hasShiki) pass('Shiki syntax highlighting present');
-  else warn('No Shiki highlighting detected in output');
+async function checkGlossaryCompleteness() {
+  console.log('[Dimension 2: Glossary Completeness]');
+  try {
+    if (!(await fileExists(GLOSSARY_DIR))) {
+      fail(`glossary/ 目录不存在: ${GLOSSARY_DIR}`);
+      return;
+    }
+    const entries = await readdir(GLOSSARY_DIR, { withFileTypes: true });
+    const moduleDirs = entries.filter((e) => e.isDirectory());
+    // 检查每个模块目录下是否有 glossary.md
+    let validCount = 0;
+    for (const dir of moduleDirs) {
+      const glossaryFile = join(GLOSSARY_DIR, dir.name, 'glossary.md');
+      if (await fileExists(glossaryFile)) {
+        validCount += 1;
+      }
+    }
+    if (validCount === 27) {
+      pass(`glossary/ 下 ${validCount}/27 个 glossary.md 文件`);
+    } else if (validCount >= 25) {
+      warn(`glossary/ 下 ${validCount}/27 个 glossary.md 文件（部分缺失）`);
+    } else {
+      fail(`glossary/ 下仅 ${validCount}/27 个 glossary.md 文件（严重缺失）`);
+    }
+  } catch (err) {
+    fail(`扫描 glossary/ 失败: ${err.message}`);
+  }
 }
 
 /**
- * 检查 JSON-LD 结构化数据
- * 确保 SEO 结构化数据可用
+ * 检查 3：速查表完整性（cheatsheets/ 下 9 个 JSON）
  */
-async function checkJsonLd() {
-  let hasJsonLd = false;
-  await walkDir(DIST, '.html', async (full) => {
-    const content = await readFile(full, 'utf-8');
-    if (content.includes('application/ld+json')) hasJsonLd = true;
-  });
-  if (hasJsonLd) pass('JSON-LD structured data present');
-  else warn('No JSON-LD structured data found - SEO may be affected');
+async function checkCheatsheetsCompleteness() {
+  console.log('[Dimension 3: Cheatsheets Completeness]');
+  try {
+    if (!(await fileExists(CHEATSHEETS_DIR))) {
+      fail(`cheatsheets/ 目录不存在: ${CHEATSHEETS_DIR}`);
+      return;
+    }
+    const files = await readdir(CHEATSHEETS_DIR);
+    const jsonFiles = files.filter((f) => f.endsWith('.json'));
+    if (jsonFiles.length === 9) {
+      pass(`cheatsheets/ 下 ${jsonFiles.length}/9 个 JSON 文件`);
+    } else if (jsonFiles.length >= 8) {
+      warn(`cheatsheets/ 下 ${jsonFiles.length}/9 个 JSON 文件（部分缺失）`);
+    } else {
+      fail(`cheatsheets/ 下仅 ${jsonFiles.length}/9 个 JSON 文件（严重缺失）`);
+    }
+  } catch (err) {
+    fail(`扫描 cheatsheets/ 失败: ${err.message}`);
+  }
 }
 
 /**
- * 检查源代码中是否存在裸 100vh 使用
- * 应使用 100dvh 作为移动端适配的回退方案
+ * 检查 4：模块定义（modules.json 含 51 个模块）
  */
-async function checkNo100vh() {
-  const srcDirs = [join(SRC, 'styles'), join(SRC, 'components'), join(SRC, 'pages')];
-  let found = [];
-  for (const dir of srcDirs) {
-    if (!(await fileExists(dir))) continue;
-    // 检查 CSS 文件
-    await walkDir(dir, '.css', async (full) => {
-      const content = await readFile(full, 'utf-8');
-      const lines = content.split('\n');
-      lines.forEach((line, i) => {
-        if (line.includes('100vh') && !line.includes('100dvh')) {
-          // 检查下一行是否有 100dvh 回退
-          const nextLine = lines[i + 1] || '';
-          if (!nextLine.includes('100dvh')) {
-            found.push(`${full}:${i + 1}: ${line.trim()}`);
-          }
+async function checkModulesDefinition() {
+  console.log('[Dimension 4: Modules Definition]');
+  try {
+    if (!(await fileExists(MODULES_FILE))) {
+      fail(`modules.json 不存在: ${MODULES_FILE}`);
+      return;
+    }
+    const raw = await readFile(MODULES_FILE, 'utf-8');
+    const data = JSON.parse(raw);
+    const moduleCount = Array.isArray(data.modules) ? data.modules.length : 0;
+    if (moduleCount === 51) {
+      pass(`modules.json 含 ${moduleCount}/51 个模块`);
+    } else if (moduleCount >= 48) {
+      warn(`modules.json 含 ${moduleCount}/51 个模块（部分缺失）`);
+    } else {
+      fail(`modules.json 仅含 ${moduleCount}/51 个模块（严重缺失）`);
+    }
+  } catch (err) {
+    fail(`读取 modules.json 失败: ${err.message}`);
+  }
+}
+
+/**
+ * 检查 5：索引文件存在
+ */
+async function checkIndexFiles() {
+  console.log('[Dimension 5: Index Files]');
+  const expectedIndexes = [
+    'glossary-index.json',
+    'module-docs-index.json',
+    'tag-index.json',
+    'knowledge-graph.json',
+  ];
+  for (const name of expectedIndexes) {
+    const filePath = join(DATA_DIR, name);
+    if (await fileExists(filePath)) {
+      pass(`索引存在: ${name}`);
+    } else {
+      warn(`索引缺失: ${name}（请先运行对应的构建脚本）`);
+    }
+  }
+}
+
+/**
+ * 检查 6：构建产物（dist/ 存在且含 index.html）
+ * 仅在 dist/ 存在时检查，缺失时仅警告不失败
+ */
+async function checkBuildArtifacts() {
+  console.log('[Dimension 6: Build Artifacts]');
+  if (!(await fileExists(DIST_DIR))) {
+    warn(`dist/ 目录不存在（astro build 可能尚未执行）`);
+    return;
+  }
+  const indexHtml = join(DIST_DIR, 'index.html');
+  if (await fileExists(indexHtml)) {
+    pass(`dist/index.html 存在`);
+  } else {
+    fail(`dist/index.html 缺失（构建可能失败）`);
+  }
+}
+
+/**
+ * 检查 7：无 Vue 残留（src/ 下不应包含 .vue 文件或 from 'vue' 导入）
+ */
+async function checkNoVueResidue() {
+  console.log('[Dimension 7: No Vue Residue]');
+  try {
+    if (!(await fileExists(SRC_DIR))) {
+      warn(`src/ 目录不存在: ${SRC_DIR}`);
+      return;
+    }
+    /** @type {Array<{file: string, line: number, content: string}>} */
+    const vueFiles = [];
+    const vueImports = [];
+
+    await walkDir(
+      SRC_DIR,
+      ['.vue', '.ts', '.tsx', '.js', '.jsx', '.astro', '.mjs'],
+      async (full) => {
+        const content = await readFile(full, 'utf-8');
+        const lines = content.split('\n');
+
+        if (full.endsWith('.vue')) {
+          vueFiles.push({ file: full, line: 0, content: '.vue 文件' });
         }
-      });
-    });
-    // 检查 Astro 组件中的 <style> 块
-    await walkDir(dir, '.astro', async (full) => {
-      const content = await readFile(full, 'utf-8');
-      const styleMatch = content.match(/<style[^>]*>([\s\S]*?)<\/style>/g);
-      if (!styleMatch) return;
-      styleMatch.forEach((block) => {
-        const lines = block.split('\n');
+
         lines.forEach((line, i) => {
-          if (line.includes('100vh') && !line.includes('100dvh')) {
-            const nextLine = lines[i + 1] || '';
-            if (!nextLine.includes('100dvh')) {
-              found.push(`${full}:style:${i + 1}: ${line.trim()}`);
-            }
+          // 检测 from 'vue' 或 from "vue" 导入
+          if (/from\s+['"]vue['"]/.test(line)) {
+            vueImports.push({ file: full, line: i + 1, content: line.trim() });
+          }
+          // 检测 .vue 文件导入
+          if (/from\s+['"][^'"]*\.vue['"]/.test(line)) {
+            vueImports.push({ file: full, line: i + 1, content: line.trim() });
           }
         });
-      });
-    });
-  }
-  if (found.length === 0) pass('No bare 100vh usage (all use 100dvh fallback)');
-  else {
-    for (const f of found) warn(`Bare 100vh: ${f}`);
-  }
-}
+      },
+    );
 
-/**
- * 检查源代码中是否残留 console.log/debug 调用
- * 生产代码不应包含调试日志
- */
-async function checkNoConsoleLog() {
-  let found = [];
-  await walkDir(SRC, '.ts', async (full) => {
-    const content = await readFile(full, 'utf-8');
-    const lines = content.split('\n');
-    lines.forEach((line, i) => {
-      // 匹配 console.log/debug，排除注释行
-      if (/\bconsole\.(log|debug)\b/.test(line) && !line.includes('//')) {
-        found.push(`${full}:${i + 1}: ${line.trim()}`);
+    if (vueFiles.length === 0 && vueImports.length === 0) {
+      pass(`src/ 下无 Vue 残留（无 .vue 文件、无 from 'vue' 导入）`);
+    } else {
+      if (vueFiles.length > 0) {
+        fail(`发现 ${vueFiles.length} 个 .vue 文件（应全部移除）`);
+        for (const v of vueFiles.slice(0, 5)) {
+          console.error(`    ${v.file}`);
+        }
       }
-    });
-  });
-  if (found.length === 0) pass('No console.log/debug in source');
-  else {
-    for (const f of found) warn(`Console log: ${f}`);
+      if (vueImports.length > 0) {
+        fail(`发现 ${vueImports.length} 处 Vue 导入（应全部替换为 React）`);
+        for (const v of vueImports.slice(0, 5)) {
+          console.error(`    ${v.file}:${v.line}: ${v.content}`);
+        }
+      }
+    }
+  } catch (err) {
+    fail(`Vue 残留检查失败: ${err.message}`);
   }
 }
 
 /**
- * 检查资源预连接提示
- * 确保字体等外部资源预加载
+ * 检查 8：Tauri 配置
  */
-async function checkPreconnect() {
-  const indexHtml = await readFile(join(DIST, 'index.html'), 'utf-8');
-  if (indexHtml.includes('preconnect')) pass('Resource preconnect hints present');
-  else warn('No preconnect hints - font loading may be slow');
+async function checkTauriConfig() {
+  console.log('[Dimension 8: Tauri Config]');
+  const tauriConf = join(TAURI_DIR, 'tauri.conf.json');
+  if (await fileExists(tauriConf)) {
+    pass(`src-tauri/tauri.conf.json 存在`);
+    // 验证 JSON 可解析
+    try {
+      const raw = await readFile(tauriConf, 'utf-8');
+      JSON.parse(raw);
+      pass(`tauri.conf.json 为合法 JSON`);
+    } catch (err) {
+      fail(`tauri.conf.json 解析失败: ${err.message}`);
+    }
+  } else {
+    fail(`src-tauri/tauri.conf.json 不存在: ${tauriConf}`);
+  }
 }
 
 /**
- * 检查图片懒加载
- * 确保图片使用 loading="lazy" 属性
+ * 检查 9：PWA 资源（manifest.json、sw.js、icons/）
  */
-async function checkLazyLoading() {
-  let hasLazy = false;
-  await walkDir(DIST, '.html', async (full) => {
-    const content = await readFile(full, 'utf-8');
-    if (content.includes('loading="lazy"')) hasLazy = true;
-  });
-  if (hasLazy) pass('Image lazy loading present');
-  else warn('No lazy loading detected (no images or not configured)');
+async function checkPwaAssets() {
+  console.log('[Dimension 9: PWA Assets]');
+  const manifestFile = join(PUBLIC_DIR, 'manifest.json');
+  const swFile = join(PUBLIC_DIR, 'sw.js');
+  const iconsDir = join(PUBLIC_DIR, 'icons');
+
+  if (await fileExists(manifestFile)) {
+    pass(`manifest.json 存在`);
+  } else {
+    fail(`manifest.json 不存在`);
+  }
+
+  if (await fileExists(swFile)) {
+    pass(`sw.js 存在`);
+  } else {
+    warn(`sw.js 不存在（开发模式可忽略）`);
+  }
+
+  if (await fileExists(iconsDir)) {
+    const icons = await readdir(iconsDir);
+    const hasIcon192 = icons.some((f) => f.includes('192'));
+    const hasIcon512 = icons.some((f) => f.includes('512'));
+    if (hasIcon192 && hasIcon512) {
+      pass(`icons/ 含 192 与 512 尺寸图标（共 ${icons.length} 个文件）`);
+    } else {
+      warn(`icons/ 缺少 192 或 512 尺寸图标（共 ${icons.length} 个文件）`);
+    }
+  } else {
+    fail(`icons/ 目录不存在`);
+  }
 }
 
-// ===== 执行检查 =====
+/**
+ * 主函数：执行全部 QA 检查
+ */
+async function main() {
+  console.log('\n+------------------------------------------+');
+  console.log('|        FANDEX QA CHECK (Phase 11)        |');
+  console.log('+------------------------------------------+\n');
 
-console.log('\n+------------------------------------------+');
-console.log('|     FANDEX PRE-LAUNCH QUALITY CHECK      |');
-console.log('+------------------------------------------+\n');
+  await checkContentCompleteness();
+  await checkGlossaryCompleteness();
+  await checkCheatsheetsCompleteness();
+  await checkModulesDefinition();
+  await checkIndexFiles();
+  await checkBuildArtifacts();
+  await checkNoVueResidue();
+  await checkTauriConfig();
+  await checkPwaAssets();
 
-console.log('[Dimension 1: File Audit]');
-await checkNojekyll();
-await checkRobotsTxt();
-await checkLargeFiles();
+  console.log('\n+------------------------------------------+');
+  console.log(`|  Results: ${errors} errors, ${warnings} warnings`);
+  console.log('+------------------------------------------+\n');
 
-console.log('\n[Dimension 2: Web Architecture]');
-await checkIndexHtml();
-await check404Html();
-await checkBaseHref();
-await checkNoAbsoluteRootLinks();
-await checkResponsiveMeta();
-await checkDarkModeSupport();
-await checkPreconnect();
-await checkLazyLoading();
+  process.exit(errors > 0 ? 1 : 0);
+}
 
-console.log('\n[Dimension 3: Content Processing]');
-await checkPageCount();
-await checkPagefindIndex();
-
-console.log('\n[Dimension 4: Reading Experience]');
-await checkShikiHighlighting();
-await checkJsonLd();
-
-console.log('\n[Dimension 5: CI/CD]');
-await checkSitemap();
-
-console.log('\n[Dimension 6: Quality Control]');
-await checkNo100vh();
-await checkNoConsoleLog();
-
-console.log(`\n+------------------------------------------+`);
-console.log(`|  Results: ${errors} errors, ${warnings} warnings`);
-console.log(`+------------------------------------------+\n`);
-
-// 存在错误时以非零退出码退出，阻断部署
-process.exit(errors > 0 ? 1 : 0);
+main().catch((err) => {
+  console.error('[qa-check] 未捕获异常:', err);
+  process.exit(1);
+});

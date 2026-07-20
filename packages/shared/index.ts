@@ -4,5 +4,15 @@
  * 包含站点常量、模块注册表等共享数据
  */
 export { SITE } from './constants';
-export { categoryLabels, categoryColors, categoryOrder, modulePrerequisites, modules, getModule, getModulesByCategory, getPrimaryCategory, docSlug } from './modules';
 export type { Module } from './modules';
+export {
+  categoryColors,
+  categoryLabels,
+  categoryOrder,
+  docSlug,
+  getModule,
+  getModulesByCategory,
+  getPrimaryCategory,
+  modulePrerequisites,
+  modules,
+} from './modules';

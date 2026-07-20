@@ -1,5 +1,8 @@
 name: Content Update & Quality Check
 
+# 内容更新与质量检查流水线
+# 适配 Tauri 2 + Astro 7 + React 19 + Tailwind v4 技术栈，使用 pnpm v10 workspace + Node 24
+
 on:
   push:
     branches: [main]
@@ -7,26 +10,56 @@ on:
       - 'content/**'
       - 'metadata/**'
       - 'scripts/**'
+      - 'apps/web/src/content/**'
+      - 'pnpm-lock.yaml'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   audit-content:
+    name: Content Audit & Index Build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
+          node-version: '24'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
-      - name: Rebuild native modules
-        run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
+      - name: Rebuild native modules (sharp / pagefind)
+        run: pnpm --filter web exec -- pnpm rebuild sharp pagefind
 
       - name: Run content audit
         run: node scripts/content-audit.mjs
@@ -62,9 +95,9 @@ jobs:
           done
 
       - name: Lint check
-        run: npm run lint -w apps/web
+        run: pnpm lint
         continue-on-error: true
 
       - name: Type check
-        run: npm run typecheck -w apps/web
+        run: pnpm typecheck
         continue-on-error: true

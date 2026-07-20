@@ -1,165 +1,313 @@
 /**
- * FANDEX 内容质量审计脚本
+ * FANDEX 内容质量审计脚本（Phase 11）
  *
  * 功能概述：
- * 扫描 content 下所有 .md 文件，检查 frontmatter 完整性、
- * 正文质量、过时关键词、内部链接格式、Wiki 链接使用等问题。
- * 按严重程度（high/medium/low）分类输出审计报告，
- * 存在 high 级别问题时以非零退出码退出。
+ * 扫描 content 目录下所有 .md/.mdx 文档，解析 frontmatter 与正文，
+ * 完成 8 项审计维度，输出审计 JSON 到 public/data/content-audit.json，
+ * 同时在控制台输出人类可读的审计摘要。
  *
- * 检查项：
- * - frontmatter 缺失
- * - 标题、模块、排序号、难度缺失
- * - 正文过短（< 30 字符）
- * - 过时关键词检测
- * - 长文档缺少前置知识/学习目标
- * - 内部链接格式（非 http/#/mailto 开头）
- * - Wiki 链接格式（[[...]]）
+ * 审计维度：
+ *   1. 每模块文档数统计（按 frontmatter.module 分组）
+ *   2. 缺失 frontmatter 字段统计（title/module 必填）
+ *   3. 文档长度分布（<1k / 1k-5k / 5k-10k / >10k 字符）
+ *   4. 难度分布（beginner / intermediate / advanced）
+ *   5. 标签使用频率 Top 20（按 localeCompare 排序）
+ *   6. 含 quiz 的文档数（正文包含 ## 测验 或 ## quiz 章节）
+ *   7. 含 prerequisites 的文档数（frontmatter.prerequisites 非空数组）
+ *   8. 最近更新时间分布（按 frontmatter.updated 字段，YYYY-MM 分组）
+ *
+ * 数据源：
+ *   - content 目录下所有 .md/.mdx 文档源
+ *
+ * 输出：
+ *   - apps/web/public/data/content-audit.json（结构化审计结果）
+ *   - 控制台摘要（8 项关键指标）
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-/** 文档根目录 */
-const DOCS = 'content';
-/** 问题收集数组 */
-const issues = [];
+/** 当前脚本所在目录 */
+const __dirname = dirname(fileURLToPath(import.meta.url));
+/** 项目根目录 */
+const PROJECT_ROOT = resolve(__dirname, '..');
+/** 文档源目录 */
+const DOCS_DIR = join(PROJECT_ROOT, 'content');
+/** 输出目录 */
+const OUTPUT_DIR = join(PROJECT_ROOT, 'apps', 'web', 'public', 'data');
+/** 输出文件 */
+const OUTPUT_FILE = join(OUTPUT_DIR, 'content-audit.json');
 
 /**
- * 过时关键词配置
- * 每项包含：关键词、建议修复方式、严重程度
+ * 递归遍历目录，对匹配扩展名的文件执行回调
+ * @param {string} dir - 目录路径
+ * @param {string[]} exts - 扩展名数组
+ * @param {Function} fn - 异步回调
  */
-const OUTDATED_KEYWORDS = [
-  { keyword: 'actions-gh-pages@v3', fix: 'actions-gh-pages@v4', severity: 'high' },
-  { keyword: 'matplotlib.pyplot.show()', fix: '保存为图片文件', severity: 'medium' },
-  { keyword: 'Thread.sleep()', fix: '使用虚拟线程/Project Loom', severity: 'low' },
-];
-
-/**
- * 递归遍历目录，对所有 .md 文件执行内容审计
- * @param {string} dir - 要扫描的目录路径
- */
-function walk(dir) {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+async function walkDir(dir, exts, fn) {
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
     const full = join(dir, entry.name);
-    if (entry.isDirectory())
-      walk(full); // 递归子目录
-    else if (entry.name.endsWith('.md')) {
-      const raw = readFileSync(full, 'utf-8');
-
-      // 解析 frontmatter
-      const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-      if (!match) {
-        issues.push({ file: full, issue: 'NO_FRONTMATTER', severity: 'high' });
-        continue;
-      }
-
-      const fm = match[1];
-      const body = raw.slice(match[0].length).trim(); // frontmatter 之后的正文
-
-      // 提取 frontmatter 各字段
-      const titleLine = fm.match(/title:\s*["']?(.*?)["']?\s*$/m);
-      const title = titleLine ? titleLine[1] : '';
-      const modLine = fm.match(/module:\s*["']?(.*?)["']?\s*$/m);
-      const mod = modLine ? modLine[1] : '';
-      const orderLine = fm.match(/order:\s*(\d+)/m);
-      const order = orderLine ? orderLine[1] : '';
-      const diffLine = fm.match(/difficulty:\s*["']?(.*?)["']?\s*$/m);
-      const diff = diffLine ? diffLine[1] : '';
-
-      // 检查 frontmatter 必填字段
-      if (!title || title === '#')
-        issues.push({ file: full, issue: `BAD_TITLE: "${title}"`, severity: 'high' });
-      if (!mod) issues.push({ file: full, issue: 'MISSING_MODULE', severity: 'high' });
-      if (!order && order !== '0')
-        issues.push({ file: full, issue: 'MISSING_ORDER', severity: 'medium' });
-      if (!diff) issues.push({ file: full, issue: 'MISSING_DIFFICULTY', severity: 'medium' });
-
-      // 检查正文长度
-      if (body.length < 30)
-        issues.push({ file: full, issue: `THIN_BODY: ${body.length} chars`, severity: 'medium' });
-
-      // 检查过时关键词
-      OUTDATED_KEYWORDS.forEach(({ keyword, fix, severity }) => {
-        if (body.includes(keyword)) {
-          issues.push({
-            file: full,
-            issue: `OUTDATED: "${keyword}" → "${fix}"`,
-            severity,
-          });
-        }
-      });
-
-      // 检查长文档是否缺少前置知识/学习目标章节
-      if (body.length > 10000 && !body.includes('## 前置知识') && !body.includes('## 学习目标')) {
-        issues.push({
-          file: full,
-          issue: `MISSING_PREAMBLE: 长文档(${body.length}字符)缺少前置知识/学习目标`,
-          severity: 'low',
-        });
-      }
-
-      // 检查内部链接格式（非外部链接、锚点、邮件的相对路径链接）
-      const linkPattern = /\[([^\]]*)\]\(([^)]+)\)/g;
-      let m;
-      while ((m = linkPattern.exec(body)) !== null) {
-        const href = m[2];
-        if (href.startsWith('http') || href.startsWith('#') || href.startsWith('mailto')) continue;
-        issues.push({ file: full, issue: `INTERNAL_LINK: ${href}`, severity: 'low' });
-      }
-
-      // 检查 Wiki 链接格式（Obsidian 风格，应转换为标准 Markdown）
-      const wikiPattern = /\[\[([^\]]+)\]\]/g;
-      while ((m = wikiPattern.exec(body)) !== null) {
-        issues.push({ file: full, issue: `WIKILINK: [[${m[1]}]]`, severity: 'medium' });
-      }
+    if (entry.isDirectory()) {
+      await walkDir(full, exts, fn);
+    } else if (exts.some((ext) => entry.name.endsWith(ext))) {
+      await fn(full);
     }
   }
 }
 
-// 执行审计
-walk(DOCS);
+/**
+ * 解析 Markdown 文件的 frontmatter（简易 YAML 解析器）
+ * 支持键值对与数组（tags、prerequisites、related 等）
+ *
+ * @param {string} content - 文件完整内容
+ * @returns {Object} frontmatter 键值对
+ */
+function parseFrontmatter(content) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return {};
+  const raw = match[1];
+  const data = {};
+  let key = null;
+  let inArray = false;
+  let arrayVals = [];
 
-// 按严重程度排序（high → medium → low）
-const severityOrder = { high: 0, medium: 1, low: 2 };
-issues.sort((a, b) => (severityOrder[a.severity] || 1) - (severityOrder[b.severity] || 1));
-
-// 按问题类型分组
-const byType = {};
-for (const i of issues) {
-  const type = i.issue.split(':')[0]; // 提取问题类型前缀
-  if (!byType[type]) byType[type] = [];
-  byType[type].push(i);
+  for (const line of raw.split(/\r?\n/)) {
+    if (inArray) {
+      const itemMatch = line.match(/^\s+-\s+['"]?(.+?)['"]?\s*$/);
+      if (itemMatch) {
+        arrayVals.push(itemMatch[1]);
+        continue;
+      }
+      if (key) data[key] = arrayVals;
+      inArray = false;
+      key = null;
+      arrayVals = [];
+    }
+    const kvMatch = line.match(/^(\w[\w-]*):\s*(.*)$/);
+    if (kvMatch) {
+      const k = kvMatch[1];
+      const v = kvMatch[2].trim();
+      if (v === '' || v === '[]') {
+        key = k;
+        inArray = true;
+        arrayVals = [];
+      } else {
+        data[k] = v.replace(/^['"]|['"]$/g, '');
+      }
+    }
+  }
+  if (inArray && key) data[key] = arrayVals;
+  return data;
 }
 
-// 输出审计报告
-console.log('\n=== FANDEX Content Quality Audit ===\n');
+/**
+ * 提取 frontmatter 之后的正文部分
+ * @param {string} content - 文件完整内容
+ * @returns {string} 正文（去除 frontmatter）
+ */
+function extractBody(content) {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return content;
+  return content.slice(match[0].length).trim();
+}
 
-const highCount = issues.filter((i) => i.severity === 'high').length;
-const medCount = issues.filter((i) => i.severity === 'medium').length;
-const lowCount = issues.filter((i) => i.severity === 'low').length;
+/**
+ * 判断文档长度区间
+ * @param {number} length - 文档字符数
+ * @returns {string} 区间标签
+ */
+function lengthBucket(length) {
+  if (length < 1000) return '<1k';
+  if (length < 5000) return '1k-5k';
+  if (length < 10000) return '5k-10k';
+  return '>10k';
+}
 
-console.log(
-  `Summary: ${issues.length} issues (HIGH: ${highCount}, MEDIUM: ${medCount}, LOW: ${lowCount})\n`
-);
+/**
+ * 判断正文是否包含 quiz 章节
+ * 检测模式：## 测验 / ## quiz / ## Quiz / ## 练习（不区分大小写）
+ * @param {string} body - 正文
+ * @returns {boolean}
+ */
+function hasQuiz(body) {
+  return /^##\s+(测验|quiz|练习|习题)/im.test(body);
+}
 
-// 按类型输出详情（每种最多显示 10 条）
-for (const [type, items] of Object.entries(byType)) {
-  console.log(`\n[${type}] (${items.length} issues)`);
-  items.slice(0, 10).forEach((i) => {
-    const tag = i.severity ? `[${i.severity.toUpperCase()}]` : '';
-    console.log(`  ${tag} ${i.file}: ${i.issue}`);
+/**
+ * 从 frontmatter.updated 提取 YYYY-MM 月份
+ * 兼容 "2026-06-14" / "2026/06/14" / "2026-06" 等格式
+ * @param {string} updated - 更新时间字符串
+ * @returns {string|null} 形如 "2026-06"，无法解析时返回 null
+ */
+function parseMonth(updated) {
+  if (!updated || typeof updated !== 'string') return null;
+  const m = updated.match(/^(\d{4})[-/](\d{1,2})/);
+  if (!m) return null;
+  const month = m[2].padStart(2, '0');
+  return `${m[1]}-${month}`;
+}
+
+/**
+ * 主函数：执行 8 项审计并输出结果
+ */
+async function main() {
+  console.log('[content-audit] 开始内容质量审计...');
+
+  // 1. 初始化各维度统计容器
+  /** @type {Record<string, number>} 模块 -> 文档数 */
+  const moduleDocCount = {};
+  /** @type {Array<{file: string, missing: string[]}>} */
+  const missingFields = [];
+  /** @type {Record<string, number>} 长度区间 -> 计数 */
+  const lengthDistribution = { '<1k': 0, '1k-5k': 0, '5k-10k': 0, '>10k': 0 };
+  /** @type {Record<string, number>} 难度 -> 计数 */
+  const difficultyDistribution = { beginner: 0, intermediate: 0, advanced: 0 };
+  /** @type {Record<string, number>} 标签 -> 计数 */
+  const tagCount = {};
+  let quizCount = 0;
+  let prerequisitesCount = 0;
+  /** @type {Record<string, number>} 月份 -> 计数 */
+  const updatedTimeDistribution = {};
+  let totalDocs = 0;
+
+  // 2. 遍历 content 目录下所有 .md/.mdx 文件
+  console.log(`[content-audit] 扫描文档目录: ${DOCS_DIR}`);
+
+  await walkDir(DOCS_DIR, ['.md', '.mdx'], async (filePath) => {
+    totalDocs += 1;
+    const content = await readFile(filePath, 'utf-8');
+    const fm = parseFrontmatter(content);
+    const body = extractBody(content);
+
+    // 维度 1：每模块文档数（frontmatter.module）
+    const moduleId = typeof fm.module === 'string' ? fm.module : '';
+    if (moduleId) {
+      moduleDocCount[moduleId] = (moduleDocCount[moduleId] || 0) + 1;
+    }
+
+    // 维度 2：缺失 frontmatter 字段（title/module 必填）
+    const missing = [];
+    if (!fm.title) missing.push('title');
+    if (!moduleId) missing.push('module');
+    if (missing.length > 0) {
+      missingFields.push({ file: filePath, missing });
+    }
+
+    // 维度 3：文档长度分布（按正文长度，含 frontmatter 后的全部内容）
+    const length = body.length;
+    const bucket = lengthBucket(length);
+    lengthDistribution[bucket] += 1;
+
+    // 维度 4：难度分布
+    const diff = typeof fm.difficulty === 'string' ? fm.difficulty : '';
+    if (diff && difficultyDistribution[diff] !== undefined) {
+      difficultyDistribution[diff] += 1;
+    }
+
+    // 维度 5：标签使用频率（tags 数组）
+    if (Array.isArray(fm.tags)) {
+      for (const tag of fm.tags) {
+        if (typeof tag === 'string' && tag.trim()) {
+          tagCount[tag.trim()] = (tagCount[tag.trim()] || 0) + 1;
+        }
+      }
+    }
+
+    // 维度 6：含 quiz 的文档数
+    if (hasQuiz(body)) {
+      quizCount += 1;
+    }
+
+    // 维度 7：含 prerequisites 的文档数（frontmatter.prerequisites 非空数组）
+    if (Array.isArray(fm.prerequisites) && fm.prerequisites.length > 0) {
+      prerequisitesCount += 1;
+    }
+
+    // 维度 8：最近更新时间分布
+    const month = parseMonth(fm.updated);
+    if (month) {
+      updatedTimeDistribution[month] = (updatedTimeDistribution[month] || 0) + 1;
+    }
   });
-  if (items.length > 10) console.log(`  ... and ${items.length - 10} more`);
+
+  // 3. 整理输出数据结构
+  // 维度 1：转为数组并按 docCount 降序
+  const modules = Object.entries(moduleDocCount)
+    .map(([module, docCount]) => ({ module, docCount }))
+    .sort((a, b) => b.docCount - a.docCount);
+
+  // 维度 5：Top 20 标签（先按 count 降序，再按 tag 名称 zh-Hans-CN localeCompare 升序）
+  const topTags = Object.entries(tagCount)
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.tag.localeCompare(b.tag, 'zh-Hans-CN');
+    })
+    .slice(0, 20);
+
+  // 维度 8：月份分布转为数组并按月份升序
+  const updatedTime = Object.entries(updatedTimeDistribution)
+    .map(([month, count]) => ({ month, count }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+
+  // 4. 组装审计报告
+  const report = {
+    generatedAt: new Date().toISOString(),
+    totalDocs,
+    modules,
+    missingFields,
+    lengthDistribution,
+    difficultyDistribution,
+    topTags,
+    quizCount,
+    prerequisitesCount,
+    updatedTimeDistribution: updatedTime,
+  };
+
+  // 5. 写入 JSON 文件
+  await mkdir(OUTPUT_DIR, { recursive: true });
+  const json = JSON.stringify(report, null, 2);
+  await writeFile(OUTPUT_FILE, json, 'utf-8');
+  const sizeKB = (Buffer.byteLength(json, 'utf-8') / 1024).toFixed(1);
+
+  // 6. 控制台摘要输出
+  console.log('\n+----------------------------------------------+');
+  console.log('|       FANDEX Content Audit Summary           |');
+  console.log('+----------------------------------------------+');
+  console.log(`  文档总数: ${totalDocs}`);
+  console.log(`  覆盖模块数: ${modules.length}`);
+  console.log(`  缺失 frontmatter 文档数: ${missingFields.length}`);
+  console.log('  文档长度分布:');
+  console.log(`    <1k      : ${lengthDistribution['<1k']}`);
+  console.log(`    1k-5k    : ${lengthDistribution['1k-5k']}`);
+  console.log(`    5k-10k   : ${lengthDistribution['5k-10k']}`);
+  console.log(`    >10k     : ${lengthDistribution['>10k']}`);
+  console.log('  难度分布:');
+  console.log(`    beginner     : ${difficultyDistribution.beginner}`);
+  console.log(`    intermediate : ${difficultyDistribution.intermediate}`);
+  console.log(`    advanced     : ${difficultyDistribution.advanced}`);
+  console.log(`  含 quiz 文档数: ${quizCount}`);
+  console.log(`  含 prerequisites 文档数: ${prerequisitesCount}`);
+  console.log(`  Top 5 标签:`);
+  topTags.slice(0, 5).forEach((t) => {
+    console.log(`    ${t.tag}: ${t.count}`);
+  });
+  console.log(
+    `  更新时间范围: ${
+      updatedTime.length > 0
+        ? `${updatedTime[0].month} ~ ${updatedTime[updatedTime.length - 1].month}（共 ${updatedTime.length} 个月份）`
+        : '无数据'
+    }`,
+  );
+  console.log('+----------------------------------------------+');
+  console.log(`[content-audit] 审计完成。`);
+  console.log(`[content-audit]   输出路径: ${OUTPUT_FILE}`);
+  console.log(`[content-audit]   文件大小: ${sizeKB} KB`);
 }
 
-console.log(`\nTotal issues: ${issues.length}`);
-
-// 存在 high 级别问题时以非零退出码退出，用于 CI/CD 流水线拦截
-if (highCount > 0) {
-  console.log(`\n❌ ${highCount} HIGH severity issues found!`);
+main().catch((err) => {
+  console.error('[content-audit] 审计失败:', err);
   process.exit(1);
-} else {
-  console.log('\n✅ No HIGH severity issues found.');
-  process.exit(0);
-}
+});

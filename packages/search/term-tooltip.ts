@@ -61,12 +61,7 @@ function closeTermModal(): void {
  * @param module - 术语所属模块 ID
  * @param slug - 术语页面 slug
  */
-function showTermModal(
-  term: string,
-  def: string,
-  module: string,
-  slug: string
-): void {
+function showTermModal(term: string, def: string, _module: string, slug: string): void {
   closeTermModal();
 
   const baseUrl = import.meta.env.BASE_URL;
@@ -161,7 +156,7 @@ function showPopup(tip: HTMLElement): void {
   /* 隐藏之前的 popup */
   hidePopup();
 
-  const term = tip.dataset.term ?? '';
+  const _term = tip.dataset.term ?? '';
   const def = tip.dataset.def ?? '';
   const slug = tip.dataset.slug ?? '';
   const baseUrl = import.meta.env.BASE_URL;
@@ -201,9 +196,9 @@ function showPopup(tip: HTMLElement): void {
     } else {
       popup.style.transform = '';
     }
-    popup.style.left = left + 'px';
-    popup.style.top = top + 'px';
-    popup.style.maxWidth = popupWidth + 'px';
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
+    popup.style.maxWidth = `${popupWidth}px`;
   }
 
   /* 鼠标离开术语节点或 popup 时隐藏 */
@@ -249,7 +244,7 @@ export function initTermTooltip(): void {
           tip.dataset.term ?? '',
           tip.dataset.def ?? '',
           tip.dataset.module ?? '',
-          tip.dataset.slug ?? ''
+          tip.dataset.slug ?? '',
         );
       });
     } else {
@@ -268,7 +263,7 @@ export function initTermTooltip(): void {
             tip.dataset.term ?? '',
             tip.dataset.def ?? '',
             tip.dataset.module ?? '',
-            tip.dataset.slug ?? ''
+            tip.dataset.slug ?? '',
           );
         } else {
           showPopup(tip);

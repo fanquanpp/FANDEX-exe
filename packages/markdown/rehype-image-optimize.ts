@@ -17,10 +17,10 @@
  * - 如果图片文件不存在，跳过尺寸设置
  */
 
+import { closeSync, existsSync, openSync, readSync } from 'node:fs';
+import { extname, join } from 'node:path';
+import type { Element, Properties, Root } from 'hast';
 import { visit } from 'unist-util-visit';
-import { existsSync, openSync, readSync, closeSync } from 'node:fs';
-import { join, extname } from 'node:path';
-import type { Root, Element, Properties } from 'hast';
 
 /** 插件配置选项接口 */
 interface RehypeImageOptimizeOptions {
@@ -82,12 +82,7 @@ function getJpegDimensions(buffer: Buffer): { width: number; height: number } | 
  */
 function getPngDimensions(buffer: Buffer): { width: number; height: number } | null {
   /* PNG 文件必须以 89504E47 签名开头 */
-  if (
-    buffer[0] !== 0x89 ||
-    buffer[1] !== 0x50 ||
-    buffer[2] !== 0x4e ||
-    buffer[3] !== 0x47
-  ) {
+  if (buffer[0] !== 0x89 || buffer[1] !== 0x50 || buffer[2] !== 0x4e || buffer[3] !== 0x47) {
     return null;
   }
 
@@ -196,9 +191,7 @@ function readFileHeader(filePath: string, bytes: number): Buffer | null {
  * 1. 读取文件前 64 字节（足够获取所有格式的尺寸信息）
  * 2. 根据扩展名调用对应的解析函数
  */
-function getImageDimensions(
-  filePath: string
-): { width: number; height: number } | null {
+function getImageDimensions(filePath: string): { width: number; height: number } | null {
   try {
     const buffer = readFileHeader(filePath, HEADER_BYTES);
     if (!buffer) return null;
@@ -234,9 +227,7 @@ function getImageDimensions(
  * 3. 添加 loading="lazy" 和 decoding="async" 属性
  * 4. 添加响应式样式 max-width:100%;height:auto
  */
-export function rehypeImageOptimize(
-  options?: RehypeImageOptimizeOptions
-) {
+export function rehypeImageOptimize(options?: RehypeImageOptimizeOptions) {
   const baseDir = options?.baseDir ?? '';
 
   return (tree: Root) => {

@@ -1,568 +1,332 @@
 ---
+import Breadcrumb from '@/components/Breadcrumb.astro';
+/**
+ * roadmap.astro 学习路线图（Phase 8a 重写版）
+ *
+ * 功能概述：
+ * - 提供 4 条推荐学习路径（前端 / 全栈 / AI / 后端）
+ * - 通过 MermaidLazy 岛屿（client:visible）渲染全模块依赖图，支持缩放、平移、下载、全屏
+ * - 按 8 大分类（tools/frontend/backend/database/cs/math/cloud/ai）展示所有模块卡片
+ * - 完全移除 Vue、@fandex/shared 与 AIRoadmap.astro 组件依赖
+ * - 模块数据全部来自 @/lib/modules（基于 metadata/modules.json）
+ * - Tailwind v4 工具类实现布局
+ * - Tauri 兼容：使用 withBase() 处理模块链接
+ *
+ * 数据流：
+ * 1. 构建期：从 MODULES + MODULE_CATEGORIES 生成静态 HTML 与 Mermaid 图表源码
+ * 2. 运行时：MermaidLazy 岛屿在进入视口时水合，用户点击按钮后动态加载 mermaid 渲染 SVG
+ * 3. 模块点击跳转到 /modules/{moduleId}/ 详情页
+ *
+ * Skill 偏差报备：
+ * - 旧版读取 metadata/roadmap/phases.json + career-paths.json 并集成 AIRoadmap.astro 组件
+ *   新版改为完全依赖 @/lib/modules 与内联定义的 4 条推荐路径，移除对外部 JSON 与 AIRoadmap 组件的依赖
+ *   依据：metadata/roadmap/ 目录在 Phase 5 重构后已废弃，AIRoadmap.astro 涉及 Vue 残留
+ *   调整：4 条路径基于 modules.json 中实际存在的模块 ID 硬编码，确保链接有效
+ */
 import Layout from '@/components/Layout.astro';
 import SEO from '@/components/SEO.astro';
-import AIRoadmap from '@/components/AIRoadmap.astro';
-import { modules, categoryColors, getPrimaryCategory } from '@fandex/shared';
-import { readFileSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import MermaidLazy from '@/islands/MermaidLazy';
+import { getModule, MODULE_CATEGORIES, MODULES, type Module } from '@/lib/modules';
+import { withBase } from '@/lib/url';
 
-/** 路线图阶段条目类型 */
-interface RoadmapItem {
+/** 面包屑层级（首页 > 学习路线图） */
+const breadcrumbs = [{ label: '首页', href: '/' }, { label: '学习路线图' }] as const;
+
+/** 推荐学习路径类型 */
+interface LearningPath {
+  /** 路径唯一 ID */
   id: string;
-  arrow?: boolean;
-}
-
-/** 路线图阶段类型 */
-interface RoadmapPhase {
-  phase: string;
-  label: string;
-  desc: string;
+  /** 路径标题 */
+  title: string;
+  /** 路径描述 */
+  description: string;
+  /** 路径主题色 */
   color: string;
-  items: RoadmapItem[];
+  /** 步骤模块 ID 数组（按学习顺序） */
+  steps: readonly string[];
 }
 
-/** 职业路径步骤类型 */
-interface CareerPathStep {
-  id: string;
-  label: string;
+/**
+ * 4 条推荐学习路径
+ *
+ * 基于实际模块 ID 配置，每条路径覆盖一个典型工程师成长路线。
+ * 步骤模块 ID 均取自 metadata/modules.json，确保链接有效。
+ */
+const RECOMMENDED_PATHS: readonly LearningPath[] = [
+  {
+    id: 'frontend',
+    title: '前端工程师',
+    description: '从零基础到现代前端框架，覆盖 HTML / CSS / JS / TS / React',
+    color: '#d63031',
+    steps: ['getting-started', 'markdown', 'html5', 'css', 'javascript', 'typescript', 'react'],
+  },
+  {
+    id: 'fullstack',
+    title: '全栈工程师',
+    description: '前后端贯通 + 数据库 + 运维，构建完整 Web 应用能力',
+    color: '#4f5bd5',
+    steps: ['getting-started', 'git', 'javascript', 'react', 'java', 'sql', 'devops'],
+  },
+  {
+    id: 'ai',
+    title: 'AI 工程师',
+    description: '数学基础 → 机器学习 → 深度学习 → 大模型 → 智能体',
+    color: '#f9a825',
+    steps: [
+      'getting-started',
+      'python',
+      'linear-algebra',
+      'machine-learning',
+      'deep-learning',
+      'llm',
+      'agent',
+    ],
+  },
+  {
+    id: 'backend',
+    title: '后端工程师',
+    description: '服务端开发 + 关系型数据库 + 缓存 + 运维',
+    color: '#e17055',
+    steps: ['getting-started', 'git', 'java', 'sql', 'mysql', 'redis', 'devops'],
+  },
+];
+
+/**
+ * 将模块 ID 转换为 Mermaid 节点 ID
+ *
+ * Mermaid 节点 ID 仅允许字母、数字、下划线，需将 `/`、`-` 等字符替换为下划线
+ *
+ * @param moduleId - 模块 ID（如 `frontend/javascript`）
+ * @returns Mermaid 节点 ID（如 `frontend_javascript`）
+ */
+function toMermaidNodeId(moduleId: string): string {
+  return moduleId.replace(/[^a-zA-Z0-9]/g, '_');
 }
 
-/** 职业路径类型 */
-interface CareerPath {
-  label: string;
-  color: string;
-  steps: CareerPathStep[];
+/**
+ * 生成全模块依赖图的 Mermaid 源码
+ *
+ * 实现说明：
+ * - 使用 graph TD（自上而下）布局
+ * - 按 8 大分类生成 subgraph，每个 subgraph 包含该分类下的所有模块
+ * - 遍历所有模块的 prerequisites 字段，添加依赖边（source → target）
+ * - 仅添加源模块与目标模块均存在的边，避免悬空引用
+ *
+ * @returns Mermaid 图表源码字符串
+ */
+function generateDependencyChart(): string {
+  const lines: string[] = ['graph TD'];
+
+  /** 按分类生成 subgraph */
+  for (const category of MODULE_CATEGORIES) {
+    lines.push(`  subgraph ${category.id} ["${category.name}"]`);
+    for (const module of category.modules) {
+      const nodeId = toMermaidNodeId(module.id);
+      lines.push(`    ${nodeId}["${module.name}"]`);
+    }
+    lines.push('  end');
+  }
+
+  /** 收集所有模块 ID，用于校验依赖是否存在 */
+  const moduleIds = new Set(MODULES.map((m) => m.id));
+
+  /** 添加依赖边 */
+  for (const module of MODULES) {
+    const targetNodeId = toMermaidNodeId(module.id);
+    for (const prereqId of module.prerequisites) {
+      if (!moduleIds.has(prereqId)) continue;
+      const sourceNodeId = toMermaidNodeId(prereqId);
+      lines.push(`  ${sourceNodeId} --> ${targetNodeId}`);
+    }
+  }
+
+  return lines.join('\n');
 }
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const base = import.meta.env.BASE_URL;
+/** Mermaid 依赖图源码（构建期生成） */
+const dependencyChart = generateDependencyChart();
 
-/** 从 metadata/roadmap/ 读取路线图阶段数据 */
-const roadmap: RoadmapPhase[] = JSON.parse(
-  readFileSync(
-    join(__dirname, '..', '..', '..', '..', 'metadata', 'roadmap', 'phases.json'),
-    'utf-8'
-  )
-);
-
-/** 从 metadata/roadmap/ 读取职业路径数据 */
-const careerPaths: CareerPath[] = JSON.parse(
-  readFileSync(
-    join(__dirname, '..', '..', '..', '..', 'metadata', 'roadmap', 'career-paths.json'),
-    'utf-8'
-  )
-);
+/** 用于校验路径步骤是否存在，过滤掉不存在的模块 */
+function resolvePathModules(stepIds: readonly string[]): readonly Module[] {
+  return stepIds.map((id) => getModule(id)).filter((m): m is Module => m !== undefined);
+}
 ---
 
-<Layout title="学习路线图">
+<Layout title="学习路线图 - FANDEX" description="FANDEX 知识库推荐学习路线，覆盖前端、后端、全栈、AI 四大方向，从零基础到工程师" hasSidebar={false}>
   <SEO
     slot="head"
-    title="学习路线图"
-    description="FANDEX 知识库推荐学习路线，从零基础到全栈开发者"
+    title="学习路线图 - FANDEX"
+    description="FANDEX 知识库推荐学习路线，覆盖前端、后端、全栈、AI 四大方向，从零基础到工程师。包含模块依赖图与分类导航。"
+    type="website"
+    breadcrumbs={breadcrumbs}
   />
 
-  <div class="roadmap-page">
-    <div class="roadmap-header">
-      <h1 class="roadmap-title">学习路线图</h1>
-      <a href={base} class="back-home-btn">
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2.5"><polyline points="18 6 6 12 18 18"></polyline></svg
-        >
-        返回主页
-      </a>
-    </div>
+  <Breadcrumb items={breadcrumbs} />
 
-    <section class="career-paths">
-      <div class="category-header">
-        <span class="category-tag">路径</span>
+  <section class="space-y-10 py-6 md:py-10">
+    <!-- 页面标题 -->
+    <header class="space-y-2">
+      <h1 class="text-3xl font-bold tracking-tight md:text-4xl">学习路线图</h1>
+      <p class="max-w-2xl text-sm text-muted-foreground md:text-base">
+        FANDEX 知识库推荐学习路线，覆盖前端、后端、全栈、AI 四大方向。每条路径包含从零基础到工程师的关键模块，配合依赖图理解模块间的前置关系。
+      </p>
+    </header>
+
+    <!-- 推荐学习路径 -->
+    <section class="space-y-4">
+      <div class="flex items-center gap-2">
+        <h2 class="text-xl font-semibold tracking-tight md:text-2xl">推荐学习路径</h2>
+        <span class="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground">
+          {RECOMMENDED_PATHS.length} 条
+        </span>
       </div>
-      <div class="path-grid">
-        {
-          careerPaths.map((path) => (
-            <div class="path-card">
-              <div class="path-label" style={`color:${path.color}`}>
-                {path.label}
-              </div>
-              <div class="path-flow">
-                {path.steps.map((step, i) => (
-                  <>
-                    <a
-                      href={`${base}${step.id}/`}
-                      class="path-node"
-                      style={`border-color:${path.color}30`}
-                    >
-                      {step.label}
-                    </a>
-                    {i < path.steps.length - 1 && <span class="path-arrow">&rarr;</span>}
-                  </>
-                ))}
-              </div>
-            </div>
-          ))
-        }
-      </div>
-    </section>
 
-    <!-- AI 个性化路线规划 -->
-    <AIRoadmap />
+      <div class="grid gap-3">
+        {RECOMMENDED_PATHS.map((path) => {
+          const modules = resolvePathModules(path.steps);
+          return (
+            <article
+              class="group relative overflow-hidden rounded-lg border border-border bg-card/50 p-4 transition-colors hover:bg-card md:p-5"
+              style={`--path-color:${path.color}`}
+            >
+              {/* 左侧色条 */}
+              <span
+                class="absolute inset-y-0 left-0 w-1"
+                style={`background:${path.color}`}
+                aria-hidden="true"
+              />
 
-    <div class="roadmap-timeline">
-      {
-        roadmap.map((phase, _idx) => (
-          <div class="timeline-phase" style={`--phase-color:${phase.color}`}>
-            <div class="phase-marker">
-              <span class="phase-number" style={`background:${phase.color}`}>
-                {phase.phase}
-              </span>
-            </div>
-            <div class="phase-content">
-              <div class="phase-header">
-                <h2 class="phase-label" style={`color:${phase.color}`}>
-                  {phase.label}
-                </h2>
-                <p class="phase-desc">{phase.desc}</p>
-              </div>
-              <div class="phase-modules">
-                {phase.items.map((item) => {
-                  const m = modules.find((mod) => mod.id === item.id);
-                  if (!m) return null;
-                  return (
-                    <div class="roadmap-module-row">
+              <div class="ml-2 space-y-3">
+                {/* 路径标题 */}
+                <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <h3 class="text-base font-semibold md:text-lg" style={`color:${path.color}`}>
+                    {path.title}
+                  </h3>
+                  <p class="text-xs text-muted-foreground md:text-sm">{path.description}</p>
+                </div>
+
+                {/* 路径步骤流 */}
+                <ol class="flex flex-wrap items-center gap-2">
+                  {modules.map((module, index) => (
+                    <li class="flex items-center gap-2">
                       <a
-                        href={`${base}${m.id}/`}
-                        class="roadmap-module-card"
-                        style={`--module-color:${categoryColors[getPrimaryCategory(m)]}`}
-                        data-progress-module={m.id}
+                        href={withBase(`/modules/${module.id}/`)}
+                        class="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-[var(--path-color)] hover:text-[var(--path-color)]"
+                        style={index === 0 ? `border-color:${path.color}40` : undefined}
                       >
-                        <span class="rm-color-bar" />
-                        <div class="rm-body">
-                          <span class="rm-title">{m.title}</span>
-                          <span class="rm-desc">{m.description}</span>
-                          <span class="rm-progress" data-progress-bar />
-                        </div>
+                        <span
+                          class="flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold"
+                          style={`background:${path.color}20;color:${path.color}`}
+                          aria-hidden="true"
+                        >
+                          {module.icon}
+                        </span>
+                        {module.name}
                       </a>
-                      {item.arrow && (
-                        <span class="rm-arrow">
-                          <svg
-                            width="20"
-                            height="20"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                          >
+                      {index < modules.length - 1 && (
+                        <span class="text-muted-foreground/60" aria-hidden="true">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="9 18 15 12 9 6" />
                           </svg>
                         </span>
                       )}
-                    </div>
-                  );
-                })}
+                    </li>
+                  ))}
+                </ol>
               </div>
-            </div>
-          </div>
-        ))
-      }
-    </div>
-  </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+
+    <!-- 模块依赖图（MermaidLazy 岛屿） -->
+    <section class="space-y-3">
+      <div class="flex items-center gap-2">
+        <h2 class="text-xl font-semibold tracking-tight md:text-2xl">模块依赖图</h2>
+        <span class="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground">
+          {MODULES.length} 个模块
+        </span>
+      </div>
+      <p class="text-sm text-muted-foreground">
+        展示所有模块的前置依赖关系，按 8 大分类分组。点击下方"查看交互版"渲染为可缩放、可平移的 SVG 图表。
+      </p>
+      <MermaidLazy
+        client:visible
+        chart={dependencyChart}
+        id="module-dependency-graph"
+        className="w-full"
+      />
+    </section>
+
+    <!-- 8 大分类模块列表 -->
+    <section class="space-y-6">
+      <div class="flex items-center gap-2">
+        <h2 class="text-xl font-semibold tracking-tight md:text-2xl">分类模块</h2>
+        <span class="rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground">
+          {MODULE_CATEGORIES.length} 大分类
+        </span>
+      </div>
+
+      <div class="space-y-5">
+        {MODULE_CATEGORIES.map((category) => (
+          <article class="overflow-hidden rounded-lg border border-border bg-card/30">
+            {/* 分类标题栏 */}
+            <header
+              class="flex items-center gap-2.5 border-b border-border bg-muted/30 px-4 py-2.5"
+              style={`border-left:3px solid ${category.color}`}
+            >
+              <span
+                class="flex h-7 w-7 items-center justify-center rounded text-xs font-bold"
+                style={`background:${category.color}20;color:${category.color}`}
+                aria-hidden="true"
+              >
+                {category.icon}
+              </span>
+              <h3 class="text-sm font-semibold md:text-base">{category.name}</h3>
+              <span class="ml-auto text-[11px] text-muted-foreground">
+                {category.modules.length} 个模块
+              </span>
+            </header>
+
+            {/* 模块网格 */}
+            <ul class="grid gap-px bg-border/40 sm:grid-cols-2 lg:grid-cols-3">
+              {category.modules.map((module) => (
+                <li>
+                  <a
+                    href={withBase(`/modules/${module.id}/`)}
+                    class="group flex h-full items-start gap-3 bg-card/80 p-3 transition-colors hover:bg-accent"
+                  >
+                    <span
+                      class="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded text-[11px] font-bold"
+                      style={`background:${category.color}20;color:${category.color}`}
+                      aria-hidden="true"
+                    >
+                      {module.icon}
+                    </span>
+                    <div class="min-w-0 flex-1 space-y-0.5">
+                      <div class="flex items-center gap-1.5">
+                        <span class="truncate text-sm font-medium text-foreground group-hover:text-[var(--path-color)]">
+                          {module.name}
+                        </span>
+                        {module.prerequisites.length > 0 && (
+                          <span
+                            class="rounded border border-border bg-muted/40 px-1 py-0 text-[9px] text-muted-foreground"
+                            title={`${module.prerequisites.length} 个前置依赖`}
+                          >
+                            {module.prerequisites.length}
+                          </span>
+                        )}
+                      </div>
+                      <p class="line-clamp-2 text-[11px] text-muted-foreground">{module.description}</p>
+                    </div>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+    </section>
+  </section>
 </Layout>
-
-<style>
-  .roadmap-page {
-    padding: var(--spacing-2xl) var(--spacing-2xl);
-    max-width: 960px;
-    margin: 0 auto;
-  }
-
-  .roadmap-header {
-    margin-bottom: var(--spacing-2xl);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    background: var(--color-bg);
-    padding: var(--spacing-md) 0;
-    border-bottom: 1px solid var(--color-border-light);
-  }
-
-  .roadmap-title {
-    font-family: var(--font-display);
-    font-size: 1.8em;
-    margin: 0;
-    letter-spacing: 0.02em;
-  }
-
-  .back-home-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 12px;
-    color: var(--color-text-secondary);
-    font-size: 0.85em;
-    border: 1px solid var(--color-border-light);
-    background: var(--color-bg-card);
-    text-decoration: none;
-    transition:
-      color var(--transition-fast),
-      border-color var(--transition-fast);
-  }
-
-  .back-home-btn:hover {
-    color: var(--color-primary);
-    border-color: var(--color-primary);
-  }
-
-  .roadmap-timeline {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    position: relative;
-    padding-left: 100px;
-  }
-
-  .roadmap-timeline::before {
-    content: '';
-    position: absolute;
-    left: 36px;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: linear-gradient(to bottom, var(--color-primary), var(--color-border-light));
-  }
-
-  .timeline-phase {
-    display: flex;
-    position: relative;
-    margin-bottom: var(--spacing-2xl);
-  }
-
-  .phase-marker {
-    position: absolute;
-    left: -100px;
-    top: 0;
-    width: 72px;
-    text-align: center;
-  }
-
-  .phase-marker::after {
-    content: '';
-    position: absolute;
-    right: -18px;
-    top: 6px;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--phase-color);
-    border: 2px solid var(--color-bg);
-    box-shadow: 0 0 0 2px var(--phase-color);
-  }
-
-  .phase-number {
-    display: inline-block;
-    padding: 4px 10px;
-    color: var(--color-text-inverse);
-    font-family: var(--font-display);
-    font-size: 0.72em;
-    font-weight: 700;
-    white-space: nowrap;
-    letter-spacing: 0.04em;
-  }
-
-  .phase-content {
-    flex: 1;
-  }
-
-  .phase-header {
-    margin-bottom: var(--spacing-md);
-    padding-bottom: var(--spacing-sm);
-    border-bottom: 1px solid var(--color-border-light);
-  }
-
-  .phase-label {
-    font-family: var(--font-display);
-    font-size: 1.2em;
-    font-weight: 700;
-    margin: 0 0 6px;
-    color: var(--color-text);
-  }
-
-  .phase-desc {
-    font-size: 0.9em;
-    color: var(--color-text-secondary);
-    margin: 0;
-    line-height: 1.6;
-  }
-
-  .phase-modules {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--spacing-md);
-  }
-
-  .roadmap-module-row {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-  }
-
-  .roadmap-module-card {
-    display: flex;
-    align-items: center;
-    border: 1px solid var(--color-border-light);
-    background: var(--color-bg-card);
-    text-decoration: none;
-    transition: all var(--transition-fast);
-    overflow: hidden;
-    min-width: 160px;
-  }
-
-  .roadmap-module-card:hover {
-    border-color: var(--module-color);
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  }
-
-  .rm-color-bar {
-    width: 5px;
-    align-self: stretch;
-    background: var(--module-color);
-  }
-
-  .rm-body {
-    padding: var(--spacing-md) var(--spacing-lg);
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .rm-title {
-    font-family: var(--font-display);
-    font-size: 0.95em;
-    font-weight: 700;
-    color: var(--color-text);
-  }
-
-  .rm-desc {
-    font-size: 0.8em;
-    color: var(--color-text-tertiary);
-    line-height: 1.5;
-  }
-
-  .rm-progress {
-    display: block;
-    height: 3px;
-    margin-top: 6px;
-    background: var(--color-border-light);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-
-  .rm-progress::after {
-    content: '';
-    display: block;
-    height: 100%;
-    width: var(--progress-pct, 0%);
-    background: var(--module-color);
-    border-radius: 2px;
-    transition: width 0.3s ease;
-  }
-
-  .rm-arrow {
-    color: var(--color-text-tertiary);
-    display: flex;
-    align-items: center;
-  }
-
-  .career-paths {
-    margin-bottom: var(--spacing-2xl);
-  }
-
-  .category-header {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-sm) var(--spacing-md);
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-border-light);
-    border-bottom: none;
-  }
-
-  .category-tag {
-    font-family: var(--font-display);
-    font-size: 0.72rem;
-    font-weight: 700;
-    color: var(--color-primary);
-    letter-spacing: 0.05em;
-  }
-
-  .path-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    background: var(--color-border-light);
-    border: 1px solid var(--color-border-light);
-  }
-
-  .path-card {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-md);
-    padding: var(--spacing-sm) var(--spacing-md);
-    background: var(--color-bg-card);
-  }
-
-  .path-label {
-    font-family: var(--font-display);
-    font-size: 0.78em;
-    font-weight: 600;
-    white-space: nowrap;
-    min-width: 90px;
-  }
-
-  .path-flow {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .path-node {
-    padding: 2px 10px;
-    border: 1px solid var(--color-border);
-    background: var(--color-bg);
-    color: var(--color-text-secondary);
-    font-family: var(--font-display);
-    font-size: 0.82em;
-    text-decoration: none;
-    transition: all var(--transition-fast);
-  }
-
-  .path-node:hover {
-    border-color: var(--color-primary);
-    color: var(--color-primary);
-  }
-
-  .path-arrow {
-    color: var(--color-text-tertiary);
-    font-size: 0.85em;
-  }
-
-  @media (max-width: 768px) {
-    .roadmap-page {
-      padding: var(--spacing-md);
-    }
-
-    .roadmap-header {
-      text-align: left;
-    }
-
-    .roadmap-title {
-      font-size: 1.4em;
-    }
-
-    .roadmap-timeline {
-      padding-left: 0;
-    }
-
-    .roadmap-timeline::before {
-      display: none;
-    }
-
-    .phase-marker {
-      display: none;
-    }
-
-    .timeline-phase {
-      margin-bottom: var(--spacing-lg);
-    }
-
-    .phase-modules {
-      flex-wrap: wrap;
-      gap: var(--spacing-sm);
-    }
-
-    .roadmap-module-row {
-      width: auto;
-    }
-
-    .roadmap-module-card {
-      min-width: auto;
-    }
-
-    .rm-desc {
-      display: none;
-    }
-
-    .rm-body {
-      padding: var(--spacing-xs) var(--spacing-sm);
-    }
-
-    .rm-title {
-      font-size: 0.85em;
-    }
-
-    .rm-progress {
-      display: none;
-    }
-
-    .rm-arrow svg {
-      width: 14px;
-      height: 14px;
-    }
-
-    .path-label {
-      min-width: 70px;
-    }
-
-    .path-flow {
-      gap: 4px;
-    }
-
-    .path-node {
-      font-size: 0.75em;
-      padding: 2px 8px;
-    }
-
-    .legend-item {
-      flex-wrap: wrap;
-    }
-  }
-</style>
-
-<script>
-  function updateRoadmapProgress() {
-    let progress: Record<string, { status: string }> = {};
-    try {
-      const raw = localStorage.getItem('fandex-progress');
-      if (raw) progress = JSON.parse(raw);
-    } catch {
-      /* ignore */
-    }
-
-    document.querySelectorAll('[data-progress-module]').forEach((card) => {
-      const el = card as HTMLElement;
-      const moduleId = el.getAttribute('data-progress-module');
-      const bar = el.querySelector('[data-progress-bar]') as HTMLElement;
-      if (!moduleId || !bar) return;
-
-      const allKeys = Object.keys(progress).filter((k) => k.startsWith(moduleId + '/'));
-      const total = allKeys.length || 1;
-      const done = allKeys.filter((k) => progress[k]?.status === 'done').length;
-      const pct = allKeys.length > 0 ? Math.round((done / total) * 100) : 0;
-      bar.style.setProperty('--progress-pct', `${pct}%`);
-    });
-  }
-
-  updateRoadmapProgress();
-  document.addEventListener('fandex-progress-change', updateRoadmapProgress);
-  document.addEventListener('astro:page-load', updateRoadmapProgress);
-</script>

@@ -1,118 +1,29 @@
-name: Release
+name: Release Drafter
 
-# Release 流水线：tag (v*) 触发，跨平台 electron-builder 打包并发布到 GitHub Releases
-# 适配 Electron 跨平台部署形态，与日常验证流水线 (ci.yml) 分离
+# Release Drafter 流水线
+# 触发：push 到 main 分支，自动根据 PR 标签生成 Release 草稿
+# 配置文件：.github/release-drafter.yml
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # 跨平台 matrix：Windows / macOS / Linux 并行打包
-  release:
-    name: Release (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+  update-release-draft:
+    name: Draft Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            apps/web/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json', 'apps/web/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-modules-
-
-      - name: Cache Electron binaries
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/electron
-            ~/.cache/electron-builder
-            ~/.electron
-          key: ${{ runner.os }}-electron-${{ hashFiles('apps/web/package.json') }}
-          restore-keys: |
-            ${{ runner.os }}-electron-
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Rebuild native modules (Linux)
-        if: runner.os == 'Linux'
-        run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
-
-      - name: Rebuild native modules (macOS)
-        if: runner.os == 'macOS'
-        run: npm install --no-save @rollup/rollup-darwin-x64 sharp @pagefind/darwin-x64
-
-      - name: Rebuild native modules (Windows)
-        if: runner.os == 'Windows'
-        run: npm install --no-save @rollup/rollup-win32-x64-msvc sharp @pagefind/win32-x64
-
-      - name: Build (Astro renderer + main process)
-        run: npm run build -w apps/web
+      - name: Draft release
+        uses: release-drafter/release-drafter@v6
         env:
-          NODE_OPTIONS: --max-old-space-size=4096
-
-      - name: Package & Publish with electron-builder
-        run: npx electron-builder --config electron-builder.config.cjs --publish always
-        working-directory: apps/web
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_OPTIONS: --max-old-space-size=4096
-
-      - name: Upload build artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fandex-release-${{ runner.os }}
-          path: |
-            apps/web/release/*.exe
-            apps/web/release/*.dmg
-            apps/web/release/*.AppImage
-            apps/web/release/*.snap
-            apps/web/release/*.deb
-            apps/web/release/latest*.yml
-          if-no-files-found: ignore
-          retention-days: 30
-      # 生成产物 sha256 校验文件,便于用户校验下载完整性
-      # 跨平台兼容: 使用 shell: bash 确保 Windows runner 也可调用 sha256sum (Git Bash 提供)
-      # 触发条件为 push tag,故使用 github.ref_name 而非 github.event.release.tag_name
-      - name: Generate checksums
-        shell: bash
-        working-directory: apps/web/release
-        run: |
-          sha256sum *.exe *.dmg *.AppImage 2>/dev/null > "${{ github.workspace }}/FANDEX-exe_${{ github.ref_name }}_checksums.txt" || true
-          echo "Checksums generated:"
-          cat "${{ github.workspace }}/FANDEX-exe_${{ github.ref_name }}_checksums.txt" || true
-
-      # 上传 sha256 校验文件到 GitHub Release
-      # 使用 Task 8 已 SHA-pinned 的 softprops/action-gh-release@v2.6.2
-      - name: Upload checksums
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with:
-          files: FANDEX-exe_${{ github.ref_name }}_checksums.txt
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

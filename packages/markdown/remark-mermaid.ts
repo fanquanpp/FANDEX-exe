@@ -29,9 +29,9 @@
  */
 
 import { createRequire } from 'node:module';
-import { visit } from 'unist-util-visit';
+import type { Code, Html, Parent, Root } from 'mdast';
 import type { Plugin } from 'unified';
-import type { Root, Code, Html, Parent } from 'mdast';
+import { visit } from 'unist-util-visit';
 
 /** 使用 Node.js 原生 require 加载模块，绕过 Vite SSR Module Runner */
 const nodeRequire = createRequire(import.meta.url);
@@ -97,7 +97,7 @@ class CSSStyleSheetPolyfill {
       .split('}')
       .map((r) => r.trim())
       .filter((r) => r.length > 0)
-      .map((r) => r + '}');
+      .map((r) => `${r}}`);
     this.cssRules = rules.map((r) => new CSSRulePolyfill(r));
   }
 }
@@ -257,7 +257,7 @@ function escapeHtml(str: string): string {
  */
 export async function renderMermaidDualTheme(
   code: string,
-  baseId: string
+  baseId: string,
 ): Promise<MermaidDualThemeResult | null> {
   const mermaidApi = initializeMermaidEnvironment();
   if (!mermaidApi) {
@@ -278,7 +278,7 @@ export async function renderMermaidDualTheme(
     /* 清理 DOM 中上一次渲染的残留元素 */
     const document = (globalThis as GlobalWithOptionalDom).document;
     if (document) {
-      const container = document.getElementById('d' + baseId + '-light');
+      const container = document.getElementById(`d${baseId}-light`);
       if (container) container.remove();
     }
 
@@ -294,7 +294,7 @@ export async function renderMermaidDualTheme(
 
     /* 清理暗色渲染残留 */
     if (document) {
-      const container = document.getElementById('d' + baseId + '-dark');
+      const container = document.getElementById(`d${baseId}-dark`);
       if (container) container.remove();
     }
 
@@ -329,15 +329,11 @@ export function remarkMermaid(): Plugin<[], Root> {
     }> = [];
 
     /* 遍历 AST 收集所有 mermaid 代码块 */
-    visit(
-      tree,
-      'code',
-      (node: Code, index: number | undefined, parent: Parent | undefined) => {
-        if (node.lang !== 'mermaid') return;
-        if (index === undefined || parent === undefined) return;
-        mermaidBlocks.push({ node, index, parent });
-      }
-    );
+    visit(tree, 'code', (node: Code, index: number | undefined, parent: Parent | undefined) => {
+      if (node.lang !== 'mermaid') return;
+      if (index === undefined || parent === undefined) return;
+      mermaidBlocks.push({ node, index, parent });
+    });
 
     /* 没有 mermaid 代码块则跳过 */
     if (mermaidBlocks.length === 0) return;

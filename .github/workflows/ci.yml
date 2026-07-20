@@ -1,13 +1,13 @@
 name: CI
 
-# 日常验证流水线：lint / type-check / build 三阶段并行
-# 仅校验源码与构建产物，不触发 Electron 打包（打包发布见 release.yml）
+# 日常验证流水线：lint / typecheck / test → build → e2e
+# 适配 Tauri 2 + Astro 7 + React 19 + Tailwind v4 技术栈，使用 pnpm v10 workspace
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
   workflow_dispatch:
 
 permissions:
@@ -18,120 +18,106 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 阶段 1：代码规范检查（ESLint + Vue/Astro 规则）
-  lint:
-    name: Lint
+  # 阶段 1：代码规范检查（Biome）+ 类型检查（astro check）+ 单元测试（Vitest）
+  lint-and-test:
+    name: Lint & Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: package-lock.json
+          node-version: '24'
 
-      - name: Cache node_modules
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
         uses: actions/cache@v4
         with:
-          path: |
-            node_modules
-            apps/web/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json', 'apps/web/package-lock.json') }}
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-node-modules-
+            ${{ runner.os }}-pnpm-store-
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Rebuild native modules (sharp / pagefind)
-        run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
+        run: pnpm --filter web exec -- pnpm rebuild sharp pagefind
 
-      - name: Run ESLint
-        run: npm run lint -w apps/web
+      - name: Run Biome lint
+        run: pnpm --filter web lint
 
-  # 阶段 2：类型检查（astro check，等价 vue-tsc --noEmit）
-  type-check:
-    name: Type Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: Run type check
+        run: pnpm --filter web typecheck
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: package-lock.json
+      - name: Run unit tests
+        run: pnpm --filter web test
 
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            apps/web/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json', 'apps/web/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-modules-
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Rebuild native modules (sharp / pagefind)
-        run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
-
-      - name: Run Type Check
-        run: npm run typecheck -w apps/web
-
-  # 阶段 3：构建验证（Vite/Astro 构建 renderer + tsc 编译 main 进程）
+  # 阶段 2：构建验证（含构建脚本 + Astro build + Pagefind 索引）
   build:
     name: Build
+    needs: lint-and-test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: package-lock.json
+          node-version: '24'
 
-      - name: Cache node_modules
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
         uses: actions/cache@v4
         with:
-          path: |
-            node_modules
-            apps/web/node_modules
-          key: ${{ runner.os }}-node-modules-${{ hashFiles('package-lock.json', 'apps/web/package-lock.json') }}
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-node-modules-
+            ${{ runner.os }}-pnpm-store-
 
-      - name: Cache Electron binaries
+      - name: Cache Astro build cache
         uses: actions/cache@v4
         with:
-          path: |
-            ~/.cache/electron
-            ~/.cache/electron-builder
-          key: ${{ runner.os }}-electron-${{ hashFiles('apps/web/package.json') }}
+          path: apps/web/.astro
+          key: ${{ runner.os }}-astro-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-electron-
+            ${{ runner.os }}-astro-
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Rebuild native modules (sharp / pagefind)
-        run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
+        run: pnpm --filter web exec -- pnpm rebuild sharp pagefind
 
-      - name: Build (Astro renderer + main process)
-        run: npm run build -w apps/web
+      - name: Build (Astro 7 + Pagefind)
+        run: pnpm --filter web build
         env:
           NODE_OPTIONS: --max-old-space-size=4096
 
@@ -144,3 +130,82 @@ jobs:
             echo "::error::Build output apps/web/dist not found"
             exit 1
           fi
+
+      - name: Verify Pagefind index
+        run: |
+          if [ -d "apps/web/dist/pagefind" ]; then
+            echo "Pagefind index found"
+            ls -la apps/web/dist/pagefind/ | head -5
+          else
+            echo "::warning::Pagefind index not found - search will not work"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: apps/web/dist
+          retention-days: 14
+
+  # 阶段 3：端到端测试（Playwright），依赖 build 产物
+  e2e:
+    name: E2E Tests
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('apps/web/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rebuild native modules (sharp / pagefind)
+        run: pnpm --filter web exec -- pnpm rebuild sharp pagefind
+
+      - name: Install Playwright browsers
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: apps/web/dist
+
+      - name: Run E2E tests (Playwright)
+        run: pnpm --filter web test:e2e
+        env:
+          CI: true

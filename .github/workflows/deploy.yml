@@ -1,12 +1,28 @@
 name: Deploy to GitHub Pages
 
+# GitHub Pages 部署流水线
+# 触发：push 到 main 分支（仅内容/前端源码变更），自动构建并部署到 GitHub Pages
+# 适配 pnpm v10 workspace + Astro 7 + React 19 技术栈
+
 on:
   push:
     branches: [main]
+    paths:
+      - 'content/**'
+      - 'metadata/**'
+      - 'apps/web/src/**'
+      - 'apps/web/public/**'
+      - 'apps/web/astro.config.ts'
+      - 'apps/web/tsconfig.json'
+      - 'apps/web/package.json'
+      - 'packages/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -15,57 +31,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  setup:
-    runs-on: ubuntu-22.04
-    outputs:
-      cache-hit: ${{ steps.cache.outputs.cache-hit }}
+  # 单一 Job：构建并部署（GitHub Pages artifact + deploy-pages）
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
+          node-version: '24'
 
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        id: cache
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          version: '10'
+          run_install: false
 
-      - name: Install dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: npm ci
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
 
-      - name: Rebuild native modules
-        run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
-
-  build:
-    runs-on: ubuntu-22.04
-    needs: setup
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Restore node_modules cache
+      - name: Cache pnpm store
         uses: actions/cache@v4
         with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-
-      - name: Rebuild native modules
-        run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
 
       - name: Cache Astro build cache
         uses: actions/cache@v4
@@ -75,13 +76,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-astro-
 
-      - name: Build (GitHub Pages)
-        run: npm run build -w apps/web
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rebuild native modules (sharp / pagefind)
+        run: pnpm --filter web exec -- pnpm rebuild sharp pagefind
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          static_site_generator: astro
+
+      - name: Build (Astro 7 + Pagefind)
+        run: pnpm --filter web build
         env:
           NODE_OPTIONS: --max-old-space-size=4096
-
-      - name: QA Check
-        run: npm run qa -w apps/web
 
       - name: Verify Pagefind index
         run: |
@@ -92,191 +101,11 @@ jobs:
             echo "::warning::Pagefind index not found - search will not work"
           fi
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: build
-          path: apps/web/dist
-          retention-days: 30
-
-      - uses: actions/upload-pages-artifact@v3
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: apps/web/dist
 
-  # 测试 Job：执行单元测试，作为 deploy 的前置依赖
-  # 跨工作流不能直接 needs ci.yml 中的 test Job，故在此独立配置
-  test:
-    runs-on: ubuntu-22.04
-    needs: setup
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Restore node_modules cache
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-
-      - name: Rebuild native modules
-        run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
-
-      - name: Run Tests
-        run: npm run test -w apps/web
-
-  build-offline:
-    runs-on: ubuntu-22.04
-    needs: setup
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Restore node_modules cache
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-
-      - name: Rebuild native modules
-        run: npm install --no-save @rollup/rollup-linux-x64-gnu sharp @pagefind/linux-x64
-
-      - name: Build offline package
-        run: npm run build:offline -w apps/web
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
-
-      - name: Pack offline zip
-        run: npm run pack:offline -w apps/web
-
-      - name: Upload offline artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: fandex-offline-zip
-          path: apps/web/fandex-offline-*.zip
-          retention-days: 90
-
-  build-electron:
-    runs-on: windows-2022
-    needs: setup
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Restore node_modules cache
-        uses: actions/cache@v4
-        id: cache
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-
-      - name: Install dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: npm ci
-
-      - name: Build offline dist
-        run: npm run build:offline -w apps/web
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
-
-      - name: Build Electron exe
-        run: npx electron-builder --config electron-builder.config.cjs
-        working-directory: apps/web
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_OPTIONS: --max-old-space-size=4096
-
-      - name: Upload exe artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: fandex-electron-exe
-          path: apps/web/release/*.exe
-          retention-days: 90
-
-  release:
-    runs-on: ubuntu-22.04
-    needs: [build, build-offline, build-electron]
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Read version
-        id: version
-        run: echo "version=$(node -p "require('./apps/web/package.json').version")" >> $GITHUB_OUTPUT
-
-      - name: Download offline zip
-        uses: actions/download-artifact@v4
-        with:
-          name: fandex-offline-zip
-          path: ./release-assets
-
-      - name: Download Electron exe
-        uses: actions/download-artifact@v4
-        with:
-          name: fandex-electron-exe
-          path: ./release-assets
-
-      - name: Create or Update GitHub Release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: FANDEX v${{ steps.version.outputs.version }}
-          body: |
-            ## FANDEX-exe v${{ steps.version.outputs.version }}
-
-            Windows 桌面端离线学习平台 -- 帮助零基础学生迈出学习第一步。
-
-            ### Windows 桌面应用（推荐）
-            下载 `FANDEX-Setup-${{ steps.version.outputs.version }}.exe`，双击安装后即可使用。
-            无需浏览器，无需 Node.js，安装后桌面自动创建快捷方式。
-
-            ### 离线 zip 包
-            下载 `fandex-offline-v${{ steps.version.outputs.version }}.zip`，解压后双击 start.bat 启动。
-            需要 Node.js 22 或更高版本。
-
-            ### 在线版本
-            访问 GitHub Pages 站点：https://fanquanpp.github.io/FANDEX-exe/
-
-            ### 环境要求
-            - 桌面应用：Windows 10 或更高版本
-            - 离线 zip：Node.js 22+，现代浏览器
-            - 在线版：现代浏览器（Chrome / Edge / Firefox / Safari）
-
-            ### 更新方式
-            - 桌面应用/离线版：下载最新版本覆盖安装
-            - 在线版：自动更新（Service Worker 后台同步）
-          files: ./release-assets/*
-          draft: false
-          prerelease: false
-
-  deploy:
-    needs: [build, test]
-    runs-on: ubuntu-22.04
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

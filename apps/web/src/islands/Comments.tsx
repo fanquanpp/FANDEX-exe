@@ -4,7 +4,7 @@
  * 功能概述：
  * - 基于 @giscus/react 实现 GitHub Discussions 评论系统
  * - 懒加载：仅当 IntersectionObserver 检测到组件进入视口时才加载 Giscus iframe
- * - 主题动态切换：集成 theme-store，亮/暗主题自动同步到 Giscus
+ * - 主题动态切换：集成 use-theme hook，亮/暗主题自动同步到 Giscus
  * - 加载状态 Skeleton 占位，避免布局跳动
  * - 完整无障碍：aria-label、加载进度提示
  *
@@ -20,7 +20,7 @@
  * 数据流：
  * 1. 组件挂载 → IntersectionObserver 监听容器是否进入视口
  * 2. 进入视口 → 设置 shouldLoad=true → 渲染 Giscus 组件
- * 3. theme-store 主题变化 → 同步 Giscus 的 theme prop
+ * 3. useTheme 主题变化 → 同步 Giscus 的 theme prop
  */
 
 import Giscus from '@giscus/react';

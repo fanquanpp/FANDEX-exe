@@ -2,17 +2,16 @@
  * View Transitions 增强脚本（Phase 10）
  *
  * 功能概述：
- * - 主题切换动画：使用 document.startViewTransition() 包裹 class 切换
- * - 页面过渡回调：astro:before-swap 事件中保留主题 class
+ * - 页面过渡回调：astro:before-swap 事件中保留主题 class（核心：修复主题重置 bug）
  * - 过渡类型扩展：为不同导航类型添加 transition-name
- * - 降级处理：不支持 View Transitions API 的浏览器直接切换
+ * - 系统主题监听：当用户未手动设置主题时跟随系统偏好
  *
  * 设计要点：
- * - 与 theme-store 协作：监听 store 变化触发动画
- * - 与 Astro ClientRouter 协作：astro:before-swap / astro:after-swap 钩子
- * - 模块级单例订阅，避免重复绑定
+ * - 主题切换动画由 use-theme.ts 内部 startViewTransition 处理，本脚本不再负责
+ * - 与 Astro ClientRouter 协作：astro:before-swap / astro:after-swap / astro:page-load 钩子
  * - 兼容 Tauri 环境：不依赖 window.location.origin
- * - 所有 DOM 操作显式类型断言，符合 TS strict 模式
+ * - 单一持久化路径：use-theme.ts 写纯字符串到 localStorage['fandex-theme']，
+ *   BaseHead.astro FOUC 脚本读取纯字符串，本脚本不再持久化任何内容
  *
  * 使用方式：
  *   import '@/scripts/view-transitions'; // 自动初始化
@@ -20,10 +19,12 @@
  */
 
 import { logger } from '@/lib/logger';
-import { resolveTheme, useThemeStore } from '@/lib/store/theme-store';
 
 /** 主题 class（documentElement 上的暗色标记） */
 const DARK_CLASS = 'dark';
+
+/** localStorage 持久化键名（与 use-theme.ts、BaseHead.astro 共用） */
+const THEME_STORAGE_KEY = 'fandex-theme';
 
 /** transition-name 标记：返回导航 */
 const TRANSITION_BACK = 'vt-back';
@@ -43,120 +44,19 @@ const navigationStack: NavigationRecord[] = [];
 /** 导航栈最大长度 */
 const NAV_STACK_MAX = 20;
 
-/** store 订阅取消函数（模块级单例） */
-let themeStoreUnsubscribe: (() => void) | null = null;
+/** 系统主题变化监听清理函数（模块级单例） */
+let systemThemeCleanup: (() => void) | null = null;
 
 /** 是否已初始化（避免重复绑定） */
 let viewTransitionsInitialized = false;
 
 /**
- * 检测浏览器是否支持 View Transitions API
- *
- * @returns 是否支持
- */
-function isViewTransitionsSupported(): boolean {
-  return typeof document !== 'undefined' && 'startViewTransition' in document;
-}
-
-/**
- * 应用主题到 DOM（无动画版）
- *
- * 实现说明：
- * - 解析当前 theme 模式为实际生效值
- * - 操作 documentElement.classList 的 dark class
- * - 设置 colorScheme 属性同步原生控件主题
- *
- * @param isDark - 是否为暗色主题
- */
-function applyThemeToDOM(isDark: boolean): void {
-  if (typeof document === 'undefined') return;
-
-  const root = document.documentElement;
-  if (isDark) {
-    root.classList.add(DARK_CLASS);
-    root.style.colorScheme = 'dark';
-  } else {
-    root.classList.remove(DARK_CLASS);
-    root.style.colorScheme = 'light';
-  }
-}
-
-/**
- * 使用 View Transitions API 应用主题切换
- *
- * 实现说明：
- * - 检测 startViewTransition 支持
- * - 不支持时降级为直接 applyThemeToDOM
- * - 支持时调用 startViewTransition 包裹 DOM 操作
- * - 异常时降级为直接应用
- *
- * @param isDark - 目标主题是否为暗色
- */
-function applyThemeWithTransition(isDark: boolean): void {
-  if (!isViewTransitionsSupported()) {
-    applyThemeToDOM(isDark);
-    return;
-  }
-
-  try {
-    const doc = document as Document & {
-      startViewTransition: (callback: () => void) => { finished: Promise<void> };
-    };
-
-    const transition = doc.startViewTransition(() => {
-      applyThemeToDOM(isDark);
-    });
-
-    // 等待过渡完成（用于调试与日志）
-    transition.finished
-      .then(() => {
-        logger.debug('[view-transitions] theme transition completed');
-      })
-      .catch(() => {
-        // 过渡被中断时静默降级
-      });
-  } catch {
-    // startViewTransition 异常时降级
-    applyThemeToDOM(isDark);
-  }
-}
-
-/**
- * 初始化主题切换动画
- *
- * 实现说明：
- * - 订阅 useThemeStore 的 theme 变化
- * - 变化时调用 applyThemeWithTransition 触发动画
- * - 模块级单例订阅，避免重复绑定
- */
-function initThemeTransition(): void {
-  // 取消上一次订阅（避免 SPA 导航后重复订阅）
-  if (themeStoreUnsubscribe) {
-    themeStoreUnsubscribe();
-    themeStoreUnsubscribe = null;
-  }
-
-  let prevTheme = useThemeStore.getState().theme;
-  themeStoreUnsubscribe = useThemeStore.subscribe((state) => {
-    if (state.theme === prevTheme) return;
-    prevTheme = state.theme;
-
-    // 解析为实际生效主题，触发动画
-    const resolved = resolveTheme(state.theme);
-    applyThemeWithTransition(resolved === 'dark');
-  });
-
-  // 首次应用主题（不带动画，避免首屏闪烁）
-  const initialResolved = resolveTheme(useThemeStore.getState().theme);
-  applyThemeToDOM(initialResolved === 'dark');
-}
-
-/**
  * 初始化 Astro 页面过渡回调
  *
  * 实现说明：
- * - astro:before-swap：保留 <html> 上的 dark class 与 colorScheme
- * - astro:after-swap：重新初始化主题监听（订阅新 document 上的事件）
+ * - astro:before-swap：直接操作 event.newDocument.documentElement 保留主题 class
+ *   （不再覆盖 event.swap，避免依赖未文档化的 Astro 内部 API）
+ * - astro:after-swap：日志记录（主题监听由 use-theme.ts 的 MutationObserver 自动恢复）
  * - astro:before-preparation：根据导航类型设置 transition-name
  *
  * 兼容 Astro ClientRouter（Astro 7 替代旧版 ViewTransitions）
@@ -169,45 +69,40 @@ function initAstroTransitionHooks(): void {
    * astro:before-swap：DOM 替换前保留主题 class
    *
    * 实现说明：
-   * - 读取 swap 前的 documentElement class
-   * - 在 swap 后将 dark class 应用到新 document
-   * - 同时保留 colorScheme 内联样式
+   * - 读取 swap 前的 documentElement class 与 colorScheme
+   * - 直接应用到 event.newDocument.documentElement
+   * - 新 document 进入 DOM 时即带有正确的 dark class，避免闪烁
+   *
+   * 注意：不覆盖 event.swap，让 Astro 执行默认的 swap 流程，
+   *      仅在 swap 前预先设置 newDocument 的主题状态
    */
   document.addEventListener('astro:before-swap', (event) => {
     const beforeSwapTheme = document.documentElement.classList.contains(DARK_CLASS);
     const beforeSwapColorScheme = document.documentElement.style.colorScheme;
 
-    // 在 swap 完成后应用主题到新 document
-    (
-      event as Event & {
-        swap: () => void;
-        newDocument: Document;
-      }
-    ).swap = (() => {
-      const originalSwap = (event as Event & { swap: () => void }).swap;
-      return function swapped(this: unknown): void {
-        originalSwap?.call(this);
-        const newDoc = (event as Event & { newDocument: Document }).newDocument;
-        if (beforeSwapTheme) {
-          newDoc.documentElement.classList.add(DARK_CLASS);
-        } else {
-          newDoc.documentElement.classList.remove(DARK_CLASS);
-        }
-        newDoc.documentElement.style.colorScheme = beforeSwapColorScheme;
-      };
-    })();
+    const newDoc = (event as Event & { newDocument: Document }).newDocument;
+    if (beforeSwapTheme) {
+      newDoc.documentElement.classList.add(DARK_CLASS);
+    } else {
+      newDoc.documentElement.classList.remove(DARK_CLASS);
+    }
+    newDoc.documentElement.style.colorScheme = beforeSwapColorScheme;
+
+    logger.debug(
+      `[view-transitions] astro:before-swap preserved theme: ${beforeSwapTheme ? 'dark' : 'light'}`,
+    );
   });
 
   /**
-   * astro:after-swap：DOM 替换后重新初始化主题监听
+   * astro:after-swap：DOM 替换后日志记录
    *
    * 实现说明：
-   * - 重新订阅 store（旧 document 的订阅已失效）
-   * - 重新应用主题到新 DOM
+   * - 主题状态已在 before-swap 中应用到 newDocument
+   * - use-theme.ts 的 MutationObserver 会自动重新绑定到新 document
+   * - 无需在此重新初始化主题监听
    */
   document.addEventListener('astro:after-swap', () => {
-    initThemeTransition();
-    logger.debug('[view-transitions] astro:after-swap re-initialized theme');
+    logger.debug('[view-transitions] astro:after-swap completed');
   });
 
   /**
@@ -216,7 +111,7 @@ function initAstroTransitionHooks(): void {
    * 实现说明：
    * - 比较当前 URL 与历史栈，判定前进 / 后退
    * - 为 <main> 元素临时添加 transition-name
-   * - astro:after-swap 后清除
+   * - astro:page-load 后清除
    */
   document.addEventListener('astro:before-preparation', (event) => {
     const navEvent = event as Event & {
@@ -242,7 +137,7 @@ function initAstroTransitionHooks(): void {
   });
 
   /**
-   * astro:after-swap：清除临时 transition-name
+   * astro:page-load：清除临时 transition-name
    */
   document.addEventListener('astro:page-load', () => {
     const main = document.getElementById('app-main');
@@ -290,26 +185,63 @@ function pushNavigationStack(url: string): void {
  * 初始化系统主题监听
  *
  * 实现说明：
- * - 调用 theme-store 的 initSystemListener
  * - 监听 prefers-color-scheme 变化
- * - 仅在 theme === 'system' 时响应
+ * - 仅当用户未手动设置主题时（localStorage 无 'dark'/'light' 值）跟随系统
+ * - 用户手动设置后，localStorage 有值，不再响应系统变化
+ *
+ * 与 BaseHead.astro FOUC 脚本协作：
+ * - FOUC 脚本在页面加载时读取 localStorage，无值时跟随系统
+ * - 本监听器在运行时跟随系统变化（仅当 localStorage 无值时）
  */
 function initSystemThemeListener(): void {
-  useThemeStore.getState().initSystemListener();
+  // 清理上一次监听
+  if (systemThemeCleanup) {
+    systemThemeCleanup();
+    systemThemeCleanup = null;
+  }
+
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+  /** 系统主题变化处理函数 */
+  const handleChange = () => {
+    try {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY);
+      // 用户已手动设置主题（纯字符串 'dark' 或 'light'），不响应系统变化
+      if (stored === 'dark' || stored === 'light') return;
+
+      // 无用户偏好，跟随系统主题切换
+      const isDark = mediaQuery.matches;
+      const root = document.documentElement;
+      if (isDark) {
+        root.classList.add(DARK_CLASS);
+        root.style.colorScheme = 'dark';
+      } else {
+        root.classList.remove(DARK_CLASS);
+        root.style.colorScheme = 'light';
+      }
+    } catch {
+      // localStorage 不可用时静默忽略
+    }
+  };
+
+  mediaQuery.addEventListener('change', handleChange);
+  systemThemeCleanup = () => {
+    mediaQuery.removeEventListener('change', handleChange);
+  };
 }
 
 /**
  * 执行 View Transitions 初始化
  *
  * 实现说明：
- * - 初始化主题切换动画（订阅 store）
- * - 注册 Astro 页面过渡回调
+ * - 注册 Astro 页面过渡回调（保留主题 class）
  * - 初始化系统主题监听
  */
 export function initViewTransitions(): void {
   if (typeof document === 'undefined') return;
 
-  initThemeTransition();
   initAstroTransitionHooks();
   initSystemThemeListener();
 
@@ -323,11 +255,6 @@ if (typeof document !== 'undefined') {
   } else {
     initViewTransitions();
   }
-
-  // Astro ClientRouter SPA 导航后重新初始化主题订阅
-  document.addEventListener('astro:page-load', () => {
-    initThemeTransition();
-  });
 }
 
 export default { initViewTransitions };

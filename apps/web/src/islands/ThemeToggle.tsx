@@ -2,7 +2,7 @@
  * ThemeToggle 主题切换按钮（React Island）
  *
  * 功能概述：
- * - 亮/暗主题切换按钮，集成 use-theme hook 与 theme-store
+ * - 亮/暗主题切换按钮，集成 use-theme hook
  * - 集成 View Transitions API 实现平滑主题切换（由 useTheme 内部处理）
  * - 使用 Motion（motion/react）实现太阳/月亮图标的 spring 物理切换动画
  * - 使用 lucide-react 的 Sun / Moon 图标

@@ -41,11 +41,15 @@ const projectRoot = resolve(__dirname, '../..');
 /**
  * 构建基础路径
  *
- * 通过环境变量 BASE_PATH 控制：
- * - 默认 /FANDEX-exe/：GitHub Pages 项目站点部署
- * - ./ ：Tauri 桌面端或离线包构建，支持本地静态服务器运行
+ * 优先级：
+ * 1. 显式环境变量 BASE_PATH（最高优先级，用于强制覆盖）
+ * 2. Tauri 桌面端构建（检测到 TAURI_ENV_PLATFORM 时使用 /，确保 tauri://localhost 能正确加载资源）
+ * 3. 默认 /FANDEX-exe/（GitHub Pages 项目站点部署，可被 actions/configure-pages 自动注入的 BASE_PATH 覆盖）
+ *
+ * 注意：Tauri 桌面端通过 tauri://localhost/ 协议加载前端资源，
+ *       若 base path 为 /FANDEX-exe/，所有 CSS/JS 资源会 404 导致白屏。
  */
-const basePath = process.env.BASE_PATH || '/FANDEX-exe/';
+const basePath = process.env.BASE_PATH || (process.env.TAURI_ENV_PLATFORM ? '/' : '/FANDEX-exe/');
 
 /**
  * PostCSS 插件：KaTeX 字体显示策略优化

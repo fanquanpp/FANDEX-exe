@@ -6,8 +6,9 @@
  * - 文档页左侧导航面板，展示当前模块文档列表与全部模块视图
  * - 章节视图：当前模块的文档列表，按 order 排序，含进度指示器
  * - 资料视图：当前文档的标题大纲（h2/h3）
- * - 全部模块视图：51 模块按 8 个分类分组，懒加载子文档列表
+ * - 全部模块视图：51 模块按 8 个分类分组，预渲染子文档列表，支持点击展开/收起
  * - sessionStorage 滚动位置记忆（导航后恢复滚动位置）
+ * - 模块折叠状态持久化（通过 sidebar-store 的 collapsedSections）
  * - 基于 Tailwind v4 工具类实现样式
  * - 完整无障碍：aside[aria-label="侧边栏"]、aria-current="page"
  *
@@ -63,6 +64,40 @@ function docHref(slug: string): string {
 /** 模块首页链接 */
 function moduleHref(id: string): string {
   return withBase(`/${id}/`);
+}
+
+/**
+ * 预加载所有模块的文档列表（用于"全部模块"视图的展开/收起）
+ *
+ * 实现说明：
+ * - 一次性查询所有文档，按 module 字段分组
+ * - 每个 module 的文档按 order 升序排列
+ * - 渲染时内联到 HTML，客户端点击展开按钮切换显隐，无需网络请求
+ */
+const allDocsByModule: Map<string, CollectionEntry<'docs'>[]> = new Map();
+{
+  const allDocs = await getCollection('docs');
+  for (const doc of allDocs) {
+    const m = doc.data.module;
+    if (!allDocsByModule.has(m)) allDocsByModule.set(m, []);
+    allDocsByModule.get(m)?.push(doc);
+  }
+  // 排序每个模块的文档
+  for (const [key, list] of allDocsByModule) {
+    list.sort((a, b) => (a.data.order || 0) - (b.data.order || 0));
+    allDocsByModule.set(key, list);
+  }
+}
+
+/**
+ * 从文档 ID 提取 slug（与 docSlug 一致，但用于其他模块的文档）
+ *
+ * @param id - 文档 ID（如 `javascript/概述`）
+ * @returns slug（如 `概述`）
+ */
+function extractSlug(id: string): string {
+  const last = id.split('/').pop() ?? id;
+  return last.replace(/\.(md|mdx)$/, '');
 }
 ---
 
@@ -126,7 +161,7 @@ function moduleHref(id: string): string {
             <button
               type="button"
               id="sidebar-toggle-chapters"
-              class="sidebar-toggle-btn bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground transition-colors"
+              class="sidebar-toggle-btn bg-gradient-to-r from-primary to-secondary px-2 py-0.5 text-[11px] font-medium text-primary-foreground transition-colors"
               role="tab"
               aria-selected="true"
               aria-controls="sidebar-panel-chapters"
@@ -303,39 +338,78 @@ function moduleHref(id: string): string {
               {category.name}
             </h3>
             <ul class="space-y-0.5">
-              {category.modules.map((m) => (
-                <li class="module-group" data-module={m.id}>
-                  <a
-                    href={moduleHref(m.id)}
-                    class={`group flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${m.id === moduleId ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`}
-                    aria-current={m.id === moduleId ? 'page' : undefined}
-                  >
-                    <span
-                      class="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                      style={`background-color:${m.color}`}
-                      aria-hidden="true"
-                    />
-                    <span class="truncate">{m.name}</span>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      class="module-arrow ml-auto h-3 w-3 flex-shrink-0 text-muted-foreground/60 transition-transform"
-                      aria-hidden="true"
-                    >
-                      <polyline points="9 18 15 12 9 6" />
-                    </svg>
-                  </a>
-                  <ul
-                    class="module-docs-list hidden pl-4"
-                    data-module={m.id}
-                  />
-                </li>
-              ))}
+              {category.modules.map((m) => {
+                const moduleDocs = allDocsByModule.get(m.id) ?? [];
+                const hasDocs = moduleDocs.length > 0;
+                return (
+                  <li class="module-group" data-module={m.id}>
+                    <div class="flex items-center">
+                      <a
+                        href={moduleHref(m.id)}
+                        class={`group flex flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${m.id === moduleId ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`}
+                        aria-current={m.id === moduleId ? 'page' : undefined}
+                      >
+                        <span
+                          class="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                          style={`background-color:${m.color}`}
+                          aria-hidden="true"
+                        />
+                        <span class="truncate flex-1">{m.name}</span>
+                      </a>
+                      {hasDocs && (
+                        <button
+                          type="button"
+                          class="module-arrow-btn ml-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
+                          aria-label={`展开 ${m.name} 文档列表`}
+                          aria-expanded="false"
+                          data-module-toggle={m.id}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            class="module-arrow h-3 w-3 transition-transform"
+                            aria-hidden="true"
+                          >
+                            <polyline points="9 18 15 12 9 6" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    {hasDocs && (
+                      <ul
+                        class="module-docs-list hidden space-y-0.5 pl-4 pt-0.5"
+                        data-module={m.id}
+                      >
+                        {moduleDocs.map((doc) => {
+                          const docSlugValue = extractSlug(doc.id);
+                          const docIsActive = m.id === moduleId && currentSlug === docSlugValue;
+                          return (
+                            <li>
+                              <a
+                                href={withBase(`/${m.id}/${docSlugValue}/`)}
+                                class={`flex items-center gap-2 rounded-md px-2 py-1 text-[11px] leading-relaxed transition-colors ${docIsActive ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'}`}
+                                data-progress-slug={`${m.id}/${docSlugValue}`}
+                                aria-current={docIsActive ? 'page' : undefined}
+                              >
+                                <span
+                                  class="progress-indicator h-1 w-1 flex-shrink-0 rounded-full bg-border transition-colors"
+                                  aria-hidden="true"
+                                />
+                                <span class="truncate">{doc.data.title}</span>
+                              </a>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))
@@ -364,6 +438,36 @@ function moduleHref(id: string): string {
   /** localStorage 键名：阅读进度 */
   const PROGRESS_KEY = 'fandex-progress';
 
+  /** localStorage 键名：模块折叠状态（记录已展开的 moduleId 集合） */
+  const MODULE_EXPANDED_KEY = 'fandex-sidebar-expanded';
+
+  /**
+   * 读取已展开模块集合
+   * @returns Set<string> 已展开的 moduleId 集合
+   */
+  function readExpandedSet(): Set<string> {
+    try {
+      const raw = localStorage.getItem(MODULE_EXPANDED_KEY);
+      if (!raw) return new Set();
+      const arr = JSON.parse(raw) as string[];
+      return new Set(Array.isArray(arr) ? arr : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  /**
+   * 写入已展开模块集合
+   * @param set - 已展开的 moduleId 集合
+   */
+  function writeExpandedSet(set: Set<string>): void {
+    try {
+      localStorage.setItem(MODULE_EXPANDED_KEY, JSON.stringify(Array.from(set)));
+    } catch {
+      /* localStorage 不可用时静默降级 */
+    }
+  }
+
   /** 初始化侧边栏交互 */
   function initSidebar(): void {
     initSidebarToggle();
@@ -371,6 +475,9 @@ function moduleHref(id: string): string {
     initOutlineScroll();
     initProgressIndicators();
     initCloseButton();
+    initModuleToggle();
+    // 首次加载时根据持久化状态恢复模块展开/收起
+    restoreModuleExpandState();
   }
 
   /** 章节/资料视图切换 */
@@ -385,9 +492,10 @@ function moduleHref(id: string): string {
     chaptersBtn.addEventListener('click', () => {
       chaptersPanel?.classList.remove('hidden');
       outlinePanel?.classList.add('hidden');
-      chaptersBtn.classList.add('bg-primary', 'text-primary-foreground');
-      chaptersBtn.classList.remove('text-muted-foreground');
-      outlineBtn.classList.remove('bg-primary', 'text-primary-foreground');
+      chaptersBtn.classList.add('bg-gradient-to-r', 'from-primary', 'to-secondary', 'text-primary-foreground');
+      chaptersBtn.classList.remove('text-muted-foreground', 'bg-transparent');
+      outlineBtn.classList.remove('bg-gradient-to-r', 'from-primary', 'to-secondary', 'text-primary-foreground');
+      outlineBtn.classList.add('bg-transparent');
       outlineBtn.classList.add('text-muted-foreground');
       chaptersBtn.setAttribute('aria-selected', 'true');
       outlineBtn.setAttribute('aria-selected', 'false');
@@ -396,9 +504,10 @@ function moduleHref(id: string): string {
     outlineBtn.addEventListener('click', () => {
       chaptersPanel?.classList.add('hidden');
       outlinePanel?.classList.remove('hidden');
-      outlineBtn.classList.add('bg-primary', 'text-primary-foreground');
-      outlineBtn.classList.remove('text-muted-foreground');
-      chaptersBtn.classList.remove('bg-primary', 'text-primary-foreground');
+      outlineBtn.classList.add('bg-gradient-to-r', 'from-primary', 'to-secondary', 'text-primary-foreground');
+      outlineBtn.classList.remove('text-muted-foreground', 'bg-transparent');
+      chaptersBtn.classList.remove('bg-gradient-to-r', 'from-primary', 'to-secondary', 'text-primary-foreground');
+      chaptersBtn.classList.add('bg-transparent');
       chaptersBtn.classList.add('text-muted-foreground');
       outlineBtn.setAttribute('aria-selected', 'true');
       chaptersBtn.setAttribute('aria-selected', 'false');
@@ -496,10 +605,10 @@ function moduleHref(id: string): string {
 
       if (entry.status === 'read') {
         indicator.classList.remove('bg-border');
-        indicator.classList.add('bg-emerald-500');
+        indicator.classList.add('bg-success-500');
       } else if (entry.status === 'reading') {
         indicator.classList.remove('bg-border');
-        indicator.classList.add('bg-amber-500');
+        indicator.classList.add('bg-warning-500');
       }
     });
   }
@@ -511,6 +620,86 @@ function moduleHref(id: string): string {
       document.body.classList.remove('sidebar-open');
       const sidebar = document.getElementById('app-sidebar');
       sidebar?.classList.add('translate-x-full');
+    });
+  }
+
+  /**
+   * 初始化模块折叠/展开交互
+   *
+   * 实现说明：
+   * - 委托方式监听 `.module-arrow-btn` 点击事件（支持动态渲染）
+   * - 点击切换同级的 `.module-docs-list` 显隐
+   * - 旋转箭头 SVG（rotate-90）
+   * - 同步更新 aria-expanded 属性
+   * - 持久化展开状态到 localStorage
+   */
+  function initModuleToggle(): void {
+    const buttons = document.querySelectorAll<HTMLButtonElement>('.module-arrow-btn[data-module-toggle]');
+    if (buttons.length === 0) return;
+
+    buttons.forEach((btn) => {
+      // 避免重复绑定
+      if (btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const moduleId = btn.getAttribute('data-module-toggle');
+        if (!moduleId) return;
+
+        const li = btn.closest('.module-group') as HTMLElement | null;
+        if (!li) return;
+
+        const docsList = li.querySelector<HTMLUListElement>('.module-docs-list');
+        const arrow = btn.querySelector<SVGElement>('.module-arrow');
+        if (!docsList) return;
+
+        const willExpand = docsList.classList.contains('hidden');
+        if (willExpand) {
+          docsList.classList.remove('hidden');
+          arrow?.classList.add('rotate-90');
+          btn.setAttribute('aria-expanded', 'true');
+        } else {
+          docsList.classList.add('hidden');
+          arrow?.classList.remove('rotate-90');
+          btn.setAttribute('aria-expanded', 'false');
+        }
+
+        // 持久化
+        const expandedSet = readExpandedSet();
+        if (willExpand) {
+          expandedSet.add(moduleId);
+        } else {
+          expandedSet.delete(moduleId);
+        }
+        writeExpandedSet(expandedSet);
+      });
+    });
+  }
+
+  /**
+   * 恢复模块展开状态
+   * 页面加载时根据 localStorage 中记录的展开集合，恢复对应模块的展开状态
+   */
+  function restoreModuleExpandState(): void {
+    const expandedSet = readExpandedSet();
+    if (expandedSet.size === 0) return;
+
+    const groups = document.querySelectorAll<HTMLElement>('.module-group');
+    groups.forEach((li) => {
+      const moduleId = li.getAttribute('data-module');
+      if (!moduleId || !expandedSet.has(moduleId)) return;
+
+      const docsList = li.querySelector<HTMLUListElement>('.module-docs-list');
+      const btn = li.querySelector<HTMLButtonElement>('.module-arrow-btn');
+      const arrow = btn?.querySelector<SVGElement>('.module-arrow');
+      if (!docsList || !btn) return;
+
+      docsList.classList.remove('hidden');
+      arrow?.classList.add('rotate-90');
+      btn.setAttribute('aria-expanded', 'true');
     });
   }
 

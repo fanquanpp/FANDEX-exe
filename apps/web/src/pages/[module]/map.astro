@@ -2,15 +2,17 @@
 import { type CollectionEntry, getCollection } from 'astro:content';
 import Breadcrumb from '@/components/Breadcrumb.astro';
 /**
- * 模块知识地图路由（Phase 8b 重写）
+ * 模块知识地图路由（Phase 8b 重写，v3.1.0 升级为 G2 力导向图）
  *
  * 功能概述：
  * - 动态路由 [module]/map，为每个模块生成知识地图页面
  * - 顶部页面头部：模块名 + 类别 Badge + 文档数 + 描述
- * - MermaidLazy 岛屿：根据模块文档 prerequisites 生成 graph TD 字符串，渲染文档依赖关系
+ * - KnowledgeGraph 岛屿：根据模块文档 prerequisites 构建 { nodes, links } 数据，
+ *   由 G2 v5 chart.forceGraph() 渲染为交互式力导向图
  * - 图例说明：已读 / 在读 / 未读 三种状态颜色含义
  * - 文档列表表格：文档名、前置依赖、状态、阅读时间
  * - 客户端脚本：从 localStorage 读取进度，更新表格状态指示器颜色
+ *   并通过 fandex-progress-change 事件触发 KnowledgeGraph 重新渲染节点状态色
  *
  * 数据源：
  * - modules: @/lib/modules 的 MODULES / getModule / MODULE_CATEGORIES
@@ -18,18 +20,19 @@ import Breadcrumb from '@/components/Breadcrumb.astro';
  * - 路径处理：withBase() 兼容 Tauri/Web 双环境
  *
  * 岛屿水合：
- * - MermaidLazy: client:visible（视口可见时水合，初始显示源码占位 + 渲染按钮）
+ * - KnowledgeGraph: client:visible（视口可见时水合，初始显示加载按钮 + 节点数量提示）
  *
  * Skill 偏差报备：
  * 旧版引用 @fandex/shared 与 @fandex/markdown 已废弃，改用 @/lib/modules。
  * 旧版使用 hsl(var(--card)) 等旧 CSS 变量，本版改为 Tailwind v4 工具类与 bg-card/border-border 等语义类。
- * 旧版构建时调用 renderMermaidDualTheme 预渲染 SVG，本版改为 MermaidLazy 岛屿客户端懒加载，
- * 减少构建时依赖与 SSR 包体积，与 Phase 8b 岛屿架构统一。
+ * v3.0.x 使用 MermaidLazy 岛屿客户端懒加载 Mermaid SVG，v3.1.0 改为 AntV G2 力导向图，
+ * 提供更佳的交互体验（缩放、平移、节点点击、全屏、下载）与主题适配能力。
+ * 用户原始要求：「力导向图替换为组件 G2。一切以 ts 和 react 为主。」
  */
 import Layout from '@/components/Layout.astro';
 import SEO from '@/components/SEO.astro';
 import Sidebar from '@/components/Sidebar.astro';
-import MermaidLazy from '@/islands/MermaidLazy';
+import KnowledgeGraph, { type KnowledgeLink, type KnowledgeNode } from '@/islands/KnowledgeGraph';
 import { getModule, MODULE_CATEGORIES, MODULES } from '@/lib/modules';
 import { withBase } from '@/lib/url';
 
@@ -86,55 +89,56 @@ function shortName(id: string): string {
 }
 
 /**
- * 构建 Mermaid graph TD 字符串
+ * 构建 G2 力导向图数据
  *
  * 实现说明：
- * - 节点 ID 使用文档索引（doc_0、doc_1...）避免中文 / 特殊字符破坏语法
- * - 节点 label 使用 shortName()
- * - 边表示 prerequisites 依赖关系（A 依赖 B → B --> A，即先学 B 再学 A）
+ * - 节点 ID 使用文档索引（doc-0、doc-1...）避免中文 / 特殊字符破坏 G2 渲染
+ * - 节点 label 使用 shortName()，包含 href 跳转链接
+ * - 边表示 prerequisites 依赖关系（A 依赖 B → B-->A，即先学 B 再学 A）
  * - 仅渲染该模块内文档间的依赖关系（跨模块依赖不展示）
+ * - 节点 status 默认 unread，运行时由客户端脚本根据 localStorage 更新
  *
- * @returns Mermaid 源码字符串
+ * @returns 力导向图数据 { nodes, links }
  */
-function buildMermaidGraph(): string {
-  const lines: string[] = ['graph TD'];
-
-  // 节点定义（使用方括号语法，含 shortName）
-  sortedDocs.forEach((doc, idx) => {
-    const label = shortName(doc.id).replace(/[[\]]/g, '');
-    lines.push(`  doc_${idx}["${label}"]`);
+function buildGraphData(): { nodes: KnowledgeNode[]; links: KnowledgeLink[] } {
+  const nodes: KnowledgeNode[] = sortedDocs.map((doc, idx) => {
+    const docSlug = slug(doc.id);
+    return {
+      id: `doc-${idx}`,
+      label: shortName(doc.id),
+      status: 'unread',
+      href: withBase(`/${module}/${docSlug}/`),
+      value: 8,
+    };
   });
 
-  // 依赖边：遍历每篇文档的 prerequisites，匹配同模块内文档
-  const slugToIdx = new Map<string, number>();
+  // slug → 节点 ID 索引（用于依赖边匹配）
+  const slugToId = new Map<string, string>();
   sortedDocs.forEach((doc, idx) => {
-    slugToIdx.set(slug(doc.id), idx);
+    slugToId.set(slug(doc.id), `doc-${idx}`);
   });
 
+  const links: KnowledgeLink[] = [];
   sortedDocs.forEach((doc, idx) => {
     const prereqs = doc.data.prerequisites || [];
     prereqs.forEach((prereq) => {
-      // prereq 可能是 slug 形式或文档 ID 形式
       const prereqSlug = (prereq.split('/').pop() || prereq).replace(/\.(md|mdx)$/, '');
-      const prereqIdx = slugToIdx.get(prereqSlug);
-      if (prereqIdx !== undefined && prereqIdx !== idx) {
-        // 前置 --> 当前（学习顺序：先 prereq 后当前）
-        lines.push(`  doc_${prereqIdx} --> doc_${idx}`);
+      const sourceId = slugToId.get(prereqSlug);
+      const targetId = `doc-${idx}`;
+      if (sourceId && sourceId !== targetId) {
+        links.push({ source: sourceId, target: targetId });
       }
     });
   });
 
-  // 样式定义：节点默认样式
-  lines.push('  classDef default fill:bg-card,stroke:border,color:foreground;');
-
-  return lines.join('\n');
+  return { nodes, links };
 }
 
-/** Mermaid 图表源码 */
-const mermaidGraph = buildMermaidGraph();
+/** 力导向图数据（构建期生成） */
+const graphData = buildGraphData();
 
-/** Mermaid 图表唯一 ID（用于 SVG 选择器） */
-const mermaidId = `map-mermaid-${module}`;
+/** 力导向图容器唯一 ID */
+const graphId = `map-graph-${module}`;
 
 /** 难度标签文案映射 */
 const difficultyLabel: Record<'beginner' | 'intermediate' | 'advanced', string> = {
@@ -143,11 +147,11 @@ const difficultyLabel: Record<'beginner' | 'intermediate' | 'advanced', string> 
   advanced: '高级',
 };
 
-/** 难度标签样式（Tailwind 类名） */
+/** 难度标签样式（对齐 FANDEX-Web 语义色系：success/warning/destructive） */
 const difficultyClass: Record<'beginner' | 'intermediate' | 'advanced', string> = {
-  beginner: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
-  intermediate: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300',
-  advanced: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300',
+  beginner: 'bg-success-100 text-success-700 dark:bg-success-950/60 dark:text-success-300',
+  intermediate: 'bg-warning-100 text-warning-700 dark:bg-warning-950/60 dark:text-warning-300',
+  advanced: 'bg-destructive/15 text-destructive dark:bg-destructive/20 dark:text-destructive',
 };
 
 /** 当前模块所属分类元数据（用于面包屑） */
@@ -169,15 +173,15 @@ const seoBreadcrumbs = [
   { label: '知识地图', href: `/${module}/map/` },
 ];
 
-/** 文档状态指示器类名映射（与表格 status 列对应） */
+/** 文档状态指示器类名映射（与表格 status 列对应，对齐 FANDEX-Web 语义色） */
 const statusDotClass: Record<string, string> = {
-  read: 'bg-emerald-500',
-  reading: 'bg-amber-500',
+  read: 'bg-success-500',
+  reading: 'bg-warning-500',
   unread: 'bg-muted-foreground/40',
 };
 
-/** Mermaid 图表是否为空（无文档时不渲染） */
-const hasMermaid = sortedDocs.length > 0;
+/** 力导向图是否可渲染（无文档时不渲染） */
+const hasGraph = sortedDocs.length > 0;
 ---
 
 <Layout
@@ -241,15 +245,17 @@ const hasMermaid = sortedDocs.length > 0;
     </header>
 
     {/* ============================================================
-     * Mermaid 图表：文档依赖关系
+     * 力导向图：文档依赖关系（G2 渲染）
      * ============================================================ */}
-    {hasMermaid ? (
+    {hasGraph ? (
       <section class="flex flex-col gap-3" aria-label="文档依赖关系图">
-        <MermaidLazy
+        <KnowledgeGraph
           client:visible
-          chart={mermaidGraph}
-          id={mermaidId}
-          className="bg-card"
+          nodes={graphData.nodes}
+          links={graphData.links}
+          id={graphId}
+          className="w-full"
+          height={420}
         />
 
         {/* 图例说明 */}
@@ -260,14 +266,14 @@ const hasMermaid = sortedDocs.length > 0;
           <span class="font-medium text-foreground">状态图例：</span>
           <span class="inline-flex items-center gap-1.5">
             <span
-              class="h-2.5 w-2.5 rounded-full bg-emerald-500"
+              class="h-2.5 w-2.5 rounded-full bg-success-500"
               aria-hidden="true"
             />
             已读
           </span>
           <span class="inline-flex items-center gap-1.5">
             <span
-              class="h-2.5 w-2.5 rounded-full bg-amber-500"
+              class="h-2.5 w-2.5 rounded-full bg-warning-500"
               aria-hidden="true"
             />
             在读
@@ -280,7 +286,7 @@ const hasMermaid = sortedDocs.length > 0;
             未读
           </span>
           <span class="ml-auto text-[11px] text-muted-foreground/80">
-            滚轮缩放 · 拖拽平移 · 点击「查看交互版」渲染
+            滚轮缩放 · 拖拽平移 · 点击节点跳转文档
           </span>
         </div>
       </section>
@@ -451,10 +457,10 @@ const hasMermaid = sortedDocs.length > 0;
     const rows = document.querySelectorAll<HTMLElement>('[data-progress-slug]');
     if (rows.length === 0) return;
 
-    /** 状态颜色映射 */
+    /** 状态颜色映射（对齐 FANDEX-Web 语义色：success/warning/muted） */
     const statusClass: Record<string, string> = {
-      read: 'bg-emerald-500',
-      reading: 'bg-amber-500',
+      read: 'bg-success-500',
+      reading: 'bg-warning-500',
       unread: 'bg-muted-foreground/40',
     };
 
